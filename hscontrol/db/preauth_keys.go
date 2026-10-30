@@ -57,6 +57,32 @@ func (hsdb *HSDatabase) CreatePreAuthKey(
 	})
 }
 
+// CreateTokenPreAuthKey is [HSDatabase.CreatePreAuthKey] for a key an OAuth
+// access token makes, marked as such in the same transaction.
+func (hsdb *HSDatabase) CreateTokenPreAuthKey(
+	uid *types.UserID,
+	reusable bool,
+	ephemeral bool,
+	expiration *time.Time,
+	aclTags []string,
+) (*types.PreAuthKeyNew, error) {
+	return Write(hsdb.DB, func(tx *gorm.DB) (*types.PreAuthKeyNew, error) {
+		pak, err := CreatePreAuthKey(tx, uid, reusable, ephemeral, expiration, aclTags)
+		if err != nil {
+			return nil, err
+		}
+
+		err = tx.Model(&types.Credential{}).
+			Where("id = ?", pak.ID).
+			Update("created_by_token", true).Error
+		if err != nil {
+			return nil, fmt.Errorf("marking key as made by a token: %w", err)
+		}
+
+		return pak, nil
+	})
+}
+
 const authKeyPrefix = "hskey-auth-"
 
 // CreatePreAuthKey creates a new [types.PreAuthKey] in a user, and returns it.
@@ -339,10 +365,23 @@ func (hsdb *HSDatabase) GetPreAuthKeyByID(id uint64) (*types.PreAuthKey, error) 
 }
 
 // DestroyPreAuthKey destroys a preauthkey. Returns error if the [types.PreAuthKey]
-// does not exist. This also clears the auth_key_id on any nodes that reference
-// this key.
+// does not exist. Referenced ephemeral keys are revoked instead, so their
+// nodes keep the key they joined with. Other keys are removed along with their
+// nodes' auth_key_id references.
 func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 	return tx.Transaction(func(db *gorm.DB) error {
+		res := db.Model(&types.Credential{}).
+			Where("kind = ? AND id = ? AND ephemeral = ?", types.CredentialPreAuthKey, id, true).
+			Where("id IN (SELECT auth_key_id FROM nodes WHERE auth_key_id IS NOT NULL)").
+			Update("revoked", gorm.Expr("COALESCE(revoked, ?)", time.Now()))
+		if res.Error != nil {
+			return res.Error
+		}
+
+		if res.RowsAffected > 0 {
+			return nil
+		}
+
 		// First, clear the foreign key reference on any nodes using this key
 		err := db.Model(&types.Node{}).
 			Where("auth_key_id = ?", id).
@@ -353,7 +392,7 @@ func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 
 		// Then delete the pre-auth key, on the same savepoint as the
 		// node update so both roll back together.
-		res := db.Unscoped().
+		res = db.Unscoped().
 			Delete(&types.Credential{}, "kind = ? AND id = ?", types.CredentialPreAuthKey, id)
 		if res.Error != nil {
 			return res.Error
@@ -388,12 +427,12 @@ func (hsdb *HSDatabase) RevokePreAuthKey(id uint64) error {
 // RevokePreAuthKey soft-revokes a key (the v2 API's DELETE): the row is kept and
 // stays retrievable with its invalid flag set, but the key can no longer
 // authorize nodes. The background collector hard-deletes it after the retention
-// window. An already-revoked or unknown id returns [ErrPreAuthKeyNotFound], so a
-// repeated DELETE is a clean 404.
+// window. Revoking a revoked key keeps its first revoke time and succeeds, as a
+// repeated DELETE does on Tailscale; an unknown id returns [ErrPreAuthKeyNotFound].
 func RevokePreAuthKey(tx *gorm.DB, id uint64) error {
 	res := tx.Model(&types.Credential{}).
-		Where("kind = ? AND id = ? AND revoked IS NULL", types.CredentialPreAuthKey, id).
-		Update("revoked", time.Now())
+		Where("kind = ? AND id = ?", types.CredentialPreAuthKey, id).
+		Update("revoked", gorm.Expr("COALESCE(revoked, ?)", time.Now()))
 	if res.Error != nil {
 		return res.Error
 	}
@@ -408,8 +447,7 @@ func RevokePreAuthKey(tx *gorm.DB, id uint64) error {
 // DestroyRevokedPreAuthKeysBefore hard-deletes every key revoked before cutoff,
 // returning how many were removed. The background collector calls this to reap
 // soft-revoked keys after the retention window. Keys still referenced by a node
-// are kept: the node's ephemerality lives on its key, and revoking a key must
-// not change nodes already registered with it.
+// are kept, so revoking a key does not change nodes already registered with it.
 func (hsdb *HSDatabase) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, error) {
 	var count int
 

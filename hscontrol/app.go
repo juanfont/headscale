@@ -183,6 +183,15 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			return
 		}
 
+		// A user claiming a tagged node can clear its ephemeral flag after
+		// the timer is armed.
+		if !node.IsEphemeral() {
+			log.Debug().Caller().EmbedObject(node).
+				Msg("node is no longer ephemeral, skipping garbage collection")
+
+			return
+		}
+
 		changes, err := app.state.DeleteNode(node)
 		app.Change(changes...)
 
@@ -434,6 +443,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 
 			h.cfg.SetExtraRecords(records)
+			h.state.WarnNodesHoldingExtraRecords()
 
 			h.Change(change.ExtraRecords())
 
@@ -636,6 +646,9 @@ func (h *Headscale) Serve() error {
 		go h.extraRecordMan.Run()
 		defer h.extraRecordMan.Close()
 	}
+
+	// Covers the records from the config too.
+	h.state.WarnNodesHoldingExtraRecords()
 
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
 	// records updates
@@ -1370,8 +1383,8 @@ func (z *zerologRequestLogger) NewLogEntry(
 	r *http.Request,
 ) middleware.LogEntry {
 	return &zerologLogEntry{
-		method: r.Method,
-		path:   r.URL.Path,
+		method: clipForLog(r.Method),
+		path:   clipForLog(r.URL.Path),
 		proto:  r.Proto,
 		remote: r.RemoteAddr,
 	}

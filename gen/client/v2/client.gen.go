@@ -63,6 +63,7 @@ type Device struct {
 	Name              string     `json:"name"`
 	NodeId            string     `json:"nodeId"`
 	NodeKey           string     `json:"nodeKey"`
+	OauthClientId     *string    `json:"oauthClientId,omitempty"`
 	Os                string     `json:"os"`
 	Tags              []string   `json:"tags"`
 	UpdateAvailable   bool       `json:"updateAvailable"`
@@ -277,7 +278,7 @@ type ListDevicesParams struct {
 
 // ListKeysParams defines parameters for ListKeys.
 type ListKeysParams struct {
-	// All Accepted for compatibility; Headscale returns all keys.
+	// All Without it, a token sees only the auth keys tokens made.
 	All *bool `form:"all,omitempty" json:"all,omitempty"`
 }
 

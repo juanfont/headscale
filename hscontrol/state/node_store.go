@@ -1,6 +1,7 @@
 package state
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"maps"
@@ -13,8 +14,11 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/rs/zerolog/log"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
@@ -114,6 +118,9 @@ type NodeStore struct {
 
 	peersFunc  PeersFunc
 	writeQueue chan work
+	// reservedLabel reports labels held outside the NodeStore; nil reserves
+	// none. Set before Start: the writer reads it without a lock.
+	reservedLabel func(string) bool
 
 	// stopped is closed once by Stop to signal the writer goroutine to exit
 	// and to let in-flight writes return cleanly instead of panicking with
@@ -126,10 +133,7 @@ type NodeStore struct {
 }
 
 func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batchTimeout time.Duration) *NodeStore {
-	nodes := make(map[types.NodeID]types.Node, len(allNodes))
-	for _, n := range allNodes {
-		nodes[n.ID] = *n
-	}
+	nodes := uniqueGivenNames(allNodes)
 
 	snap := snapshotFromNodes(nodes, peersFunc, nil, false, false)
 
@@ -145,6 +149,47 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 	nodeStoreNodesCount.Set(float64(len(nodes)))
 
 	return store
+}
+
+// uniqueGivenNames bumps duplicate names as nodes load; the lowest ID keeps a
+// shared name. Nothing is written back, and extra record names are not checked.
+func uniqueGivenNames(allNodes types.Nodes) map[types.NodeID]types.Node {
+	ordered := slices.SortedFunc(slices.Values(allNodes), func(a, b *types.Node) int {
+		return cmp.Compare(a.ID, b.ID)
+	})
+	nodes := make(map[types.NodeID]types.Node, len(allNodes))
+	taken := make(map[string]bool, len(allNodes))
+
+	var duplicates types.Nodes
+
+	// Keep distinct stored labels before bumping duplicates so a label with
+	// a suffix already has its holder when the duplicate chooses a new name.
+	for _, n := range ordered {
+		name := strings.ToLower(n.GivenName)
+		if name != "" && taken[name] {
+			duplicates = append(duplicates, n)
+			continue
+		}
+
+		nodes[n.ID] = *n
+
+		if name != "" {
+			taken[name] = true
+		}
+	}
+
+	for _, duplicate := range duplicates {
+		n := *duplicate
+		n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName, nil)
+		nodes[n.ID] = n
+		log.Warn().
+			Uint64(zf.NodeID, n.ID.Uint64()).
+			Str(zf.OldGivenName, duplicate.GivenName).
+			Str(zf.NewGivenName, n.GivenName).
+			Msg("renaming duplicate node name in memory")
+	}
+
+	return nodes
 }
 
 // Snapshot is the representation of the current state of the [NodeStore].
@@ -169,8 +214,8 @@ type Snapshot struct {
 	allNodes    []types.NodeView
 
 	// routes maps each prefix to its current primary advertiser. The
-	// previous assignment is carried over when still valid so the
-	// primary does not flap on every unrelated batch.
+	// next election reads it to keep a prefix where it was while no
+	// router is available.
 	routes         map[netip.Prefix]types.NodeID
 	isPrimaryRoute map[types.NodeID]bool
 }
@@ -183,10 +228,12 @@ type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeID
 
 // work represents a single operation to be performed on the [NodeStore].
 type work struct {
-	op         int
-	nodeID     types.NodeID
-	node       types.Node
-	result     chan struct{}
+	op     int
+	nodeID types.NodeID
+	node   types.Node
+	result chan struct{}
+	// For del: receives the node's peers in the snapshot the delete replaces.
+	peers      *[]types.NodeID
 	nodeResult chan types.NodeView
 	// For rebuildPeerMaps operation
 	rebuildResult chan struct{}
@@ -206,14 +253,19 @@ type work struct {
 // updateChanges reports whether an in-place update moved a peer-visibility
 // input (which also re-elects routes) or only a route-election input.
 // Peer visibility depends on what the policy reads; election additionally
-// depends on online and health state, treating unknown online as offline.
+// depends on online, expiry and health state, treating unknown online as
+// offline. Fields are compared, not [servesRoutes]: an expiry that passed
+// before the write reads the same on both sides.
 func updateChanges(pre, post *types.Node) (bool, bool) {
 	preView, postView := pre.View(), post.View()
-	if postView.HasPolicyChange(preView) || postView.HasNetworkChanges(preView) {
+	if postView.HasPolicyChange(preView) {
 		return true, true
 	}
 
-	return false, pre.Online() != post.Online() || pre.Unhealthy != post.Unhealthy
+	return false, pre.Online() != post.Online() ||
+		!preView.Expiry().GetOr(time.Time{}).Equal(postView.Expiry().GetOr(time.Time{})) ||
+		pre.Unhealthy != post.Unhealthy ||
+		!pre.SessionStart.Equal(post.SessionStart)
 }
 
 // PutNode adds or updates a node in the store.
@@ -254,6 +306,8 @@ func (s *NodeStore) PutNode(n types.Node) types.NodeView {
 }
 
 // UpdateNodeFunc is a function type that takes a pointer to a [types.Node] and modifies it.
+// Referenced data, including Hostinfo and slices, is shared with published
+// snapshots. Replace it instead of mutating it in place.
 type UpdateNodeFunc func(n *types.Node)
 
 // UpdateNode applies a function to modify a specific node in the
@@ -345,16 +399,20 @@ func (s *NodeStore) updateNodes(
 	nodeStoreOperations.WithLabelValues("update_multi").Inc()
 }
 
-// DeleteNode removes a node from the store by its ID.
+// DeleteNode removes a node from the store by its ID and returns its peers
+// in the last snapshot that held it: every node that may have been sent it.
 // This is a blocking operation that waits for the write to complete.
-func (s *NodeStore) DeleteNode(id types.NodeID) {
+func (s *NodeStore) DeleteNode(id types.NodeID) []types.NodeID {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("delete"))
 	defer timer.ObserveDuration()
+
+	var peers []types.NodeID
 
 	work := work{
 		op:     del,
 		nodeID: id,
 		result: make(chan struct{}),
+		peers:  &peers,
 	}
 
 	nodeStoreQueueDepth.Inc()
@@ -364,13 +422,15 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 	case <-s.stopped:
 		nodeStoreQueueDepth.Dec()
 
-		return
+		return nil
 	}
 
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
 	nodeStoreOperations.WithLabelValues("delete").Inc()
+
+	return peers
 }
 
 // SetGivenName sets [types.Node.GivenName] on the node identified by id,
@@ -490,8 +550,9 @@ func (s *NodeStore) applyBatch(batch []work) {
 
 	nodeStoreBatchSize.Observe(float64(len(batch)))
 
+	prev := s.data.Load()
 	nodes := make(map[types.NodeID]types.Node)
-	maps.Copy(nodes, s.data.Load().nodesByID)
+	maps.Copy(nodes, prev.nodesByID)
 
 	// Track which work items need node results
 	nodeResultRequests := make(map[types.NodeID][]*work)
@@ -515,7 +576,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 		switch w.op {
 		case put:
 			n := w.node
-			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
+			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName, s.reservedLabel)
 
 			nodes[w.nodeID] = n
 			if w.nodeResult != nil {
@@ -532,11 +593,13 @@ func (s *NodeStore) applyBatch(batch []work) {
 				}
 
 				oldGivenName := n.GivenName
-				pre := n.Clone()
+				pre := n
 				fn(&n)
 
 				if n.GivenName != oldGivenName {
-					n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
+					n.GivenName = resolveGivenName(
+						nodes, n.ID, n.GivenName, s.reservedLabel,
+					)
 				}
 
 				nodes[id] = n
@@ -545,12 +608,16 @@ func (s *NodeStore) applyBatch(batch []work) {
 					w.pre[id] = pre.View()
 				}
 
-				relation, election := updateChanges(pre, &n)
+				relation, election := updateChanges(&pre, &n)
 				relationChanged = relationChanged || relation
 				electionChanged = electionChanged || election
 			}
 		case del:
 			delete(nodes, w.nodeID)
+
+			if w.peers != nil {
+				*w.peers = slices.Clone(prev.peersByNode[w.nodeID])
+			}
 			// For delete operations, send an invalid NodeView if requested
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
@@ -574,17 +641,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 				continue
 			}
 
-			taken := false
-
-			// DNS is case-insensitive: a legacy "Laptop" already holds "laptop".
-			for id, other := range nodes {
-				if id != w.nodeID && strings.EqualFold(other.GivenName, w.name) {
-					taken = true
-					break
-				}
-			}
-
-			if taken {
+			if resolveGivenName(nodes, w.nodeID, w.name, s.reservedLabel) != w.name {
 				setErrResults[w] = ErrGivenNameTaken
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 
@@ -604,8 +661,6 @@ func (s *NodeStore) applyBatch(batch []work) {
 			electionChanged = true
 		}
 	}
-
-	prev := s.data.Load()
 
 	// A relation change recomputes adjacency; anything else reuses the
 	// previous peer IDs and re-elects routes only if an election input moved.
@@ -663,10 +718,16 @@ func (s *NodeStore) applyBatch(batch []work) {
 // keeps the current label.
 //
 // On collision the label is bumped as base, base-1, base-2, …, first
-// unused wins. Must be called from the [NodeStore] writer goroutine
-// (inside [NodeStore.applyBatch]) so the nodes map reflects all earlier
-// ops in the batch and no other writer can interleave.
-func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base string) string {
+// unused wins; the base is cut so base-N stays a valid label, as Tailscale
+// does. Called before the [NodeStore] writer starts when loading nodes,
+// or from its writer goroutine (inside [NodeStore.applyBatch]) so the nodes map
+// reflects all earlier ops in the batch and no other writer can interleave.
+func resolveGivenName(
+	nodes map[types.NodeID]types.Node,
+	self types.NodeID,
+	base string,
+	reservedLabel func(string) bool,
+) string {
 	if base == "" {
 		base = fallbackGivenName
 	}
@@ -683,12 +744,21 @@ func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base
 
 	candidate := base
 	for i := 1; ; i++ {
-		if _, busy := taken[strings.ToLower(candidate)]; !busy {
+		_, busy := taken[strings.ToLower(candidate)]
+		if !busy && (reservedLabel == nil || !reservedLabel(candidate)) {
 			return candidate
 		}
 
-		candidate = base + "-" + strconv.Itoa(i)
+		candidate = bumpedLabel(base, i)
 	}
+}
+
+// bumpedLabel is base with a -n suffix, base cut so the result stays a valid
+// label, as Tailscale does.
+func bumpedLabel(base string, n int) string {
+	suffix := "-" + strconv.Itoa(n)
+
+	return base[:min(len(base), util.LabelHostnameLength-len(suffix))] + suffix
 }
 
 // snapshotFromNodes builds a Snapshot from nodes. With reusePeers the
@@ -723,8 +793,8 @@ func snapshotFromNodes(
 	if reuseRoutes {
 		routes, isPrimaryRoute = prev.routes, prev.isPrimaryRoute
 	} else {
-		// Carrying the previous assignment forward lets a still-valid
-		// primary survive unrelated batches.
+		// The previous assignment keeps a prefix mapped while no router
+		// is available.
 		var prevRoutes map[netip.Prefix]types.NodeID
 		if prev != nil {
 			prevRoutes = prev.routes
@@ -778,18 +848,25 @@ func snapshotFromNodes(
 	return newSnap
 }
 
-// onlineAdvertisers maps each non-exit prefix to the IDs of online nodes
-// that approve it. Nodes are visited in the order of ids, so the per-prefix
+// servesRoutes reports whether n can carry its routes. Expiry is tested
+// apart from Online because an expired node keeps its control session.
+func servesRoutes(n *types.Node) bool {
+	return n.Online() && !n.IsExpired()
+}
+
+// advertisers maps each non-exit prefix to the IDs of nodes that approve it
+// and pass keep. Nodes are visited in the order of ids, so the per-prefix
 // slices preserve that order.
-func onlineAdvertisers(
+func advertisers(
 	nodes map[types.NodeID]types.Node,
 	ids []types.NodeID,
+	keep func(*types.Node) bool,
 ) map[netip.Prefix][]types.NodeID {
-	advertisers := make(map[netip.Prefix][]types.NodeID)
+	out := make(map[netip.Prefix][]types.NodeID)
 
 	for _, id := range ids {
 		n := nodes[id]
-		if n.IsOnline == nil || !*n.IsOnline {
+		if !keep(&n) {
 			continue
 		}
 
@@ -798,65 +875,66 @@ func onlineAdvertisers(
 				continue
 			}
 
-			advertisers[p] = append(advertisers[p], id)
+			out[p] = append(out[p], id)
 		}
 	}
 
-	return advertisers
+	return out
 }
 
-// electPrimaryRoutes picks the primary advertiser for each non-exit
-// prefix. Inputs are restricted to online nodes that advertise the
-// prefix. The previous primary is preserved when it is still online
-// and healthy (anti-flap); otherwise the lowest-NodeID healthy
-// advertiser wins. When every advertiser is unhealthy the previous
-// primary is preserved only if still a candidate — falling back to
-// any other candidate would point peers at a node the prober has
-// already declared unreachable, so leaving the prefix unmapped is
-// preferred until a probe cycle finds one that responds.
+// electPrimaryRoutes picks the primary router for each non-exit prefix any
+// node approves. A router is available when it is online, unexpired and
+// healthy. The available router with the oldest control session wins, the
+// lower NodeID on a tie: a router that reconnects joins as a standby, and
+// one that keeps its session takes its routes back once available again.
+//
+// With no router available the prefix stays mapped, so peers keep the route
+// and use it once its router returns: the previous primary keeps it while it
+// still approves the prefix, else the lowest-NodeID approving router does.
+// That fallback never picks a router the prober declared unreachable; with
+// only such routers left the prefix is unmapped until a probe cycle finds one
+// that responds.
 func electPrimaryRoutes(
 	nodes map[types.NodeID]types.Node,
 	prev map[netip.Prefix]types.NodeID,
 ) (map[netip.Prefix]types.NodeID, map[types.NodeID]bool) {
-	advertisers := onlineAdvertisers(nodes, slices.Sorted(maps.Keys(nodes)))
+	approvers := advertisers(nodes, slices.Sorted(maps.Keys(nodes)),
+		func(*types.Node) bool { return true })
 
-	routes := make(map[netip.Prefix]types.NodeID, len(advertisers))
-	for prefix, candidates := range advertisers {
-		if cur, ok := prev[prefix]; ok &&
-			slices.Contains(candidates, cur) &&
-			!nodes[cur].Unhealthy {
-			routes[prefix] = cur
+	available := func(id types.NodeID) bool {
+		n := nodes[id]
+
+		return servesRoutes(&n) && !n.Unhealthy
+	}
+	healthy := func(id types.NodeID) bool { return !nodes[id].Unhealthy }
+
+	routes := make(map[netip.Prefix]types.NodeID, len(approvers))
+	for prefix, ids := range approvers {
+		var oldest types.NodeID
+
+		// ids ascend, so a tie keeps the lower ID.
+		for _, id := range ids {
+			if available(id) && (oldest == 0 ||
+				nodes[id].SessionStart.Before(nodes[oldest].SessionStart)) {
+				oldest = id
+			}
+		}
+
+		if oldest != 0 {
+			routes[prefix] = oldest
+
 			continue
 		}
 
-		var (
-			selected types.NodeID
-			found    bool
-		)
+		cur, hasPrev := prev[prefix]
+		if hasPrev && slices.Contains(ids, cur) {
+			routes[prefix] = cur
 
-		for _, c := range candidates {
-			if !nodes[c].Unhealthy {
-				selected = c
-				found = true
-
-				break
-			}
+			continue
 		}
 
-		// All-unhealthy fallback: preserve the previous primary only
-		// when it is still a candidate. Falling back to any candidate
-		// would point peers at a node the prober has already declared
-		// unreachable; leaving the prefix unmapped is honest until a
-		// probe cycle picks one that responds.
-		if !found {
-			if cur, ok := prev[prefix]; ok && slices.Contains(candidates, cur) {
-				selected = cur
-				found = true
-			}
-		}
-
-		if found {
-			routes[prefix] = selected
+		if i := slices.IndexFunc(ids, healthy); i >= 0 {
+			routes[prefix] = ids[i]
 		}
 	}
 
@@ -1046,20 +1124,25 @@ func (s *NodeStore) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
 	return out
 }
 
-// HANodes returns the prefixes with two or more online advertisers, the
-// candidate set the HA prober needs to monitor.
+// HANodes returns prefixes with multiple online advertisers and lone unhealthy
+// advertisers that need another probe before their route can return.
 func (s *NodeStore) HANodes() map[netip.Prefix][]types.NodeID {
 	snap := s.data.Load()
 
-	advertisers := onlineAdvertisers(
+	online := advertisers(
 		snap.nodesByID,
 		slices.Sorted(maps.Keys(snap.nodesByID)),
+		servesRoutes,
 	)
+
+	unhealthy := func(id types.NodeID) bool {
+		return snap.nodesByID[id].Unhealthy
+	}
 
 	out := make(map[netip.Prefix][]types.NodeID)
 
-	for p, ids := range advertisers {
-		if len(ids) < 2 {
+	for p, ids := range online {
+		if len(ids) < 2 && !slices.ContainsFunc(ids, unhealthy) {
 			continue
 		}
 
@@ -1079,6 +1162,14 @@ func (s *NodeStore) IsNodeHealthy(id types.NodeID) bool {
 	}
 
 	return !n.Unhealthy
+}
+
+// RouterSession reports when id's control session began and whether id may
+// win a primary election: online, unexpired and healthy.
+func (s *NodeStore) RouterSession(id types.NodeID) (time.Time, bool) {
+	n, ok := s.data.Load().nodesByID[id]
+
+	return n.SessionStart, ok && servesRoutes(&n) && !n.Unhealthy
 }
 
 // PrimaryRoutes returns the snapshot's prefix→primary map. The map is

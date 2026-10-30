@@ -45,6 +45,11 @@ type Backend struct {
 // or as a Bearer token.
 var security = []map[string][]string{{"basicAuth": {}}, {"bearerAuth": {}}}
 
+// maxBodyBytes replaces huma's 1 MiB default on operations whose body huma
+// validates: validation records an error per bad element before the handler
+// runs, and a real body is a few names, tags or routes.
+const maxBodyBytes = 64 << 10
+
 // registrations is populated by each resource file's init(), so adding a
 // resource means adding a file rather than editing a shared list.
 var registrations []func(huma.API, Backend)
@@ -126,6 +131,15 @@ func Spec() ([]byte, error) {
 // oapi-codegen cannot yet read 3.1; the typed client is generated from this.
 func Spec30() ([]byte, error) {
 	api := NewAPI(chi.NewMux(), Backend{})
+
+	// additionalProperties:true is the default, and spelled out it makes
+	// oapi-codegen write marshalers that drop a nil required list, sending
+	// {} where the server needs "tags":null.
+	for _, s := range api.OpenAPI().Components.Schemas.Map() {
+		if s.AdditionalProperties == true {
+			s.AdditionalProperties = nil
+		}
+	}
 
 	return api.OpenAPI().DowngradeYAML()
 }

@@ -59,44 +59,11 @@ var mapStreamSkipReasons = map[string]string{
 	"map-delivery/S3.5-remove/db1/frames":  policyResponseToEveryNode,
 	"map-delivery/S3.5-restore/db1/frames": policyResponseToEveryNode,
 
-	"map-delivery/S2.1/laptop/frames":         ownReportEchoed,
-	"map-delivery/S2.3/laptop/frames":         ownReportEchoed,
-	"map-delivery/S2.5/laptop/self-endpoints": ownReportEchoed,
-
 	"map-delivery/S2.5/laptop/endpoints-gap-bystander": restartEndpointsKept,
 	"map-delivery/S2.5/laptop/endpoints-gap-svc":       restartEndpointsKept,
 
-	"map-delivery/S3.1/appc/frames":      reconnectAnnounced,
-	"map-delivery/S3.1/bystander/frames": reconnectAnnounced,
-	"map-delivery/S3.1/router/frames":    reconnectAnnounced,
-	"map-delivery/S3.1/sshd/frames":      reconnectAnnounced,
-	"map-delivery/S3.1/svc/frames":       reconnectAnnounced,
-
-	"map-delivery/S3.4/appc/frames":      routerReconnectRecompute,
-	"map-delivery/S3.4/bystander/frames": routerReconnectRecompute,
-	"map-delivery/S3.4/db1/frames":       routerReconnectRecompute,
-	"map-delivery/S3.4/laptop/frames":    routerReconnectRecompute,
-	"map-delivery/S3.4/sshd/frames":      routerReconnectRecompute,
-	"map-delivery/S3.4/svc/frames":       routerReconnectRecompute,
-
 	"map-delivery/S3.6/bystander/peers": sameUserPeers,
 	"map-delivery/S3.6/laptop/peers":    sameUserPeers,
-
-	"map-delivery/S2.0/appc/self-hostinfo-keys":      selfHostinfoWhole,
-	"map-delivery/S2.0/bystander/self-hostinfo-keys": selfHostinfoWhole,
-	"map-delivery/S2.0/sshd/self-hostinfo-keys":      selfHostinfoWhole,
-
-	"map-delivery/S2.0/appc/peer-hostinfo-keys":      peerHostinfoWhole,
-	"map-delivery/S2.0/bystander/peer-hostinfo-keys": peerHostinfoWhole,
-	"map-delivery/S2.0/sshd/peer-hostinfo-keys":      peerHostinfoWhole,
-
-	"map-delivery/S2.0/appc/peer-hostinfo":      peerServicesWhole,
-	"map-delivery/S2.0/bystander/peer-hostinfo": peerServicesWhole,
-	"map-delivery/S2.0/sshd/peer-hostinfo":      peerServicesWhole,
-
-	"hidden-peers/S9/observer/removed":  removalSentToAll,
-	"hidden-peers/S10/observer/removed": removalSentToAll,
-	"hidden-peers/S13/observer/removed": removalSentToAll,
 
 	"hidden-peers/S2/witness/presence":   policyResponseToEveryNode,
 	"hidden-peers/S8/observer/presence":  policyResponseToEveryNode,
@@ -114,24 +81,6 @@ var mapStreamSkipReasons = map[string]string{
 	"route-announce/RA9/srv/presence":    policyResponseToEveryNode,
 	"route-announce/RA9/wit/presence":    policyResponseToEveryNode,
 
-	"route-announce/RA7/wit/presence":  announcePolicyResend,
-	"route-announce/RA8/wit/presence":  announcePolicyResend,
-	"route-announce/RA10/wit/presence": announcePolicyResend,
-	"route-announce/RA11/wit/presence": announcePolicyResend,
-
-	"route-announce/RA0/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA1/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA2/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA3/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA4/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA5/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA6/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA7/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA8/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA9/rtr/self-routes":  selfRoutesReduced,
-	"route-announce/RA10/rtr/self-routes": selfRoutesReduced,
-	"route-announce/RA11/rtr/self-routes": selfRoutesReduced,
-
 	"policy-generation/G2/thor-1/peers":       sameUserPeers,
 	"policy-generation/G2/thor-2/peers":       sameUserPeers,
 	"policy-generation/G3/thor-1/peers":       sameUserPeers,
@@ -144,42 +93,11 @@ var mapStreamSkipReasons = map[string]string{
 	"policy-generation/G3/thor-2/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-1/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-2/peer-owners": sameUserPeers,
-
-	"policy-generation/G2/freya-1/filter": filterDstMerged,
-	"policy-generation/G2/thor-2/filter":  filterDstMerged,
-	"policy-generation/G3/freya-1/filter": filterDstMerged,
-	"policy-generation/G3/thor-2/filter":  filterDstMerged,
-	"policy-generation/G4/freya-1/filter": filterDstMerged,
-	"policy-generation/G4/thor-2/filter":  filterDstMerged,
-	"policy-generation/G5/freya-1/filter": filterDstMerged,
-	"policy-generation/G5/thor-2/filter":  filterDstMerged,
-
-	"policy-generation/G4/rt/enabled": withdrawnRouteEnabled,
-	"policy-generation/G5/rt/enabled": withdrawnRouteEnabled,
-	"policy-generation/G7/rt/enabled": withdrawnRouteEnabled,
-	"policy-generation/G8/rt/enabled": withdrawnRouteEnabled,
-
-	"user-role/S1-reconnect/own-a/frames": reconnectAnnounced,
-	"user-role/S1-reconnect/own-b/frames": reconnectAnnounced,
-	"user-role/S2-reconnect/own-a/frames": reconnectAnnounced,
-
-	"user-role/S0/tag-a/device-user": taggedDeviceUser,
-	"user-role/S0/tag-b/device-user": taggedDeviceUser,
 }
 
 const (
 	policyResponseToEveryNode = "POLICY_RESPONSE_TO_EVERY_NODE: headscale sends every connected node a policy response when the policy, a node's tags or approved routes, or the set of nodes change; SaaS sends only the nodes whose peers or filter change"
-	ownReportEchoed           = "OWN_REPORT_ECHOED: headscale sends a node its own endpoint or DERP report back; SaaS sends it nothing, so its own entry keeps the endpoints of its last full map"
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
-	reconnectAnnounced        = "RECONNECT_ANNOUNCED: headscale tells peers a node is online after a stream gap of a few seconds; SaaS sends them nothing"
-	routerReconnectRecompute  = "ROUTER_RECONNECT_RECOMPUTE: headscale sends every node a policy response when a subnet router's stream comes back after a few seconds; SaaS sends nothing"
-	selfHostinfoWhole         = "SELF_HOSTINFO_WHOLE: headscale sends a node its whole reported Hostinfo; SaaS sends only Hostname, RequestTags and Services"
-	peerHostinfoWhole         = "PEER_HOSTINFO_WHOLE: headscale sends peers a node's whole reported Hostinfo; SaaS sends only Hostname, OS, Services, the SSH host keys and AppConnector"
-	peerServicesWhole         = "PEER_SERVICES_WHOLE: headscale sends peers every service a node reports; SaaS leaves out peerapi-dns-proxy"
-	removalSentToAll          = "REMOVAL_SENT_TO_ALL: headscale tells every connected node that a deleted node is gone; SaaS tells only the nodes that had it as a peer"
-	announcePolicyResend      = "ANNOUNCE_POLICY_RESEND: under an autogroup:self or via policy, headscale sends every connected node a policy response when a router changes only routes nobody approved; SaaS sends nothing to nodes that cannot see the router"
-	withdrawnRouteEnabled     = "WITHDRAWN_ROUTE_ENABLED: headscale's routes API keeps a route the device stopped advertising in enabledRoutes; SaaS lists only advertised routes as enabled"
-	taggedDeviceUser          = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key; headscale shows tagged-devices"
 )
 
 // mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer

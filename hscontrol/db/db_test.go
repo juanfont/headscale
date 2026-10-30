@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -21,6 +22,74 @@ import (
 //
 // TODO(kradalby): remove in 0.31 with the credentials migration.
 const legacyPlaintextKey = "plaintextlegacykey0000000000000000000000000000"
+
+func TestSQLiteSameQueryInAndOutsideTransaction(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+server_url: https://example.com
+prefixes:
+  v4: 100.64.0.0/10
+noise:
+  private_key_path: noise_private.key
+dns:
+  magic_dns: false
+  override_local_dns: false
+database:
+  type: sqlite3
+  sqlite:
+    path: headscale.db
+  gorm:
+    prepare_stmt: true
+`), 0o600))
+	require.NoError(t, types.LoadConfig(configPath, true))
+
+	cfg, err := types.LoadServerConfig()
+	require.NoError(t, err)
+	hsdb, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, hsdb.Close()) })
+
+	user, err := hsdb.CreateUser(types.User{Name: "test-user"})
+	require.NoError(t, err)
+	sqlDB, err := hsdb.DB.DB()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	hsdb.DB = hsdb.DB.WithContext(ctx)
+	poolResult := make(chan error, 1)
+
+	err = hsdb.Read(func(rx *gorm.DB) error {
+		waitCount := sqlDB.Stats().WaitCount
+
+		go func() {
+			_, err := hsdb.GetUserByID(types.UserID(user.ID))
+			poolResult <- err
+		}()
+
+		require.Eventually(t, func() bool {
+			return sqlDB.Stats().WaitCount > waitCount
+		}, time.Second, time.Millisecond)
+
+		_, err := GetUserByID(rx, types.UserID(user.ID))
+
+		return err
+	})
+	require.NoError(t, err)
+
+	select {
+	case err := <-poolResult:
+		require.NoError(t, err)
+	case <-ctx.Done():
+		t.Fatal(
+			"pool query did not finish after the transaction released its connection",
+		)
+	}
+}
 
 // TestSQLiteMigrationAndDataValidation tests specific SQLite migration scenarios
 // and validates data integrity after migration. All migrations that require data validation
@@ -47,6 +116,11 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 				})
 				require.NoError(t, err)
 				require.Len(t, nodes, 5)
+
+				// Approvals from before the upgrade carry no auto-approval mark.
+				for _, n := range nodes {
+					assert.Empty(t, n.AutoApprovedRoutes, "node %d", n.ID)
+				}
 
 				// Pre-auth key ids are preserved, so every node keeps its key.
 				for _, n := range nodes {
@@ -631,6 +705,53 @@ func TestSQLiteMigrationToCredentialsIsAtomic(t *testing.T) {
 	assert.True(t, pak.Reusable)
 }
 
+// TestSQLiteMigrationAddsCreatedByToken upgrades a database whose credentials
+// table predates the created_by_token column: existing keys read as not made
+// by a token, and the schema matches schema.sql again.
+func TestSQLiteMigrationAddsCreatedByToken(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale_test.db"
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   "sqlite3",
+			Sqlite: types.SqliteConfig{Path: dbPath},
+		},
+		Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
+	}
+
+	hsdb, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	pak, err := hsdb.CreatePreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+	require.NoError(t, hsdb.Close())
+
+	raw, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+
+	defer raw.Close()
+
+	for _, stmt := range []string{
+		`ALTER TABLE credentials DROP COLUMN created_by_token`,
+		`DELETE FROM migrations WHERE id = '202610221200-credential-created-by-token'`,
+	} {
+		_, err = raw.ExecContext(context.Background(), stmt)
+		require.NoError(t, err, stmt)
+	}
+
+	hsdb, err = NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	got, err := hsdb.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	assert.False(t, got.CreatedByToken)
+
+	made, err := hsdb.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+	got, err = hsdb.GetPreAuthKeyByID(made.ID)
+	require.NoError(t, err)
+	assert.True(t, got.CreatedByToken)
+}
+
 // TestSQLiteRejectsPre029Database ensures a real pre-0.29 database is refused
 // rather than silently skipping the migrations that were removed.
 func TestSQLiteRejectsPre029Database(t *testing.T) {
@@ -876,6 +997,30 @@ func TestRevokedKeysBackingNodesSurviveCollection(t *testing.T) {
 	}
 
 	assert.ElementsMatch(t, []types.NodeID{3, 5}, ids)
+}
+
+// TestNodeEphemeralMigrationRerunKeepsFlags simulates a start that committed
+// the node ephemeral migration but died before gormigrate recorded it, after
+// which node 3 was made permanent: the next start must neither fail on the
+// existing column nor backfill node 3 again.
+func TestNodeEphemeralMigrationRerunKeepsFlags(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale_test.db"
+
+	require.NoError(t, createSQLiteFromSQLFile("testdata/sqlite/headscale_0.29.3_dump.sql", dbPath))
+
+	hsdb, err := NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+	require.NoError(t, err)
+	require.NoError(t, hsdb.DB.Exec(`UPDATE nodes SET ephemeral = false WHERE id = 3`).Error)
+	require.NoError(t, hsdb.DB.Exec(`DELETE FROM migrations WHERE id = '202610211300-node-ephemeral'`).Error)
+	require.NoError(t, hsdb.Close())
+
+	hsdb, err = NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+	require.NoError(t, err)
+
+	ephemeral, err := hsdb.ListEphemeralNodes()
+	require.NoError(t, err)
+	require.Len(t, ephemeral, 1)
+	assert.Equal(t, types.NodeID(5), ephemeral[0].ID)
 }
 
 // TestInterruptedInitSchemaRecovers simulates a first start that created the

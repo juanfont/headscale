@@ -27,8 +27,8 @@ type haPropClient struct {
 	name  string
 	route netip.Prefix
 	// connected mirrors the prober's view (mapBatcher.IsConnected).
-	// Tracked alongside the runtime read so anti-flap invariants can
-	// reason about the candidate set the prober actually evaluates.
+	// Tracked alongside the runtime read so the invariants can reason
+	// about the candidate set the prober actually evaluates.
 	connected bool
 	// freshSinceReconnect is true between a successful Reconnect and
 	// the prober's second observation of the new SessionEpoch — the
@@ -138,7 +138,7 @@ func readPrimaries(
 // checkHAInvariants walks every prefix → primary mapping in the live
 // snapshot and asserts the six properties documented in the test
 // header. prevPrimaries is the snapshot taken before the just-applied
-// op so anti-flap can compare moves.
+// op, the primary that keeps a prefix while no router is available.
 //
 //nolint:gocyclo // invariant checker over several independent properties
 func checkHAInvariants(
@@ -146,15 +146,14 @@ func checkHAInvariants(
 	srv *servertest.TestServer,
 	clients []*haPropClient,
 	prevPrimaries map[netip.Prefix]types.NodeID,
-	skipAntiFlap bool,
 ) {
 	rt.Helper()
 
 	st := srv.State()
 	primaries := readPrimaries(rt, srv, clients)
 
-	// Collect every prefix advertised by the fleet so the all-down
-	// honesty check can iterate them, even prefixes with zero current
+	// Collect every prefix advertised by the fleet so the no-router
+	// check can iterate them, even prefixes with zero current
 	// advertisers.
 	prefixSet := make(map[netip.Prefix]struct{})
 	for _, c := range clients {
@@ -167,7 +166,10 @@ func checkHAInvariants(
 	// prober's mapBatcher.IsConnected view is a separate gate the
 	// prober consults before dispatching a probe, not part of the
 	// election input.
+	// approversByPrefix also holds the offline routers, which keep a
+	// prefix while no candidate can serve it.
 	advertisersByPrefix := make(map[netip.Prefix][]types.NodeID)
+	approversByPrefix := make(map[netip.Prefix][]types.NodeID)
 
 	for _, c := range clients {
 		nv, ok := st.GetNodeByID(c.id)
@@ -176,12 +178,15 @@ func checkHAInvariants(
 		}
 
 		online, known := nv.IsOnline().GetOk()
-		if !known || !online {
-			continue
-		}
 
 		for _, p := range nv.AllApprovedRoutes() {
-			if p == c.route {
+			if p != c.route {
+				continue
+			}
+
+			approversByPrefix[p] = append(approversByPrefix[p], c.id)
+
+			if known && online {
 				advertisersByPrefix[p] = append(advertisersByPrefix[p], c.id)
 			}
 		}
@@ -207,20 +212,24 @@ func checkHAInvariants(
 			)
 		}
 
-		// Invariant 1: primary IsOnline in the NodeStore view.
-		// state.Disconnect's 10s grace can leave a recently-disconnected
-		// node with IsOnline=true; the structural rule still requires
-		// the bit before the snapshot may keep it as primary.
+		// Invariant 1: primary IsOnline in the NodeStore view while any
+		// candidate is healthy. state.Disconnect's 10s grace can leave a
+		// recently-disconnected node with IsOnline=true; the structural
+		// rule still requires the bit before the snapshot may keep it as
+		// primary over a healthy candidate.
+		healthyCandidate := slices.ContainsFunc(advertisersByPrefix[prefix], st.IsNodeHealthy)
+
 		online, known := nv.IsOnline().GetOk()
-		if !known || !online {
+		if (!known || !online) && healthyCandidate {
 			rt.Fatalf(
-				"prefix %s primary %d is not online (IsOnline=%v known=%v)",
-				prefix, owner, online, known,
+				"prefix %s primary %d is not online (IsOnline=%v known=%v) "+
+					"but %v has a healthy candidate",
+				prefix, owner, online, known, advertisersByPrefix[prefix],
 			)
 		}
 
-		// Invariant 2: primary advertises the prefix and is among the
-		// snapshot's candidate set.
+		// Invariant 2: primary advertises the prefix and, while any
+		// candidate is healthy, is among the snapshot's candidate set.
 		approved := nv.AllApprovedRoutes()
 		if !slices.Contains(approved, prefix) {
 			rt.Fatalf(
@@ -229,108 +238,71 @@ func checkHAInvariants(
 			)
 		}
 
-		if !slices.Contains(advertisersByPrefix[prefix], owner) {
+		if healthyCandidate && !slices.Contains(advertisersByPrefix[prefix], owner) {
 			rt.Fatalf(
 				"prefix %s primary %d not in advertiser set %v",
 				prefix, owner, advertisersByPrefix[prefix],
 			)
 		}
 
-		// Invariant 5 (anti-flap): if the previous snapshot already had
-		// a primary for this prefix AND that primary is still a healthy,
-		// online, advertising candidate, the new snapshot must keep it.
-		// Skipped on settle reads where we re-check without an op in
-		// between — the prober may run in a deferred batch and the
-		// election may legitimately move once on its own timeline.
-		if !skipAntiFlap {
-			if prev, hadPrev := prevPrimaries[prefix]; hadPrev && prev != owner {
-				prevNV, exists := st.GetNodeByID(prev)
-				if exists && prevNV.Valid() {
-					prevOnline, prevKnown := prevNV.IsOnline().GetOk()
-					prevApproved := prevNV.AllApprovedRoutes()
-
-					stillCandidate := prevKnown && prevOnline &&
-						slices.Contains(prevApproved, prefix)
-					stillHealthy := st.IsNodeHealthy(prev)
-
-					if stillCandidate && stillHealthy {
-						rt.Fatalf(
-							"prefix %s flapped primary %d -> %d "+
-								"while previous primary was still a healthy candidate",
-							prefix, prev, owner,
-						)
-					}
-				}
+		// Invariant 5 (oldest session): no healthy online candidate
+		// opened its control session before the primary's. A router
+		// that reconnects joins as a standby; one that keeps its
+		// session wins again once healthy.
+		for _, c := range advertisersByPrefix[prefix] {
+			cv, _ := st.GetNodeByID(c)
+			if st.IsNodeHealthy(c) && cv.SessionStart().Before(nv.SessionStart()) {
+				rt.Fatalf(
+					"prefix %s primary %d holds it over %d, whose session is older",
+					prefix, owner, c,
+				)
 			}
 		}
 	}
 
-	// Invariant 6 (all-down honesty): if every candidate of a prefix is
-	// either offline OR unhealthy, the snapshot must either drop the
-	// primary OR keep one that is still a candidate from the same set
-	// (the all-unhealthy preserve-prev rule). A primary pointed at a
-	// non-candidate after every candidate has gone dark would point
-	// peers at a node the prober has already declared unreachable.
+	// Invariant 6 (no router available): with no healthy online
+	// candidate the prefix stays mapped. The previous primary keeps it
+	// while it still approves the prefix; otherwise the primary must be
+	// a router the prober has not declared unreachable, or there is none.
 	for prefix := range prefixSet {
 		owner, hasPrimary := primaries[prefix]
-		if !hasPrimary {
-			continue
-		}
-
 		candidates := advertisersByPrefix[prefix]
-
-		// Empty candidates with a primary present trips invariant 2
-		// above; reaching this branch with len(candidates) == 0 means
-		// the snapshot is internally inconsistent.
-		if len(candidates) == 0 {
-			rt.Fatalf(
-				"prefix %s has primary %d but no advertiser in the snapshot",
-				prefix, owner,
-			)
-		}
-
 		anyHealthy := slices.ContainsFunc(candidates, st.IsNodeHealthy)
 
 		// Healthy preference: a primary should not be unhealthy when a
 		// healthy candidate exists. Asserting this through the real
 		// prober → State → NodeStore seam catches any divergence the
 		// unit-level model would miss.
-		if anyHealthy && !st.IsNodeHealthy(owner) {
+		if hasPrimary && anyHealthy && !st.IsNodeHealthy(owner) {
 			rt.Fatalf(
 				"prefix %s primary %d unhealthy but %v has a healthy candidate",
 				prefix, owner, candidates,
 			)
 		}
 
-		// All-unhealthy guards: with every candidate unhealthy, the
-		// election has exactly two correct choices:
-		//   - preserve prev primary when it is still a candidate
-		//   - leave the prefix unmapped (no candidate fallback)
-		//
-		// Any other outcome points peers at a node already declared
-		// unreachable.
-		if !anyHealthy {
-			prevOwner, hadPrev := prevPrimaries[prefix]
-			prevStillCandidate := hadPrev &&
-				slices.Contains(candidates, prevOwner)
+		if anyHealthy {
+			continue
+		}
 
-			if prevStillCandidate && owner != prevOwner {
-				rt.Fatalf(
-					"prefix %s all-unhealthy election picked %d, "+
-						"but prev primary %d is still a candidate — "+
-						"preserve-prev rule violated",
-					prefix, owner, prevOwner,
-				)
-			}
+		prevOwner, hadPrev := prevPrimaries[prefix]
+		prevStillApproves := hadPrev &&
+			slices.Contains(approversByPrefix[prefix], prevOwner)
 
-			if !prevStillCandidate && (!hadPrev || owner != prevOwner) {
-				rt.Fatalf(
-					"prefix %s all-unhealthy fallback elected %d "+
-						"but prev primary %v is gone; election "+
-						"must leave the prefix unmapped",
-					prefix, owner, prevOwner,
-				)
-			}
+		if prevStillApproves && owner != prevOwner {
+			rt.Fatalf(
+				"prefix %s with no router available elected %d, "+
+					"but prev primary %d still approves it",
+				prefix, owner, prevOwner,
+			)
+		}
+
+		if !prevStillApproves && hasPrimary && owner != prevOwner &&
+			!st.IsNodeHealthy(owner) {
+			rt.Fatalf(
+				"prefix %s with no router available moved to %d, "+
+					"which the prober declared unreachable",
+				prefix, owner,
+			)
 		}
 	}
 }
@@ -367,14 +339,14 @@ func snapshotPrimaries(
 //     so a reconnect mid-cycle does not install a stale Unhealthy.
 //
 //   - The batched BatchSetNodeHealth is observable through the
-//     all-unhealthy preserve-prev invariant: per-call writes would
+//     no-router preserve-prev invariant: per-call writes would
 //     publish an intermediate "one unhealthy, one healthy" snapshot,
 //     leaving primary on a non-prev node after both flips land.
 //
-//   - The all-unhealthy fallback that leaves prefixes unmapped is
-//     covered by the honesty invariant: with every candidate
-//     unhealthy AND prev gone from the candidate set, the prefix
-//     must stay unmapped instead of pinned to any candidate.
+//   - The fallback with no router available is covered by the
+//     no-router invariant: the previous primary keeps the prefix
+//     while it still approves it, and the fallback never moves it
+//     to a router the prober declared unreachable.
 //
 // Caveat: TestClient is a real controlclient.Direct that responds to
 // PingRequest over Noise, so the timeout path of the prober rarely
@@ -500,17 +472,6 @@ func TestHAProberProperty(t *testing.T) {
 
 			prev := snapshotPrimaries(rt, srv, clients)
 
-			// Anti-flap is meaningful only across operations that do
-			// not themselves mutate the candidate set or per-node
-			// health. Connect/Disconnect both mutate IsOnline (via
-			// state.Connect, or via the asynchronous grace-period
-			// state.Disconnect), and the resulting election move is
-			// expected, not a flap. ProbeOnce, by contrast, must keep
-			// the primary on the previous owner whenever that owner
-			// is still a candidate — this is what the reconnect-
-			// during-probe and dual-disconnect guards preserve.
-			isProberOp := op == 2
-
 			switch op {
 			case 0: // ClientDisconnect
 				idx := idxGen.Draw(rt, fmt.Sprintf("disc_idx_%d", step))
@@ -519,8 +480,8 @@ func TestHAProberProperty(t *testing.T) {
 				// Refuse to disconnect the last connected node. The
 				// prober's HANodes gate requires ≥2 online candidates
 				// per prefix; with only one node left, no probe runs
-				// and the prober-driven invariants (anti-flap,
-				// reconnect-defer) become unfalsifiable. Keeping at
+				// and the prober-driven invariants (health
+				// failover, reconnect-defer) become unfalsifiable. Keeping at
 				// least two candidates is enough to exercise every
 				// failure shape we care about.
 				connectedCount := 0
@@ -628,15 +589,13 @@ func TestHAProberProperty(t *testing.T) {
 				// to wait on; the no-op step still verifies that two
 				// consecutive reads (one snapshot, the same snapshot)
 				// stay consistent. This is invariant 3: stable
-				// conditions = stable primary. We skip the anti-flap
-				// comparison so a primary that legitimately changed
-				// in the prior op is not re-flagged here.
-				checkHAInvariants(rt, srv, clients, prev, true)
+				// conditions = stable primary.
+				checkHAInvariants(rt, srv, clients, prev)
 
 				continue
 			}
 
-			checkHAInvariants(rt, srv, clients, prev, !isProberOp)
+			checkHAInvariants(rt, srv, clients, prev)
 		}
 	})
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
@@ -32,6 +33,7 @@ var (
 	errPolicyTestsFailed    = errors.New("test(s) failed")
 	errSSHPolicyTestsFailed = errors.New("test(s) failed")
 	errTestDestinationNoIP  = errors.New("destination resolved to no IP addresses")
+	errTestSourceUnknown    = errors.New("unknown user or host")
 )
 
 // PolicyTest is one entry in the policy's `tests` block.
@@ -163,17 +165,21 @@ type PolicyTestResults struct {
 // keep the per-test detail because it is significantly more useful in
 // CLI / config-reload paths where the user does not have a separate
 // audit endpoint to consult.
+//
+// The breakdown is bounded by [testFailures].
 func (r PolicyTestResults) Errors() string {
 	if r.AllPassed {
 		return ""
 	}
 
-	var lines []string
+	var failures testFailures
 
 	for _, res := range r.Results {
 		if res.Passed {
 			continue
 		}
+
+		src := clipTestLabel(res.Src)
 
 		protoSuffix := ""
 		if res.Proto != "" {
@@ -181,19 +187,74 @@ func (r PolicyTestResults) Errors() string {
 		}
 
 		for _, e := range res.Errors {
-			lines = append(lines, fmt.Sprintf("%s%s: %s", res.Src, protoSuffix, e))
+			failures.addf("%s%s: %s", src, protoSuffix, clipTestLabel(e))
 		}
 
 		for _, dst := range res.AcceptFail {
-			lines = append(lines, fmt.Sprintf("%s -> %s%s: expected ALLOWED, got DENIED", res.Src, dst, protoSuffix))
+			failures.addf(
+				"%s -> %s%s: expected ALLOWED, got DENIED",
+				src, clipTestLabel(dst), protoSuffix,
+			)
 		}
 
 		for _, dst := range res.DenyFail {
-			lines = append(lines, fmt.Sprintf("%s -> %s%s: expected DENIED, got ALLOWED", res.Src, dst, protoSuffix))
+			failures.addf(
+				"%s -> %s%s: expected DENIED, got ALLOWED",
+				src, clipTestLabel(dst), protoSuffix,
+			)
 		}
 	}
 
+	return failures.String()
+}
+
+// The policy author sizes both the labels on a failure line and the
+// number of failures, so a breakdown rendered in full grows with their
+// product. It is rendered on the write path and, for a stored policy
+// whose tests stopped passing, at every boot, so both factors are capped.
+const (
+	maxTestFailureLines = 100
+	maxTestLabelBytes   = 256
+)
+
+// testFailures collects the lines of a `tests` or `sshTests` failure
+// breakdown. Failures past [maxTestFailureLines] are counted, not
+// rendered.
+type testFailures struct {
+	lines   []string
+	omitted int
+}
+
+func (f *testFailures) full() bool {
+	return len(f.lines) >= maxTestFailureLines
+}
+
+func (f *testFailures) addf(format string, args ...any) {
+	if f.full() {
+		f.omitted++
+
+		return
+	}
+
+	f.lines = append(f.lines, fmt.Sprintf(format, args...))
+}
+
+func (f *testFailures) String() string {
+	lines := f.lines
+	if f.omitted > 0 {
+		lines = append(lines, fmt.Sprintf("... and %d more", f.omitted))
+	}
+
 	return strings.Join(lines, "\n")
+}
+
+// clipTestLabel shortens s to [maxTestLabelBytes] for a failure line.
+func clipTestLabel(s string) string {
+	if len(s) <= maxTestLabelBytes {
+		return s
+	}
+
+	return strings.ToValidUTF8(s[:maxTestLabelBytes], "") + "..."
 }
 
 // TestFailure is one failing tests or sshTests entry: its src as written and
@@ -260,7 +321,7 @@ func (pm *PolicyManager) RunTests() error {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	results := runPolicyTests(pm.pol, pm.filter, pm.users, pm.nodes)
+	results := runPolicyTests(pm.resolvedPol, pm.filter, pm.users, pm.nodes)
 
 	return wrapTestResult(errPolicyTestsFailed, results.AllPassed, results)
 }
@@ -273,6 +334,7 @@ func evaluateTests(pol *Policy, users []types.User, nodes views.Slice[types.Node
 		return nil
 	}
 
+	pol = pol.withResolvedGroups(users, nodes)
 	grants := pol.compileGrants(users, nodes)
 
 	var filter []tailcfg.FilterRule
@@ -297,8 +359,10 @@ func runPolicyTests(pol *Policy, filter []tailcfg.FilterRule, users []types.User
 		Results:   make([]PolicyTestResult, 0, len(pol.Tests)),
 	}
 
+	rules := parseTestRules(filter)
+
 	for _, test := range pol.Tests {
-		res := runPolicyTest(test, pol, filter, users, nodes)
+		res := runPolicyTest(test, pol, rules, users, nodes)
 		if !res.Passed {
 			results.AllPassed = false
 		}
@@ -310,7 +374,13 @@ func runPolicyTests(pol *Policy, filter []tailcfg.FilterRule, users []types.User
 }
 
 // runPolicyTest evaluates one [PolicyTest].
-func runPolicyTest(test PolicyTest, pol *Policy, filter []tailcfg.FilterRule, users []types.User, nodes views.Slice[types.NodeView]) PolicyTestResult {
+func runPolicyTest(
+	test PolicyTest,
+	pol *Policy,
+	rules []testRule,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+) PolicyTestResult {
 	res := PolicyTestResult{
 		Src:    test.Src,
 		Proto:  test.Proto,
@@ -334,7 +404,9 @@ func runPolicyTest(test PolicyTest, pol *Policy, filter []tailcfg.FilterRule, us
 
 	check := func(dsts []string, wantAllowed bool, ok, fail *[]string) {
 		for _, dst := range dsts {
-			allowed, err := evalReachability(srcPrefixes, dst, test.Proto, pol, filter, users, nodes)
+			allowed, err := evalReachability(
+				srcPrefixes, dst, test.Proto, pol, rules, users, nodes, wantAllowed,
+			)
 			if err != nil {
 				res.Passed = false
 				res.Errors = append(res.Errors, fmt.Sprintf("error testing %q: %v", dst, err))
@@ -367,6 +439,21 @@ func resolveTestSource(src string, pol *Policy, users []types.User, nodes views.
 		return nil, fmt.Errorf("invalid alias: %w", err)
 	}
 
+	// Tailscale SaaS finds no user or host behind these, so a test from
+	// them fails, whether it accepts or denies.
+	unknown := isAddressRange(pol, alias)
+
+	switch a := alias.(type) {
+	case Asterix:
+		unknown = true
+	case *AutoGroup:
+		unknown = a.Is(AutoGroupTagged)
+	}
+
+	if unknown {
+		return nil, fmt.Errorf("%w: %q", errTestSourceUnknown, src)
+	}
+
 	// Rules tolerate unregistered users; a test naming one must still
 	// fail (SaaS: policytest-src-unknown-user-email).
 	if u, ok := alias.(*Username); ok {
@@ -388,13 +475,25 @@ func resolveTestSource(src string, pol *Policy, users []types.User, nodes views.
 	return addrs.Prefixes(), nil
 }
 
-// evalReachability reports whether traffic from any srcPrefix to dst (in
-// `host:port` form) is allowed by filter for the requested protocol.
+// evalReachability reports whether traffic from every srcPrefix to dst (in
+// `host:port` form) is allowed by rules for the requested protocol. With
+// everyNode, as an accept asks, each node behind dst must be reached, as on
+// Tailscale SaaS; otherwise any address of dst will do, so a deny passes only
+// when none is reached.
 //
 // Empty proto means the default set the client applies when proto is
 // omitted (TCP/UDP/ICMP) — we accept a rule whose IPProto list contains
 // any of those, or rules with no IPProto restriction at all.
-func evalReachability(srcPrefixes []netip.Prefix, dst string, proto Protocol, pol *Policy, filter []tailcfg.FilterRule, users []types.User, nodes views.Slice[types.NodeView]) (bool, error) {
+func evalReachability(
+	srcPrefixes []netip.Prefix,
+	dst string,
+	proto Protocol,
+	pol *Policy,
+	rules []testRule,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	everyNode bool,
+) (bool, error) {
 	awp, err := parseDestinationAlias(dst)
 	if err != nil {
 		return false, fmt.Errorf("invalid destination %q: %w", dst, err)
@@ -409,17 +508,58 @@ func evalReachability(srcPrefixes []netip.Prefix, dst string, proto Protocol, po
 		return false, fmt.Errorf("%w: %q", errTestDestinationNoIP, dst)
 	}
 
-	dstPrefixes := dstAddrs.Prefixes()
+	targets := [][]netip.Prefix{dstAddrs.Prefixes()}
+	if everyNode {
+		targets = nodeTargets(dstAddrs, nodes)
+	}
 
 	// Tailscale's tests semantics: ALL src prefixes must reach the dst for
 	// the test to consider it allowed. A partial allow is a fail.
 	for _, src := range srcPrefixes {
-		if !srcReachesDst(src, dstPrefixes, awp.Ports, proto, filter) {
-			return false, nil
+		for _, target := range targets {
+			if !srcReachesDst(src, target, awp.Ports, proto, rules) {
+				return false, nil
+			}
 		}
 	}
 
 	return true, nil
+}
+
+// nodeTargets splits dst into the addresses of each node it holds and,
+// when any is left, the addresses no node holds.
+func nodeTargets(dst ResolvedAddresses, nodes views.Slice[types.NodeView]) [][]netip.Prefix {
+	var (
+		out  [][]netip.Prefix
+		rest netipx.IPSetBuilder
+	)
+
+	for _, p := range dst.Prefixes() {
+		rest.AddPrefix(p)
+	}
+
+	for _, n := range nodes.All() {
+		var own []netip.Prefix
+
+		for _, ip := range n.IPs() {
+			if dst.Contains(ip) {
+				own = append(own, netip.PrefixFrom(ip, ip.BitLen()))
+				rest.Remove(ip)
+			}
+		}
+
+		if len(own) > 0 {
+			out = append(out, own)
+		}
+	}
+
+	// The builder only holds valid prefixes, so it cannot fail.
+	set, _ := rest.IPSet()
+	if left := set.Prefixes(); len(left) > 0 {
+		out = append(out, left)
+	}
+
+	return out
 }
 
 // parseDestinationAlias is a thin wrapper over [AliasWithPorts.UnmarshalJSON]
@@ -437,7 +577,107 @@ func parseDestinationAlias(dst string) (*AliasWithPorts, error) {
 	return &awp, nil
 }
 
-// srcReachesDst walks the compiled filter rules and reports whether
+// testRule is a [tailcfg.FilterRule] with its addresses parsed. A run
+// compares every assertion with every rule, and the policy author chooses
+// how many there are of both, so the filter is parsed once per run rather
+// than once per comparison.
+type testRule struct {
+	srcs   testAddrs
+	protos []int
+	// dsts merges the rule's DstPorts entries by port range, so a
+	// destination is looked up once per range instead of once per entry.
+	dsts []testRuleDst
+}
+
+// testRuleDst holds every address a rule allows a port range on.
+type testRuleDst struct {
+	ips   testAddrs
+	ports tailcfg.PortRange
+}
+
+// testAddrs is the sorted, non-overlapping [netipx.IPSet.Ranges] of a set.
+type testAddrs []netipx.IPRange
+
+// overlapsPrefix is [netipx.IPSet.OverlapsPrefix] without walking the set.
+func (a testAddrs) overlapsPrefix(p netip.Prefix) bool {
+	r := netipx.RangeOfPrefix(p)
+
+	// The first range that does not end before r is the only candidate:
+	// the ones after it start later still.
+	i, _ := slices.BinarySearchFunc(
+		a, r.From(), func(x netipx.IPRange, from netip.Addr) int {
+			return x.To().Compare(from)
+		},
+	)
+
+	return i < len(a) && a[i].From().Compare(r.To()) <= 0
+}
+
+// parseTestRules parses filter for [srcReachesDst].
+// [tailcfg.FilterRule.SrcIPs] and [tailcfg.NetPortRange.IP] may be CIDR, single
+// addresses, IP ranges (`a-b`), or `*`; we use [util.ParseIPSet] to cover all
+// of those uniformly. Unparseable entries are skipped (the rule compiler emits
+// well-formed strings, so this is defence-in-depth, not error handling).
+func parseTestRules(filter []tailcfg.FilterRule) []testRule {
+	rules := make([]testRule, 0, len(filter))
+
+	for _, rule := range filter {
+		var srcs netipx.IPSetBuilder
+
+		for _, raw := range rule.SrcIPs {
+			set, err := util.ParseIPSet(raw, nil)
+			if err != nil {
+				continue
+			}
+
+			srcs.AddSet(set)
+		}
+
+		dsts := make(map[tailcfg.PortRange]*netipx.IPSetBuilder)
+
+		for _, dp := range rule.DstPorts {
+			set, err := util.ParseIPSet(dp.IP, nil)
+			if err != nil {
+				continue
+			}
+
+			if dsts[dp.Ports] == nil {
+				dsts[dp.Ports] = new(netipx.IPSetBuilder)
+			}
+
+			dsts[dp.Ports].AddSet(set)
+		}
+
+		parsed := testRule{
+			srcs:   buildTestAddrs(&srcs),
+			protos: rule.IPProto,
+			dsts:   make([]testRuleDst, 0, len(dsts)),
+		}
+
+		for ports, b := range dsts {
+			parsed.dsts = append(
+				parsed.dsts, testRuleDst{ips: buildTestAddrs(b), ports: ports},
+			)
+		}
+
+		rules = append(rules, parsed)
+	}
+
+	return rules
+}
+
+// buildTestAddrs returns the addresses added to b. The builder only fails on
+// invalid input, which [util.ParseIPSet] has already refused.
+func buildTestAddrs(b *netipx.IPSetBuilder) testAddrs {
+	set, err := b.IPSet()
+	if err != nil {
+		return nil
+	}
+
+	return set.Ranges()
+}
+
+// srcReachesDst walks the parsed filter rules and reports whether
 // traffic from src to any prefix in dstPrefixes on at least one of ports
 // (or any port when ports is empty) is allowed under proto.
 //
@@ -446,14 +686,20 @@ func parseDestinationAlias(dst string) (*AliasWithPorts, error) {
 // is omitted. The captured Tailscale matches show these four IANA
 // numbers explicitly when no proto is set, so a rule restricted to any
 // of them satisfies an empty-proto test.
-func srcReachesDst(src netip.Prefix, dstPrefixes []netip.Prefix, ports []tailcfg.PortRange, proto Protocol, filter []tailcfg.FilterRule) bool {
+func srcReachesDst(
+	src netip.Prefix,
+	dstPrefixes []netip.Prefix,
+	ports []tailcfg.PortRange,
+	proto Protocol,
+	rules []testRule,
+) bool {
 	requestedProtos := proto.toIANAProtocolNumbers()
 	if len(requestedProtos) == 0 {
 		requestedProtos = []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP}
 	}
 
-	for _, rule := range filter {
-		if !ruleMatchesSource(rule, src) {
+	for _, rule := range rules {
+		if !rule.srcs.overlapsPrefix(src) {
 			continue
 		}
 
@@ -469,37 +715,17 @@ func srcReachesDst(src netip.Prefix, dstPrefixes []netip.Prefix, ports []tailcfg
 	return false
 }
 
-// ruleMatchesSource reports whether the rule's source list contains src.
-// [tailcfg.FilterRule.SrcIPs] may be CIDR, single addresses, IP ranges (`a-b`),
-// or `*`; we use [util.ParseIPSet] to cover all of those uniformly. Unparseable
-// entries are skipped (the rule compiler emits well-formed strings, so this is
-// defence-in-depth, not error handling).
-func ruleMatchesSource(rule tailcfg.FilterRule, src netip.Prefix) bool {
-	for _, raw := range rule.SrcIPs {
-		set, err := util.ParseIPSet(raw, nil)
-		if err != nil {
-			continue
-		}
-
-		if set.OverlapsPrefix(src) {
-			return true
-		}
-	}
-
-	return false
-}
-
 // ruleMatchesProto reports whether the rule permits any of requestedProtos.
 // An unset [tailcfg.FilterRule.IPProto] means "any protocol" and matches
 // everything. requestedProtos is the per-test protocol set: a single proto
 // for an explicit [PolicyTest.Proto], or the default set when
 // [PolicyTest.Proto] is empty.
-func ruleMatchesProto(rule tailcfg.FilterRule, requestedProtos []int) bool {
-	if len(rule.IPProto) == 0 {
+func ruleMatchesProto(rule testRule, requestedProtos []int) bool {
+	if len(rule.protos) == 0 {
 		return true
 	}
 
-	for _, ruleProto := range rule.IPProto {
+	for _, ruleProto := range rule.protos {
 		if slices.Contains(requestedProtos, ruleProto) {
 			return true
 		}
@@ -509,31 +735,24 @@ func ruleMatchesProto(rule tailcfg.FilterRule, requestedProtos []int) bool {
 }
 
 // ruleAllowsAnyDest reports whether at least one destination prefix in
-// dstPrefixes is allowed by at least one of the rule's DstPorts entries
+// dstPrefixes is allowed by at least one of the rule's destinations
 // for at least one of ports (or any port when ports is empty).
-func ruleAllowsAnyDest(rule tailcfg.FilterRule, dstPrefixes []netip.Prefix, ports []tailcfg.PortRange) bool {
-	for _, dp := range rule.DstPorts {
-		if !destEntryMatchesPrefixes(dp, dstPrefixes) {
+func ruleAllowsAnyDest(
+	rule testRule,
+	dstPrefixes []netip.Prefix,
+	ports []tailcfg.PortRange,
+) bool {
+	for _, dst := range rule.dsts {
+		if !portsAllowed(ports, dst.ports) {
 			continue
 		}
 
-		if portsAllowed(ports, dp.Ports) {
+		if slices.ContainsFunc(dstPrefixes, dst.ips.overlapsPrefix) {
 			return true
 		}
 	}
 
 	return false
-}
-
-// destEntryMatchesPrefixes reports whether the rule's [tailcfg.NetPortRange.IP]
-// (CIDR, single IP, IP range, or "*") covers any prefix in dstPrefixes.
-func destEntryMatchesPrefixes(dp tailcfg.NetPortRange, dstPrefixes []netip.Prefix) bool {
-	set, err := util.ParseIPSet(dp.IP, nil)
-	if err != nil {
-		return false
-	}
-
-	return slices.ContainsFunc(dstPrefixes, set.OverlapsPrefix)
 }
 
 // portsAllowed reports whether at least one requested port is contained

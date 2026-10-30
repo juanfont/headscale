@@ -154,7 +154,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 			nil,
 		)
 
-		want := "https://dns.nextdns.io/abc?device_ip=100.64.0.1&device_model=linux&device_name=node1"
+		want := "https://dns.nextdns.io/abc?device_id=1&device_ip=100.64.0.1&device_model=linux&device_name=node1"
 		if addr := resolverAddr(t, got); addr != want {
 			t.Errorf("addr = %q, want %q", addr, want)
 		}
@@ -173,7 +173,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 			capMap,
 		)
 
-		want := "https://dns.nextdns.io/override?device_ip=100.64.0.1&device_model=linux&device_name=node1"
+		want := "https://dns.nextdns.io/override?device_id=1&device_ip=100.64.0.1&device_model=linux&device_name=node1"
 		if addr := resolverAddr(t, got); addr != want {
 			t.Errorf("addr = %q, want %q", addr, want)
 		}
@@ -221,13 +221,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 
 // nextDNSResolverSkipReasons lists checks where headscale's DoH address
 // differs from SaaS, keyed <test_id>/<check>.
-var nextDNSResolverSkipReasons = map[string]string{
-	"nodeattrs-nextdns-d10-resolver-default/device_id":   nextDNSDeviceID,
-	"nodeattrs-nextdns-d11-resolver-profile/device_id":   nextDNSDeviceID,
-	"nodeattrs-nextdns-d13-resolver-malformed/device_id": nextDNSDeviceID,
-}
-
-const nextDNSDeviceID = "NEXTDNS_DEVICE_ID: SaaS adds the node's stable ID to the DoH query as device_id; headscale does not"
+var nextDNSResolverSkipReasons = map[string]string{}
 
 // TestNextDNSResolverCompat compares the NextDNS DoH address every node gets
 // with what SaaS sent: the global profile, a per-node profile, and a
@@ -502,6 +496,20 @@ func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
 	for _, up := range resp.UserProfiles {
 		assert.NotEqual(t, user2.TailscaleUserProfile().ID, up.ID,
 			"n1 must not receive user2's profile; n2 is not ACL-visible to n1")
+	}
+
+	// What else the change carries still reaches n1, without n2 or user2's
+	// profile.
+	c = change.PolicyAndPeers(n2.ID)
+	resp, err = m.buildFromChange(n1.ID, tailcfg.CurrentCapabilityVersion, &c)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.NotNil(t, resp.PacketFilters)
+	assert.Empty(t, resp.PeersChanged)
+
+	for _, up := range resp.UserProfiles {
+		assert.NotEqual(t, user2.TailscaleUserProfile().ID, up.ID,
+			"n1 must not receive user2's profile with the policy change")
 	}
 }
 
@@ -1774,6 +1782,15 @@ func (b *MapResponseBuilder) buildTailPeersCapMapsReference(peers views.Slice[ty
 		// cap stays off the peer view, leaving CapMap empty for most
 		// peers. [policyv2.PeerCapMap] encodes those conditions.
 		tn.CapMap = policyv2.PeerCapMap(peer, allCapMaps[peer.ID()])
+		tn.Hostinfo = types.PeerHostinfo(tn.Hostinfo)
+
+		if peer.IsExpired() {
+			if peer.ActiveSessions() > 0 {
+				tn.Online, tn.LastSeen = new(true), nil
+			}
+
+			tn.Endpoints, tn.HomeDERP = nil, 0
+		}
 
 		tailPeers = append(tailPeers, tn)
 	}

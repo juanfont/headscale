@@ -282,6 +282,82 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Records which approved routes only auto-approval granted. It
+				// starts empty: the current policy cannot tell which earlier
+				// approvals were automatic, so all of them stay as an admin's.
+				ID: "202610211200-node-auto-approved-routes",
+				Migrate: func(tx *gorm.DB) error {
+					return tx.Transaction(func(tx *gorm.DB) error {
+						return tx.Exec(`ALTER TABLE nodes ADD COLUMN auto_approved_routes text`).Error
+					})
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Store a node's ephemeral flag on the node, taken from the
+				// key it references, so a login with another key keeps it.
+				ID: "202610211300-node-ephemeral",
+				Migrate: func(tx *gorm.DB) error {
+					// The column and backfill commit together, before gormigrate
+					// records the migration; a stop in between leaves both done.
+					if tx.Migrator().HasColumn(&types.Node{}, "ephemeral") {
+						return nil
+					}
+
+					return tx.Transaction(func(tx *gorm.DB) error {
+						colType := "numeric"
+						if tx.Name() != sqlite.DriverName {
+							colType = "boolean"
+						}
+
+						err := tx.Exec(`ALTER TABLE nodes ADD COLUMN ephemeral ` + colType + ` DEFAULT false`).Error
+						if err != nil {
+							return fmt.Errorf("adding ephemeral to nodes: %w", err)
+						}
+
+						err = tx.Exec(`
+UPDATE nodes SET ephemeral = true
+WHERE auth_key_id IN (
+	SELECT id FROM credentials WHERE kind = ? AND ephemeral = true
+);
+							`, types.CredentialPreAuthKey).Error
+						if err != nil {
+							return fmt.Errorf("backfilling ephemeral on nodes: %w", err)
+						}
+
+						return nil
+					})
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Mark the auth keys an OAuth access token makes. A database
+				// that got the credentials table from the DDL above already
+				// has the column; no released version made keys from tokens,
+				// so existing rows stay false.
+				ID: "202610221200-credential-created-by-token",
+				Migrate: func(tx *gorm.DB) error {
+					return tx.Transaction(func(tx *gorm.DB) error {
+						if tx.Migrator().HasColumn(&types.Credential{}, "created_by_token") {
+							return nil
+						}
+
+						colType := "numeric"
+						if tx.Name() != sqlite.DriverName {
+							colType = "boolean"
+						}
+
+						err := tx.Exec(`ALTER TABLE credentials ADD COLUMN created_by_token ` + colType + ` DEFAULT false`).Error
+						if err != nil {
+							return fmt.Errorf("adding created_by_token to credentials: %w", err)
+						}
+
+						return nil
+					})
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -439,11 +515,11 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 			return nil, fmt.Errorf("building sqlite connection URL: %w", err)
 		}
 
+		// No PrepareStmt: its cache can wait on the one connection a transaction holds.
 		db, err := gorm.Open(
 			sqlite.Open(connectionURL),
 			&gorm.Config{
-				PrepareStmt: cfg.Gorm.PrepareStmt,
-				Logger:      dbLogger,
+				Logger: dbLogger,
 			},
 		)
 		if err != nil {

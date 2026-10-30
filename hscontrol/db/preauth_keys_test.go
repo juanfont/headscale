@@ -3,6 +3,7 @@ package db
 import (
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -111,6 +112,79 @@ func TestPreAuthKeyACLTags(t *testing.T) {
 			tt.test(t, db)
 		})
 	}
+}
+
+func TestDestroyPreAuthKeyKeepsReferencedEphemeralKey(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user := db.CreateUserForTest("ephemeral-key-user")
+	pak, err := db.CreatePreAuthKey(user.TypedID(), true, true, nil, nil)
+	require.NoError(t, err)
+
+	node := &types.Node{
+		Hostname: "ephemeral-key-node", UserID: &user.ID, AuthKeyID: &pak.ID,
+		Ephemeral: true,
+	}
+	require.NoError(t, db.DB.Create(node).Error)
+	require.NoError(t, db.DeletePreAuthKey(pak.ID))
+
+	nodes, err := db.ListNodes()
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	require.True(t, nodes[0].IsEphemeral(), "reload must preserve ephemerality")
+
+	retained, err := db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	require.NotNil(t, retained.Revoked)
+	require.Error(t, retained.Validate())
+	require.NoError(t, db.DeletePreAuthKey(pak.ID))
+	again, err := db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	require.Equal(t, retained.Revoked, again.Revoked)
+
+	cutoff := time.Now().Add(time.Hour)
+	count, err := db.DestroyRevokedPreAuthKeysBefore(cutoff)
+	require.NoError(t, err)
+	require.Zero(t, count)
+	require.NoError(t, db.DeleteNode(node))
+	count, err = db.DestroyRevokedPreAuthKeysBefore(cutoff)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	_, err = db.GetPreAuthKeyByID(pak.ID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+
+	unused, err := db.CreatePreAuthKey(user.TypedID(), true, true, nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, db.DeletePreAuthKey(unused.ID))
+	_, err = db.GetPreAuthKeyByID(unused.ID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
+// TestCreateTokenPreAuthKeyIsAtomic: a key a token makes is marked in the
+// transaction that creates it, so a failed mark leaves no unmarked key.
+func TestCreateTokenPreAuthKeyIsAtomic(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	pak, err := db.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+
+	got, err := db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	assert.True(t, got.CreatedByToken)
+
+	require.NoError(t, db.DB.Exec(`CREATE TRIGGER refuse_mark
+		BEFORE UPDATE OF created_by_token ON credentials
+		BEGIN SELECT RAISE(ABORT, 'refused'); END`).Error)
+
+	_, err = db.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	require.Error(t, err)
+
+	keys, err := db.ListPreAuthKeys()
+	require.NoError(t, err)
+	assert.Len(t, keys, 1, "the failed create left a key behind")
 }
 
 func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
@@ -448,4 +522,106 @@ func TestPreAuthKeyLazyRehashesBcrypt(t *testing.T) {
 	// Still authenticates against the upgraded hash.
 	_, err = db.GetPreAuthKey(keyStr)
 	require.NoError(t, err)
+}
+
+// TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
+func TestPreAuthKeyInvalidatedWhileQueuedOnLegacyLimiter(t *testing.T) {
+	tests := []struct {
+		name       string
+		invalidate func(*HSDatabase, uint64) error
+		wantErr    types.PAKError
+	}{
+		{
+			name:       "expired",
+			invalidate: (*HSDatabase).ExpirePreAuthKey,
+			wantErr:    "authkey expired",
+		},
+		{
+			name:       "revoked",
+			invalidate: (*HSDatabase).RevokePreAuthKey,
+			wantErr:    "authkey revoked",
+		},
+		{name: "deleted", invalidate: (*HSDatabase).DeletePreAuthKey},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := newSQLiteTestDB()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+			user := db.CreateUserForTest("queued-user")
+			prefix := "abcdefghijkl"
+			secret := strings.Repeat("b", 64)
+
+			hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.MinCost)
+			require.NoError(t, err)
+
+			cred := types.Credential{
+				Kind:       types.CredentialPreAuthKey,
+				Identifier: prefix,
+				Hash:       hash,
+				UserID:     &user.ID,
+				Reusable:   true,
+			}
+			require.NoError(t, db.DB.Create(&cred).Error)
+
+			read := make(chan struct{})
+			signalRead := sync.OnceFunc(func() { close(read) })
+
+			require.NoError(t, db.DB.Callback().Query().After("gorm:query").
+				Register("signal_credential_read", func(tx *gorm.DB) {
+					if tx.Statement.Table == "credentials" {
+						signalRead()
+					}
+				}))
+
+			for range cap(legacyHashLimiter) {
+				legacyHashLimiter <- struct{}{}
+			}
+
+			release := sync.OnceFunc(func() {
+				for range cap(legacyHashLimiter) {
+					<-legacyHashLimiter
+				}
+			})
+
+			var (
+				wg     sync.WaitGroup
+				pak    *types.PreAuthKey
+				getErr error
+			)
+
+			defer func() {
+				release()
+				wg.Wait()
+			}()
+
+			wg.Go(func() {
+				pak, getErr = db.GetPreAuthKey(authKeyPrefix + prefix + "-" + secret)
+			})
+
+			select {
+			case <-read:
+			case <-time.After(5 * time.Second):
+				t.Fatal("credential lookup did not read the row")
+			}
+
+			require.NoError(t, tt.invalidate(db, cred.ID))
+			release()
+			wg.Wait()
+
+			if tt.name == "deleted" {
+				require.ErrorIs(t, getErr, ErrPreAuthKeyNotFound)
+
+				return
+			}
+
+			require.NoError(t, getErr)
+			require.NotNil(t, pak)
+			require.NotNil(t, pak.User)
+			assert.Equal(t, user.ID, pak.User.ID)
+			require.ErrorIs(t, pak.Validate(), tt.wantErr)
+		})
+	}
 }

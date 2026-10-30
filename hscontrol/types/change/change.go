@@ -6,6 +6,7 @@ package change
 
 import (
 	"fmt"
+	"net/netip"
 	"slices"
 	"time"
 
@@ -276,13 +277,13 @@ func FilterForNode(nodeID types.NodeID, rs []Change) []Change {
 	return result
 }
 
-// IsBroadcastPolicyChange reports whether r is a tailnet-wide policy recompute
-// with no per-node payload. A recompute reads the current snapshot, so every
-// such change is interchangeable and same-tick duplicates are redundant. A
-// targeted or self-update ([Change.OriginNode]) recompute is per-node, so it is
-// not one of these.
+// IsBroadcastPolicyChange reports whether r is a tailnet-wide policy recompute.
+// A recompute reads the current snapshot and always carries the node's own
+// entry, so every such change is interchangeable and same-tick duplicates are
+// redundant. [Change.OriginNode] does not make one per-node: the render never
+// reads it. A targeted recompute is per-node, so it is not one of these.
 func (r Change) IsBroadcastPolicyChange() bool {
-	return r.RequiresRuntimePeerComputation && !r.IsTargetedToNode() && r.OriginNode == 0
+	return r.RequiresRuntimePeerComputation && !r.IsTargetedToNode()
 }
 
 // DedupePolicyChanges keeps the first broadcast policy change in a tick and
@@ -561,13 +562,28 @@ func NodeAdded(id types.NodeID) Change {
 	return c
 }
 
-// NodeRemoved returns a [Change] for when a node is removed.
-func NodeRemoved(id types.NodeID) Change {
-	return Change{
+// NodeRemoved returns the changes for a deleted node: the teardown of its own
+// sessions, which reaches no other node, and its removal from each of peers.
+// Each names the node in DeletedNodes, so a peer's tick folds it with the
+// tick's other deletions, see [CoalescePeerDeltas].
+func NodeRemoved(id types.NodeID, peers ...types.NodeID) []Change {
+	out := make([]Change, 0, 1+len(peers))
+	out = append(out, Change{
 		Reason:       "node removed",
-		PeersRemoved: []types.NodeID{id},
+		TargetNode:   id,
 		DeletedNodes: []types.NodeID{id},
+	})
+
+	for _, peer := range peers {
+		out = append(out, Change{
+			Reason:       "node removed",
+			TargetNode:   peer,
+			PeersRemoved: []types.NodeID{id},
+			DeletedNodes: []types.NodeID{id},
+		})
 	}
+
+	return out
 }
 
 // KeyExpiryFor returns a [Change] for when a node's key expiry changes.
@@ -579,13 +595,12 @@ func KeyExpiryFor(id types.NodeID, expiry time.Time) Change {
 	return c
 }
 
-// EndpointOrDERPUpdate returns a [Change] for when a node's endpoints or DERP region changes.
-// The [Change.OriginNode] field enables self-update detection by the mapper.
-func EndpointOrDERPUpdate(id types.NodeID, patch *tailcfg.PeerChange) Change {
-	c := PeerPatched("endpoint/DERP update", patch)
-	c.OriginNode = id
-
-	return c
+// EndpointOrDERPUpdate returns a [Change] for when a node reports new
+// endpoints or a new DERP region. It has no [Change.OriginNode]: the node
+// already knows what it reported, so, as on Tailscale SaaS, only its peers
+// are sent the patch.
+func EndpointOrDERPUpdate(patch *tailcfg.PeerChange) Change {
+	return PeerPatched("endpoint/DERP update", patch)
 }
 
 // NodeKeyRotated returns a [Change] for a node re-logging in: its NodeKey (and
@@ -612,12 +627,18 @@ func NodeKeyRotated(node types.NodeView) Change {
 		expiry = e.UTC()
 	}
 
+	// Peers get an expired node without its endpoints.
+	var endpoints []netip.AddrPort
+	if !node.IsExpired() {
+		endpoints = node.Endpoints().AsSlice()
+	}
+
 	c := PeerPatched("node key rotated (relogin)", &tailcfg.PeerChange{
 		NodeID:    tailcfg.NodeID(node.ID()), //nolint:gosec // NodeID is bounded
 		Key:       &nk,
 		DiscoKey:  &dk,
 		KeyExpiry: &expiry,
-		Endpoints: node.Endpoints().AsSlice(),
+		Endpoints: endpoints,
 	})
 	c.OriginNode = node.ID()
 

@@ -926,7 +926,7 @@ func TestOIDCPendingCallbackPreservesSSHVerdict(t *testing.T) {
 	require.True(t, ok)
 
 	principal := mockoidc.DefaultUser()
-	user, err := a.createOrUpdateUserFromClaim(&types.OIDCClaims{
+	user, _, err := a.createOrUpdateUserFromClaim(&types.OIDCClaims{
 		Iss:           b.idp.Issuer(),
 		Sub:           principal.Subject,
 		Username:      principal.PreferredUsername,
@@ -938,14 +938,29 @@ func TestOIDCPendingCallbackPreservesSSHVerdict(t *testing.T) {
 	src := b.app.state.CreateNodeForTest(user, "oidc-ssh-source")
 	b.app.state.PutNodeInStoreForTest(*src)
 
+	dst := b.app.state.CreateNodeForTest(user, "oidc-ssh-destination")
+	b.app.state.PutNodeInStoreForTest(*dst)
+
 	authID := types.MustAuthID()
-	authReq := types.NewSSHCheckAuthRequest(src.ID, 2)
+	authReq := types.NewSSHCheckAuthRequest(src.ID, dst.ID)
 	require.NoError(t, b.app.state.SetAuthCacheEntry(authID, authReq))
 
-	status, _, body := b.get(t, a.AuthURL(authID))
+	status, landed, body := b.get(t, a.AuthURL(authID))
 	require.Equal(t, http.StatusOK, status)
-	assert.Contains(t, body, "You may return to your terminal.")
 	assert.Zero(t, a.authCache.Len())
+
+	csrf := csrfInputRe.FindStringSubmatch(body)
+	require.Len(t, csrf, 2)
+
+	//nolint:noctx,bodyclose // test response closed below
+	confirmed, err := b.client.PostForm(landed.String(), url.Values{registerConfirmCSRFCookie: {csrf[1]}})
+	require.NoError(t, err)
+
+	confirmedBody, err := io.ReadAll(confirmed.Body)
+	confirmed.Body.Close()
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, confirmed.StatusCode)
+	assert.Contains(t, string(confirmedBody), "You may return to your terminal.")
 
 	cached, ok := b.app.state.GetAuthCacheEntry(authID)
 	require.True(t, ok, "completing OIDC must preserve the SSH verdict for its polling client")
@@ -1449,6 +1464,453 @@ func TestMergeEmailClaims(t *testing.T) {
 	}
 }
 
+func TestOIDCRefusesAlteredSubject(t *testing.T) {
+	b := newOIDCBrowser(t)
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: "alice", PreferredUsername: "alice"})
+	_, registerURL := b.pendingNode(t)
+	status, _, _ := b.get(t, registerURL)
+	require.Equal(t, http.StatusOK, status)
+
+	before, err := b.app.state.GetUserByOIDCIdentifier(b.idp.Issuer() + "/alice")
+	require.NoError(t, err)
+
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: "alice/", PreferredUsername: "renamed"})
+	_, registerURL = b.pendingNode(t)
+	status, _, _ = b.get(t, registerURL)
+	assert.Equal(t, http.StatusForbidden, status)
+
+	users, err := b.app.state.ListAllUsers()
+	require.NoError(t, err)
+	require.Len(t, users, 1)
+	assert.Equal(t, *before, users[0], "a refused subject must not update an existing row")
+}
+
+func TestOIDCLoginClearsUnverifiedEmail(t *testing.T) {
+	app := createTestApp(t)
+	provider := &AuthProviderOIDC{
+		h: app,
+		cfg: &types.OIDCConfig{
+			EmailVerifiedRequired: true,
+		},
+	}
+	claims := &types.OIDCClaims{
+		Iss: "https://idp.example.com", Sub: "alice", Username: "alice",
+		Email: "alice@example.com", EmailVerified: true,
+	}
+	first, _, err := provider.createOrUpdateUserFromClaim(claims)
+	require.NoError(t, err)
+	require.Equal(t, "alice@example.com", first.Email)
+
+	claims.EmailVerified = false
+	second, _, err := provider.createOrUpdateUserFromClaim(claims)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, second.ID)
+	assert.Empty(t, second.Email)
+
+	stored, err := app.state.GetUserByID(types.UserID(first.ID))
+	require.NoError(t, err)
+	assert.Empty(t, stored.Email)
+}
+
+func TestOIDCCallbackDispatchesUserIdentityChange(t *testing.T) {
+	b := newOIDCBrowser(t)
+	provider, ok := b.app.authProvider.(*AuthProviderOIDC)
+	require.True(t, ok)
+
+	provider.cfg.EmailVerifiedRequired = true
+	user, _, err := provider.createOrUpdateUserFromClaim(&types.OIDCClaims{
+		Iss: b.idp.Issuer(), Sub: "identity-change", Username: "alice",
+		Email: "alice@old.example", EmailVerified: true,
+	})
+	require.NoError(t, err)
+
+	node := b.app.state.CreateRegisteredNodeForTest(user, "identity-node")
+	node.User = user.Clone()
+	b.app.state.PutNodeInStoreForTest(*node)
+	require.NoError(t, b.app.state.UpdatePolicyManagerNodesForTest())
+	_, err = b.app.state.SetPolicy([]byte(`{
+		"acls": [{"action": "accept", "src": ["alice@old.example"], "dst": ["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	responses := make(chan *tailcfg.MapResponse, 8)
+	require.NoError(t, b.app.mapBatcher.AddNode(node.ID, responses, tailcfg.CurrentCapabilityVersion, nil))
+	t.Cleanup(func() { b.app.mapBatcher.RemoveNode(node.ID, responses) })
+
+	initial := <-responses
+	require.NotEmpty(t, initial.PacketFilters["base"])
+
+	b.idp.QueueUser(&mockoidc.MockUser{
+		Subject: "identity-change", PreferredUsername: "alice",
+		Email: "alice@new.example", EmailVerified: true,
+	})
+	_, registerURL := b.pendingNode(t)
+	status, _, _ := b.get(t, registerURL)
+	require.Equal(t, http.StatusOK, status)
+
+	stored, err := b.app.state.GetUserByID(types.UserID(user.ID))
+	require.NoError(t, err)
+	require.Equal(t, "alice@new.example", stored.Email)
+
+	assert.Eventually(t, func() bool {
+		select {
+		case response := <-responses:
+			filters, present := response.PacketFilters["base"]
+			return present && len(filters) == 0
+		default:
+			return false
+		}
+	}, 3*time.Second, 20*time.Millisecond, "the connected node must receive the updated filter before registration confirmation")
+}
+
+func (b *oidcBrowser) pendingSSHCheck(t *testing.T) (types.AuthID, types.Nodes) {
+	t.Helper()
+
+	provider, ok := b.app.authProvider.(*AuthProviderOIDC)
+	require.True(t, ok)
+
+	owner, _, err := provider.createOrUpdateUserFromClaim(&types.OIDCClaims{
+		Iss: b.idp.Issuer(), Sub: "ssh-owner", Username: "ssh-owner",
+	})
+	require.NoError(t, err)
+
+	nodes := make(types.Nodes, 0, 2)
+
+	for _, name := range []string{"ssh-source", "ssh-destination"} {
+		node := b.app.state.CreateRegisteredNodeForTest(owner, name)
+		node.User = owner.Clone()
+		b.app.state.PutNodeInStoreForTest(*node)
+		nodes = append(nodes, node)
+	}
+
+	authID := types.MustAuthID()
+	require.NoError(t, b.app.state.SetAuthCacheEntry(authID, types.NewSSHCheckAuthRequest(nodes[0].ID, nodes[1].ID)))
+
+	return authID, nodes
+}
+
+func TestSSHCheckNeedsConfirmation(t *testing.T) {
+	for _, change := range []string{"approve", "reowned", "tagged"} {
+		t.Run(change, func(t *testing.T) {
+			b := newOIDCBrowser(t)
+			authID, nodes := b.pendingSSHCheck(t)
+			src, dst := nodes[0], nodes[1]
+			auth, ok := b.app.state.GetAuthCacheEntry(authID)
+			require.True(t, ok)
+			b.idp.QueueUser(&mockoidc.MockUser{
+				Subject: src.User.Name, PreferredUsername: src.User.Name,
+			})
+
+			status, landed, body := b.get(t, b.publicURL+"/auth/"+authID.String())
+			require.Equal(t, http.StatusOK, status)
+
+			select {
+			case <-auth.WaitForAuth():
+				t.Fatal("opening the check link must not approve the session")
+			default:
+			}
+
+			require.Equal(t, "/register/confirm/"+authID.String(), landed.Path)
+			require.Contains(t, body, "Confirm SSH session")
+			require.Contains(t, body, src.GivenName)
+			require.Contains(t, body, dst.GivenName)
+			require.Contains(t, body, "Approved by")
+			require.Contains(t, body, src.User.Display())
+			require.Contains(t, body, "check period")
+
+			csrf := csrfInputRe.FindStringSubmatch(body)
+			require.Len(t, csrf, 2)
+
+			form := url.Values{registerConfirmCSRFCookie: {csrf[1]}}
+			withoutCookie := &http.Client{}
+			//nolint:noctx,bodyclose // test response closed below
+			refused, err := withoutCookie.PostForm(landed.String(), form)
+			require.NoError(t, err)
+			refused.Body.Close()
+			require.Equal(t, http.StatusForbidden, refused.StatusCode)
+
+			select {
+			case <-auth.WaitForAuth():
+				t.Fatal("a POST without the callback cookie must leave the check pending")
+			default:
+			}
+
+			switch change {
+			case "reowned":
+				other := b.app.state.CreateUserForTest("other-owner")
+				updated := src.Clone()
+				updated.UserID, updated.User = new(other.ID), other.Clone()
+				b.app.state.PutNodeInStoreForTest(*updated)
+			case "tagged":
+				updated := src.Clone()
+				updated.Tags = []string{"tag:changed"}
+				b.app.state.PutNodeInStoreForTest(*updated)
+			}
+
+			//nolint:noctx,bodyclose // test response closed below
+			confirmed, err := b.client.PostForm(landed.String(), form)
+			require.NoError(t, err)
+
+			confirmedBody, err := io.ReadAll(confirmed.Body)
+			confirmed.Body.Close()
+			require.NoError(t, err)
+
+			if change != "approve" {
+				require.Equal(t, http.StatusForbidden, confirmed.StatusCode)
+
+				select {
+				case <-auth.WaitForAuth():
+					t.Fatal("a changed source owner must leave the check pending")
+				default:
+				}
+
+				status, _, _ = b.get(t, landed.String())
+				require.Equal(t, http.StatusForbidden, status)
+
+				return
+			}
+
+			require.Equal(t, http.StatusOK, confirmed.StatusCode)
+			require.Contains(t, string(confirmedBody), "SSH session authorized")
+
+			select {
+			case verdict := <-auth.WaitForAuth():
+				require.True(t, verdict.Accept())
+			default:
+				t.Fatal("confirmation must approve the SSH check")
+			}
+		})
+	}
+}
+
+func TestSSHCheckRejectsOtherUser(t *testing.T) {
+	b := newOIDCBrowser(t)
+	authID, _ := b.pendingSSHCheck(t)
+	auth, ok := b.app.state.GetAuthCacheEntry(authID)
+	require.True(t, ok)
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: "other-ssh-user", PreferredUsername: "other"})
+
+	status, _, _ := b.get(t, b.publicURL+"/auth/"+authID.String())
+	require.Equal(t, http.StatusForbidden, status)
+	require.Nil(t, auth.PendingConfirmation())
+
+	select {
+	case <-auth.WaitForAuth():
+		t.Fatal("a different user must not approve the SSH check")
+	default:
+	}
+}
+
+func TestOIDCConfirmationRejectsWrongRequestKind(t *testing.T) {
+	for _, path := range []string{"auth", "register"} {
+		t.Run(path, func(t *testing.T) {
+			b := newOIDCBrowser(t)
+
+			var authID types.AuthID
+			if path == "auth" {
+				authID, _ = b.pendingNode(t)
+			} else {
+				authID, _ = b.pendingSSHCheck(t)
+			}
+
+			status, _, _ := b.get(t, b.publicURL+"/"+path+"/"+authID.String())
+			require.Equal(t, http.StatusBadRequest, status)
+
+			auth, ok := b.app.state.GetAuthCacheEntry(authID)
+			require.True(t, ok)
+			require.Nil(t, auth.PendingConfirmation())
+		})
+	}
+}
+
+func TestRegisterConfirmShowsExistingNode(t *testing.T) {
+	b := newOIDCBrowser(t)
+	machineKey := key.NewMachine().Public()
+	existingRow := regexp.MustCompile(`>Existing node</td><td[^>]*>([^<]*)</td>`)
+
+	// A tagged node another credential made: a login on its machine adds a
+	// device instead of taking it.
+	taggedMachine := key.NewMachine().Public()
+	tagKey, err := b.app.state.CreatePreAuthKey(nil, true, false, nil, []string{"tag:server"})
+	require.NoError(t, err)
+	_, _, err = b.app.state.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: tagKey.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "server"},
+	}, taggedMachine)
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		name       string
+		machineKey key.MachinePublic
+		existing   string
+		heading    string
+		nodeCount  int
+	}{
+		{
+			name: "first login", machineKey: machineKey,
+			existing: "None, this is a new device", heading: "Node registered", nodeCount: 2,
+		},
+		{
+			name: "same machine", machineKey: machineKey,
+			existing: "laptop", heading: "Node reauthenticated", nodeCount: 2,
+		},
+		{
+			name: "copied hostname", machineKey: key.NewMachine().Public(),
+			existing: "None, this is a new device", heading: "Node registered", nodeCount: 3,
+		},
+		{
+			name: "tagged machine", machineKey: taggedMachine,
+			existing: "None, this is a new device", heading: "Node registered", nodeCount: 4,
+		},
+	} {
+		authID := types.MustAuthID()
+		require.NoError(t, b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+			MachineKey: tt.machineKey,
+			NodeKey:    key.NewNode().Public(),
+			Hostname:   "laptop",
+		})))
+		b.idp.QueueUser(&mockoidc.MockUser{
+			Subject: "existing-device", PreferredUsername: "device-owner",
+		})
+
+		status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+		require.Equal(t, http.StatusOK, status)
+
+		row := existingRow.FindStringSubmatch(body)
+		if assert.Len(t, row, 2, "the page must distinguish an existing node from client-supplied details") {
+			assert.Equal(t, tt.existing, row[1], tt.name)
+		}
+
+		csrf := csrfInputRe.FindStringSubmatch(body)
+		require.Len(t, csrf, 2)
+
+		//nolint:noctx,bodyclose // test response closed below
+		confirmed, err := b.client.PostForm(landed.String(), url.Values{
+			registerConfirmCSRFCookie: {csrf[1]},
+		})
+		require.NoError(t, err)
+
+		confirmedBody, err := io.ReadAll(confirmed.Body)
+		confirmed.Body.Close()
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, confirmed.StatusCode)
+		assert.Contains(t, string(confirmedBody), tt.heading, tt.name)
+		assert.Equal(t, tt.nodeCount, b.app.state.ListNodes().Len(), tt.name)
+	}
+}
+
+func TestRegisterConfirmShowsRequestedTags(t *testing.T) {
+	const ownerName = "tag-owner"
+
+	b := newOIDCBrowser(t)
+	_, err := b.app.state.SetPolicy([]byte(`{
+		"tagOwners": {"tag:prod": ["tag-owner@"]},
+		"acls": [{"action":"accept", "src":["*"], "dst":["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine().Public()
+	authID := types.MustAuthID()
+	require.NoError(t, b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "tagged-laptop",
+		Hostinfo:   &tailcfg.Hostinfo{RequestTags: []string{"tag:prod"}},
+	})))
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: ownerName, PreferredUsername: ownerName})
+
+	status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+	require.Equal(t, http.StatusOK, status)
+
+	registered := regexp.MustCompile(`>Registered to</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
+	require.Len(t, registered, 2)
+	assert.Equal(t, "tag:prod", registered[1])
+
+	approved := regexp.MustCompile(`>Approved by</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
+	if assert.Len(t, approved, 2) {
+		assert.Equal(t, ownerName, approved[1])
+	}
+
+	csrf := csrfInputRe.FindStringSubmatch(body)
+	require.Len(t, csrf, 2)
+
+	//nolint:noctx,bodyclose // test response closed below
+	confirmed, err := b.client.PostForm(landed.String(), url.Values{
+		registerConfirmCSRFCookie: {csrf[1]},
+	})
+	require.NoError(t, err)
+
+	confirmedBody, err := io.ReadAll(confirmed.Body)
+	confirmed.Body.Close()
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, confirmed.StatusCode)
+
+	success := regexp.MustCompile(`Registered as <strong>([^<]*)</strong>`).FindSubmatch(confirmedBody)
+	require.Len(t, success, 2)
+	assert.Equal(t, "tag:prod", string(success[1]))
+
+	nodes := b.app.state.ListNodes()
+	require.Equal(t, 1, nodes.Len())
+	require.True(t, nodes.At(0).IsTagged())
+	require.Equal(t, []string{"tag:prod"}, nodes.At(0).Tags().AsSlice())
+
+	reloginID := types.MustAuthID()
+	require.NoError(t, b.app.state.SetAuthCacheEntry(reloginID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "different-client-name",
+	})))
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: ownerName, PreferredUsername: ownerName})
+	status, _, body = b.get(t, b.publicURL+"/register/"+reloginID.String())
+	require.Equal(t, http.StatusOK, status)
+
+	existing := regexp.MustCompile(`>Existing node</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
+	require.Len(t, existing, 2)
+	require.Equal(t, "tagged-laptop", existing[1])
+	require.True(t, b.app.state.ListNodes().At(0).IsTagged(), "viewing confirmation must not change ownership")
+}
+
+func TestRegisterConfirmEscapesAndRejectsUnownedTags(t *testing.T) {
+	for _, tt := range []struct {
+		tag     string
+		display string
+	}{
+		{tag: "tag:unowned", display: "tag:unowned"},
+		{tag: "tag:<em>prod</em>", display: "tag:&lt;em&gt;prod&lt;/em&gt;"},
+	} {
+		t.Run(tt.tag, func(t *testing.T) {
+			b := newOIDCBrowser(t)
+			authID := types.MustAuthID()
+			require.NoError(t, b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+				MachineKey: key.NewMachine().Public(),
+				NodeKey:    key.NewNode().Public(),
+				Hostname:   "unowned-tag-node",
+				Hostinfo:   &tailcfg.Hostinfo{RequestTags: []string{tt.tag}},
+			})))
+
+			status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+			require.Equal(t, http.StatusOK, status)
+
+			row := regexp.MustCompile(`>Registered to</td><td[^>]*>(.*?)</td>`).FindStringSubmatch(body)
+			require.Len(t, row, 2)
+			assert.Equal(t, tt.display, row[1])
+
+			csrf := csrfInputRe.FindStringSubmatch(body)
+			require.Len(t, csrf, 2)
+
+			//nolint:noctx,bodyclose // test response closed below
+			confirmed, err := b.client.PostForm(landed.String(), url.Values{
+				registerConfirmCSRFCookie: {csrf[1]},
+			})
+			require.NoError(t, err)
+			confirmed.Body.Close()
+			require.NotEqual(t, http.StatusOK, confirmed.StatusCode)
+			require.Zero(t, b.app.state.ListNodes().Len())
+		})
+	}
+}
+
 func TestOIDCRegistrationRejectsOversizedMergedHostinfo(t *testing.T) {
 	t.Parallel()
 
@@ -1471,7 +1933,7 @@ func TestOIDCRegistrationRejectsOversizedMergedHostinfo(t *testing.T) {
 	})))
 
 	provider := &AuthProviderOIDC{h: app}
-	changed, err := provider.handleRegistration(user, authID, nil)
+	registered, err := provider.handleRegistration(user, authID, nil)
 	require.ErrorIs(t, err, types.ErrHostinfoTooLarge)
 
 	var httpErr HTTPError
@@ -1480,7 +1942,7 @@ func TestOIDCRegistrationRejectsOversizedMergedHostinfo(t *testing.T) {
 	assert.Contains(t, strings.ToLower(httpErr.UserMsg), "reduce")
 	assert.Contains(t, httpErr.UserMsg, "metadata")
 	assert.Contains(t, httpErr.UserMsg, "sign")
-	assert.False(t, changed)
+	assert.False(t, registered.Valid())
 
 	after, ok := app.state.GetNodeByID(node.ID)
 	require.True(t, ok)

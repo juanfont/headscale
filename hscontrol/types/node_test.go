@@ -13,7 +13,10 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -687,9 +690,9 @@ func TestApplyPeerChange(t *testing.T) {
 	}
 }
 
-// TestHasNetworkChanges tests the [NodeView] method for detecting
-// when a node's network properties have changed.
-func TestHasNetworkChanges(t *testing.T) {
+// TestHasPolicyChangeAddressesAndRoutes covers the addresses and served
+// routes that policy evaluation reads.
+func TestHasPolicyChangeAddressesAndRoutes(t *testing.T) {
 	mustIPPtr := func(s string) *netip.Addr {
 		ip := netip.MustParseAddr(s)
 		return &ip
@@ -759,7 +762,7 @@ func TestHasNetworkChanges(t *testing.T) {
 				IPv4:     mustIPPtr("100.64.0.1"),
 				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
 			},
-			changed: true,
+			changed: false,
 		},
 		{
 			name: "RoutableIPs removed",
@@ -773,7 +776,7 @@ func TestHasNetworkChanges(t *testing.T) {
 				IPv4:     mustIPPtr("100.64.0.1"),
 				Hostinfo: &tailcfg.Hostinfo{},
 			},
-			changed: true,
+			changed: false,
 		},
 		{
 			name: "RoutableIPs changed",
@@ -787,7 +790,7 @@ func TestHasNetworkChanges(t *testing.T) {
 				IPv4:     mustIPPtr("100.64.0.1"),
 				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
 			},
-			changed: true,
+			changed: false,
 		},
 		{
 			name: "SubnetRoutes added",
@@ -886,9 +889,9 @@ func TestHasNetworkChanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.new.View().HasNetworkChanges(tt.old.View())
+			got := tt.new.View().HasPolicyChange(tt.old.View())
 			if got != tt.changed {
-				t.Errorf("HasNetworkChanges() = %v, want %v", got, tt.changed)
+				t.Errorf("HasPolicyChange() = %v, want %v", got, tt.changed)
 			}
 		})
 	}
@@ -1074,6 +1077,318 @@ func TestNodeIsExpiredAt(t *testing.T) {
 		require.True(t, NodeView{}.IsExpiredAt(now),
 			"an invalid view counts as expired, like IsExpired")
 	})
+}
+
+func TestHasPolicyChangeSharedRouteInputs(t *testing.T) {
+	subnet := netip.MustParsePrefix("10.0.0.0/24")
+	exit := netip.MustParsePrefix("::/0")
+	base := Node{
+		Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet, exit}},
+		ApprovedRoutes: []netip.Prefix{subnet, exit},
+	}
+
+	for _, tt := range []struct {
+		name   string
+		mutate func(*Node)
+		want   bool
+	}{
+		{name: "shared slices", mutate: func(*Node) {}},
+		{name: "equal slices", mutate: func(n *Node) {
+			n.Hostinfo = n.Hostinfo.Clone()
+			n.ApprovedRoutes = []netip.Prefix{subnet, exit}
+		}},
+		{name: "reordered slices", mutate: func(n *Node) {
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{exit, subnet}}
+			n.ApprovedRoutes = []netip.Prefix{exit, subnet}
+		}},
+		{name: "approval removed", mutate: func(n *Node) {
+			n.ApprovedRoutes = []netip.Prefix{subnet}
+		}, want: true},
+		{name: "announcement removed", mutate: func(n *Node) {
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+		}, want: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			other := base
+			tt.mutate(&other)
+			require.Equal(t, tt.want, base.View().HasPolicyChange(other.View()))
+		})
+	}
+
+	shared := base
+
+	var changed bool
+
+	allocs := testing.AllocsPerRun(10, func() {
+		changed = base.View().HasPolicyChange(shared.View())
+	})
+
+	require.False(t, changed)
+	require.Zero(t, allocs, "unchanged route inputs should not derive route lists")
+}
+
+func TestNodeDerivedRoutes(t *testing.T) {
+	a := netip.MustParsePrefix("10.0.0.0/24")
+	b := netip.MustParsePrefix("10.1.0.0/24")
+	x := netip.MustParsePrefix("10.2.0.0/24")
+	exit4 := netip.MustParsePrefix("0.0.0.0/0")
+	exit6 := netip.MustParsePrefix("::/0")
+
+	for _, tt := range []struct {
+		name                                string
+		announced, approved, subnets, exits []netip.Prefix
+	}{
+		{
+			name:      "subnets follow announcement order without duplicates",
+			announced: []netip.Prefix{b, a, x, b, a, b},
+			approved:  []netip.Prefix{a, b, b},
+			subnets:   []netip.Prefix{b, a},
+		},
+		{
+			name:      "exit routes follow announcement order without duplicates",
+			announced: []netip.Prefix{exit6, exit4, exit6, exit4, a},
+			approved:  []netip.Prefix{exit4, exit6, exit4},
+			exits:     []netip.Prefix{exit6, exit4},
+		},
+		{
+			name:      "mixed routes",
+			announced: []netip.Prefix{b, exit6, x, exit6, a, b, exit4},
+			approved:  []netip.Prefix{exit4, a, exit6, b},
+			subnets:   []netip.Prefix{b, a},
+			exits:     []netip.Prefix{exit6, exit4},
+		},
+		{name: "nothing approved", announced: []netip.Prefix{b, exit6, a, exit4}},
+		{
+			name:      "empty approvals",
+			announced: []netip.Prefix{a, exit4},
+			approved:  []netip.Prefix{},
+		},
+		{name: "nothing announced", approved: []netip.Prefix{a, exit4}},
+		{
+			name:      "unannounced approvals",
+			announced: []netip.Prefix{a},
+			approved:  []netip.Prefix{b, exit4},
+		},
+		{
+			name:      "exit families differ",
+			announced: []netip.Prefix{exit4},
+			approved:  []netip.Prefix{exit6},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			announced := slices.Clone(tt.announced)
+			approved := slices.Clone(tt.approved)
+			n := Node{
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: tt.announced},
+				ApprovedRoutes: tt.approved,
+			}
+
+			require.Equal(t, tt.subnets, n.SubnetRoutes())
+			require.Equal(t, tt.exits, n.ExitRoutes())
+			require.Equal(t, announced, n.AnnouncedRoutes(),
+				"announcements must remain immutable")
+			require.Equal(t, Prefixes(approved), n.ApprovedRoutes,
+				"approvals must remain immutable")
+		})
+	}
+
+	n := Node{ApprovedRoutes: []netip.Prefix{a, exit4}}
+	require.Nil(t, n.SubnetRoutes())
+	require.Nil(t, n.ExitRoutes())
+}
+
+func subnetRouter(count int) Node {
+	routes := make([]netip.Prefix, count)
+
+	ip := netip.MustParseAddr("10.0.0.0")
+	for i := range routes {
+		routes[i] = netip.PrefixFrom(ip, 32)
+		ip = ip.Next()
+	}
+
+	return Node{
+		Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: routes},
+		ApprovedRoutes: routes,
+	}
+}
+
+// IsExitNode runs per viewer and peer pair; a subnet router must answer it
+// without collecting its subnet routes.
+func TestIsExitNodeSubnetRouterAllocs(t *testing.T) {
+	n := subnetRouter(4096)
+
+	var exit bool
+
+	allocs := testing.AllocsPerRun(10, func() {
+		exit = n.IsExitNode()
+	})
+
+	require.False(t, exit)
+	require.Zero(t, allocs)
+}
+
+// TestCanAccessRoutesExitNeedsInternet checks that a viewer is offered a
+// peer's exit routes only when one of its rules reaches the internet, not for
+// any rule whose destination overlaps /0.
+func TestCanAccessRoutesExitNeedsInternet(t *testing.T) {
+	viewer := Node{IPv4: new(netip.MustParseAddr("100.64.0.1"))}
+	routes := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6(), netip.MustParsePrefix("10.40.7.0/24")}
+	rule := func(src string, dsts ...string) []matcher.Match {
+		r := tailcfg.FilterRule{SrcIPs: []string{src}}
+		for _, dst := range dsts {
+			r.DstPorts = append(r.DstPorts, tailcfg.NetPortRange{IP: dst, Ports: tailcfg.PortRangeAny})
+		}
+
+		return matcher.MatchesFromFilterRules([]tailcfg.FilterRule{r})
+	}
+
+	internet := util.PrefixesToString(util.TheInternet().Prefixes())
+
+	for name, tt := range map[string]struct {
+		matchers []matcher.Match
+		want     []netip.Prefix
+	}{
+		"to a subnet":       {rule("100.64.0.1", "10.40.7.0/24"), routes[2:]},
+		"from anywhere":     {rule("*", "100.64.0.1"), routes[2:]},
+		"to everything":     {rule("100.64.0.1", "*"), routes},
+		"to the internet":   {rule("100.64.0.1", internet...), routes[:2]},
+		"to another viewer": {rule("100.64.0.1", "100.64.0.2"), nil},
+	} {
+		assert.Equalf(t, tt.want, viewer.CanAccessRoutes(tt.matchers, routes), "%s", name)
+	}
+}
+
+func TestCanAccessRoutesMatchesReference(t *testing.T) {
+	prefixStrings := []string{
+		"100.64.0.1/32", "100.64.0.2/32", "100.64.0.0/24",
+		"10.0.0.0/24", "10.0.1.0/24", "10.0.0.0/8", "192.168.0.0/16",
+		"fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128", "fd7a:115c:a1e0::/64",
+		"2001:db8::/32", "2001:db8:1::/64",
+		"fd7a:115c:a1e0:b1a:0:7:a00:0/120",
+		"0.0.0.0/0", "::/0", "0.0.0.0/1", "::/1",
+	}
+	prefixes := util.MustStringsToPrefixes(prefixStrings)
+	routePool := append(slices.Clone(prefixes), netip.Prefix{})
+	matchPool := append([]string{"*"}, prefixStrings...)
+	prefixGen := rapid.SampledFrom(prefixes)
+	matchGen := rapid.SampledFrom(matchPool)
+
+	rapid.Check(t, func(rt *rapid.T) {
+		n := Node{
+			Hostinfo: &tailcfg.Hostinfo{
+				RoutableIPs: rapid.SliceOfN(prefixGen, 0, 8).Draw(rt, "announced"),
+			},
+			ApprovedRoutes: rapid.SliceOfN(prefixGen, 0, 8).Draw(rt, "approved"),
+		}
+		if rapid.Bool().Draw(rt, "hasIPv4") {
+			ip := rapid.SampledFrom([]string{
+				"100.64.0.1", "100.64.0.2", "10.0.0.1", "192.168.1.1",
+			}).Draw(rt, "ipv4")
+			n.IPv4 = new(netip.MustParseAddr(ip))
+		}
+
+		if rapid.Bool().Draw(rt, "hasIPv6") {
+			ip := rapid.SampledFrom([]string{
+				"fd7a:115c:a1e0::1", "fd7a:115c:a1e0::2", "2001:db8::1",
+			}).Draw(rt, "ipv6")
+			n.IPv6 = new(netip.MustParseAddr(ip))
+		}
+
+		count := rapid.IntRange(0, 5).Draw(rt, "matchers")
+		matchers := make([]matcher.Match, 0, count)
+
+		for i := range count {
+			sources := rapid.SliceOfN(matchGen, 0, 4).Draw(
+				rt, fmt.Sprintf("sources-%d", i),
+			)
+			destinations := rapid.SliceOfN(matchGen, 0, 4).Draw(
+				rt, fmt.Sprintf("destinations-%d", i),
+			)
+
+			rule := tailcfg.FilterRule{SrcIPs: sources}
+			for _, dst := range destinations {
+				rule.DstPorts = append(rule.DstPorts, tailcfg.NetPortRange{
+					IP: dst, Ports: tailcfg.PortRangeAny,
+				})
+			}
+
+			matchers = append(matchers, matcher.MatchFromFilterRule(rule))
+		}
+
+		routes := rapid.SliceOfN(rapid.SampledFrom(routePool), 0, 16).Draw(rt, "routes")
+
+		var want []netip.Prefix
+
+		for _, route := range routes {
+			allowed := canAccessRouteReference(&n, matchers, route)
+			require.Equal(rt, allowed, n.CanAccessRoute(matchers, route))
+
+			if allowed {
+				want = append(want, route)
+			}
+		}
+
+		require.Equal(rt, want, n.CanAccessRoutes(matchers, routes))
+		require.Equal(rt, want, n.View().CanAccessRoutes(matchers, routes))
+	})
+
+	var invalid NodeView
+
+	require.Nil(t, invalid.CanAccessRoutes(
+		matcher.MatchesFromFilterRules(tailcfg.FilterAllowAll), prefixes,
+	))
+}
+
+func canAccessRouteReference(
+	node *Node,
+	matchers []matcher.Match,
+	route netip.Prefix,
+) bool {
+	src := node.IPs()
+	subnetRoutes := node.SubnetRoutes()
+
+	if tsaddr.IsExitRoute(route) {
+		for _, matcher := range matchers {
+			fromNode := matcher.SrcsContainsIPs(src...) ||
+				(len(subnetRoutes) > 0 && matcher.SrcsOverlapsPrefixes(subnetRoutes...))
+			if fromNode && matcher.DestsIsTheInternet() {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	for _, matcher := range matchers {
+		if matcher.SrcsContainsIPs(src...) && matcher.DestsOverlapsPrefixes(route) {
+			return true
+		}
+
+		if matcher.SrcsOverlapsPrefixes(route) && matcher.DestsContainsIP(src...) {
+			return true
+		}
+
+		// A subnet router acts on behalf of its advertised subnets.
+		// If the node's approved subnet routes overlap the source set
+		// and the route overlaps the destination set, the router needs
+		// this route to forward traffic from its local subnet.
+		if len(subnetRoutes) > 0 {
+			if matcher.SrcsOverlapsPrefixes(subnetRoutes...) &&
+				matcher.DestsOverlapsPrefixes(route) {
+				return true
+			}
+
+			// Reverse: traffic from the route's subnet is destined for
+			// this node's subnets; the router needs the route for return
+			// traffic.
+			if matcher.SrcsOverlapsPrefixes(route) &&
+				matcher.DestsOverlapsPrefixes(subnetRoutes...) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func TestValidateHostinfo(t *testing.T) {

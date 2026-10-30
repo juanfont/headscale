@@ -2,6 +2,8 @@ package apiv2
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -30,7 +32,8 @@ type apiErrorData struct {
 	Errors []string `json:"errors,omitempty"`
 }
 
-// maxErrorDetails caps the failing tests one answer lists.
+// maxErrorDetails caps the errors, or failing tests, one response lists. huma
+// reports one error per bad element of the body, so the caller picks how many.
 const maxErrorDetails = 20
 
 // tailscaleErrorTransformer rewrites Huma's RFC 9457 error model into the
@@ -50,46 +53,38 @@ func tailscaleErrorTransformer(_ huma.Context, _ string, v any) (any, error) {
 
 	out := apiError{Message: message, Status: em.Status}
 
-	if len(em.Errors) > 0 {
-		details := make([]string, 0, len(em.Errors))
-		for _, d := range em.Errors {
-			details = append(details, d.Error())
+	listed := em.Errors[:min(len(em.Errors), maxErrorDetails)]
+
+	details := make([]string, 0, len(listed)+1)
+	for _, d := range listed {
+		// huma stores a nil detail for a nil error argument.
+		if d == nil {
+			continue
 		}
 
+		// The value is not echoed: for an unexpected property it is the whole
+		// request object, once per property.
+		if d.Location == "" {
+			details = append(details, d.Message)
+		} else {
+			details = append(details, d.Message+" ("+d.Location+")")
+		}
+	}
+
+	if more := len(em.Errors) - len(listed); more > 0 {
+		details = append(details, "and "+strconv.Itoa(more)+" more")
+	}
+
+	if len(details) > 0 {
 		out.Data = []apiErrorData{{Errors: details}}
 	}
 
 	return out, nil
 }
 
-// mapError translates a state/db-layer error into a Huma HTTP error
-// (not-found→404, invalid input→400, everything else→500). The transformer
-// then reshapes it into the Tailscale body.
-func mapError(msg string, err error) error {
-	if err == nil {
-		return nil
-	}
+func (e *apiError) Error() string { return e.Message }
 
-	switch {
-	case errors.Is(err, gorm.ErrRecordNotFound),
-		errors.Is(err, db.ErrPreAuthKeyNotFound),
-		errors.Is(err, db.ErrUserNotFound),
-		errors.Is(err, state.ErrNodeNotFound):
-		return huma.Error404NotFound(msg, err)
-
-	case errors.Is(err, db.ErrPreAuthKeyNotTaggedOrOwned),
-		errors.Is(err, db.ErrPreAuthKeyACLTagInvalid),
-		errors.Is(err, db.ErrOAuthClientScopeInvalid),
-		errors.Is(err, state.ErrGivenNameInvalid),
-		errors.Is(err, state.ErrGivenNameTaken),
-		errors.Is(err, state.ErrNodeNameNotUnique),
-		errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted):
-		return huma.Error400BadRequest(msg, err)
-
-	default:
-		return huma.Error500InternalServerError(msg, err)
-	}
-}
+func (e *apiError) GetStatus() int { return e.Status }
 
 // policyRefusal is a refused policy as Tailscale reports it: the reason as
 // message and, when tests failed, one data entry per failing test naming its
@@ -124,4 +119,60 @@ func policyRefusal(err error) (string, []apiErrorData) {
 	}
 
 	return "test(s) failed", data
+}
+
+// unownedTags returns the tags a token holding tokenTags may not apply.
+func unownedTags(b Backend, tags, tokenTags []string) []string {
+	var out []string
+
+	for _, tag := range tags {
+		if !b.State.TagOwnedByTags(tag, tokenTags) {
+			out = append(out, tag)
+		}
+	}
+
+	return out
+}
+
+// tagsRefused is Tailscale's 400 for tags a token may not apply.
+func tagsRefused(prefix string, tags []string) error {
+	return huma.Error400BadRequest(
+		fmt.Sprintf("%srequested tags %v are invalid or not permitted", prefix, tags),
+	)
+}
+
+// mapError translates a state/db-layer error into a Huma HTTP error
+// (not-found→404, invalid input→400, everything else→500). The transformer
+// then reshapes it into the Tailscale body.
+func mapError(msg string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound),
+		errors.Is(err, db.ErrPreAuthKeyNotFound),
+		errors.Is(err, db.ErrUserNotFound),
+		errors.Is(err, state.ErrNodeNotFound):
+		return huma.Error404NotFound(msg, err)
+
+	case errors.Is(err, db.ErrPreAuthKeyNotTaggedOrOwned),
+		errors.Is(err, db.ErrPreAuthKeyACLTagInvalid),
+		errors.Is(err, db.ErrOAuthClientScopeInvalid),
+		errors.Is(err, state.ErrGivenNameInvalid),
+		errors.Is(err, state.ErrGivenNameTaken),
+		errors.Is(err, state.ErrNodeNameNotUnique),
+		errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted):
+		// As on Tailscale SaaS, the reason is the message.
+		return huma.Error400BadRequest(err.Error(), err)
+
+	// A refused policy is answered with its own reason as the message.
+	case errors.Is(err, state.ErrInvalidPolicy):
+		message, data := policyRefusal(err)
+
+		return &apiError{Message: message, Status: http.StatusBadRequest, Data: data}
+
+	default:
+		return huma.Error500InternalServerError(msg, err)
+	}
 }

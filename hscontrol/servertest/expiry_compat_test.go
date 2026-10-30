@@ -30,105 +30,12 @@ import (
 // <test_id>/<step>/<node>/<check>. A listed check that matches fails, so a
 // fix must delete its entry.
 var expirySkipReasons = map[string]string{
-	"expiry/C2-expire-r1/r1/online-observer": expiredPeerOffline,
-	"expiry/C2-expire-r1/r1/online-r2":       expiredPeerOffline,
-	"expiry/C2-expire-r1/r1/paths-observer":  expiredPeerPaths,
-	"expiry/C2-expire-r1/r1/paths-r2":        expiredPeerPaths,
-	"expiry/C2-expire-r1/r1/self":            selfExpiredFlags,
-
-	"expiry/C3-restore-r1/r1/routes-observer": restoredRouterTakesRoute,
-	"expiry/C3-restore-r1/r1/routes-r2":       restoredRouterTakesRoute,
-	"expiry/C3-restore-r1/r2/routes-observer": restoredRouterTakesRoute,
-	"expiry/C3-restore-r1/r2/routes-r1":       restoredRouterTakesRoute,
-
-	"expiry/C4-expire-r2/r2/online-observer": expiredPeerOffline,
-	"expiry/C4-expire-r2/r2/online-r1":       expiredPeerOffline,
-	"expiry/C4-expire-r2/r2/paths-observer":  expiredPeerPaths,
-	"expiry/C4-expire-r2/r2/paths-r1":        expiredPeerPaths,
-	"expiry/C4-expire-r2/r2/self":            selfExpiredFlags,
-
-	"expiry/D2-set-expire/subject/key-expiry": clientExpiryRefused,
-	"expiry/D2-set-expire/subject/outcome":    clientExpiryRefused,
-
-	"expiry/D3-past-expiry/subject/expired-observer": clientExpiryRefused,
-	"expiry/D3-past-expiry/subject/key-expiry":       clientExpiryRefused,
-	"expiry/D3-past-expiry/subject/paths-observer":   clientExpiryRefused,
-	"expiry/D3-past-expiry/subject/self":             clientExpiryRefused,
-
-	"expiry/D5-logout-tagged/tagged/key-expiry": taggedLogoutNotExpired,
-	"expiry/D5-logout-tagged/tagged/outcome":    taggedLogoutNotExpired,
-
-	"expiry/A2-expire/laptop/online-observer": expiredPeerOffline,
-	"expiry/A2-expire/laptop/online-peer1":    expiredPeerOffline,
-	"expiry/A2-expire/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A2-expire/laptop/paths-peer1":     expiredPeerPaths,
-	"expiry/A2-expire/laptop/self":            selfExpiredFlags,
-
-	"expiry/A3-peer-change/laptop/online-observer": expiredPeerOffline,
-	"expiry/A3-peer-change/laptop/online-peer1":    expiredPeerOffline,
-	"expiry/A3-peer-change/laptop/online-peer3":    expiredPeerOffline,
-	"expiry/A3-peer-change/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A3-peer-change/laptop/paths-peer1":     expiredPeerPaths,
-	"expiry/A3-peer-change/laptop/paths-peer3":     expiredPeerPaths,
-	"expiry/A3-peer-change/laptop/self":            selfExpiredFlags,
-
-	"expiry/A4-rename/laptop/online-observer": expiredPeerOffline,
-	"expiry/A4-rename/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A4-rename/laptop/self":            selfExpiredFlags,
-
-	"expiry/A5-advertise/laptop/online-observer": expiredPeerOffline,
-	"expiry/A5-advertise/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A5-advertise/laptop/routes-observer": expiredRouterUnserved,
-	"expiry/A5-advertise/laptop/self":            selfExpiredFlags,
-
-	"expiry/A7-dns/laptop/dns":             nameserversFromConfig,
-	"expiry/A7-dns/laptop/online-observer": expiredPeerOffline,
-	"expiry/A7-dns/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A7-dns/laptop/routes-observer": expiredRouterUnserved,
-	"expiry/A7-dns/laptop/self":            selfExpiredFlags,
-	"expiry/A7-dns/observer/dns":           nameserversFromConfig,
-
-	"expiry/A8-policy/laptop/online-observer": expiredPeerOffline,
-	"expiry/A8-policy/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A8-policy/laptop/routes-observer": expiredRouterUnserved,
-	"expiry/A8-policy/laptop/self":            selfExpiredFlags,
-
-	"expiry/A9-ssh/laptop/online-observer": expiredPeerOffline,
-	"expiry/A9-ssh/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A9-ssh/laptop/routes-observer": expiredRouterUnserved,
-	"expiry/A9-ssh/laptop/self":            selfExpiredFlags,
-
-	"expiry/A10-reconnect/laptop/online-observer": expiredPeerOffline,
-	"expiry/A10-reconnect/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A10-reconnect/laptop/routes-observer": expiredRouterUnserved,
-	"expiry/A10-reconnect/laptop/self":            selfExpiredFlags,
-
-	"expiry/A6a-expire-again/laptop/online-observer": expiredPeerOffline,
-	"expiry/A6a-expire-again/laptop/online-peer1":    expiredPeerOffline,
-	"expiry/A6a-expire-again/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A6a-expire-again/laptop/paths-peer1":     expiredPeerPaths,
-	"expiry/A6a-expire-again/laptop/routes-observer": expiredRouterUnserved,
-	"expiry/A6a-expire-again/laptop/routes-peer1":    expiredRouterUnserved,
-	"expiry/A6a-expire-again/laptop/self":            selfExpiredFlags,
-
-	"expiry/A6b-rotate-disco/laptop/online-observer": expiredPeerOffline,
-	"expiry/A6b-rotate-disco/laptop/online-peer1":    expiredPeerOffline,
-	"expiry/A6b-rotate-disco/laptop/online-peer3":    expiredPeerOffline,
-	"expiry/A6b-rotate-disco/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A6b-rotate-disco/laptop/paths-peer1":     expiredPeerPaths,
-	"expiry/A6b-rotate-disco/laptop/paths-peer3":     expiredPeerPaths,
-	"expiry/A6b-rotate-disco/laptop/routes-observer": expiredRouterUnserved,
-	"expiry/A6b-rotate-disco/laptop/routes-peer1":    expiredRouterUnserved,
-	"expiry/A6b-rotate-disco/laptop/routes-peer3":    expiredRouterUnserved,
-	"expiry/A6b-rotate-disco/laptop/self":            selfExpiredFlags,
+	"expiry/A7-dns/laptop/dns":   nameserversFromConfig,
+	"expiry/A7-dns/observer/dns": nameserversFromConfig,
 }
 
 const (
-	selfExpiredFlags         = "SELF_EXPIRED_FLAGS: headscale sends an expired node its own entry with MachineAuthorized false and Expired set; SaaS keeps MachineAuthorized true and leaves Expired out"
-	expiredPeerPaths         = "EXPIRED_PEER_PATHS: headscale sends peers an expired node's endpoints and home DERP; SaaS leaves both out"
-	clientExpiryRefused      = "CLIENT_EXPIRY_REFUSED: headscale refuses a client's request for an earlier key expiry; SaaS stores it, and the node expires then"
-	nameserversFromConfig    = "NAMESERVERS_FROM_CONFIG: headscale reads nameservers from its config and cannot change them while running; SaaS pushes a change to every node, an expired one too"
-	restoredRouterTakesRoute = "RESTORED_ROUTER_TAKES_ROUTE: SaaS hands a route back to a router whose key expiry is lifted, taking it from the standby that served it meanwhile; headscale keeps the standby"
+	nameserversFromConfig = "NAMESERVERS_FROM_CONFIG: headscale reads nameservers from its config and cannot change them while running; SaaS pushes a change to every node, an expired one too"
 )
 
 // TestNodeExpiryCompat replays key expiry against SaaS: an expired router
@@ -168,6 +75,27 @@ func runNodeExpiryCompat(t *testing.T, id, observer string) {
 
 	r := newStepReplay(t, c, opts...)
 	r.paths = true
+
+	// The test server runs no scheduled tasks. Run headscale's expiry pass on
+	// a short timer, so peers learn when an expiry a client asked for passes.
+	go func() {
+		tick := time.NewTicker(250 * time.Millisecond)
+		defer tick.Stop()
+
+		last := time.Unix(0, 0)
+
+		for {
+			select {
+			case <-t.Context().Done():
+				return
+			case <-tick.C:
+				next, changes, _ := r.srv.State().ExpireExpiredNodes(last)
+				last = next
+
+				r.srv.App.Change(changes...)
+			}
+		}
+	}()
 
 	// A change is judged against the step before only, so both sides
 	// compare the same span.

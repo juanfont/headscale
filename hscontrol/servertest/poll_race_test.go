@@ -1,8 +1,10 @@
 package servertest_test
 
 import (
+	"context"
 	"fmt"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -372,4 +374,86 @@ func TestPollRace(t *testing.T) {
 		assert.Contains(t, routes, route,
 			"approved route should persist through reconnect")
 	})
+}
+
+// firstNetmap closes got on a stream's first netmap.
+type firstNetmap struct {
+	once *sync.Once
+	got  chan struct{}
+}
+
+func (f firstNetmap) UpdateFullNetmap(*netmap.NetworkMap) {
+	f.once.Do(func() { close(f.got) })
+}
+
+// TestMapSessionsCappedPerNode opens more map streams for one node than the
+// batcher keeps. The oldest are closed and release their sessions, the newest
+// keep streaming, and closing those takes the node offline.
+func TestMapSessionsCappedPerNode(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "streamcap-user")
+	c := servertest.NewClient(t, srv, "streamcap-node", servertest.WithUser(user))
+	c.WaitForUpdate(t, 10*time.Second)
+
+	id := findNodeID(t, srv, "streamcap-node")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// With the client's own stream, six in all. Each is admitted before the
+	// next opens, so they age in order.
+	ended := make([]chan struct{}, 5)
+	for i := range ended {
+		ended[i] = make(chan struct{})
+		got := make(chan struct{})
+
+		go func() {
+			defer close(ended[i])
+
+			_ = c.Direct().PollNetMap(ctx, firstNetmap{once: new(sync.Once), got: got})
+		}()
+
+		select {
+		case <-got:
+		case <-ended[i]:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("stream %d was never admitted", i)
+		}
+	}
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		node, ok := srv.State().GetNodeByID(id)
+		if assert.True(ct, ok) {
+			assert.Equal(ct, 4, node.ActiveSessions())
+		}
+
+		assert.Equal(ct, 4, srv.App.MapBatcher().Debug()[id].ActiveConnections)
+	}, 10*time.Second, 50*time.Millisecond, "a node keeps at most four map sessions")
+
+	select {
+	case <-ended[0]:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the oldest extra stream was not closed")
+	}
+
+	for i, e := range ended[1:] {
+		select {
+		case <-e:
+			t.Fatalf("stream %d was closed, but it is among the newest four", i+1)
+		default:
+		}
+	}
+
+	cancel()
+	c.Disconnect(t)
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		node, ok := srv.State().GetNodeByID(id)
+		if assert.True(ct, ok) {
+			assert.Zero(ct, node.ActiveSessions())
+			assert.False(ct, node.IsOnline().Get())
+		}
+	}, 20*time.Second, 100*time.Millisecond, "closing every stream takes the node offline")
 }

@@ -119,6 +119,43 @@ func TestAPIV1NodeGet(t *testing.T) {
 		assert.Contains(t, got.Node, "preAuthKey")
 		assert.Contains(t, got.Node, "createdAt")
 	})
+
+	// A login with a key of the other kind keeps the node's flag; the
+	// embedded key shows the key's own.
+	t.Run("ephemeral is the node's, not its key's", func(t *testing.T) {
+		for _, created := range []bool{true, false} {
+			h := newAPIV1Harness(t)
+			user := h.app.state.CreateUserForTest("dave")
+			machineKey := key.NewMachine()
+
+			for _, ephemeral := range []bool{created, !created} {
+				pak, err := h.app.state.CreatePreAuthKey(user.TypedID(), false, ephemeral, nil, nil)
+				require.NoError(t, err)
+
+				_, err = h.app.handleRegisterWithAuthKey(tailcfg.RegisterRequest{
+					Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+					NodeKey:  key.NewNode().Public(),
+					Hostinfo: &tailcfg.Hostinfo{Hostname: "node-d"},
+				}, machineKey.Public())
+				require.NoError(t, err)
+			}
+
+			res := h.callHuma(http.MethodGet, "/api/v1/node/1", nil)
+			require.Equal(t, http.StatusOK, res.status)
+
+			var got struct {
+				Node struct {
+					Ephemeral  bool `json:"ephemeral"`
+					PreAuthKey struct {
+						Ephemeral bool `json:"ephemeral"`
+					} `json:"preAuthKey"`
+				} `json:"node"`
+			}
+			require.NoError(t, json.Unmarshal(res.body, &got))
+			assert.Equal(t, created, got.Node.Ephemeral, "node created ephemeral=%v", created)
+			assert.Equal(t, !created, got.Node.PreAuthKey.Ephemeral, "node created ephemeral=%v", created)
+		}
+	})
 }
 
 func TestAPIV1NodeList(t *testing.T) {

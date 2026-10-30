@@ -21,8 +21,10 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/key"
+	"tailscale.com/types/opt"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
+	"tailscale.com/util/set"
 )
 
 var (
@@ -171,6 +173,11 @@ type Node struct {
 	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
 	AuthKey   *Credential
 
+	// Ephemeral is taken from the key the node was created with. Logging in
+	// again with another key keeps it, as Tailscale does; a user claiming a
+	// tagged node clears it.
+	Ephemeral bool `gorm:"default:false"`
+
 	Expiry *time.Time
 
 	// LastSeen is when the node was last in contact with
@@ -182,6 +189,11 @@ type Node struct {
 	// announces at the moment.
 	// See [Node.Hostinfo]
 	ApprovedRoutes Prefixes `gorm:"column:approved_routes;serializer:json"`
+
+	// AutoApprovedRoutes are the approved routes only auto-approval granted.
+	// The node loses one when it stops announcing it; a route an admin
+	// approved stays.
+	AutoApprovedRoutes Prefixes `gorm:"column:auto_approved_routes;serializer:json"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -210,6 +222,12 @@ type Node struct {
 	// returned by Connect as a "Connect ran" sentinel for its cleanup,
 	// and Disconnect logs it. Runtime-only.
 	SessionEpoch uint64 `gorm:"-"`
+
+	// SessionStart is when the node's current run of control sessions
+	// began: [State.Connect] sets it as the first of them opens, and an
+	// overlapping reconnect keeps it. Primary election prefers the
+	// oldest. Runtime-only.
+	SessionStart time.Time `gorm:"-"`
 }
 
 type Nodes []*Node
@@ -258,7 +276,7 @@ func (node *Node) ShouldBeOnline() bool {
 // IsEphemeral returns if the node is registered as an Ephemeral node.
 // https://tailscale.com/docs/features/ephemeral-nodes
 func (node *Node) IsEphemeral() bool {
-	return node.AuthKey != nil && node.AuthKey.Ephemeral
+	return node.Ephemeral
 }
 
 // IPs returns the node's allocated Tailscale addresses. Order is
@@ -336,19 +354,10 @@ func (node *Node) Prefixes() []netip.Prefix {
 }
 
 // ExitRoutes returns the node's approved exit routes (0.0.0.0/0
-// and/or ::/0). Consumed unconditionally by RoutesForPeer when the
-// viewer uses an exit node; excluded from [Node.CanAccessRoute] which only
-// handles non-exit routing.
+// and/or ::/0). [Node.CanAccessRoutes] offers them only to a viewer whose
+// rules reach the internet.
 func (node *Node) ExitRoutes() []netip.Prefix {
-	var routes []netip.Prefix
-
-	for _, route := range node.AnnouncedRoutes() {
-		if tsaddr.IsExitRoute(route) && slices.Contains(node.ApprovedRoutes, route) {
-			routes = append(routes, route)
-		}
-	}
-
-	return routes
+	return node.approvedRoutes(true)
 }
 
 // IsExitNode reports whether the node has any approved exit routes.
@@ -391,6 +400,25 @@ func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 	}
 }
 
+// RouteRanges returns sorted, disjoint ranges covering valid route prefixes.
+func RouteRanges(prefixes []netip.Prefix) []netipx.IPRange {
+	if len(prefixes) == 0 {
+		return nil
+	}
+
+	var builder netipx.IPSetBuilder
+
+	for _, prefix := range prefixes {
+		if prefix.IsValid() {
+			builder.AddPrefix(prefix)
+		}
+	}
+
+	set, _ := builder.IPSet()
+
+	return set.Ranges()
+}
+
 // CanAccess reports whether node may reach node2 under the given
 // matchers. A node owns two source identities for ACL purposes:
 //   - its own IPs (regular peer membership)
@@ -401,17 +429,19 @@ func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 // matching node2's IPs, node2's approved subnet routes, or "the
 // internet" when node2 is an exit node — grants access.
 func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
-	return node.canAccess(matchers, node2, node.SubnetRoutes(), node2.SubnetRoutes(), node2.IsExitNode())
+	return node.canAccess(matchers, node2,
+		RouteRanges(node.SubnetRoutes()), RouteRanges(node2.SubnetRoutes()),
+		node2.IsExitNode())
 }
 
 // canAccess is [Node.CanAccess] with the snapshot-stable route data supplied by
-// the caller. The peer-map build precomputes each node's SubnetRoutes and
+// the caller. The peer-map build precomputes each node's route ranges and
 // exit-node status once and passes them here, so the O(n^2) pair scan does not
 // recompute them for every pair.
 func (node *Node) canAccess(
 	matchers []matcher.Match,
 	node2 *Node,
-	srcRoutes, dstRoutes []netip.Prefix,
+	srcRoutes, dstRoutes []netipx.IPRange,
 	dstIsExit bool,
 ) bool {
 	src := node.IPs()
@@ -419,7 +449,7 @@ func (node *Node) canAccess(
 
 	for _, m := range matchers {
 		srcMatchesIP := m.SrcsContainsIPs(src...)
-		srcMatchesRoutes := len(srcRoutes) > 0 && m.SrcsOverlapsPrefixes(srcRoutes...)
+		srcMatchesRoutes := len(srcRoutes) > 0 && m.SrcsOverlapsRanges(srcRoutes)
 
 		if !srcMatchesIP && !srcMatchesRoutes {
 			continue
@@ -429,7 +459,7 @@ func (node *Node) canAccess(
 			return true
 		}
 
-		if len(dstRoutes) > 0 && m.DestsOverlapsPrefixes(dstRoutes...) {
+		if len(dstRoutes) > 0 && m.DestsOverlapsRanges(dstRoutes) {
 			return true
 		}
 
@@ -441,56 +471,71 @@ func (node *Node) canAccess(
 	return false
 }
 
-// CanAccessRoute determines whether a specific route prefix should be
-// visible to this node based on the given matchers.
-//
-// Unlike [Node.CanAccess], this function intentionally does NOT check
-// [matcher.Match.DestsIsTheInternet]. Exit routes (0.0.0.0/0, ::/0) are handled by
-// RoutesForPeer (state.go) which adds them unconditionally from
-// [Node.ExitRoutes], not through ACL-based route filtering. The
-// [matcher.Match.DestsIsTheInternet] check in [Node.CanAccess] exists solely for peer
-// visibility determination (should two nodes see each other), which
-// is a separate concern from route prefix authorization.
-//
-// Additionally, autogroup:internet is explicitly skipped during filter
-// rule compilation (filter.go), so no matchers ever contain "the
-// internet" from internet-targeted ACLs. Wildcard "*" dests produce
-// matchers where [matcher.Match.DestsOverlapsPrefixes](0.0.0.0/0) already returns
-// true, so the check would be redundant for that case.
+// CanAccessRoute reports whether [Node.CanAccessRoutes] keeps route.
 func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
-	src := node.IPs()
+	return len(node.CanAccessRoutes(matchers, []netip.Prefix{route})) > 0
+}
+
+// CanAccessRoutes returns the authorized routes in input order, evaluating the
+// node's matcher membership once for the whole list.
+//
+// Exit routes (0.0.0.0/0, ::/0) are kept only for a rule from the node to the
+// internet ([matcher.Match.DestsIsTheInternet]), the test [Node.CanAccess]
+// applies to exit nodes: every destination overlaps /0, so overlap would offer
+// them for any rule.
+func (node *Node) CanAccessRoutes(
+	matchers []matcher.Match,
+	routes []netip.Prefix,
+) []netip.Prefix {
+	if len(routes) == 0 || len(matchers) == 0 {
+		return nil
+	}
+
+	ips := node.IPs()
 	subnetRoutes := node.SubnetRoutes()
+	sides := make([]struct{ isSrc, isDst bool }, len(matchers))
 
-	for _, matcher := range matchers {
-		if matcher.SrcsContainsIPs(src...) && matcher.DestsOverlapsPrefixes(route) {
-			return true
-		}
-
-		if matcher.SrcsOverlapsPrefixes(route) && matcher.DestsContainsIP(src...) {
-			return true
-		}
-
+	for i, m := range matchers {
 		// A subnet router acts on behalf of its advertised subnets.
 		// If the node's approved subnet routes overlap the source set
 		// and the route overlaps the destination set, the router needs
 		// this route to forward traffic from its local subnet.
-		if len(subnetRoutes) > 0 {
-			if matcher.SrcsOverlapsPrefixes(subnetRoutes...) &&
-				matcher.DestsOverlapsPrefixes(route) {
-				return true
+		sides[i].isSrc = m.SrcsContainsIPs(ips...) ||
+			m.SrcsOverlapsPrefixes(subnetRoutes...)
+
+		// Reverse: traffic from the route's subnet is destined for
+		// this node's subnets; the router needs the route for return
+		// traffic.
+		sides[i].isDst = m.DestsContainsIP(ips...) ||
+			m.DestsOverlapsPrefixes(subnetRoutes...)
+	}
+
+	var result []netip.Prefix
+
+	for _, route := range routes {
+		exit := tsaddr.IsExitRoute(route)
+
+		for i, m := range matchers {
+			if exit {
+				if sides[i].isSrc && m.DestsIsTheInternet() {
+					result = append(result, route)
+
+					break
+				}
+
+				continue
 			}
 
-			// Reverse: traffic from the route's subnet is destined for
-			// this node's subnets; the router needs the route for return
-			// traffic.
-			if matcher.SrcsOverlapsPrefixes(route) &&
-				matcher.DestsOverlapsPrefixes(subnetRoutes...) {
-				return true
+			if (sides[i].isSrc && m.DestsOverlapsPrefixes(route)) ||
+				(sides[i].isDst && m.SrcsOverlapsPrefixes(route)) {
+				result = append(result, route)
+
+				break
 			}
 		}
 	}
 
-	return false
+	return result
 }
 
 func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
@@ -597,15 +642,34 @@ func (node *Node) AnnouncedRoutes() []netip.Prefix {
 // responses that need the routes actively served by the node must
 // populate SubnetRoutes from the primary-route election instead.
 func (node *Node) SubnetRoutes() []netip.Prefix {
+	return node.approvedRoutes(false)
+}
+
+func (node *Node) approvedRoutes(exit bool) []netip.Prefix {
+	// Only the requested kind goes in the set, so finding the exit routes of
+	// a large subnet router stays cheap.
+	var approved set.Set[netip.Prefix]
+
+	for _, route := range node.ApprovedRoutes {
+		if tsaddr.IsExitRoute(route) == exit {
+			if approved == nil {
+				approved = make(set.Set[netip.Prefix])
+			}
+
+			approved.Add(route)
+		}
+	}
+
+	if len(approved) == 0 {
+		return nil
+	}
+
 	var routes []netip.Prefix
 
 	for _, route := range node.AnnouncedRoutes() {
-		if tsaddr.IsExitRoute(route) {
-			continue
-		}
-
-		if slices.Contains(node.ApprovedRoutes, route) {
+		if approved.Contains(route) {
 			routes = append(routes, route)
+			approved.Delete(route)
 		}
 	}
 
@@ -705,10 +769,6 @@ func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerC
 		NodeID: tailcfg.NodeID(node.ID), //nolint:gosec // NodeID is bounded
 	}
 
-	if node.NodeKey.String() != req.NodeKey.String() {
-		ret.Key = &req.NodeKey
-	}
-
 	if node.DiscoKey.String() != req.DiscoKey.String() {
 		ret.DiscoKey = &req.DiscoKey
 	}
@@ -740,11 +800,8 @@ func EndpointsChanged(oldEndpoints, newEndpoints []netip.AddrPort) bool {
 }
 
 // ApplyPeerChange takes a [tailcfg.PeerChange] struct and updates the node.
+// Key is ignored: only registration rotates the node key.
 func (node *Node) ApplyPeerChange(change *tailcfg.PeerChange) {
-	if change.Key != nil {
-		node.NodeKey = *change.Key
-	}
-
 	if change.DiscoKey != nil {
 		node.DiscoKey = *change.DiscoKey
 	}
@@ -874,7 +931,7 @@ func (nv NodeView) CertDomain(cfg *Config) (string, bool) {
 	// certificate for a name the operator gave to a service. A wildcard
 	// order shares its challenge record with the bare name, so names
 	// below the node's are covered too.
-	if cfg.extraRecordAtOrBelow(domain) {
+	if cfg.extraRecordAt(domain, true) {
 		return "", false
 	}
 
@@ -932,12 +989,13 @@ func (nv NodeView) CanAccess(matchers []matcher.Match, node2 NodeView) bool {
 	return nv.ж.CanAccess(matchers, node2.ж)
 }
 
-// CanAccessWithRoutes is [NodeView.CanAccess] with precomputed route data, used
+// CanAccessWithRoutes is [NodeView.CanAccess] with precomputed route ranges, used
 // by the peer-map build to avoid recomputing each node's routes per pair.
+// Callers must pass sorted, disjoint ranges, as returned by [RouteRanges].
 func (nv NodeView) CanAccessWithRoutes(
 	matchers []matcher.Match,
 	node2 NodeView,
-	srcRoutes, dstRoutes []netip.Prefix,
+	srcRoutes, dstRoutes []netipx.IPRange,
 	dstIsExit bool,
 ) bool {
 	if !nv.Valid() || !node2.Valid() {
@@ -953,6 +1011,18 @@ func (nv NodeView) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) 
 	}
 
 	return nv.ж.CanAccessRoute(matchers, route)
+}
+
+// CanAccessRoutes is [Node.CanAccessRoutes] for a node view.
+func (nv NodeView) CanAccessRoutes(
+	matchers []matcher.Match,
+	routes []netip.Prefix,
+) []netip.Prefix {
+	if !nv.Valid() {
+		return nil
+	}
+
+	return nv.ж.CanAccessRoutes(matchers, routes)
 }
 
 func (nv NodeView) AnnouncedRoutes() []netip.Prefix {
@@ -1192,31 +1262,6 @@ func (nv NodeView) IPsAsString() []string {
 	return nv.ж.IPsAsString()
 }
 
-// HasNetworkChanges checks if the node has network-related changes.
-// Returns true if IPs, announced routes, or approved routes changed.
-// This is primarily used for policy cache invalidation. Route slices
-// are compared order-insensitively since clients may re-advertise the
-// same routes in a different order.
-func (nv NodeView) HasNetworkChanges(other NodeView) bool {
-	if !slices.Equal(nv.IPs(), other.IPs()) {
-		return true
-	}
-
-	if !equalPrefixesUnordered(nv.AnnouncedRoutes(), other.AnnouncedRoutes()) {
-		return true
-	}
-
-	if !equalPrefixesUnordered(nv.SubnetRoutes(), other.SubnetRoutes()) {
-		return true
-	}
-
-	if !equalPrefixesUnordered(nv.ExitRoutes(), other.ExitRoutes()) {
-		return true
-	}
-
-	return false
-}
-
 // equalPrefixesUnordered reports whether a and b contain the same
 // prefixes, order-independent. Inputs are cloned before sorting so
 // callers' slices are not mutated.
@@ -1239,6 +1284,15 @@ func equalUnordered[E comparable](a, b []E, cmp func(E, E) int) bool {
 	slices.SortFunc(bc, cmp)
 
 	return slices.Equal(ac, bc)
+}
+
+// Unchanged snapshots share immutable slices, so pointer equality avoids a scan.
+func sameSlice[E comparable](a, b []E) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	return len(a) == 0 || &a[0] == &b[0] || slices.Equal(a, b)
 }
 
 // HasPolicyChange reports whether the node has changes that affect
@@ -1264,6 +1318,11 @@ func (nv NodeView) HasPolicyChange(other NodeView) bool {
 
 	if !slices.Equal(nv.IPs(), other.IPs()) {
 		return true
+	}
+
+	if sameSlice(nv.AnnouncedRoutes(), other.AnnouncedRoutes()) &&
+		sameSlice(nv.ж.ApprovedRoutes, other.ж.ApprovedRoutes) {
+		return false
 	}
 
 	if !equalPrefixesUnordered(nv.SubnetRoutes(), other.SubnetRoutes()) {
@@ -1441,4 +1500,50 @@ func (nv NodeView) TailNode(
 	}
 
 	return &tNode, nil
+}
+
+// SelfHostinfo is the part of a node's reported Hostinfo that its own map
+// entry carries, as on Tailscale SaaS.
+func SelfHostinfo(hi tailcfg.HostinfoView) tailcfg.HostinfoView {
+	if !hi.Valid() {
+		return hi
+	}
+
+	return (&tailcfg.Hostinfo{
+		Hostname:    hi.Hostname(),
+		RequestTags: hi.RequestTags().AsSlice(),
+		RoutableIPs: hi.RoutableIPs().AsSlice(),
+		Services:    hi.Services().AsSlice(),
+	}).View()
+}
+
+// PeerHostinfo is the part of a node's reported Hostinfo that its peers are
+// sent, as on Tailscale SaaS. Clients find a peer's DNS proxy by its
+// capability version, so the service announcing it is left out. Empty
+// fields stay nil, so two results compare equal by content.
+func PeerHostinfo(hi tailcfg.HostinfoView) tailcfg.HostinfoView {
+	if !hi.Valid() {
+		return hi
+	}
+
+	out := &tailcfg.Hostinfo{
+		Hostname: hi.Hostname(),
+		OS:       hi.OS(),
+	}
+
+	for _, s := range hi.Services().All() {
+		if s.Proto != tailcfg.PeerAPIDNS {
+			out.Services = append(out.Services, s)
+		}
+	}
+
+	if hi.SSH_HostKeys().Len() > 0 {
+		out.SSH_HostKeys = hi.SSH_HostKeys().AsSlice()
+	}
+
+	if hi.AppConnector().EqualBool(true) {
+		out.AppConnector = opt.NewBool(true)
+	}
+
+	return out.View()
 }

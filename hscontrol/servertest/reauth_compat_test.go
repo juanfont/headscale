@@ -37,66 +37,6 @@ import (
 // <test_id>/<step>[/<node>]/<check>. A listed check that matches fails, so a
 // fix must delete its entry.
 var reauthSkipReasons = map[string]string{
-	"owner-routes/r-expired-retag/expire/served": expiredRouterUnserved,
-	"owner-routes/r-expired-retag/expire/online": expiredPeerOffline,
-
-	"owner-routes/r-expired-retag/owner/node-key": expiredKeyAccepted,
-
-	"owner-routes/r-admin/owner/enabled":     adminRetagNoApproval,
-	"owner-routes/r-admin/owner/served":      adminRetagNoApproval,
-	"owner-routes/r-admin/owner/self-routes": adminRetagNoApproval,
-
-	"owner-routes/r-retag/withdraw/enabled":         withdrawKeepsAutoApproval,
-	"owner-routes/r-expired-retag/withdraw/enabled": withdrawKeepsAutoApproval,
-	"owner-routes/u-convert/withdraw/enabled":       withdrawKeepsAutoApproval,
-
-	"reauth/t-spent-relogin/t-spent/outcome":            expiredKeyNotRotated,
-	"reauth/t-revoked-relogin/t-revoked/outcome":        expiredKeyNotRotated,
-	"reauth/t-valid-relogin/t-valid/outcome":            expiredKeyNotRotated,
-	"reauth/t-valid-relogin/t-valid/node-key":           expiredKeyAccepted,
-	"reauth-user/a4-expired-spent-key/u-spent/outcome":  expiredKeyNotRotated,
-	"reauth-user/a5-expired-valid-key/u-valid/outcome":  expiredKeyNotRotated,
-	"reauth-user/a5-expired-valid-key/u-valid/node-key": expiredKeyAccepted,
-
-	"reauth-owner/u-renew-relogin/u-renew/expiry": sameKeyRenewsExpiry,
-	"reauth-user/a1-spent-key/u-spent/expiry":     sameKeyRenewsExpiry,
-	"reauth-user/a2-valid-key/u-valid/expiry":     sameKeyRenewsExpiry,
-
-	"reauth-foreign/t-logout-logout/t-logout/expiry":    taggedLogoutNotExpired,
-	"reauth-foreign/t-logout-logout/t-logout/peer-obs":  taggedLogoutNotExpired,
-	"reauth-foreign/t-logout-relogin/t-logout/expiry":   taggedLogoutNotExpired,
-	"reauth-foreign/t-logout-relogin/t-logout/peer-obs": taggedLogoutNotExpired,
-
-	"reauth-foreign/t-wake-foreign-key-tags/t-wake/outcome": wakeWithTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/owner":         keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/outcome":       keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/node-key":      keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/expiry":        keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/obs/filter":             keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/devices":       keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/owner":         keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/outcome":       keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/expiry":        keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/ephemeral":     keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/peer-obs":      keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/peer-key-obs":  keyLoginTagsRefused,
-
-	"tag-owner-chain/u-base-join/u-base/devices":      keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/owner":        keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/outcome":      keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/expiry":       keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/ephemeral":    keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/peer-obs":     keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/peer-key-obs": keyLoginTagsRefused,
-
-	"tag-owner-chain/t-mid-join/t-mid/devices":      taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/owner":        taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/outcome":      taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/expiry":       taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/ephemeral":    taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/peer-obs":     taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/peer-key-obs": taggedKeyOwnedTagRefused,
-
 	"reauth/late-pak-spent-key/late-pak/text":        refusalText,
 	"reauth/late-pak-spent-key/late-pak/legacy-text": refusalText,
 
@@ -107,19 +47,7 @@ var reauthSkipReasons = map[string]string{
 }
 
 const (
-	expiredKeyAccepted        = "EXPIRED_KEY_ACCEPTED: headscale re-registers an expired node under its old node key; SaaS answers NodeKeyExpired, so the client rotates it"
-	adminRetagNoApproval      = "ADMIN_RETAG_NO_APPROVAL: an admin tag change does not auto-approve the routes the new tags may approve; SaaS approves them at once"
-	withdrawKeepsAutoApproval = "WITHDRAW_KEEPS_AUTO_APPROVAL: headscale keeps an auto-approved route once it is withdrawn; SaaS drops it and keeps only admin-set approvals"
-)
-
-const (
-	expiredKeyNotRotated     = "EXPIRED_KEY_NOT_ROTATED: headscale answers an expired node's key login without asking for a new node key; SaaS answers NodeKeyExpired first, so the client rotates it"
-	sameKeyRenewsExpiry      = "SAME_KEY_LOGIN_RENEWS_EXPIRY: headscale renews a user node's expiry on a key login that keeps its node key; SaaS renews it only with a new node key"
-	taggedLogoutNotExpired   = "TAGGED_LOGOUT_NOT_EXPIRED: headscale leaves a tagged node unexpired when it logs out; SaaS expires it"
-	wakeWithTagsRefused      = "WAKE_WITH_TAGS_REFUSED: headscale refuses a key login that requests tags the key does not carry even when the node keeps its node key and tags; SaaS accepts it and changes nothing"
-	keyLoginTagsRefused      = "KEY_LOGIN_TAGS_REFUSED: headscale refuses a user's key login that requests tags the user owns; SaaS tags the device, converting it in place or creating it tagged"
-	taggedKeyOwnedTagRefused = "TAGGED_KEY_OWNED_TAG_REFUSED: headscale refuses a tagged key's login that requests a tag the key's tags own; SaaS gives the device the requested tags"
-	refusalText              = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
+	refusalText = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
 )
 
 // reauthNotCompared lists, by key prefix, checks left out: SaaS's answer

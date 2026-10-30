@@ -15,8 +15,6 @@ const (
 	NodeID             = "node.id"
 	NodeName           = "node.name"
 	NodeKey            = "node.key"
-	NodeKeyExisting    = "node.key.existing"
-	NodeKeyRequest     = "node.key.request"
 	NodeTags           = "node.tags"
 	NodeIsTagged       = "node.is_tagged"
 	NodeOnline         = "node.online"
@@ -66,18 +64,15 @@ const (
 
 // PreAuthKey fields.
 const (
-	PAKID           = "pak.id"
-	PAKPrefix       = "pak.prefix"
-	PAKTags         = "pak.tags"
-	PAKReusable     = "pak.reusable"
-	PAKEphemeral    = "pak.ephemeral"
-	PAKUsed         = "pak.used"
-	PAKIsTagged     = "pak.is_tagged"
-	PAKExpiration   = "pak.expiration"
-	AuthKeyID       = "authkey.id"
-	AuthKeyUsed     = "authkey.used"
-	AuthKeyExpired  = "authkey.expired"
-	AuthKeyReusable = "authkey.reusable"
+	PAKID         = "pak.id"
+	PAKPrefix     = "pak.prefix"
+	PAKTags       = "pak.tags"
+	PAKReusable   = "pak.reusable"
+	PAKEphemeral  = "pak.ephemeral"
+	PAKUsed       = "pak.used"
+	PAKIsTagged   = "pak.is_tagged"
+	PAKExpiration = "pak.expiration"
+	AuthKeyID     = "authkey.id"
 )
 
 // APIKey fields.
@@ -91,14 +86,11 @@ const (
 // Route fields.
 const (
 	RoutesAnnounced    = "routes.announced"
-	RoutesApproved     = "routes.approved"
 	RoutesApprovedOld  = "routes.approved.old"
 	RoutesApprovedNew  = "routes.approved.new"
 	OldAnnouncedRoutes = "oldAnnouncedRoutes"
 	NewAnnouncedRoutes = "newAnnouncedRoutes"
 	ApprovedRoutes     = "approvedRoutes"
-	OldApprovedRoutes  = "oldApprovedRoutes"
-	NewApprovedRoutes  = "newApprovedRoutes"
 	AutoApprovedRoutes = "autoApprovedRoutes"
 	AllApprovedRoutes  = "allApprovedRoutes"
 	RouteChanged       = "routeChanged"
@@ -114,6 +106,7 @@ const (
 	Version        = "version"
 	StatusCode     = "status_code"
 	RegistrationID = "registration_id"
+	LocalUser      = "local_user"
 )
 
 // Network fields.
@@ -144,6 +137,7 @@ const (
 	AutoApproveHashNew = "autoApprove.hash.new"
 	ExitSetHashOld     = "exitSet.hash.old"
 	ExitSetHashNew     = "exitSet.hash.new"
+	NodeAttrs          = "nodeAttrs"
 )
 
 // Connection/Channel fields.

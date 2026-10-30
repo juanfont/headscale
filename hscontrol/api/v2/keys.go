@@ -3,6 +3,7 @@ package apiv2
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -32,14 +33,20 @@ const (
 // populates only devices.create (auth keys); the named types (vs Tailscale's
 // anonymous nesting) give Huma stable schema names.
 type KeyCapabilities struct {
+	_ struct{} `additionalProperties:"true"`
+
 	Devices KeyDeviceCapabilities `json:"devices"`
 }
 
 type KeyDeviceCapabilities struct {
+	_ struct{} `additionalProperties:"true"`
+
 	Create KeyDeviceCreateCapabilities `json:"create"`
 }
 
 type KeyDeviceCreateCapabilities struct {
+	_ struct{} `additionalProperties:"true"`
+
 	Reusable      bool `json:"reusable"`
 	Ephemeral     bool `json:"ephemeral"`
 	Preauthorized bool `json:"preauthorized"`
@@ -54,6 +61,9 @@ type KeyDeviceCreateCapabilities struct {
 // OAuth client from the top-level Scopes and Tags. expirySeconds is plain
 // seconds (unlike the response, see Key).
 type CreateKeyRequest struct {
+	// Unknown properties are ignored, as Tailscale's API does.
+	_ struct{} `additionalProperties:"true"`
+
 	KeyType string `doc:"Key kind: \"auth\" (default) or \"client\" (OAuth client)." json:"keyType,omitempty"`
 	// Capabilities is optional: an auth key carries device-create capabilities,
 	// but an OAuth client (keyType:"client") has none and the Tailscale clients
@@ -94,7 +104,7 @@ type (
 
 	listKeysInput struct {
 		Tailnet string `path:"tailnet"`
-		All     bool   `doc:"Accepted for compatibility; Headscale returns all keys." query:"all"`
+		All     bool   `doc:"Without it, a token sees only the auth keys tokens made." query:"all"`
 	}
 
 	keyByIDInput struct {
@@ -125,13 +135,15 @@ func registerKeys(api huma.API, b Backend) {
 	keysTags := []string{"Keys", "Tailscale compat"}
 
 	huma.Register(api, huma.Operation{
-		OperationID: "createKey",
-		Method:      http.MethodPost,
-		Path:        "/api/v2/tailnet/{tailnet}/keys",
-		Summary:     "Create an auth key or OAuth client",
-		Description: "Requires the `auth_keys` scope for an auth key, or `oauth_keys` for an OAuth client (an admin API key is all-access).",
-		Tags:        keysTags,
-		Security:    security,
+		OperationID:  "createKey",
+		Method:       http.MethodPost,
+		Path:         "/api/v2/tailnet/{tailnet}/keys",
+		Summary:      "Create an auth key or OAuth client",
+		Description:  "Requires the `auth_keys` scope for an auth key, or `oauth_keys` for an OAuth client (an admin API key is all-access).",
+		Tags:         keysTags,
+		Security:     security,
+		Middlewares:  huma.Middlewares{requireCreateKeyScope(api)},
+		MaxBodyBytes: maxBodyBytes,
 		Errors: []int{
 			http.StatusBadRequest,
 			http.StatusUnauthorized,
@@ -144,11 +156,16 @@ func registerKeys(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		if in.Body.KeyType == keyTypeClient {
+		switch in.Body.KeyType {
+		case keyTypeClient:
 			return createOAuthClient(ctx, b, in.Body)
+		case "", keyTypeAuth:
+			return createAuthKey(ctx, b, in.Body)
+		default:
+			return nil, huma.Error400BadRequest(
+				"invalid key type, " + strconv.Quote(in.Body.KeyType) + " is not supported",
+			)
 		}
-
-		return createAuthKey(ctx, b, in.Body)
 	})
 
 	huma.Register(api, huma.Operation{
@@ -182,7 +199,15 @@ func registerKeys(api huma.API, b Backend) {
 				return nil, huma.Error500InternalServerError("listing auth keys", err)
 			}
 
+			now := time.Now()
+
+			// As Tailscale lists them: never an invalid key, and to a token
+			// without all=true only the keys tokens made.
 			for i := range keys {
+				if keys[i].ValidAt(now) != nil || isOAuth && !in.All && !keys[i].CreatedByToken {
+					continue
+				}
+
 				out.Body.Keys = append(out.Body.Keys, keyFromStored(&keys[i]))
 			}
 		}
@@ -316,6 +341,22 @@ func requireKeyScope(ctx context.Context, need scope.Scope) error {
 	return nil
 }
 
+// requireCreateKeyScope refuses, before huma reads the body, a token that may
+// create neither kind of key; the handler then checks the kind it got.
+func requireCreateKeyScope(api huma.API) func(huma.Context, func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
+		if requireKeyScope(ctx.Context(), scope.AuthKeys) != nil &&
+			requireKeyScope(ctx.Context(), scope.OAuthKeys) != nil {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden,
+				"token is missing the required scope auth_keys or oauth_keys")
+
+			return
+		}
+
+		next(ctx)
+	}
+}
+
 // createAuthKey creates a machine auth key (pre-auth key). Ownership: tags -> a
 // tagged key; no tags -> owned by the API key's user. An OAuth access token must
 // mint tagged keys, and each tag must be within the token's grant.
@@ -339,18 +380,23 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 		// A key minted by an OAuth token may only carry tags within the token's
 		// grant (held directly, or owned by a held tag) and defined in policy,
 		// matching SetNodeTags. An admin key keeps the historical behaviour of
-		// validating only tag syntax (db.validateACLTags).
+		// validating only tag syntax (db.validateACLTags), and records its
+		// user as the key's creator.
+		if !isOAuth {
+			if uid, ok := ownerUser(ctx); ok {
+				userID = &uid
+			}
+		}
+
 		if isOAuth {
 			for _, tag := range create.Tags {
 				if !b.State.TagExists(tag) {
 					return nil, huma.Error400BadRequest("tag " + tag + " is not defined in policy")
 				}
+			}
 
-				if !b.State.TagOwnedByTags(tag, tokenTags) {
-					return nil, huma.Error403Forbidden(
-						"token may not assign tag " + tag,
-					)
-				}
+			if refused := unownedTags(b, create.Tags, tokenTags); len(refused) > 0 {
+				return nil, tagsRefused("", refused)
 			}
 		}
 
@@ -372,7 +418,12 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 
 	expiration := time.Now().Add(expiryDuration(body.ExpirySeconds))
 
-	pak, err := b.State.CreatePreAuthKey(
+	createKey := b.State.CreatePreAuthKey
+	if isOAuth {
+		createKey = b.State.CreateTokenPreAuthKey
+	}
+
+	pak, err := createKey(
 		userID,
 		create.Reusable,
 		create.Ephemeral,
@@ -430,16 +481,23 @@ func createOAuthClient(ctx context.Context, b Backend, body CreateKeyRequest) (*
 
 		tokenTags, _ := principalTags(ctx)
 
+		// An untagged "all" client may mint tokens for any tag (narrowTags), so a
+		// tag-limited token would escape its tags one client away.
+		if len(tokenTags) > 0 && len(body.Tags) == 0 &&
+			slices.Contains(body.Scopes, string(scope.All)) {
+			return nil, huma.Error403Forbidden(
+				"client may not be granted scope all without tags by a tagged token",
+			)
+		}
+
 		for _, tag := range body.Tags {
 			if !b.State.TagExists(tag) {
 				return nil, huma.Error400BadRequest("tag " + tag + " is not defined in policy")
 			}
+		}
 
-			if !b.State.TagOwnedByTags(tag, tokenTags) {
-				return nil, huma.Error403Forbidden(
-					"client may not be granted tag " + tag + " beyond the creating token",
-				)
-			}
+		if refused := unownedTags(b, body.Tags, tokenTags); len(refused) > 0 {
+			return nil, tagsRefused("", refused)
 		}
 	}
 
@@ -505,8 +563,8 @@ func keyFromNew(pak *types.PreAuthKeyNew, req CreateKeyRequest) Key {
 		key.ExpirySeconds = expirySeconds(pak.CreatedAt, pak.Expiration)
 	}
 
-	// A tagged key presents no owner; a user-owned key reports its user id.
-	if len(pak.Tags) == 0 && pak.User != nil {
+	// A user-owned key reports its owner, a tagged key its creator.
+	if pak.User != nil {
 		key.UserID = pak.User.StringID()
 	}
 
@@ -537,7 +595,7 @@ func keyFromStored(pak *types.PreAuthKey) Key {
 		key.Revoked = pak.Revoked
 	}
 
-	if len(pak.Tags) == 0 && pak.User != nil {
+	if pak.User != nil {
 		key.UserID = pak.User.StringID()
 	}
 

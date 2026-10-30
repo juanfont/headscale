@@ -8,14 +8,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
+	clientv2 "github.com/juanfont/headscale/gen/client/v2"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
+	"github.com/juanfont/headscale/hscontrol/scope"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
+	tskey "tailscale.com/types/key"
 )
 
 // newOAuthTestServer builds the full v2 API (the auth+scope middleware and the
@@ -204,6 +210,20 @@ func TestAPIv2OAuth_TokenEndpoint(t *testing.T) {
 	require.Equalf(t, http.StatusOK, statusBasic, "%v", mBasic)
 	assert.NotEmpty(t, mBasic["access_token"])
 
+	// The answer names the scopes stored on the token, each once.
+	statusDup, mDup := mintToken(t, baseURL, clientID, secret, strings.Repeat("auth_keys ", 2), false)
+	require.Equalf(t, http.StatusOK, statusDup, "%v", mDup)
+	assert.Equal(t, "auth_keys", mDup["scope"])
+
+	// It names the tags of a token that can assign them; a reader token's
+	// answer has no tags field, whatever its client's tags.
+	assert.Equal(t, "tag:ci", m["tags"])
+
+	_, readerSecret := createClient(t, baseURL, admin, []string{"auth_keys:read"}, []string{"tag:ci"})
+	statusReader, mReader := mintToken(t, baseURL, "", readerSecret, "", false)
+	require.Equalf(t, http.StatusOK, statusReader, "%v", mReader)
+	assert.NotContains(t, mReader, "tags")
+
 	// Bad credentials → RFC 6749 invalid_client.
 	statusBad, mBad := mintToken(t, baseURL, clientID, "hskey-client-deadbeefdead-"+stringOf("0", 64), "", false)
 	assert.Equal(t, http.StatusUnauthorized, statusBad)
@@ -222,6 +242,296 @@ func TestAPIv2OAuth_TokenEndpoint(t *testing.T) {
 	assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
 }
 
+// TestAPIv2OAuth_RequestBodiesBounded: the token form is parsed before the
+// secret is checked, and huma validates a whole body before the handler runs.
+func TestAPIv2OAuth_RequestBodiesBounded(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+	_, secret := createClient(t, baseURL, admin, []string{"users:read"}, nil)
+
+	scopes := strings.TrimSpace(strings.Repeat("users:read ", 2000))
+	status, m := mintToken(t, baseURL, "", secret, scopes, false)
+	assert.Equalf(t, http.StatusBadRequest, status, "%v", m)
+	assert.Equal(t, "invalid_request", m["error"])
+
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+	status, _ = apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", tok,
+		map[string]any{"tags": make([]int, 40000)})
+	assert.Equal(t, http.StatusRequestEntityTooLarge, status)
+}
+
+// TestAPIv2OAuth_ValidationErrorsBounded: huma reports one error per bad
+// element of the body, and each carries the element as its value.
+func TestAPIv2OAuth_ValidationErrorsBounded(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+
+	tags := make([]map[string]string, 1000)
+	for i := range tags {
+		tags[i] = map[string]string{"pad": fmt.Sprintf("%040d", i)}
+	}
+
+	body := map[string]any{"capabilities": map[string]any{"devices": map[string]any{
+		"create": map[string]any{"reusable": true, "ephemeral": false, "preauthorized": true, "tags": tags},
+	}}}
+
+	status, resp := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", tok, body)
+	require.Equal(t, http.StatusUnprocessableEntity, status)
+	require.Less(t, len(resp), 16<<10, "the error answer grows with the request")
+	assert.NotContains(t, string(resp), "map[")
+
+	var out struct {
+		Data []struct{ Errors []string }
+	}
+	require.NoError(t, json.Unmarshal(resp, &out))
+	require.Len(t, out.Data, 1)
+	require.Len(t, out.Data[0].Errors, 21)
+	assert.Equal(t, "and 980 more", out.Data[0].Errors[20])
+}
+
+// TestAPIv2OAuth_TaggedKeyCreator: an admin key's user is the creator of the
+// tagged keys it makes and shows as their userId; a node joined with such a
+// key is tagged. A token's tagged key has no creator.
+func TestAPIv2OAuth_TaggedKeyCreator(t *testing.T) {
+	app, baseURL, admin := newOAuthTestServer(t)
+
+	owner := app.state.CreateUserForTest("odin")
+	ownerKey, apiKey, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+	require.NoError(t, app.state.SetAPIKeyUser(apiKey.ID, types.UserID(owner.ID)))
+
+	create := func(bearer string) apiv2.Key {
+		t.Helper()
+
+		status, body := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", bearer, apiv2.CreateKeyRequest{
+			Capabilities: &apiv2.KeyCapabilities{Devices: apiv2.KeyDeviceCapabilities{
+				Create: apiv2.KeyDeviceCreateCapabilities{Reusable: true, Tags: []string{"tag:ci"}},
+			}},
+		})
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+		var key apiv2.Key
+		require.NoError(t, json.Unmarshal(body, &key))
+
+		return key
+	}
+
+	key := create(ownerKey)
+	assert.Equal(t, owner.StringID(), key.UserID)
+
+	status, body := apiReq(t, http.MethodGet, baseURL+"/api/v2/tailnet/-/keys/"+key.ID, admin, nil)
+	require.Equal(t, http.StatusOK, status)
+	assert.Contains(t, string(body), `"userId":"`+owner.StringID()+`"`)
+
+	node, _, err := app.state.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: key.Key},
+		NodeKey:  tskey.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "made-by-odin"},
+	}, tskey.NewMachine().Public())
+	require.NoError(t, err)
+	assert.True(t, node.IsTagged())
+	assert.Equal(t, []string{"tag:ci"}, node.Tags().AsSlice())
+
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+	assert.Empty(t, create(tok).UserID)
+
+	// The key and the node's copy of it outlive the creator.
+	_, err = app.state.DeleteUser(*owner.TypedID())
+	require.NoError(t, err)
+
+	status, body = apiReq(t, http.MethodGet, baseURL+"/api/v2/tailnet/-/keys/"+key.ID, admin, nil)
+	require.Equalf(t, http.StatusOK, status, "body: %s", body)
+	assert.NotContains(t, string(body), `"userId"`)
+
+	nv, ok := app.state.GetNodeByID(node.ID())
+	require.True(t, ok)
+	require.True(t, nv.AuthKey().Valid())
+	assert.False(t, nv.AuthKey().User().Valid())
+}
+
+// TestAPIv2OAuth_TaggedDeviceUser: a tagged device shows the login that made
+// the key it joined with, and nothing for a key a token made; it stays owned
+// by its tags.
+func TestAPIv2OAuth_TaggedDeviceUser(t *testing.T) {
+	app, baseURL, admin := newOAuthTestServer(t)
+
+	owner := app.state.CreateUserForTest("odin")
+	ownerKey, apiKey, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+	require.NoError(t, app.state.SetAPIKeyUser(apiKey.ID, types.UserID(owner.ID)))
+
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+
+	for bearer, want := range map[string]string{ownerKey: owner.Username(), tok: ""} {
+		status, body := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", bearer, apiv2.CreateKeyRequest{
+			Capabilities: &apiv2.KeyCapabilities{Devices: apiv2.KeyDeviceCapabilities{
+				Create: apiv2.KeyDeviceCreateCapabilities{Tags: []string{"tag:ci"}},
+			}},
+		})
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+		var key apiv2.Key
+		require.NoError(t, json.Unmarshal(body, &key))
+
+		node, _, err := app.state.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: key.Key},
+			NodeKey:  tskey.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "tagged"},
+		}, tskey.NewMachine().Public())
+		require.NoError(t, err)
+		require.True(t, node.IsTagged())
+
+		status, body = apiReq(t, http.MethodGet, baseURL+"/api/v2/device/"+node.StringID(), admin, nil)
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+		var dev apiv2.Device
+		require.NoError(t, json.Unmarshal(body, &dev))
+		assert.Equal(t, want, dev.User)
+		assert.Equal(t, []string{"tag:ci"}, dev.Tags)
+
+		// oauthClientId names the join key, unless a token made it.
+		if bearer == tok {
+			assert.Empty(t, dev.OAuthClientID)
+		} else {
+			assert.Equal(t, key.ID, dev.OAuthClientID)
+		}
+
+		if want == "" {
+			continue
+		}
+
+		// The creator's rename reaches the devices its keys made.
+		renamed, _, err := app.state.RenameUser(types.UserID(owner.ID), "thor")
+		require.NoError(t, err)
+
+		status, body = apiReq(t, http.MethodGet, baseURL+"/api/v2/device/"+node.StringID(), admin, nil)
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+		require.NoError(t, json.Unmarshal(body, &dev))
+		assert.Equal(t, renamed.Username(), dev.User)
+	}
+}
+
+// TestAPIv2OAuth_KeyListing: a listing never holds an invalid key; without
+// all=true a token sees only the auth keys tokens made, whatever their tags.
+func TestAPIv2OAuth_KeyListing(t *testing.T) {
+	app, baseURL, admin := newOAuthTestServer(t)
+
+	adminKey := createAdminAuthKey(t, baseURL, admin)
+
+	revoked := createAdminAuthKey(t, baseURL, admin)
+	status, _ := apiReq(t, http.MethodDelete, baseURL+"/api/v2/tailnet/-/keys/"+revoked, admin, nil)
+	require.Equal(t, http.StatusOK, status)
+
+	maker := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+	require.Equal(t, http.StatusOK, createTaggedKey(t, baseURL, maker, []string{"tag:ci"}))
+
+	keys, err := app.state.ListPreAuthKeys()
+	require.NoError(t, err)
+
+	var tokenKey string
+
+	for _, k := range keys {
+		if k.CreatedByToken {
+			tokenKey = k.StringID()
+		}
+	}
+
+	require.NotEmpty(t, tokenKey, "the token's key is marked")
+
+	_, readerSecret := createClient(t, baseURL, admin, []string{"auth_keys:read"}, nil)
+	reader := tokenFor(t, baseURL, readerSecret)
+
+	listed := func(bearer, query string) []string {
+		t.Helper()
+
+		status, body := apiReq(t, http.MethodGet, baseURL+"/api/v2/tailnet/-/keys"+query, bearer, nil)
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+		var out struct{ Keys []apiv2.Key }
+		require.NoError(t, json.Unmarshal(body, &out))
+
+		ids := make([]string, 0, len(out.Keys))
+		for _, k := range out.Keys {
+			if k.KeyType == "auth" {
+				ids = append(ids, k.ID)
+			}
+		}
+
+		slices.Sort(ids)
+
+		return ids
+	}
+
+	every := []string{adminKey, tokenKey}
+	slices.Sort(every)
+
+	for _, bearer := range []string{reader, maker} {
+		assert.Equal(t, []string{tokenKey}, listed(bearer, ""))
+		assert.Equal(t, every, listed(bearer, "?all=true"))
+	}
+
+	assert.Equal(t, every, listed(admin, ""))
+	assert.Equal(t, every, listed(admin, "?all=true"))
+}
+
+// TestAPIv2OAuth_UnknownKeyTypeRefused: a keyType other than auth or client
+// is refused, not taken as an auth key.
+func TestAPIv2OAuth_UnknownKeyTypeRefused(t *testing.T) {
+	app, baseURL, admin := newOAuthTestServer(t)
+
+	status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", admin, map[string]any{
+		"keyType": "nosuch",
+		"capabilities": map[string]any{"devices": map[string]any{"create": map[string]any{
+			"reusable": true, "ephemeral": false, "preauthorized": true, "tags": []string{"tag:ci"},
+		}}},
+	})
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.Contains(t, string(body), `invalid key type, \"nosuch\" is not supported`)
+
+	keys, err := app.state.ListPreAuthKeys()
+	require.NoError(t, err)
+	assert.Empty(t, keys)
+}
+
+// TestAPIv2OAuth_UnknownPropertiesIgnored: a body property the API does not
+// define is ignored, at the top and nested, as Tailscale's API does.
+func TestAPIv2OAuth_UnknownPropertiesIgnored(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+
+	status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", admin, map[string]any{
+		"deviceDescription": "x",
+		"capabilities": map[string]any{"devices": map[string]any{
+			"create": map[string]any{
+				"reusable": true, "ephemeral": false, "preauthorized": true,
+				"tags": []string{"tag:ci"}, "unknown": true,
+			},
+		}},
+	})
+	require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+	var key apiv2.Key
+	require.NoError(t, json.Unmarshal(body, &key))
+	assert.Equal(t, []string{"tag:ci"}, key.Capabilities.Devices.Create.Tags)
+}
+
+// TestAPIv2OAuth_GeneratedClientNilTags: the generated client's request
+// types send a nil tags list as null, which the server takes as no tags.
+func TestAPIv2OAuth_GeneratedClientNilTags(t *testing.T) {
+	e := newDeviceTestEnv(t)
+
+	resp := e.api.Post("/api/v2/device/"+e.deviceID+"/tags", clientv2.SetTagsRequest{})
+	require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
+
+	app, baseURL, _ := newOAuthTestServer(t)
+	owner := app.state.CreateUserForTest("odin")
+	ownerKey, apiKey, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+	require.NoError(t, app.state.SetAPIKeyUser(apiKey.ID, *owner.TypedID()))
+
+	status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", ownerKey,
+		clientv2.CreateKeyRequest{Capabilities: &clientv2.KeyCapabilities{}})
+	require.Equalf(t, http.StatusOK, status, "body: %s", body)
+}
+
 func TestAPIv2OAuth_ScopeEnforcement(t *testing.T) {
 	_, baseURL, admin := newOAuthTestServer(t)
 
@@ -232,7 +542,7 @@ func TestAPIv2OAuth_ScopeEnforcement(t *testing.T) {
 		"write scope + in-grant tag allowed")
 
 	// ...but not with a tag outside its grant.
-	assert.Equal(t, http.StatusForbidden, createTaggedKey(t, baseURL, writeTok, []string{"tag:other"}),
+	assert.Equal(t, http.StatusBadRequest, createTaggedKey(t, baseURL, writeTok, []string{"tag:other"}),
 		"tag outside grant denied")
 
 	// A read-only token is denied the write.
@@ -288,6 +598,42 @@ func TestAPIv2OAuth_ClientManagementScopes(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, statusDeny, "auth_keys (no oauth_keys) cannot create a client")
 }
 
+// TestAPIv2OAuth_TaggedAllClientStaysInTags asserts an all-scope client with
+// tags mints tokens only inside its tags, and that a tagged token cannot
+// escape them through an untagged all-scope child, whose tokens may take any
+// tag.
+func TestAPIv2OAuth_TaggedAllClientStaysInTags(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+
+	_, secret := createClient(t, baseURL, admin, []string{"all"}, []string{"tag:a"})
+
+	st, m := mintTokenWithTags(t, baseURL, secret, "tag:b")
+	assert.Equalf(t, http.StatusBadRequest, st, "%v", m)
+	assert.Equal(t, "requested tags [tag:b] are invalid or not permitted", m["error_description"])
+
+	tok := tokenFor(t, baseURL, secret)
+	assert.Equal(t, http.StatusBadRequest,
+		createTaggedKey(t, baseURL, tok, []string{"tag:b"}),
+		"the token is held to its tags")
+
+	// A tagged child stays inside its tags.
+	_, childSecret := createClient(t, baseURL, tok, []string{"all"}, []string{"tag:a"})
+	st, m = mintTokenWithTags(t, baseURL, childSecret, "tag:b")
+	assert.Equalf(t, http.StatusBadRequest, st, "tagged child: %v", m)
+
+	createClient(t, baseURL, tok, []string{"auth_keys", "oauth_keys"}, []string{"tag:a"})
+
+	st, body := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", tok,
+		apiv2.CreateKeyRequest{KeyType: "client", Scopes: []string{"all"}})
+	assert.Equalf(t, http.StatusForbidden, st, "untagged all-scope child: %s", body)
+
+	// An admin API key still creates an untagged all-scope client, whose
+	// tokens may take any tag.
+	_, anySecret := createClient(t, baseURL, admin, []string{"all"}, nil)
+	st, m = mintTokenWithTags(t, baseURL, anySecret, "tag:b")
+	assert.Equalf(t, http.StatusOK, st, "%v", m)
+}
+
 func TestAPIv2OAuth_TagOwnedBy(t *testing.T) {
 	app, baseURL, admin := newOAuthTestServer(t)
 
@@ -315,7 +661,7 @@ func TestAPIv2OAuth_TagOwnedBy(t *testing.T) {
 		"a token may use a tag owned by its tag")
 
 	// Unrelated tag: denied.
-	assert.Equal(t, http.StatusForbidden, createTaggedKey(t, baseURL, tok, []string{"tag:other"}),
+	assert.Equal(t, http.StatusBadRequest, createTaggedKey(t, baseURL, tok, []string{"tag:other"}),
 		"a token may not use an unowned tag")
 }
 
@@ -367,13 +713,28 @@ func TestAPIv2OAuth_SetDeviceTagsGrant(t *testing.T) {
 	st, body := apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:ci"}})
 	assert.Equalf(t, http.StatusOK, st, "in-grant tag: %s", body)
 
+	// The device now carries only tags within the grant.
+	st, body = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:ci"}})
+	assert.Equalf(t, http.StatusOK, st, "in-grant device: %s", body)
+
 	// An existing policy tag outside the token's grant is denied, not silently set.
-	st, _ = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:other"}})
-	assert.Equal(t, http.StatusForbidden, st, "out-of-grant tag must be denied")
+	st, body = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:other"}})
+	assert.Equal(t, http.StatusBadRequest, st, "out-of-grant tag must be denied")
+	assert.Contains(t, string(body), "requested tags [tag:other] are invalid or not permitted")
 
 	// An admin API key is unrestricted.
 	st, body = apiPost(t, devURL, admin, map[string]any{"tags": []string{"tag:other"}})
 	assert.Equalf(t, http.StatusOK, st, "admin may set any policy tag: %s", body)
+
+	// SetNodeTags replaces the set, so retagging would remove tag:other.
+	st, body = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:ci", "tag:other"}})
+	assert.Equal(t, http.StatusBadRequest, st, "token must not retag an out-of-grant device")
+	assert.Contains(t, string(body),
+		"cannot remove current tags: requested tags [tag:other] are invalid or not permitted")
+
+	got, ok := app.state.GetNodeByID(view.ID())
+	require.True(t, ok)
+	assert.Equal(t, []string{"tag:other"}, got.Tags().AsSlice())
 }
 
 // TestAPIv2OAuth_UndefinedTagRejected asserts an OAuth token cannot create a
@@ -465,8 +826,9 @@ func TestAPIv2OAuth_KeysMultiplexIsolation(t *testing.T) {
 	clientID, _ := createClient(t, baseURL, admin, []string{"oauth_keys"}, []string{"tag:ci"})
 	require.Equal(t, http.StatusOK, createTaggedKey(t, baseURL, admin, []string{"tag:ci"}))
 
+	// all=true, so a token sees the admin's auth key too.
 	listKinds := func(bearer string) map[string]int {
-		st, body := apiReq(t, http.MethodGet, keysURL, bearer, nil)
+		st, body := apiReq(t, http.MethodGet, keysURL+"?all=true", bearer, nil)
 		require.Equalf(t, http.StatusOK, st, "%s", body)
 
 		var out struct {

@@ -2,8 +2,11 @@ package v2
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
@@ -714,11 +717,9 @@ func TestRunSSHTests(t *testing.T) {
 			wantErrSub: []string{"alice@headscale.net", "expected ALLOWED"},
 		},
 		{
-			// tag:empty has an owner but no tagged nodes, so the dst
-			// alias resolves to no nodes. Without the empty-dst guard
-			// the per-assertion loop runs zero iterations and the
-			// test silently passes — exactly the regression the
-			// guard exists to catch.
+			// tag:empty has an owner but no tagged nodes: an alias
+			// selecting no node is not reached, so the accept fails
+			// instead of passing over zero nodes.
 			name: "dst-tag-with-no-tagged-nodes-fails",
 			policy: `{
 				"tagOwners": { "tag:empty": ["alice@headscale.net"] },
@@ -729,12 +730,11 @@ func TestRunSSHTests(t *testing.T) {
 				}]
 			}`,
 			wantPass:   false,
-			wantErrSub: []string{"tag:empty", "resolved to no nodes"},
+			wantErrSub: []string{"-> tag:empty: expected ALLOWED, got DENIED"},
 		},
 		{
 			// autogroup:self from a tag src has no user identity to
-			// scope to, so the dst alias resolves to no nodes. Same
-			// empty-dst guard, distinct trigger path.
+			// scope to, so the dst alias selects no node either.
 			name: "dst-autogroup-self-from-tag-src-fails",
 			policy: `{
 				"tagOwners": { "tag:prod": ["alice@headscale.net"] },
@@ -745,7 +745,46 @@ func TestRunSSHTests(t *testing.T) {
 				}]
 			}`,
 			wantPass:   false,
-			wantErrSub: []string{"autogroup:self", "resolved to no nodes"},
+			wantErrSub: []string{"-> autogroup:self: expected ALLOWED, got DENIED"},
+		},
+		{
+			name: "src-address-space-deny-pass",
+			policy: `{
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"ssh": [{
+					"action": "accept",
+					"src":    ["alice@headscale.net"],
+					"dst":    ["tag:server"],
+					"users":  ["root"]
+				}],
+				"sshTests": [
+					{ "src": "*",                    "dst": ["tag:server"], "deny": ["ubuntu"] },
+					{ "src": "autogroup:danger-all", "dst": ["tag:server"], "deny": ["ubuntu"] },
+					{ "src": "autogroup:internet",   "dst": ["tag:server"], "deny": ["root"] }
+				]
+			}`,
+			wantPass: true,
+		},
+		{
+			// Every node is allowed, but `*` also covers addresses no
+			// node holds, and all src addresses must agree.
+			name: "src-wildcard-accept-fails-on-unassigned-address",
+			policy: `{
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"ssh": [{
+					"action": "accept",
+					"src":    ["autogroup:member", "autogroup:tagged"],
+					"dst":    ["tag:server"],
+					"users":  ["root"]
+				}],
+				"sshTests": [{
+					"src":    "*",
+					"dst":    ["tag:server"],
+					"accept": ["root"]
+				}]
+			}`,
+			wantPass:   false,
+			wantErrSub: []string{"expected ALLOWED, got DENIED"},
 		},
 	}
 
@@ -770,6 +809,28 @@ func TestRunSSHTests(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestResolveSSHTestSourceIsBoundedByNodes pins that a src naming address
+// space resolves to the node addresses it covers plus one address standing
+// in for the rest, not to every address in it.
+func TestResolveSSHTestSourceIsBoundedByNodes(t *testing.T) {
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+
+	src := Prefix(netip.MustParsePrefix("100.64.0.0/16"))
+
+	got, _, err := resolveSSHTestSource(&src, nil, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	want := make([]netip.Addr, 0, 1+len(nodes))
+	want = append(want, netip.MustParseAddr("100.64.0.0"))
+
+	for _, n := range nodes {
+		want = append(want, *n.IPv4)
+	}
+
+	require.Equal(t, want, got)
 }
 
 // TestRunSSHTestsBothTestsPassSSHTestsFail captures the distinction the
@@ -1004,22 +1065,22 @@ func TestSSHPolicyTestResultsErrorsRendering(t *testing.T) {
 			{
 				Src: "alice@headscale.net",
 				AcceptFail: map[string][]string{
-					"root": {"server"},
+					"root": {"tag:server"},
 				},
 			},
 			{
 				Src: "bob@headscale.net",
 				DenyFail: map[string][]string{
-					"root": {"alice-laptop"},
+					"root": {"group:people"},
 				},
 			},
 			{
 				Src: "alice@headscale.net",
 				CheckFail: map[string][]string{
-					"ubuntu": {"server"},
+					"ubuntu": {"tag:server", "tag:prod"},
 				},
-				AcceptOK: map[string][]string{
-					"ubuntu": {"server"},
+				CheckDenied: map[string][]string{
+					"ubuntu": {"tag:prod"},
 				},
 			},
 		},
@@ -1027,13 +1088,118 @@ func TestSSHPolicyTestResultsErrorsRendering(t *testing.T) {
 
 	rendered := results.Errors()
 	for _, sub := range []string{
-		"alice@headscale.net/root -> server: expected ALLOWED, got DENIED",
-		"bob@headscale.net/root -> alice-laptop: expected DENIED, got ALLOWED",
-		"alice@headscale.net/ubuntu -> server: expected ALLOWED via check, got ALLOWED via accept",
+		"alice@headscale.net/root -> tag:server: expected ALLOWED, got DENIED",
+		"bob@headscale.net/root -> group:people: expected DENIED, got ALLOWED",
+		"alice@headscale.net/ubuntu -> tag:server: expected ALLOWED via check, got ALLOWED via accept",
+		"alice@headscale.net/ubuntu -> tag:prod: expected ALLOWED via check, got DENIED",
 	} {
 		assert.Contains(t, rendered, sub)
 	}
 
-	assert.Equal(t, 3, strings.Count(rendered, "\n")+1,
+	assert.Equal(t, 4, strings.Count(rendered, "\n")+1,
 		"expected one line per failing assertion")
+}
+
+// TestSSHTestsReportNamesAliasNotNode: the report goes back to the policy
+// author, who may not be allowed to list nodes, so src and dst are named as
+// written, one line per dst occurrence, as Tailscale SaaS reports them.
+func TestSSHTestsReportNamesAliasNotNode(t *testing.T) {
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+
+	pm, err := NewPolicyManager([]byte(`{}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// group:people covers alice's nodes, which her own rule reaches by
+	// accept, and bob's and thor's, not reached at all: it is DENIED.
+	const policy = `{
+		"groups": {"group:people": ["alice@headscale.net", "bob@headscale.net", "thor@example.org"]},
+		"tagOwners": {"tag:server": ["alice@headscale.net"], "tag:empty": ["alice@headscale.net"]},
+		"ssh": [{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["root"]
+		}],
+		"sshTests": [
+			{
+				"src":    "10.0.0.1",
+				"dst":    ["100.64.0.3", "tag:server", "tag:server", "tag:empty"],
+				"accept": ["root"]
+			},
+			{"src": "alice@headscale.net", "dst": ["autogroup:self"], "deny": ["root"]},
+			{"src": "alice@headscale.net", "dst": ["group:people"], "check": ["root"]}
+		]
+	}`
+
+	_, err = pm.SetPolicy([]byte(policy))
+	require.ErrorIs(t, err, errSSHPolicyTestsFailed)
+
+	for line, want := range map[string]int{
+		"10.0.0.1/root -> 100.64.0.3: expected ALLOWED, got DENIED":                        1,
+		"10.0.0.1/root -> tag:server: expected ALLOWED, got DENIED":                        2,
+		"10.0.0.1/root -> tag:empty: expected ALLOWED, got DENIED":                         1,
+		"alice@headscale.net/root -> autogroup:self: expected DENIED, got ALLOWED":         1,
+		"alice@headscale.net/root -> group:people: expected ALLOWED via check, got DENIED": 1,
+	} {
+		assert.Equal(t, want, strings.Count(err.Error(), line), line)
+	}
+
+	for _, node := range nodes {
+		if !strings.Contains(policy, node.Hostname) {
+			assert.NotContains(t, err.Error(), node.Hostname)
+		}
+	}
+}
+
+// TestRunSSHTestsManyNamesAndPrincipals: login names, destination nodes
+// and rule principals are all the policy author's to multiply, so a check
+// must look up its source's rules, not walk every principal.
+func TestRunSSHTestsManyNamesAndPrincipals(t *testing.T) {
+	users := sshTestUsers()
+
+	nodes := make(types.Nodes, 0, 1000)
+
+	for i := range cap(nodes) {
+		n := &types.Node{
+			ID:       types.NodeID(i + 1), //nolint:gosec
+			Hostname: fmt.Sprintf("node-%d", i),
+			IPv4:     ap(fmt.Sprintf("100.64.%d.%d", i/250, i%250+1)),
+			User:     &users[0],
+			UserID:   &users[0].ID,
+		}
+		if i < 100 {
+			n.Tags = []string{"tag:server"}
+		}
+
+		nodes = append(nodes, n)
+	}
+
+	names := make([]string, 5000)
+	for i := range names {
+		names[i] = fmt.Sprintf(`"user%d"`, i)
+	}
+
+	pol, err := unmarshalPolicy(fmt.Appendf(nil, `{
+		"tagOwners": {"tag:server": ["alice@headscale.net"]},
+		"ssh": [{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["tag:server"],
+			"users":  ["autogroup:nonroot"]
+		}],
+		"sshTests": [{"src": "100.64.3.250", "dst": ["tag:server"], "accept": [%s]}]
+	}`, strings.Join(names, ",")))
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+
+	go func() { done <- evaluateSSHTests(pol, users, nodes.ViewSlice()) }()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("sshTests did not finish in time")
+	}
 }

@@ -26,6 +26,7 @@ var (
 	ErrCannotParsePrefix           = errors.New("cannot parse prefix")
 	ErrInvalidAuthIDLength         = errors.New("auth ID has invalid length")
 	ErrInvalidAuthIDPrefix         = errors.New("auth ID has invalid prefix")
+	ErrInvalidAuthIDChars          = errors.New("auth ID has invalid characters")
 	ErrRegistrationPayloadTooLarge = errors.New("registration payload exceeds size limit")
 )
 
@@ -81,6 +82,13 @@ func (r AuthID) Validate() error {
 		)
 	}
 
+	for i := len(authIDPrefix); i < len(r); i++ {
+		c := r[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return ErrInvalidAuthIDChars
+		}
+	}
+
 	return nil
 }
 
@@ -94,11 +102,10 @@ type SSHCheckBinding struct {
 }
 
 // PendingRegistrationConfirmation captures the server-side state needed
-// to finalise a node registration after the user has confirmed it on
-// the OIDC interstitial. The OIDC callback resolves the user identity
-// and node expiry, stores them on the cached [AuthRequest], and renders
-// a confirmation page; only when the user POSTs the confirmation form
-// does the actual node registration run.
+// to finalise a node registration or SSH check after the user confirms
+// it on the OIDC interstitial. The callback resolves the user identity
+// and optional node expiry, then stores them on the cached [AuthRequest].
+// Only the confirmation POST registers the node or approves the SSH check.
 //
 // CSRF is a one-shot per-session token that the OIDC callback set
 // both as a cookie and as a hidden form field. The confirm POST
@@ -129,7 +136,7 @@ type AuthRequest struct {
 
 	// sshBinding is populated for SSH check-mode flows. It captures the
 	// (src, dst) node pair the request was minted for so the follow-up
-	// and OIDC callback can refuse to record a verdict for any other
+	// and OIDC confirmation handler can refuse a verdict for any other
 	// pair.
 	//
 	// nil for non-SSH-check flows. Use [AuthRequest.SSHCheckBinding] to read it
@@ -137,10 +144,10 @@ type AuthRequest struct {
 	sshBinding *SSHCheckBinding
 
 	// pendingConfirmation is populated by the OIDC callback for the
-	// node-registration flow once the user identity has been resolved
-	// but before the user has explicitly confirmed the registration on
+	// registration or SSH check once the user identity has been resolved
+	// but before the user has explicitly confirmed the request on
 	// the interstitial. The /register/confirm POST handler reads it to
-	// finalise the registration without re-running the OIDC flow.
+	// finalise the request without re-running the OIDC flow.
 	pendingConfirmation *PendingRegistrationConfirmation
 
 	finished chan AuthVerdict
@@ -199,7 +206,7 @@ func (rn *AuthRequest) PrepareForCache() error {
 
 // NewSSHCheckAuthRequest creates a pending auth request bound to a
 // specific (src, dst) SSH check-mode pair. The follow-up handler and
-// OIDC callback must verify their incoming request matches this binding
+// OIDC confirmation handler must verify the request matches this binding
 // before recording any verdict.
 func NewSSHCheckAuthRequest(src, dst NodeID) *AuthRequest {
 	return &AuthRequest{
@@ -265,15 +272,14 @@ func (rn *AuthRequest) IsFinished() bool {
 }
 
 // SetPendingConfirmation marks this [AuthRequest] as having an
-// OIDC-resolved user that is waiting to confirm the registration on
-// the interstitial. The OIDC callback should call this and then render
-// the confirmation page; the /register/confirm POST handler reads the
-// stored UserID/NodeExpiry to finish the registration.
+// OIDC-resolved user waiting to confirm registration or an SSH check.
+// The callback stores this before redirecting to the confirmation page;
+// the /register/confirm POST handler reads it to finish the request.
 func (rn *AuthRequest) SetPendingConfirmation(p *PendingRegistrationConfirmation) {
 	rn.pendingConfirmation = p
 }
 
-// PendingConfirmation returns the pending OIDC-resolved registration
+// PendingConfirmation returns the pending OIDC-resolved confirmation
 // state captured by [AuthRequest.SetPendingConfirmation], or nil if no OIDC callback
 // has yet resolved an identity for this [AuthRequest].
 func (rn *AuthRequest) PendingConfirmation() *PendingRegistrationConfirmation {

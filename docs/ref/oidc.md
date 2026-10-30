@@ -127,12 +127,13 @@ are configured, a user needs to pass all of them.
 
 ### Control email verification
 
-Headscale uses the `email` claim from the identity provider to synchronize the email address to its user profile. By
-default, a user's email address is only synchronized when the identity provider reports the email address as verified
-via the `email_verified: true` claim.
+Headscale synchronizes the `email` claim from the identity provider to its user profile on each OIDC login. By default,
+the profile uses the email only when the latest login reports `email_verified: true`. An absent, unverified, or
+malformed email clears the previously stored address.
 
 Unverified emails may be allowed in case an identity provider does not send the `email_verified` claim or email
-verification is not required. In that case, a user's email address is always synchronized to the user profile.
+verification is not required. With `email_verified_required: false`, the latest login's email is stored without
+requiring verification. An absent or malformed email still clears the previously stored address.
 
 ```yaml hl_lines="5"
 oidc:
@@ -184,6 +185,11 @@ You may refer to users in the Headscale policy via:
 - Provider identifier (this value is currently only available from the [API](api.md), database or directly from your
   identity provider)
 
+References match a provider identifier first, then a stored email address, then a username. A token shaped like an
+email address also matches a username with that value when no user has that email. If one user has the email and
+another has the username, the email owner wins. Multiple matching emails, or multiple matching usernames when no email
+matches, remain ambiguous.
+
 !!! note "A user identifier in the policy must contain a single `@`"
 
     The Headscale policy requires a single `@` to reference a user. If the username or provider identifier doesn't
@@ -198,6 +204,8 @@ You may refer to users in the Headscale policy via:
     configuration, the values for username or email address might change over time. This might have unexpected
     consequences for Headscale where a policy might no longer work or a user might obtain more access by hijacking an
     existing username or email address.
+
+    Use provider identifiers in policies when your identity provider lets users change their own usernames.
 
 !!! tip "Howto use the provider identifier in the policy"
 

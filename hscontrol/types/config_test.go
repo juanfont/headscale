@@ -1,13 +1,18 @@
 package types
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,6 +21,8 @@ import (
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/libdns/cloudflare"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -360,6 +367,40 @@ func TestReadConfigFromEnv(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPreparedStatementConfigIsIgnoredWithWarning(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	var logs bytes.Buffer
+
+	previousLogger := log.Logger
+	previousLevel := zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
+
+	log.Logger = zerolog.New(&logs)
+
+	t.Cleanup(func() { log.Logger = previousLogger })
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+server_url: https://example.com
+noise:
+  private_key_path: noise_private.key
+dns:
+  magic_dns: false
+  override_local_dns: false
+database:
+  type: sqlite3
+  gorm:
+    prepare_stmt: true
+`), 0o600))
+	require.NoError(t, LoadConfig(configPath, true))
+	require.NoError(t, validateServerConfig())
+	assert.Contains(t, logs.String(), "database.gorm.prepare_stmt")
 }
 
 func TestTLSConfigValidation(t *testing.T) {
@@ -776,6 +817,38 @@ dns:
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got.UnixSocketPermission,
 				"got %#o, want %#o", got.UnixSocketPermission, tt.want)
+		})
+	}
+}
+
+func TestServerURLTrailingSlash(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "no slash", input: "https://h", want: "https://h"},
+		{name: "one slash", input: "https://h/", want: "https://h"},
+		{name: "two slashes", input: "https://h//", want: "https://h"},
+		{name: "port", input: "https://h:8443/", want: "https://h:8443"},
+		{name: "path prefix", input: "https://h/hs/", want: "https://h/hs"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			require.NoError(t, LoadConfig("testdata/minimal.yaml", true))
+
+			viper.Set("server_url", tt.input)
+			viper.Set("prefixes.v4", "100.64.0.0/10")
+			viper.Set("database.type", "sqlite3")
+			viper.Set("dns.magic_dns", false)
+			viper.Set("dns.override_local_dns", false)
+
+			cfg, err := LoadServerConfig()
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.ServerURL)
 		})
 	}
 }
@@ -1602,4 +1675,155 @@ func TestServesRoute(t *testing.T) {
 	// Only the configured ranges hold nodes.
 	narrow := netip.MustParsePrefix("100.64.0.0/24")
 	assert.True(t, (&Config{PrefixV4: &narrow}).ServesRoute(netip.MustParsePrefix("100.100.0.1/32")))
+}
+
+func TestBoolConfigValidation(t *testing.T) {
+	for _, source := range []string{"file", "env"} {
+		for _, tt := range []struct {
+			value   string
+			want    bool
+			invalid bool
+		}{
+			{"true", true, false},
+			{"false", false, false},
+			{"1", true, false},
+			{"0", false, false},
+			{"T", true, false},
+			{"f", false, false},
+			{"TRUE", true, false},
+			{"False", false, false},
+			{"True", true, false},
+			{"FALSE", false, false},
+			{"", true, false},
+			{"null", true, false},
+			{"yes", false, true},
+			{"on", false, true},
+			{"ture", false, true},
+			{"tRuE", false, true},
+			{"2", false, true},
+			{"[true]", false, true},
+			{`""`, false, true},
+		} {
+			if source == "env" && tt.value == "null" {
+				continue
+			}
+
+			t.Run(source+"/"+tt.value, func(t *testing.T) {
+				viper.Reset()
+				t.Cleanup(viper.Reset)
+				t.Setenv("HEADSCALE_OIDC_EMAIL_VERIFIED_REQUIRED", "")
+
+				config := `server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite3
+dns:
+  magic_dns: false
+  override_local_dns: false
+`
+				if source == "file" && tt.value != "" {
+					config += "oidc:\n  email_verified_required: " + tt.value + "\n"
+				}
+
+				if source == "env" {
+					t.Setenv("HEADSCALE_OIDC_EMAIL_VERIFIED_REQUIRED", tt.value)
+				}
+
+				path := filepath.Join(t.TempDir(), "config.yaml")
+				require.NoError(t, os.WriteFile(path, []byte(config), 0o600))
+				require.NoError(t, LoadConfig(path, true))
+
+				loaded, err := LoadServerConfig()
+				if tt.invalid {
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), "oidc.email_verified_required")
+
+					return
+				}
+
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, loaded.OIDC.EmailVerifiedRequired)
+			})
+		}
+	}
+}
+
+func TestBoolConfigKeysComplete(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "config.go", nil, 0)
+	require.NoError(t, err)
+
+	keys := make(map[string]bool)
+
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "GetBool" {
+			return true
+		}
+
+		object, ok := selector.X.(*ast.Ident)
+		if !ok || object.Name != "viper" {
+			return true
+		}
+
+		require.Len(t, call.Args, 1)
+		literal, ok := call.Args[0].(*ast.BasicLit)
+		require.True(t, ok, "boolean config keys must be string literals")
+
+		key, err := strconv.Unquote(literal.Value)
+		require.NoError(t, err)
+
+		keys[key] = true
+
+		return true
+	})
+	require.NotEmpty(t, keys)
+
+	for _, key := range boolConfigKeys {
+		assert.Contains(t, keys, key, "unused or repeated boolean config key")
+		delete(keys, key)
+	}
+
+	assert.Empty(t, keys, "GetBool keys missing from boolean validation")
+}
+
+func TestExampleConfigBooleanSettings(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	require.NoError(t, LoadConfig("../../config-example.yaml", true))
+
+	_, err := LoadServerConfig()
+	require.NoError(t, err)
+}
+
+func TestLoadCLIConfigRejectsNonBoolean(t *testing.T) {
+	for _, key := range []string{"cli.insecure", "disable_check_updates"} {
+		t.Run(key, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			require.NoError(t, os.WriteFile(path, nil, 0o600))
+			require.NoError(t, LoadConfig(path, true))
+
+			env := "HEADSCALE_" + strings.ToUpper(strings.ReplaceAll(key, ".", "_"))
+			t.Setenv(env, "true")
+
+			_, err := LoadCLIConfig()
+			require.NoError(t, err)
+
+			t.Setenv(env, "ture")
+
+			_, err = LoadCLIConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), key)
+		})
+	}
 }

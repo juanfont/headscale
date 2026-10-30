@@ -51,69 +51,18 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/R3/3/status":  missingScopeNotFound,
 	"oauth/K3/0/status":  missingScopeNotFound,
 	"oauth/J2/0/status":  missingScopeNotFound,
-	"oauth/K4/0/status":  bodyBeforeScope,
+	"oauth/K4/0/status":  missingScopeNotFound,
 	"oauth/D1/0/message": missingScopeText,
 
-	"oauth/O1/0/scope":  scopeEchoAsSent,
 	"oauth/O3/0/status": mintScopeRefusalStatus,
 	"oauth/O4/0/scope":  unknownScopeGranted,
+	"oauth/O4/0/tags":   unknownScopeGranted,
 
-	"oauth/O4/0/tags":  mintTagsNotEchoed,
-	"oauth/E1/0/tags":  mintTagsNotEchoed,
-	"oauth/E9a/0/tags": mintTagsNotEchoed,
-	"oauth/T1/0/tags":  mintTagsNotEchoed,
-	"oauth/D0/6/tags":  mintTagsNotEchoed,
-	"oauth/B1/0/tags":  mintTagsNotEchoed,
-	"oauth/B3/0/tags":  mintTagsNotEchoed,
-	"oauth/B11/1/tags": mintTagsNotEchoed,
+	"key-list/setup-token-keys/4/tags": mintTagsSorted,
 
-	"key-list/setup-token-keys/0/tags": mintTagsNotEchoed,
-	"key-list/setup-token-keys/2/tags": mintTagsNotEchoed,
-	"key-list/setup-token-keys/4/tags": mintTagsNotEchoed,
-	"key-list/setup-token-keys/6/tags": mintTagsNotEchoed,
+	"oauth/K5/0/status": unknownKeyType,
 
-	"oauth/K1/0/status":  unknownPropertyRefused,
-	"oauth/K1/0/outcome": unknownPropertyRefused,
-	"oauth/K1/1/status":  unknownPropertyRefused,
-	"oauth/K1/1/outcome": unknownPropertyRefused,
-	"oauth/K2/0/status":  unknownKeyType,
-	"oauth/K2/0/outcome": unknownKeyType,
-	"oauth/K5/0/status":  unknownKeyType,
-
-	"oauth/J3/1/hostnames": sshTestHostnames,
-	"oauth/J4/0/hostnames": sshTestHostnames,
-	"oauth/J3/1/detail":    refusalDetail,
-	"oauth/J4/0/detail":    refusalDetail,
-
-	"oauth/E2/0/status":   taggedAllClientAnyTag,
-	"oauth/E2/0/outcome":  taggedAllClientAnyTag,
-	"oauth/E9a/1/status":  taggedAllClientAnyTag,
-	"oauth/E9a/1/outcome": taggedAllClientAnyTag,
-
-	"oauth/E4/0/status": tagRefusalStatus,
-	"oauth/E5/0/status": tagRefusalStatus,
-	"oauth/T2/1/status": tagRefusalStatus,
-	"oauth/T3/1/status": tagRefusalStatus,
-
-	"oauth/T4/1/status":  retagRemovesUnownedTag,
-	"oauth/T4/1/outcome": retagRemovesUnownedTag,
-	"oauth/T4/2/tags":    retagRemovesUnownedTag,
-	"oauth/T4/2/owner":   retagRemovesUnownedTag,
-	"oauth/T5/1/status":  retagRemovesUnownedTag,
-	"oauth/T5/1/outcome": retagRemovesUnownedTag,
-	"oauth/T5/2/tags":    retagRemovesUnownedTag,
-	"oauth/T5/2/owner":   retagRemovesUnownedTag,
-
-	"oauth/D0/1/listed":  keyListWithoutAll,
-	"oauth/B11/0/listed": keyListWithoutAll,
-	"oauth/B11/2/listed": keyListWithoutAll,
-	"oauth/D0/2/listed":  keyListInvalidKeys,
-
-	"key-list/L-untagged/1/listed":         keyListWithoutAll,
-	"key-list/L-prod/1/listed":             keyListWithoutAll,
-	"key-list/L-prod-server/1/listed":      keyListWithoutAll,
-	"key-list/L-make-prod/0/listed":        keyListWithoutAll,
-	"key-list/L-make-prod-server/0/listed": keyListWithoutAll,
+	"oauth/D0/1/listed": emptyKeyListNull,
 
 	"oauth/D7/2/status":  deletedClientGone,
 	"oauth/D7/2/outcome": deletedClientGone,
@@ -122,67 +71,11 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/B7/0/message": deletedClientCredentialText,
 	"oauth/B7/1/message": deletedClientCredentialText,
 
-	"oauth/key:J-ci-runner/creator-user-id":   taggedKeyNoUserID,
-	"oauth/key:J-managed/creator-user-id":     taggedKeyNoUserID,
-	"oauth/key:J-mixed/creator-user-id":       taggedKeyNoUserID,
-	"oauth/key:J-prod-db/creator-user-id":     taggedKeyNoUserID,
-	"oauth/key:J-router/creator-user-id":      taggedKeyNoUserID,
-	"oauth/key:K-ci/creator-user-id":          taggedKeyNoUserID,
-	"oauth/key:K-mixed/creator-user-id":       taggedKeyNoUserID,
-	"oauth/key:K-prod/creator-user-id":        taggedKeyNoUserID,
-	"policy-api/key:J-server/creator-user-id": taggedKeyNoUserID,
-
-	"key-list/key:A-db/creator-user-id":          taggedKeyNoUserID,
-	"key-list/key:A-late-prod/creator-user-id":   taggedKeyNoUserID,
-	"key-list/key:A-prod-db/creator-user-id":     taggedKeyNoUserID,
-	"key-list/key:A-prod-server/creator-user-id": taggedKeyNoUserID,
-	"key-list/key:A-prod/creator-user-id":        taggedKeyNoUserID,
-
-	"oauth/device:before/all/device-oauth-client":        deviceOAuthClientID,
-	"oauth/device:ci-runner/all/device-oauth-client":     deviceOAuthClientID,
-	"oauth/device:joiner/all/device-oauth-client":        deviceOAuthClientID,
-	"oauth/device:laptop/all/device-oauth-client":        deviceOAuthClientID,
-	"oauth/device:managed/all/device-oauth-client":       deviceOAuthClientID,
-	"oauth/device:mixed/all/device-oauth-client":         deviceOAuthClientID,
-	"oauth/device:prod-db/all/device-oauth-client":       deviceOAuthClientID,
-	"oauth/device:router/all/device-oauth-client":        deviceOAuthClientID,
-	"oauth/device:ci-runner/default/device-oauth-client": deviceOAuthClientID,
-	"oauth/device:laptop/default/device-oauth-client":    deviceOAuthClientID,
-	"oauth/device:managed/default/device-oauth-client":   deviceOAuthClientID,
-	"oauth/device:mixed/default/device-oauth-client":     deviceOAuthClientID,
-	"oauth/device:prod-db/default/device-oauth-client":   deviceOAuthClientID,
-	"oauth/device:router/default/device-oauth-client":    deviceOAuthClientID,
-
-	"oauth/device:before/all/device-user":        taggedDeviceUser,
-	"oauth/device:ci-runner/all/device-user":     taggedDeviceUser,
-	"oauth/device:joiner/all/device-user":        taggedDeviceUser,
-	"oauth/device:laptop/all/device-user":        taggedDeviceUser,
-	"oauth/device:managed/all/device-user":       taggedDeviceUser,
-	"oauth/device:mixed/all/device-user":         taggedDeviceUser,
-	"oauth/device:prod-db/all/device-user":       taggedDeviceUser,
-	"oauth/device:router/all/device-user":        taggedDeviceUser,
-	"oauth/device:ci-runner/default/device-user": taggedDeviceUser,
-	"oauth/device:managed/default/device-user":   taggedDeviceUser,
-	"oauth/device:mixed/default/device-user":     taggedDeviceUser,
-	"oauth/device:prod-db/default/device-user":   taggedDeviceUser,
-	"oauth/device:router/default/device-user":    taggedDeviceUser,
-
-	"oauth/device:before/empty-route-lists":    emptyRouteListsOmitted,
-	"oauth/device:ci-runner/empty-route-lists": emptyRouteListsOmitted,
-	"oauth/device:joiner/empty-route-lists":    emptyRouteListsOmitted,
-	"oauth/device:laptop/empty-route-lists":    emptyRouteListsOmitted,
-	"oauth/device:managed/empty-route-lists":   emptyRouteListsOmitted,
-	"oauth/device:mixed/empty-route-lists":     emptyRouteListsOmitted,
-	"oauth/device:prod-db/empty-route-lists":   emptyRouteListsOmitted,
-
-	"policy-api/P3/1/detail":    refusalDetail,
-	"policy-api/P5-R1/1/detail": refusalDetail,
-	"policy-api/P5-R2/1/detail": refusalDetail,
+	"oauth/device:before/all/device-oauth-client": deviceOAuthClientMaker,
+	"oauth/device:joiner/all/device-oauth-client": deviceOAuthClientMaker,
 
 	"policy-api/P7/0/body": hujsonFormatted,
 	"policy-api/P7/1/body": hujsonFormatted,
-
-	"policy-api/P2/0/v1-verdict": v1CheckAcceptsEmpty,
 }
 
 // apiv2CompatNotCompared lists, by key prefix, checks left out: SaaS's
@@ -213,40 +106,23 @@ func notCompared(prefixes []string, key string) bool {
 	})
 }
 
-// Differences a planned change removes.
-const (
-	scopeEchoAsSent        = "SCOPE_ECHO_AS_SENT: SaaS echoes a token's scopes sorted and without repeats; headscale echoes the request as sent"
-	bodyBeforeScope        = "BODY_BEFORE_SCOPE: headscale validates a createKey body before the token's scope and answers 422; SaaS answers 404 for the missing scope"
-	taggedAllClientAnyTag  = "TAGGED_ALL_CLIENT_ANY_TAG: SaaS lets a tagged all-scope client's token ask only for the client's tags; headscale lets it ask for any tag"
-	retagRemovesUnownedTag = "RETAG_REMOVES_UNOWNED_TAG: SaaS refuses a token's retag of a device holding a tag outside the token's grant with 400 cannot remove current tags; headscale replaces the tags"
-	sshTestHostnames       = "SSH_TEST_HOSTNAMES: headscale names the nodes behind a failing sshTests destination; SaaS names the destination as written"
-	v1CheckAcceptsEmpty    = "V1_CHECK_ACCEPTS_EMPTY: v1 policy check accepts a zero-length policy; SaaS's validate refuses it"
-)
-
 // Differences no planned change removes yet.
 const (
 	mintScopeRefusalStatus      = "TOKEN_SCOPE_REFUSAL_STATUS: SaaS refuses a token scope the client lacks with 403 and a message; headscale with 400 invalid_scope"
-	mintTagsNotEchoed           = "TOKEN_TAGS_NOT_ECHOED: SaaS's token answer names the token's tags; headscale's has no tags"
-	unknownPropertyRefused      = "UNKNOWN_PROPERTY_REFUSED: SaaS ignores a createKey property it does not define; headscale refuses the body with 422, so the key is never made"
-	unknownKeyType              = "UNKNOWN_KEY_TYPE: SaaS refuses an unknown keyType with 400 before it checks scopes; headscale makes an auth key from it"
-	tagRefusalStatus            = "TAG_REFUSAL_STATUS: SaaS refuses a tag outside the token's grant with 400 requested tags are invalid or not permitted; headscale with 403"
-	keyListWithoutAll           = "KEY_LIST_WITHOUT_ALL: without all=true SaaS lists an OAuth token only the auth keys OAuth tokens made, whatever its tags and theirs; headscale lists every key"
-	keyListInvalidKeys          = "KEY_LIST_INVALID_KEYS: SaaS leaves spent and revoked auth keys out of a listing; headscale lists them"
+	mintTagsSorted              = "TOKEN_TAGS_SORTED: SaaS's token answer names the tags in the order its client was made with; headscale stores a client's tags sorted"
+	unknownKeyType              = "UNKNOWN_KEY_TYPE: SaaS refuses an unknown keyType with 400 before it checks scopes; headscale checks the scope first and answers 403"
+	emptyKeyListNull            = "EMPTY_KEY_LIST_NULL: SaaS answers a listing that holds no key with keys null; headscale with []"
 	deletedClientGone           = "DELETED_CLIENT_GONE: SaaS keeps a deleted OAuth client readable as invalid and revoked; headscale removes it"
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
 	missingScopeText            = "MISSING_SCOPE_TEXT: SaaS refuses a delete outside the token's scopes with calling actor does not have enough permissions; headscale names the missing scope"
-	taggedKeyNoUserID           = "TAGGED_KEY_NO_USER_ID: SaaS shows the creating user's userId on a tagged auth key the admin made; headscale leaves userId off every tagged key"
-	deviceOAuthClientID         = "DEVICE_OAUTH_CLIENT_ID: SaaS device bodies carry oauthClientId, naming the join key or the OAuth client that made it; headscale's have no such field"
-	taggedDeviceUser            = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key, empty for a key a token made; headscale shows tagged-devices"
-	emptyRouteListsOmitted      = "EMPTY_ROUTE_LISTS_OMITTED: SaaS sends advertisedRoutes and enabledRoutes as [] for a device without routes under fields=all; headscale leaves both out"
-	refusalDetail               = "REFUSAL_DETAIL: SaaS puts a refused policy's reason in message, with one detail per failing test naming the user; headscale answers setting policy with the reason as one detail without a user"
 	hujsonFormatted             = "HUJSON_FORMATTED: SaaS stores a HuJSON policy formatted, comments kept; headscale stores the bytes as sent"
 )
 
 // SaaS behaviour recorded as it is; following it is the maintainer's call.
 const (
-	missingScopeNotFound = "MISSING_SCOPE_NOT_FOUND: SaaS answers a call outside the token's scopes with 404 not found; headscale answers 403"
-	unknownScopeGranted  = "UNKNOWN_SCOPE_GRANTED: SaaS ignores an unknown requested scope and grants the client's own; headscale grants the unknown scope alone"
+	deviceOAuthClientMaker = "DEVICE_OAUTH_CLIENT_ID: SaaS names, in oauthClientId, the OAuth client whose token made the device's key; headscale does not record which client that was, so it leaves the field out"
+	missingScopeNotFound   = "MISSING_SCOPE_NOT_FOUND: SaaS answers a call outside the token's scopes with 404 not found; headscale answers 403"
+	unknownScopeGranted    = "UNKNOWN_SCOPE_GRANTED: SaaS ignores an unknown requested scope and grants the client's own; headscale grants the unknown scope alone"
 )
 
 // TestAPIv2OAuthCompat replays OAuth clients, token exchanges, auth keys,

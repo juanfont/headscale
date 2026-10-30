@@ -71,6 +71,7 @@ func (src *Node) Clone() *Node {
 		dst.LastSeen = new(*src.LastSeen)
 	}
 	dst.ApprovedRoutes = append(src.ApprovedRoutes[:0:0], src.ApprovedRoutes...)
+	dst.AutoApprovedRoutes = append(src.AutoApprovedRoutes[:0:0], src.AutoApprovedRoutes...)
 	if dst.DeletedAt != nil {
 		dst.DeletedAt = new(*src.DeletedAt)
 	}
@@ -82,32 +83,35 @@ func (src *Node) Clone() *Node {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _NodeCloneNeedsRegeneration = Node(struct {
-	ID             NodeID
-	MachineKey     key.MachinePublic
-	NodeKey        key.NodePublic
-	DiscoKey       key.DiscoPublic
-	Endpoints      AddrPorts
-	Hostinfo       *tailcfg.Hostinfo
-	IPv4           *netip.Addr
-	IPv6           *netip.Addr
-	Hostname       string
-	GivenName      string
-	UserID         *uint
-	User           *User
-	RegisterMethod string
-	Tags           Strings
-	AuthKeyID      *uint64
-	AuthKey        *Credential
-	Expiry         *time.Time
-	LastSeen       *time.Time
-	ApprovedRoutes Prefixes
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	DeletedAt      *time.Time
-	IsOnline       *bool
-	Unhealthy      bool
-	ActiveSessions int
-	SessionEpoch   uint64
+	ID                 NodeID
+	MachineKey         key.MachinePublic
+	NodeKey            key.NodePublic
+	DiscoKey           key.DiscoPublic
+	Endpoints          AddrPorts
+	Hostinfo           *tailcfg.Hostinfo
+	IPv4               *netip.Addr
+	IPv6               *netip.Addr
+	Hostname           string
+	GivenName          string
+	UserID             *uint
+	User               *User
+	RegisterMethod     string
+	Tags               Strings
+	AuthKeyID          *uint64
+	AuthKey            *Credential
+	Ephemeral          bool
+	Expiry             *time.Time
+	LastSeen           *time.Time
+	ApprovedRoutes     Prefixes
+	AutoApprovedRoutes Prefixes
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	DeletedAt          *time.Time
+	IsOnline           *bool
+	Unhealthy          bool
+	ActiveSessions     int
+	SessionEpoch       uint64
+	SessionStart       time.Time
 }{})
 
 // Clone makes a deep copy of PreAuthKey.
@@ -140,19 +144,20 @@ func (src *PreAuthKey) Clone() *PreAuthKey {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _PreAuthKeyCloneNeedsRegeneration = PreAuthKey(struct {
-	ID          uint64
-	Prefix      string
-	Hash        []byte
-	UserID      *uint
-	User        *User
-	Description string
-	Reusable    bool
-	Ephemeral   bool
-	Used        bool
-	Tags        []string
-	CreatedAt   *time.Time
-	Expiration  *time.Time
-	Revoked     *time.Time
+	ID             uint64
+	Prefix         string
+	Hash           []byte
+	UserID         *uint
+	User           *User
+	Description    string
+	Reusable       bool
+	Ephemeral      bool
+	Used           bool
+	Tags           []string
+	CreatedByToken bool
+	CreatedAt      *time.Time
+	Expiration     *time.Time
+	Revoked        *time.Time
 }{})
 
 // Clone makes a deep copy of Credential.
@@ -189,21 +194,22 @@ func (src *Credential) Clone() *Credential {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _CredentialCloneNeedsRegeneration = Credential(struct {
-	ID          uint64
-	Kind        CredentialKind
-	Identifier  string
-	Hash        []byte
-	UserID      *uint
-	User        *User
-	Description string
-	Scopes      []string
-	Tags        []string
-	Reusable    bool
-	Ephemeral   bool
-	Used        bool
-	LastSeen    *time.Time
-	ClientID    string
-	CreatedAt   *time.Time
-	Expiration  *time.Time
-	Revoked     *time.Time
+	ID             uint64
+	Kind           CredentialKind
+	Identifier     string
+	Hash           []byte
+	UserID         *uint
+	User           *User
+	Description    string
+	Scopes         []string
+	Tags           []string
+	Reusable       bool
+	Ephemeral      bool
+	Used           bool
+	LastSeen       *time.Time
+	ClientID       string
+	CreatedByToken bool
+	CreatedAt      *time.Time
+	Expiration     *time.Time
+	Revoked        *time.Time
 }{})

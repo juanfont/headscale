@@ -286,19 +286,20 @@ func TestAPIv2Key_Delete(t *testing.T) {
 	require.Equal(t, http.StatusOK, api.Delete("/api/v2/tailnet/-/keys/"+created.ID).Code)
 
 	// DELETE soft-revokes (Tailscale-faithful): the key stays retrievable with
-	// invalid set and a revoked timestamp, and is still listed.
+	// invalid set and a revoked timestamp, but listings leave it out.
 	got := getKey(t, api, created.ID)
 	assert.True(t, got.Invalid, "revoked key reports invalid")
 	assert.NotNil(t, got.Revoked, "revoked timestamp is populated")
-	assert.True(t, containsKeyID(listKeys(t, api), created.ID), "revoked key still listed")
+	assert.False(t, containsKeyID(listKeys(t, api), created.ID), "revoked key not listed")
 
 	// Server-side: row kept, revoked stamped.
 	pak := srvKey(t, app, created.ID)
 	require.NotNil(t, pak.Revoked)
 	require.Error(t, pak.Validate(), "revoked key is invalid")
 
-	// Delete again -> 404 (already revoked).
-	assert.Equal(t, http.StatusNotFound, api.Delete("/api/v2/tailnet/-/keys/"+created.ID).Code)
+	// Delete again -> 200, as Tailscale answers; the first revoke time stays.
+	assert.Equal(t, http.StatusOK, api.Delete("/api/v2/tailnet/-/keys/"+created.ID).Code)
+	assert.Equal(t, pak.Revoked, srvKey(t, app, created.ID).Revoked)
 
 	// The collector hard-deletes keys revoked before the cutoff.
 	reaped, err := app.state.DestroyRevokedPreAuthKeysBefore(time.Now().Add(time.Minute))
@@ -306,6 +307,7 @@ func TestAPIv2Key_Delete(t *testing.T) {
 	assert.GreaterOrEqual(t, reaped, 1)
 	assert.False(t, containsKeyID(listKeys(t, api), created.ID), "collector removed the revoked key")
 	assert.Equal(t, http.StatusNotFound, api.Get("/api/v2/tailnet/-/keys/"+created.ID).Code)
+	assert.Equal(t, http.StatusNotFound, api.Delete("/api/v2/tailnet/-/keys/"+created.ID).Code)
 }
 
 func TestAPIv2Key_Create_NoTags_NoOwner_400(t *testing.T) {

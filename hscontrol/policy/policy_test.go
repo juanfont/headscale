@@ -385,6 +385,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":    "",
 						"*":    "=",
 						"root": "",
 					},
@@ -424,6 +425,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":    "",
 						"*":    "=",
 						"root": "",
 					},
@@ -538,6 +540,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":                 "",
 						"autogroup:invalid": "autogroup:invalid",
 						"root":              "",
 					},
@@ -577,6 +580,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":    "",
 						"*":    "=",
 						"root": "",
 					},
@@ -616,6 +620,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":    "",
 						"*":    "=",
 						"root": "root",
 					},
@@ -655,6 +660,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":      "",
 						"root":   "root",
 						"ubuntu": "ubuntu",
 					},
@@ -705,6 +711,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":      "",
 						"debian": "debian",
 						"root":   "",
 					},
@@ -738,7 +745,7 @@ func TestSSHPolicyRules(t *testing.T) {
 			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.6"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action: &tailcfg.SSHAction{
 						Accept:                    true,
 						AllowAgentForwarding:      true,
@@ -758,7 +765,7 @@ func TestSSHPolicyRules(t *testing.T) {
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.7"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action: &tailcfg.SSHAction{
 						Accept:                    true,
 						AllowAgentForwarding:      true,
@@ -799,7 +806,7 @@ func TestSSHPolicyRules(t *testing.T) {
 			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.6"}},
-					SSHUsers:   map[string]string{"root": "root"},
+					SSHUsers:   map[string]string{"0": "", "root": "root"},
 					Action: &tailcfg.SSHAction{
 						Accept:                    true,
 						AllowAgentForwarding:      true,
@@ -1610,5 +1617,78 @@ func TestReduceRoutes(t *testing.T) {
 				t.Errorf("ReduceRoutes() unexpected result (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestReduceRoutesDerivesNodeRoutesOnce(t *testing.T) {
+	routes := make([]netip.Prefix, 16)
+
+	ip := netip.MustParseAddr("10.0.0.0")
+	for i := range routes {
+		routes[i] = netip.PrefixFrom(ip, 32)
+		ip = ip.Next()
+	}
+
+	n := &types.Node{
+		IPv4:           ap("100.64.0.1"),
+		Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: routes},
+		ApprovedRoutes: routes,
+	}
+	matchers := matcher.MatchesFromFilterRules([]tailcfg.FilterRule{{
+		SrcIPs: []string{"*"},
+		DstPorts: []tailcfg.NetPortRange{{
+			IP: "192.0.2.0/24", Ports: tailcfg.PortRangeAny,
+		}},
+	}})
+
+	var reduced []netip.Prefix
+
+	single := testing.AllocsPerRun(3, func() {
+		reduced = ReduceRoutes(n.View(), routes[:1], matchers)
+	})
+
+	require.Nil(t, reduced)
+
+	bulk := testing.AllocsPerRun(3, func() {
+		reduced = ReduceRoutes(n.View(), routes, matchers)
+	})
+
+	require.Nil(t, reduced)
+	require.LessOrEqual(t, bulk, single+1,
+		"route derivation must not repeat for each candidate",
+	)
+}
+
+func BenchmarkReduceRoutesOwnPrimaries(b *testing.B) {
+	routes := make([]netip.Prefix, 1000)
+
+	ip := netip.MustParseAddr("10.0.0.0")
+	for i := range routes {
+		routes[i] = netip.PrefixFrom(ip, 32)
+		ip = ip.Next()
+	}
+
+	n := &types.Node{
+		IPv4:           ap("100.64.0.1"),
+		Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: routes},
+		ApprovedRoutes: routes,
+	}
+	matchers := matcher.MatchesFromFilterRules([]tailcfg.FilterRule{{
+		SrcIPs: []string{"*"},
+		DstPorts: []tailcfg.NetPortRange{{
+			IP: "192.0.2.0/24", Ports: tailcfg.PortRangeAny,
+		}},
+	}})
+
+	var reduced []netip.Prefix
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		reduced = ReduceRoutes(n.View(), routes, matchers)
+	}
+
+	if len(reduced) != 0 {
+		b.Fatal("unmatched primaries must not be returned")
 	}
 }

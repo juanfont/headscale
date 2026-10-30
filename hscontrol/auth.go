@@ -203,9 +203,11 @@ func (h *Headscale) handleLogout(
 			Bool("unexpected", true).
 			Msg("Node key expired, forcing re-authentication")
 
+		// The machine stays authorised, as on Tailscale SaaS; only its node
+		// key needs replacing.
 		return &tailcfg.RegisterResponse{
 			NodeKeyExpired:    true,
-			MachineAuthorized: false,
+			MachineAuthorized: true,
 			AuthURL:           "", // Client will need to re-authenticate
 		}, nil
 	}
@@ -216,9 +218,22 @@ func (h *Headscale) handleLogout(
 	// that the node is not attempting to tamper/extend their expiry.
 	// If it is not, we will expire the node or in the case of an ephemeral node, delete it.
 
-	// The client is trying to extend their key, this is not allowed.
+	// A client may bring its expiry forward, as `tailscale debug set-expire`
+	// does and Tailscale SaaS stores, which turns expiry on for a node without
+	// one. It may not push the expiry back.
 	if req.Expiry.After(time.Now()) {
-		return nil, NewHTTPError(http.StatusBadRequest, "extending key is not allowed", nil)
+		updatedNode, c, err := h.state.BringNodeExpiryForward(node.ID(), req.NodeKey, req.Expiry)
+		h.Change(c)
+
+		if errors.Is(err, state.ErrExpiryExtension) {
+			return nil, NewHTTPError(http.StatusBadRequest, "extending key is not allowed", nil)
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("setting node expiry: %w", err)
+		}
+
+		return nodeToRegisterResponse(updatedNode), nil
 	}
 
 	// If the request expiry is in the past, we consider it a logout.
@@ -243,9 +258,10 @@ func (h *Headscale) handleLogout(
 				return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 			}
 
+			// The node was authorised to log out; Tailscale answers so too.
 			return &tailcfg.RegisterResponse{
 				NodeKeyExpired:    true,
-				MachineAuthorized: false,
+				MachineAuthorized: true,
 			}, nil
 		}
 
@@ -254,22 +270,9 @@ func (h *Headscale) handleLogout(
 			Msg("Node is not ephemeral, setting expiry instead of deleting")
 	}
 
-	// Tagged nodes have key expiry permanently disabled (they are owned by
-	// their tags, not a user, and never expire - KB 1068). Logging one out has
-	// no expiry semantics, so do not stamp an expiry on it: doing so leaves the
-	// node IsExpired() forever and it can never re-authenticate (#3371). The
-	// admin path `headscale nodes expire` remains free to set a deliberate
-	// expiry via SetNodeExpiry; only the logout path is guarded here.
-	if node.IsTagged() {
-		log.Debug().
-			EmbedObject(node).
-			Msg("Tagged node logout: not stamping expiry (tagged nodes never expire)")
-
-		return nodeToRegisterResponse(node), nil
-	}
-
 	// Update the internal state with the nodes new expiry, meaning it is
-	// logged out.
+	// logged out. A tagged node is expired too, as on Tailscale SaaS; a valid
+	// key under a new node key brings it back (#3371).
 	//
 	// Clamp the client-supplied value to now: Tailscale sends the
 	// sentinel time.Unix(123, 0) on logout (controlclient/direct.go),
@@ -466,8 +469,17 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		req,
 		machineKey,
 	)
+	// A committed node can come back with an error, so arm before checking it.
+	if node.Valid() && node.IsEphemeral() {
+		h.ephemeralGC.Schedule(node.ID(), h.cfg.Node.Ephemeral.InactivityTimeout)
+	}
+
 	if err != nil {
 		h.Change(changed)
+
+		if errors.Is(err, state.ErrNodeKeyExpired) {
+			return &tailcfg.RegisterResponse{NodeKeyExpired: true, MachineAuthorized: true}, nil
+		}
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
@@ -486,27 +498,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		return nil, nil //nolint:nilnil // intentional: no node to return when ephemeral deleted
 	}
 
-	// This is a bit of a back and forth, but we have a bit of a chicken and egg
-	// dependency here.
-	// Because the way the policy manager works, we need to have the node
-	// in the database, then add it to the policy manager and then we can
-	// approve the route. This means we get this dance where the node is
-	// first added to the database, then we add it to the policy manager via
-	// nodesChangedHook and then we can auto approve the routes.
-	// As that only approves the struct object, we need to save it again and
-	// ensure we send an update.
-	// This works, but might be another good candidate for doing some sort of
-	// eventbus.
-	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
-	// now since we dont update the node/pol here anymore
-	routesChange, err := h.state.AutoApproveRoutes(node)
-
-	// Send both changes. Empty changes are ignored by Change().
-	h.Change(changed, routesChange)
-
-	if err != nil {
-		return nil, fmt.Errorf("auto approving routes: %w", err)
-	}
+	h.Change(changed)
 
 	resp := &tailcfg.RegisterResponse{
 		MachineAuthorized: true,

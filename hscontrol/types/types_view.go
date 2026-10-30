@@ -236,7 +236,12 @@ func (v NodeView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
 // authkey), which is what auth_key_id references.
 func (v NodeView) AuthKeyID() views.ValuePointer[uint64] { return views.ValuePointerOf(v.ж.AuthKeyID) }
 
-func (v NodeView) AuthKey() CredentialView               { return v.ж.AuthKey.View() }
+func (v NodeView) AuthKey() CredentialView { return v.ж.AuthKey.View() }
+
+// Ephemeral is taken from the key the node was created with. Logging in
+// again with another key keeps it, as Tailscale does; a user claiming a
+// tagged node clears it.
+func (v NodeView) Ephemeral() bool                       { return v.ж.Ephemeral }
 func (v NodeView) Expiry() views.ValuePointer[time.Time] { return views.ValuePointerOf(v.ж.Expiry) }
 
 // LastSeen is when the node was last in contact with
@@ -251,6 +256,13 @@ func (v NodeView) LastSeen() views.ValuePointer[time.Time] {
 // See [Node.Hostinfo]
 func (v NodeView) ApprovedRoutes() views.Slice[netip.Prefix] {
 	return views.SliceOf(v.ж.ApprovedRoutes)
+}
+
+// AutoApprovedRoutes are the approved routes only auto-approval granted.
+// The node loses one when it stops announcing it; a route an admin
+// approved stays.
+func (v NodeView) AutoApprovedRoutes() views.Slice[netip.Prefix] {
+	return views.SliceOf(v.ж.AutoApprovedRoutes)
 }
 func (v NodeView) CreatedAt() time.Time { return v.ж.CreatedAt }
 func (v NodeView) UpdatedAt() time.Time { return v.ж.UpdatedAt }
@@ -281,36 +293,45 @@ func (v NodeView) ActiveSessions() int { return v.ж.ActiveSessions }
 // returned by Connect as a "Connect ran" sentinel for its cleanup,
 // and Disconnect logs it. Runtime-only.
 func (v NodeView) SessionEpoch() uint64 { return v.ж.SessionEpoch }
-func (v NodeView) String() string       { return v.ж.String() }
+
+// SessionStart is when the node's current run of control sessions
+// began: [State.Connect] sets it as the first of them opens, and an
+// overlapping reconnect keeps it. Primary election prefers the
+// oldest. Runtime-only.
+func (v NodeView) SessionStart() time.Time { return v.ж.SessionStart }
+func (v NodeView) String() string          { return v.ж.String() }
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _NodeViewNeedsRegeneration = Node(struct {
-	ID             NodeID
-	MachineKey     key.MachinePublic
-	NodeKey        key.NodePublic
-	DiscoKey       key.DiscoPublic
-	Endpoints      AddrPorts
-	Hostinfo       *tailcfg.Hostinfo
-	IPv4           *netip.Addr
-	IPv6           *netip.Addr
-	Hostname       string
-	GivenName      string
-	UserID         *uint
-	User           *User
-	RegisterMethod string
-	Tags           Strings
-	AuthKeyID      *uint64
-	AuthKey        *Credential
-	Expiry         *time.Time
-	LastSeen       *time.Time
-	ApprovedRoutes Prefixes
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	DeletedAt      *time.Time
-	IsOnline       *bool
-	Unhealthy      bool
-	ActiveSessions int
-	SessionEpoch   uint64
+	ID                 NodeID
+	MachineKey         key.MachinePublic
+	NodeKey            key.NodePublic
+	DiscoKey           key.DiscoPublic
+	Endpoints          AddrPorts
+	Hostinfo           *tailcfg.Hostinfo
+	IPv4               *netip.Addr
+	IPv6               *netip.Addr
+	Hostname           string
+	GivenName          string
+	UserID             *uint
+	User               *User
+	RegisterMethod     string
+	Tags               Strings
+	AuthKeyID          *uint64
+	AuthKey            *Credential
+	Ephemeral          bool
+	Expiry             *time.Time
+	LastSeen           *time.Time
+	ApprovedRoutes     Prefixes
+	AutoApprovedRoutes Prefixes
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	DeletedAt          *time.Time
+	IsOnline           *bool
+	Unhealthy          bool
+	ActiveSessions     int
+	SessionEpoch       uint64
+	SessionStart       time.Time
 }{})
 
 // View returns a read-only view of PreAuthKey.
@@ -404,6 +425,9 @@ func (v PreAuthKeyView) Used() bool          { return v.ж.Used }
 // Tags are copied to the node during registration.
 // If non-empty, this creates tagged nodes (not user-owned).
 func (v PreAuthKeyView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
+
+// CreatedByToken is set when an OAuth access token made the key.
+func (v PreAuthKeyView) CreatedByToken() bool { return v.ж.CreatedByToken }
 func (v PreAuthKeyView) CreatedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.CreatedAt)
 }
@@ -421,19 +445,20 @@ func (v PreAuthKeyView) Revoked() views.ValuePointer[time.Time] {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _PreAuthKeyViewNeedsRegeneration = PreAuthKey(struct {
-	ID          uint64
-	Prefix      string
-	Hash        []byte
-	UserID      *uint
-	User        *User
-	Description string
-	Reusable    bool
-	Ephemeral   bool
-	Used        bool
-	Tags        []string
-	CreatedAt   *time.Time
-	Expiration  *time.Time
-	Revoked     *time.Time
+	ID             uint64
+	Prefix         string
+	Hash           []byte
+	UserID         *uint
+	User           *User
+	Description    string
+	Reusable       bool
+	Ephemeral      bool
+	Used           bool
+	Tags           []string
+	CreatedByToken bool
+	CreatedAt      *time.Time
+	Expiration     *time.Time
+	Revoked        *time.Time
 }{})
 
 // View returns a read-only view of Credential.
@@ -526,6 +551,10 @@ func (v CredentialView) LastSeen() views.ValuePointer[time.Time] {
 // ClientID links an OAuth access token (Kind == CredentialOAuthToken) back to
 // the Identifier of its issuing OAuth client.
 func (v CredentialView) ClientID() string { return v.ж.ClientID }
+
+// CreatedByToken marks a pre-auth key an OAuth access token made: a token
+// lists those without all=true.
+func (v CredentialView) CreatedByToken() bool { return v.ж.CreatedByToken }
 func (v CredentialView) CreatedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.CreatedAt)
 }
@@ -540,21 +569,22 @@ func (v CredentialView) Revoked() views.ValuePointer[time.Time] {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _CredentialViewNeedsRegeneration = Credential(struct {
-	ID          uint64
-	Kind        CredentialKind
-	Identifier  string
-	Hash        []byte
-	UserID      *uint
-	User        *User
-	Description string
-	Scopes      []string
-	Tags        []string
-	Reusable    bool
-	Ephemeral   bool
-	Used        bool
-	LastSeen    *time.Time
-	ClientID    string
-	CreatedAt   *time.Time
-	Expiration  *time.Time
-	Revoked     *time.Time
+	ID             uint64
+	Kind           CredentialKind
+	Identifier     string
+	Hash           []byte
+	UserID         *uint
+	User           *User
+	Description    string
+	Scopes         []string
+	Tags           []string
+	Reusable       bool
+	Ephemeral      bool
+	Used           bool
+	LastSeen       *time.Time
+	ClientID       string
+	CreatedByToken bool
+	CreatedAt      *time.Time
+	Expiration     *time.Time
+	Revoked        *time.Time
 }{})

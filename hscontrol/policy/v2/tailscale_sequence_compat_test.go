@@ -34,13 +34,6 @@ import (
 // keyed <test_id>/<step>/<node>/<check>. A listed check that matches fails,
 // so a fix must delete its entry.
 var policySequenceSkipReasons = map[string]string{
-	"policy-generation/G0/srv/filter": aclDstDedupe,
-	"policy-generation/G1/srv/filter": aclDstDedupe,
-	"policy-generation/G2/srv/filter": aclDstDedupe,
-	"policy-generation/G3/srv/filter": aclDstDedupe,
-	"policy-generation/G4/srv/filter": aclDstDedupe,
-	"policy-generation/G5/srv/filter": aclDstDedupe,
-
 	"policy-generation/G0/rt/filter":   viaRuleMerged,
 	"policy-generation/G1/rt/filter":   viaRuleMerged,
 	"policy-generation/G2/rt/filter":   viaRuleMerged,
@@ -48,38 +41,6 @@ var policySequenceSkipReasons = map[string]string{
 	"policy-generation/G3/rt-b/filter": viaRuleMerged,
 	"policy-generation/G4/rt-b/filter": viaRuleMerged,
 	"policy-generation/G5/rt-b/filter": viaRuleMerged,
-
-	"policy-generation/G0/odin-1/uid-zero":  sshUIDZero,
-	"policy-generation/G0/srv/uid-zero":     sshUIDZero,
-	"policy-generation/G0/thor-1/uid-zero":  sshUIDZero,
-	"policy-generation/G1/freya-1/uid-zero": sshUIDZero,
-	"policy-generation/G1/odin-1/uid-zero":  sshUIDZero,
-	"policy-generation/G1/srv/uid-zero":     sshUIDZero,
-	"policy-generation/G1/thor-1/uid-zero":  sshUIDZero,
-	"policy-generation/G2/freya-1/uid-zero": sshUIDZero,
-	"policy-generation/G2/odin-1/uid-zero":  sshUIDZero,
-	"policy-generation/G2/srv/uid-zero":     sshUIDZero,
-	"policy-generation/G2/thor-1/uid-zero":  sshUIDZero,
-	"policy-generation/G2/thor-2/uid-zero":  sshUIDZero,
-	"policy-generation/G3/freya-1/uid-zero": sshUIDZero,
-	"policy-generation/G3/odin-1/uid-zero":  sshUIDZero,
-	"policy-generation/G3/srv/uid-zero":     sshUIDZero,
-	"policy-generation/G3/thor-1/uid-zero":  sshUIDZero,
-	"policy-generation/G3/thor-2/uid-zero":  sshUIDZero,
-	"policy-generation/G4/freya-1/uid-zero": sshUIDZero,
-	"policy-generation/G4/odin-1/uid-zero":  sshUIDZero,
-	"policy-generation/G4/srv/uid-zero":     sshUIDZero,
-	"policy-generation/G4/thor-1/uid-zero":  sshUIDZero,
-	"policy-generation/G4/thor-2/uid-zero":  sshUIDZero,
-	"policy-generation/G5/freya-1/uid-zero": sshUIDZero,
-	"policy-generation/G5/odin-1/uid-zero":  sshUIDZero,
-	"policy-generation/G5/srv/uid-zero":     sshUIDZero,
-	"policy-generation/G5/thor-2/uid-zero":  sshUIDZero,
-	"policy-generation/G7/freya-1/uid-zero": sshUIDZero,
-	"policy-generation/G7/odin-1/uid-zero":  sshUIDZero,
-	"policy-generation/G7/srv/uid-zero":     sshUIDZero,
-	"policy-generation/G8/freya-1/uid-zero": sshUIDZero,
-	"policy-generation/G8/odin-1/uid-zero":  sshUIDZero,
 }
 
 const viaRuleMerged = "VIA_RULE_MERGED: on a via router headscale merges the via grant's filter rule with an ACL rule of the same sources; SaaS sends the two apart"
@@ -89,6 +50,7 @@ const viaRuleMerged = "VIA_RULE_MERGED: on a via router headscale merges the via
 var policySequenceNotCompared = []string{
 	"policy-generation/G7/rt-plain/filter",
 	"policy-generation/G7/srv/ssh-rules",
+	"policy-generation/G7/srv/uid-zero",
 	"policy-generation/G7/srv/filter",
 	"policy-generation/G7/rt-b/filter",
 }

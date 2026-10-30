@@ -202,9 +202,14 @@ func registerPreAuthKeys(api huma.API, b Backend) {
 
 		out := &listPreAuthKeysOutput{}
 
-		out.Body.PreAuthKeys = make([]PreAuthKey, len(preAuthKeys))
+		out.Body.PreAuthKeys = make([]PreAuthKey, 0, len(preAuthKeys))
 		for i := range preAuthKeys {
-			out.Body.PreAuthKeys[i] = preAuthKeyToResponse(&preAuthKeys[i])
+			if preAuthKeys[i].Revoked == nil {
+				out.Body.PreAuthKeys = append(
+					out.Body.PreAuthKeys,
+					preAuthKeyToResponse(&preAuthKeys[i]),
+				)
+			}
 		}
 
 		return out, nil

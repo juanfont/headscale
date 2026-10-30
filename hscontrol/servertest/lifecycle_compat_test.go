@@ -35,67 +35,7 @@ import (
 // <test_id>/<step>[/<node or action index>]/<check>, with "collection" for
 // the step of what killed nodes leave behind. A listed check that matches
 // fails, so a fix must delete its entry.
-var lifecycleSkipReasons = map[string]string{
-	"route-approval/b6/enabled":     approvalOnHostinfo,
-	"route-approval/b6/served":      approvalOnHostinfo,
-	"route-approval/b6/self-routes": approvalOnHostinfo,
-
-	"route-approval/b7/enabled":     approvalOnPolicy,
-	"route-approval/b7/served":      approvalOnPolicy,
-	"route-approval/b7/self-routes": approvalOnPolicy,
-	"route-approval/b8/enabled":     approvalOnPolicy,
-	"route-approval/b8/served":      approvalOnPolicy,
-	"route-approval/b8/self-routes": approvalOnPolicy,
-
-	"route-approval/b9/enabled":     approvalOnSameKeyReauth,
-	"route-approval/b9/served":      approvalOnSameKeyReauth,
-	"route-approval/b9/self-routes": approvalOnSameKeyReauth,
-
-	"route-approval/r1/served": loggedOutRouterUnserved,
-
-	"ephemeral-lifecycle/E1-logout/eph-logout/outcome":      logoutAnswerUnauthorized,
-	"ephemeral-lifecycle/E1-logout/eph-logout-user/outcome": logoutAnswerUnauthorized,
-
-	"ephemeral-lifecycle/E3-key-delete/2/keys":   deletedKeyListed,
-	"ephemeral-lifecycle/E3-key-delete/3/keys":   deletedKeyListed,
-	"ephemeral-lifecycle/E3-key-delete/4/status": deletedKeyDeleteNotFound,
-
-	"ephemeral-lifecycle/E4-reauth-other-key/eph-to-perm/ephemeral": ephemeralFollowsKey,
-	"ephemeral-lifecycle/E4-reauth-other-key/perm-to-eph/ephemeral": ephemeralFollowsKey,
-
-	"ephemeral-lifecycle/collection/eph-to-perm/left":             ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/eph-to-perm/removed-observer": ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/eph-to-perm/present-observer": ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/perm-to-eph/left":             ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/perm-to-eph/removed-observer": ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/perm-to-eph/present-observer": ephemeralFollowsKey,
-
-	"ephemeral-lifecycle/E5-mem-shutdown/mem/expiry":        taggedLogoutNotExpired,
-	"ephemeral-lifecycle/E5-mem-shutdown/mem/outcome":       taggedLogoutNotExpired,
-	"ephemeral-lifecycle/E5-mem-shutdown/mem/peer-observer": taggedLogoutNotExpired,
-}
-
-// SaaS runs auto-approval when a router's announced routes change and on a
-// re-auth that rotates its node key, over every announced route.
-const (
-	approvalOnHostinfo      = "APPROVAL_ON_HOSTINFO: headscale auto-approves when a router with no approved routes sends a Hostinfo change that keeps its routes; SaaS does not"
-	approvalOnPolicy        = "APPROVAL_ON_POLICY: headscale auto-approves announced routes when a policy is set; SaaS waits for the router's next route change or key rotation"
-	approvalOnSameKeyReauth = "APPROVAL_ON_SAME_KEY_REAUTH: headscale auto-approves on a re-auth that keeps the node key; SaaS does not"
-	loggedOutRouterUnserved = "LOGGED_OUT_ROUTER_UNSERVED: headscale stops serving a logged-out router's routes; SaaS keeps them on the expired, offline peer"
-)
-
-const (
-	logoutAnswerUnauthorized = "LOGOUT_ANSWER_UNAUTHORIZED: headscale answers the logout that deletes an ephemeral node with MachineAuthorized false; SaaS answers true"
-	deletedKeyListed         = "DELETED_KEY_LISTED: headscale lists a deleted auth key; SaaS leaves it out of both key lists, while a read by ID still answers"
-	deletedKeyDeleteNotFound = "DELETED_KEY_DELETE_NOT_FOUND: headscale answers 404 to a second delete of an auth key; SaaS answers 200"
-	ephemeralFollowsKey      = "EPHEMERAL_FOLLOWS_KEY: headscale takes a node's ephemeral flag from the key it last logged in with; SaaS keeps the flag the device was created with, so it is collected, or kept, as created"
-)
-
-// Used by reauthSkipReasons.
-const (
-	expiredRouterUnserved = "EXPIRED_ROUTER_UNSERVED: headscale stops serving an expired router's routes; SaaS keeps them in the peer's AllowedIPs and PrimaryRoutes"
-	expiredPeerOffline    = "EXPIRED_PEER_OFFLINE: headscale shows an expired peer offline while it is connected; SaaS shows it online"
-)
+var lifecycleSkipReasons = map[string]string{}
 
 // TestRouteApprovalCompat replays a user-owned router through admin
 // approvals and revokes, same-key and forced re-auth, a hostname change,

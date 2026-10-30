@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"maps"
 	"net/netip"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
+	"tailscale.com/util/set"
 	"tailscale.com/util/truncate"
 )
 
@@ -70,8 +72,8 @@ const (
 // ErrUnsupportedPolicyMode is returned for invalid policy modes. Valid modes are "file" and "db".
 var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 
-// ErrInvalidPolicy is returned by [State.ValidatePolicy] for a policy it
-// refuses.
+// ErrInvalidPolicy is returned by [State.UpdatePolicy] and
+// [State.ValidatePolicy] for a policy they refuse.
 var ErrInvalidPolicy = errors.New("invalid policy")
 
 // invalidPolicyError marks a refusal as [ErrInvalidPolicy] and keeps the
@@ -90,8 +92,9 @@ var ErrInvalidNodeView = errors.New("invalid node view provided")
 // ErrNodeNotInNodeStore is returned when a node no longer exists in the [NodeStore].
 var ErrNodeNotInNodeStore = errors.New("node no longer exists in NodeStore")
 
-// ErrNodeNameNotUnique is returned when a node name is not unique.
-var ErrNodeNameNotUnique = errors.New("node name is not unique")
+// ErrNodeNameNotUnique is returned when a node name is not unique, wrapped
+// as `name "X" is already taken`.
+var ErrNodeNameNotUnique = errors.New("already taken")
 
 // nodeUpdateColumns lists all Node columns that should be written
 // during a struct-based GORM Updates() call.  Listing them explicitly
@@ -104,9 +107,6 @@ var ErrNodeNameNotUnique = errors.New("node name is not unique")
 //     PreAuthKey references after a key has been deleted (#2862).
 //   - User: GORM association, not a real column.
 //   - IsOnline: runtime-only field (gorm:"-").
-//
-// Expiry is included here but may be omitted at call sites that must
-// not touch it (see persistNodeAndRefreshPolicy).
 var nodeUpdateColumns = []string{
 	"MachineKey",
 	"NodeKey",
@@ -120,9 +120,11 @@ var nodeUpdateColumns = []string{
 	"UserID",
 	"RegisterMethod",
 	"Tags",
+	"Ephemeral",
 	"Expiry",
 	"LastSeen",
 	"ApprovedRoutes",
+	"AutoApprovedRoutes",
 	"UpdatedAt",
 }
 
@@ -141,10 +143,21 @@ var ErrAuthCacheClosed = errors.New("authentication cache closed")
 // ErrAuthRequestFinished prevents reusing an already resolved verdict channel.
 var ErrAuthRequestFinished = errors.New("authentication request already finished")
 
+// ErrNodeKeyExpired is returned when an expired node logs in again under its
+// old node key; the client answers it by rotating the key.
+var ErrNodeKeyExpired = errors.New("node key expired")
+
 // ErrNodeKeyInUse is returned when a registration or re-auth claims a NodeKey
 // already bound to a different machine, enforcing the 1:1 NodeKey<->MachineKey
 // binding.
 var ErrNodeKeyInUse = errors.New("node key already in use by another machine")
+
+// ErrExpiryExtension is returned when a client asks for an expiry no earlier
+// than its node's, or under a node key the node no longer holds.
+var ErrExpiryExtension = errors.New("extending key is not allowed")
+
+// ErrNodeKeyNotCurrent is returned when a map request uses a replaced node key.
+var ErrNodeKeyNotCurrent = errors.New("node key is no longer current")
 
 // ErrAmbiguousNodeOwnership is returned when a machine key maps to a set of
 // nodes from which the correct one to update or convert cannot be determined:
@@ -158,6 +171,11 @@ var ErrAmbiguousNodeOwnership = errors.New("machine key maps to ambiguous node o
 type sshCheckPair struct {
 	Src types.NodeID
 	Dst types.NodeID
+}
+
+type sshCheckAuthRecord struct {
+	at  time.Time
+	src types.NodeView
 }
 
 // State manages Headscale's core state, coordinating between database, policy management,
@@ -181,6 +199,10 @@ type State struct {
 	derpMap atomic.Pointer[tailcfg.DERPMap]
 	// polMan handles policy evaluation and management
 	polMan policy.PolicyManager
+
+	// policyMu makes storing, loading and installing a policy one step, so
+	// policies land in the database in the order they are installed.
+	policyMu sync.Mutex
 
 	// authCache holds pending Web, OIDC and SSH authentication requests.
 	// Admission preserves unexpired entries at capacity. Expiry resolves the
@@ -210,13 +232,24 @@ type State struct {
 	//
 	// Ref: https://github.com/tailscale/tailscale/issues/10480
 	// Ref: https://github.com/tailscale/tailscale/issues/7125
-	sshCheckAuth map[sshCheckPair]time.Time
+	sshCheckAuth map[sshCheckPair]sshCheckAuthRecord
 	sshCheckMu   sync.RWMutex
 
 	// persistMu serialises node-row persistence and deletion so the database
 	// always converges on [NodeStore] rather than being clobbered by a stale
 	// caller snapshot or resurrected by an update racing with deletion.
+	// Every node's persist takes it, so paths a node can trigger must not
+	// hold it across a NodeStore write. Node persists must stay UPDATE-only;
+	// then a persist between the row delete and the NodeStore delete changes
+	// nothing.
 	persistMu sync.Mutex
+
+	// userUpdateMu keeps committed user changes and cached copies in the same order.
+	userUpdateMu sync.Mutex
+
+	// policyUsersMu orders user-list reads with SetUsers, so a list read
+	// before a commit cannot replace one read after it.
+	policyUsersMu sync.Mutex
 
 	// selfRefresh holds nodes whose own DNS config inputs changed (NextDNS
 	// device metadata, given name), drained by [State.DrainSelfRefreshes].
@@ -230,6 +263,10 @@ type State struct {
 	// lock is taken before the request is authenticated, and the client
 	// chooses the machine key.
 	registerLocks *xsync.Map[key.MachinePublic, *registerLock]
+
+	// singleUseKeyLocks orders first uses across machines without retaining
+	// a lock for every key.
+	singleUseKeyLocks [64]sync.Mutex
 }
 
 // registerLock is the registration lock of one machine key. refs counts the
@@ -368,6 +405,10 @@ func NewState(cfg *types.Config) (*State, error) {
 	batchTimeout := cmp.Or(cfg.Tuning.NodeStoreBatchTimeout, defaultNodeStoreBatchTimeout)
 
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
+	polMan.SetRouterSession(nodeStore.RouterSession)
+	nodeStore.reservedLabel = func(label string) bool {
+		return cfg.BaseDomain != "" && cfg.HasExtraRecord(label+"."+cfg.BaseDomain)
+	}
 	nodeStore.Start()
 
 	s := &State{
@@ -380,7 +421,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		nodeStore:           nodeStore,
 		pings:               newPingTracker(),
 
-		sshCheckAuth:  make(map[sshCheckPair]time.Time),
+		sshCheckAuth:  make(map[sshCheckPair]sshCheckAuthRecord),
 		registerLocks: xsync.NewMap[key.MachinePublic, *registerLock](),
 	}
 
@@ -461,18 +502,32 @@ func (s *State) DERPMap() tailcfg.DERPMapView {
 	return s.derpMap.Load().View()
 }
 
-// ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
-// Returns the resulting [change.Change] slice when the policy or routes changed,
-// also alongside an error once the policy is swapped.
+// ReloadPolicy reloads the access control policy.
+//
+// It approves no routes: auto-approval waits for a node's next change to
+// its announced routes or its next node key rotation, as on Tailscale SaaS,
+// so a reload cannot undo an admin's revoke.
 func (s *State) ReloadPolicy() ([]change.Change, error) {
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+
+	return s.reloadPolicyLocked()
+}
+
+// reloadPolicyLocked is [State.ReloadPolicy] for callers holding policyMu.
+func (s *State) reloadPolicyLocked() ([]change.Change, error) {
 	pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
 
-	policyChanged, err := s.polMan.SetPolicy(pol)
-	if err != nil {
-		return nil, fmt.Errorf("setting policy: %w", err)
+	// nil means no policy is configured: nothing to install.
+	var policyChanged bool
+	if pol != nil {
+		policyChanged, err = s.polMan.SetPolicy(pol)
+		if err != nil {
+			return nil, fmt.Errorf("setting policy: %w", err)
+		}
 	}
 
 	// Clear SSH check auth times when policy changes to ensure stale
@@ -495,36 +550,13 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 		s.nodeStore.RebuildPeerMaps()
 	}
 
+	if policyChanged {
+		log.Info().Msg("Policy reload completed with changes")
+	}
+
 	// Nodes whose CapMap shifted get their self refresh from
 	// [State.DrainSelfRefreshes] when these changes are dispatched.
-	//nolint:prealloc // cs starts with one element and may grow
-	cs := []change.Change{change.PolicyChange()}
-
-	// Always call autoApproveNodes during policy reload, regardless of whether
-	// the policy content has changed. This ensures that routes are re-evaluated
-	// when they might have been manually disabled but could now be auto-approved
-	// with the current policy.
-	rcs, err := s.autoApproveNodes()
-	if err != nil {
-		// The policy is already swapped and the approvals already in the
-		// NodeStore; callers publish these before handling the error.
-		return append(cs, rcs...), fmt.Errorf("auto approving nodes: %w", err)
-	}
-
-	// TODO(kradalby): These changes can probably be safely ignored.
-	// If the PolicyChange is happening, that will lead to a full update
-	// meaning that we do not need to send individual route changes.
-	cs = append(cs, rcs...)
-
-	if len(rcs) > 0 || policyChanged {
-		log.Info().
-			Bool("policy.changed", policyChanged).
-			Int("route.changes", len(rcs)).
-			Int("total.changes", len(cs)).
-			Msg("Policy reload completed with changes")
-	}
-
-	return cs, nil
+	return []change.Change{change.PolicyChange()}, nil
 }
 
 // CreateUser creates a new user and updates the policy manager.
@@ -558,18 +590,26 @@ func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) 
 // UpdateUser modifies an existing user using the provided update function within a transaction.
 // Returns the updated user, change set, and any error.
 func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, change.Change, error) {
+	s.userUpdateMu.Lock()
+	defer s.userUpdateMu.Unlock()
+
+	var previous types.User
+
 	user, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
 		user, err := hsdb.GetUserByID(tx, userID)
 		if err != nil {
 			return nil, err
 		}
 
+		previous = *user
+
 		if err := updateFn(user); err != nil { //nolint:noinlineerr
 			return nil, err
 		}
 
-		// Use Updates() to only update modified fields, preserving unchanged values.
-		err = tx.Updates(user).Error
+		// Select every column so cleared fields are written. Save would also
+		// insert the row again if a delete removed it meanwhile.
+		err = tx.Select("*").Updates(user).Error //nolint:unqueryvet // UPDATE, not a read
 		if err != nil {
 			return nil, fmt.Errorf("updating user: %w", err)
 		}
@@ -580,13 +620,57 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 		return nil, change.Change{}, err
 	}
 
+	var profileChanged bool
+
+	previous.UpdatedAt = user.UpdatedAt
+	if previous != *user {
+		updates := make(map[types.NodeID]UpdateNodeFunc)
+
+		var ownerRefreshed bool
+
+		for _, node := range s.nodeStore.ListNodes().All() {
+			owner := node.User()
+			credential := node.AuthKey()
+			owns := owner.Valid() && owner.ID() == user.ID
+			createdKey := credential.Valid() && credential.User().Valid() &&
+				credential.User().ID() == user.ID
+
+			if !owns && !createdKey {
+				continue
+			}
+
+			updates[node.ID()] = func(n *types.Node) {
+				// Recheck ownership after waiting in the writer queue, and replace
+				// shared records so earlier snapshots keep their user data.
+				if n.User != nil && n.User.ID == user.ID {
+					n.User = user.Clone()
+					ownerRefreshed = ownerRefreshed || !n.IsTagged()
+				}
+
+				if n.AuthKey != nil && n.AuthKey.User != nil && n.AuthKey.User.ID == user.ID {
+					n.AuthKey = n.AuthKey.Clone()
+					n.AuthKey.User = user.Clone()
+				}
+			}
+		}
+
+		s.nodeStore.UpdateNodes(updates)
+
+		previousProfile := previous.TailscaleUserProfile()
+		profile := user.TailscaleUserProfile()
+
+		profileChanged = ownerRefreshed && !previousProfile.Equal(&profile)
+	}
+
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerUsers()
 	if err != nil {
 		return user, change.Change{}, fmt.Errorf("updating policy manager after user update: %w", err)
 	}
 
-	// TODO(kradalby): We might want to update nodestore with the user data
+	if profileChanged {
+		c = change.UserAdded()
+	}
 
 	return user, c, nil
 }
@@ -600,6 +684,30 @@ func (s *State) DeleteUser(userID types.UserID) (change.Change, error) {
 	if err != nil {
 		return change.Change{}, err
 	}
+
+	// Tagged keys outlive the user that made them; their NodeStore copies
+	// must stop naming it, as the database already does.
+	dropCreator := func(n *types.Node) {
+		k := n.AuthKey
+		if k == nil || !k.IsTagged() || k.UserID == nil || types.UserID(*k.UserID) != userID {
+			return
+		}
+
+		key := *k
+		key.UserID, key.User = nil, nil
+		n.AuthKey = &key
+	}
+
+	updates := make(map[types.NodeID]UpdateNodeFunc)
+
+	for _, n := range s.nodeStore.ListNodes().All() {
+		if k := n.AuthKey(); k.Valid() && k.Tags().Len() > 0 && k.UserID().Valid() &&
+			types.UserID(k.UserID().Get()) == userID {
+			updates[n.ID()] = dropCreator
+		}
+	}
+
+	s.nodeStore.UpdateNodes(updates)
 
 	// Update policy manager with the new user list (without the deleted user)
 	// This ensures that if the policy references the deleted user, it gets
@@ -653,9 +761,17 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 
 // persistNode writes the node's database row, re-reading the
 // authoritative copy from [NodeStore], without touching the policy manager.
-// Batch callers (e.g. autoApproveNodes) use it to write many rows and then
-// trigger a single policy rebuild instead of one per node.
 func (s *State) persistNode(node types.NodeView) (types.NodeView, error) {
+	return s.persistNodeWith(node, nodeUpdateColumns, nil)
+}
+
+// persistNodeWith writes the current node and any related change in one
+// transaction. inTx runs inside it, with persistMu held.
+func (s *State) persistNodeWith(
+	node types.NodeView,
+	columns []string,
+	inTx func(*gorm.DB) error,
+) (types.NodeView, error) {
 	if !node.Valid() {
 		return types.NodeView{}, ErrInvalidNodeView
 	}
@@ -672,11 +788,10 @@ func (s *State) persistNode(node types.NodeView) (types.NodeView, error) {
 	// ephemeral logout) between the caller's update and this persist: a missing
 	// node means we must not re-insert it.
 	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
 
 	fresh, exists := s.nodeStore.GetNode(node.ID())
 	if !exists {
-		s.persistMu.Unlock()
-
 		log.Warn().
 			EmbedObject(node).
 			Bool("is_ephemeral", node.IsEphemeral()).
@@ -689,11 +804,18 @@ func (s *State) persistNode(node types.NodeView) (types.NodeView, error) {
 
 	// Explicitly select all node columns so GORM includes nil/zero-value
 	// fields (e.g. UserID=nil when converting a user-owned node to tagged).
-	// Omit "Expiry" here: expiry is only updated through explicit
-	// SetNodeExpiry calls or re-registration, not during MapRequest updates.
-	err := s.db.DB.Select(nodeUpdateColumns).Omit("Expiry").Updates(nodePtr).Error
-	s.persistMu.Unlock()
+	err := s.db.Write(func(tx *gorm.DB) error {
+		err := tx.Select(columns).Updates(nodePtr).Error
+		if err != nil {
+			return err
+		}
 
+		if inTx != nil {
+			return inTx(tx)
+		}
+
+		return nil
+	})
 	if err != nil {
 		return types.NodeView{}, fmt.Errorf("saving node: %w", err)
 	}
@@ -759,20 +881,22 @@ func (s *State) DeleteNode(node types.NodeView) ([]change.Change, error) {
 	// node look deleted until the next restart. persistMu stays out of this
 	// write: a persist that still finds the node updates no row, and holding
 	// it would give every concurrent delete a NodeStore batch of its own.
-	s.nodeStore.DeleteNode(node.ID())
+	peers := s.nodeStore.DeleteNode(node.ID())
 
 	s.ipAlloc.FreeIPs(node.IPs())
 
-	// An explicit removal of its own, ahead of the policy refresh, so peers
-	// learn of the deletion without depending on their sent-peers tracking.
-	removed := change.NodeRemoved(node.ID())
+	// Explicit removals of their own, ahead of the policy refresh, so peers
+	// learn of the deletion without depending on their sent-peers tracking,
+	// and nodes the policy hid it from learn nothing.
+	changes := change.NodeRemoved(node.ID(), peers...)
 
 	policyChange, err := s.updatePolicyManagerNodes(genBefore)
 	if err != nil {
-		return []change.Change{removed, policyChange}, fmt.Errorf("updating policy manager after node deletion: %w", err)
+		return append(changes, policyChange),
+			fmt.Errorf("updating policy manager after node deletion: %w", err)
 	}
 
-	return []change.Change{removed, policyChange}, nil
+	return append(changes, policyChange), nil
 }
 
 // Connect acquires a control session and returns the resulting changes
@@ -785,11 +909,25 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 
 	// Reconnecting clears Unhealthy: the node just proved basic
 	// connectivity by completing the Noise handshake.
-	var epoch uint64
+	var (
+		epoch     uint64
+		wasOnline bool
+	)
 
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
+		// A stream that comes back within the reconnect grace finds the
+		// node still online: peers saw no change, as on Tailscale SaaS.
+		wasOnline = n.IsOnline != nil && *n.IsOnline
+
 		n.SessionEpoch++
 		epoch = n.SessionEpoch
+
+		// A reconnect within poll.go's offline grace keeps the age: peers
+		// never saw the node leave, so a blip does not move its routes.
+		if n.ActiveSessions == 0 {
+			n.SessionStart = time.Now()
+		}
+
 		n.ActiveSessions++
 		n.IsOnline = new(n.ShouldBeOnline())
 		n.Unhealthy = false
@@ -798,17 +936,22 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 		return nil, 0
 	}
 
+	log.Info().EmbedObject(node).Msg("node connected")
+
 	// A node coming online sends a lightweight online peer patch. Subnet
 	// routers, relay targets, and via targets get their full peer recompute
 	// from the gated PolicyChange below, so no full update is needed here.
-	c := []change.Change{change.NodeOnline(node.ID())}
-	if !node.Online() {
-		c[0] = change.NodeAdded(node.ID())
+	var c []change.Change
+
+	switch {
+	case !node.Online():
+		c = append(c, change.NodeAdded(node.ID()))
+	case !wasOnline:
+		c = append(c, change.NodeOnline(node.ID()))
 	}
 
-	log.Info().EmbedObject(node).Msg("node connected")
-
-	if !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes()) {
+	routesMoved := !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes())
+	if routesMoved {
 		c = append(c, change.NodeAdded(id))
 	}
 
@@ -817,7 +960,7 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 	// An ordinary node coming online just sends the lightweight online
 	// patch above; emitting a PolicyChange for it would force every peer
 	// to rebuild its netmap on every reconnect.
-	if s.polMan.NodeNeedsPeerRecompute(node) {
+	if (!wasOnline || routesMoved) && s.polMan.NodeNeedsPeerRecompute(node) {
 		c = append(c, change.PolicyChange())
 	}
 
@@ -1039,8 +1182,7 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 	var ephemeralNodes []types.NodeView
 
 	for _, node := range allNodes.All() {
-		// Check if node is ephemeral by checking its AuthKey
-		if node.AuthKey().Valid() && node.AuthKey().Ephemeral() {
+		if node.IsEphemeral() {
 			ephemeralNodes = append(ephemeralNodes, node)
 		}
 	}
@@ -1051,6 +1193,31 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 // SetNodeExpiry updates the expiration time for a node.
 // If expiry is nil, the node's expiry is disabled (node will never expire).
 func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.NodeView, change.Change, error) {
+	return s.setNodeExpiry(nodeID, expiry, nil)
+}
+
+// BringNodeExpiryForward stores the expiry a client asks for when the node
+// still holds nodeKey and has no expiry or a later one. The NodeStore writer
+// decides, so an expiry that lands meanwhile, such as an admin's, is never
+// pushed back.
+func (s *State) BringNodeExpiryForward(
+	nodeID types.NodeID,
+	nodeKey key.NodePublic,
+	expiry time.Time,
+) (types.NodeView, change.Change, error) {
+	return s.setNodeExpiry(nodeID, &expiry, func(node *types.Node) bool {
+		return node.NodeKey == nodeKey &&
+			(node.Expiry == nil || node.Expiry.IsZero() || expiry.Before(*node.Expiry))
+	})
+}
+
+// setNodeExpiry sets the node's expiry. A non-nil allow decides on the node
+// as the writer holds it; a refusal writes nothing.
+func (s *State) setNodeExpiry(
+	nodeID types.NodeID,
+	expiry *time.Time,
+	allow func(*types.Node) bool,
+) (types.NodeView, change.Change, error) {
 	if expiry != nil {
 		utc, err := types.ValidateExpiry(*expiry)
 		if err != nil {
@@ -1060,7 +1227,7 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 		expiry = &utc
 	}
 
-	var onlineChanged bool
+	var onlineChanged, expired, refused bool
 
 	genBefore := s.polMan.NodesGeneration()
 
@@ -1069,16 +1236,39 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 	// must make the exact same change. If the database update fails, the [NodeStore]
 	// change will remain, and the change describing it is returned with the error.
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+		if allow != nil && !allow(node) {
+			refused = true
+
+			return
+		}
+
 		wasOnline := node.Online()
 		node.Expiry = expiry
 		// Control stays connected in NeedsLogin so an expiry extension can
 		// recover the client, but an expired key is not online.
 		node.IsOnline = new(node.ShouldBeOnline())
 		onlineChanged = wasOnline != node.Online()
+		// A relogin later in the batch can renew the node before n is read.
+		expired = node.IsExpired()
 	})
 
 	if !ok {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
+	}
+
+	if refused {
+		return types.NodeView{}, change.Change{}, ErrExpiryExtension
+	}
+
+	if expired {
+		// Expiry revokes the human check even if a pre-auth key renews the node.
+		s.sshCheckMu.Lock()
+		for pair := range s.sshCheckAuth {
+			if pair.Src == nodeID {
+				delete(s.sshCheckAuth, pair)
+			}
+		}
+		s.sshCheckMu.Unlock()
 	}
 
 	// The online flip already re-elected primaries in the NodeStore, so
@@ -1088,8 +1278,7 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 		recompute = change.PolicyChange()
 	}
 
-	// Persist expiry change to database directly since persistNodeAndRefreshPolicy omits expiry.
-	err := s.db.NodeSetExpiry(nodeID, expiry)
+	_, err := s.persistNode(n)
 	if err != nil {
 		c := nodeWriteFailed(nodeID, s.policyChangeSince(genBefore).Merge(recompute))
 
@@ -1174,11 +1363,24 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 		c = change.NodeAdded(nodeID)
 	}
 
-	// Set OriginNode so the mapper knows to include self info for this node.
-	// When tags change, persistNodeAndRefreshPolicy returns PolicyChange which doesn't set OriginNode,
-	// so the mapper's self-update check fails and the node never sees its new tags.
-	// Setting OriginNode ensures the node gets a self-update with the new tags.
+	// Records the retagged node. Its new tags reach it either way: a policy
+	// recompute always renders the node's own entry, and NodeAdded already
+	// carries this origin.
 	c.OriginNode = nodeID
+
+	// The new tags may approve announced routes, as on Tailscale SaaS. This
+	// runs after the policy refresh above, which teaches the policy manager
+	// the node's new owner.
+	routesChange, err := s.AutoApproveRoutes(nodeView)
+	c = c.Merge(routesChange)
+
+	if fresh, ok := s.nodeStore.GetNode(nodeID); ok {
+		nodeView = fresh
+	}
+
+	if err != nil {
+		return nodeView, c, fmt.Errorf("auto approving routes: %w", err)
+	}
 
 	return nodeView, c, nil
 }
@@ -1187,15 +1389,21 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 // It returns a PolicyChange when a primary moved, the policy manager saw a
 // policy input change, or the node's peers changed; otherwise NodeAdded.
 func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (types.NodeView, change.Change, error) {
-	// TODO(kradalby): In principle we should call the AutoApprove logic here
-	// because even if the CLI removes an auto-approved route, it will be added
-	// back automatically.
+	// Every route an admin sets is the admin's, even one autoApprovers
+	// cover, so a withdrawal keeps it.
+	return s.updateApprovedRoutes(nodeID, func(node *types.Node) {
+		node.ApprovedRoutes = routes
+		node.AutoApprovedRoutes = nil
+	})
+}
+
+func (s *State) updateApprovedRoutes(nodeID types.NodeID, set UpdateNodeFunc) (types.NodeView, change.Change, error) {
 	prevRoutes := s.nodeStore.PrimaryRoutes()
 	prevPeers := s.nodeStore.ListPeerIDs(nodeID)
 	genBefore := s.polMan.NodesGeneration()
 
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.ApprovedRoutes = routes
+		set(node)
 		// A node with no approved routes is no longer an HA
 		// candidate; drop any stale Unhealthy bit (mirrors the
 		// legacy routes.SetRoutes(empty) auto-clear).
@@ -1241,6 +1449,8 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 // auto-sanitisation) and collisions error out rather than silently
 // bumping a user-facing label. See HOSTNAME.md for the CLI contract.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.Change, error) {
+	asked := newName
+
 	// DNS is case-insensitive but uniqueness and the client's certificate
 	// name match are not, so "Foo" and "foo" would share one name.
 	newName = strings.ToLower(newName)
@@ -1259,7 +1469,7 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrGivenNameTaken):
-			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %s", ErrNodeNameNotUnique, newName)
+			return types.NodeView{}, change.Change{}, fmt.Errorf("name %q is %w", asked, ErrNodeNameNotUnique)
 		case errors.Is(err, ErrNodeNotFound):
 			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 		default:
@@ -1284,6 +1494,27 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	s.selfRefreshMu.Unlock()
 
 	return nodeView, c, nil
+}
+
+// WarnNodesHoldingExtraRecords logs, and returns, the nodes whose name is also
+// an extra DNS record. They keep it: only an operator adding the record can
+// cause this, so the operator picks which one to rename.
+func (s *State) WarnNodesHoldingExtraRecords() []types.NodeID {
+	var ids []types.NodeID
+
+	for _, n := range s.nodeStore.ListNodes().All() {
+		if !s.nodeStore.reservedLabel(n.GivenName()) {
+			continue
+		}
+
+		ids = append(ids, n.ID())
+		log.Warn().
+			Uint64(zf.NodeID, n.ID().Uint64()).
+			Str("record", n.GivenName()+"."+s.cfg.BaseDomain).
+			Msg("node keeps a name that is also an extra DNS record")
+	}
+
+	return ids
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them. The
@@ -1459,7 +1690,8 @@ func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return s.polMan.NodeCanHaveTag(node, tag)
 }
 
-// SetPolicy updates the policy configuration.
+// SetPolicy installs pol without storing it. Policy writes use
+// [State.UpdatePolicy].
 func (s *State) SetPolicy(pol []byte) (bool, error) {
 	changed, err := s.polMan.SetPolicy(pol)
 	if err != nil {
@@ -1478,11 +1710,15 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 	return changed, nil
 }
 
-// AutoApproveRoutes checks if a node's routes should be auto-approved.
-// AutoApproveRoutes checks if any routes should be auto-approved for a node and updates them.
+// AutoApproveRoutes approves the announced routes the policy lets a node
+// approve, and drops the auto-approved routes it no longer announces.
 func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
-	if changed {
+	withdrawn := slices.ContainsFunc(nv.AutoApprovedRoutes().AsSlice(), func(route netip.Prefix) bool {
+		return !slices.Contains(nv.AnnouncedRoutes(), route)
+	})
+
+	if changed || withdrawn {
 		log.Debug().
 			EmbedObject(nv).
 			Strs("routes.announced", util.PrefixesToString(nv.AnnouncedRoutes())).
@@ -1490,10 +1726,11 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 			Strs("routes.approved.new", util.PrefixesToString(approved)).
 			Msg("Single node auto-approval detected route changes")
 
-		// Persist the auto-approved routes to database and [NodeStore] via
-		// [State.SetApprovedRoutes]. This ensures consistency between database
-		// and [NodeStore].
-		_, c, err := s.SetApprovedRoutes(nv.ID(), approved)
+		// Recompute on the current node so an older view cannot undo an admin write.
+		_, c, err := s.updateApprovedRoutes(nv.ID(), func(n *types.Node) {
+			dropWithdrawnAutoApprovals(n)
+			s.approveAnnouncedRoutes(n)
+		})
 		if err != nil {
 			log.Error().
 				EmbedObject(nv).
@@ -1503,12 +1740,49 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 			return c, err
 		}
 
-		log.Info().EmbedObject(nv).Strs(zf.RoutesApproved, util.PrefixesToString(approved)).Msg("routes approved")
-
 		return c, nil
 	}
 
 	return change.Change{}, nil
+}
+
+// approveAnnouncedRoutes approves the announced routes the policy lets n
+// approve, and records the ones it adds as auto-approved.
+func (s *State) approveAnnouncedRoutes(n *types.Node) bool {
+	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, n.View(), n.ApprovedRoutes, n.AnnouncedRoutes())
+	if !changed {
+		return false
+	}
+
+	for _, route := range approved {
+		if !slices.Contains(n.ApprovedRoutes, route) {
+			n.AutoApprovedRoutes = append(n.AutoApprovedRoutes, route)
+		}
+	}
+
+	n.ApprovedRoutes = approved
+
+	return true
+}
+
+// dropWithdrawnAutoApprovals removes the auto-approved routes n no longer
+// announces, as Tailscale SaaS does. Routes an admin approved stay.
+func dropWithdrawnAutoApprovals(n *types.Node) bool {
+	announced := n.AnnouncedRoutes()
+	withdrawn := func(route netip.Prefix) bool {
+		return slices.Contains(n.AutoApprovedRoutes, route) && !slices.Contains(announced, route)
+	}
+
+	if !slices.ContainsFunc(n.ApprovedRoutes, withdrawn) {
+		return false
+	}
+
+	n.ApprovedRoutes = slices.DeleteFunc(slices.Clone(n.ApprovedRoutes), withdrawn)
+	n.AutoApprovedRoutes = slices.DeleteFunc(slices.Clone(n.AutoApprovedRoutes), func(route netip.Prefix) bool {
+		return !slices.Contains(announced, route)
+	})
+
+	return true
 }
 
 // GetPolicy retrieves the current policy from the database.
@@ -1521,7 +1795,7 @@ func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 	return s.db.SetPolicy(data)
 }
 
-// ValidatePolicy reports whether a policy write would accept pol. It
+// ValidatePolicy reports whether [State.UpdatePolicy] would accept pol. It
 // compiles pol against the current users and nodes on a throwaway policy
 // manager; the live policy is not touched.
 func (s *State) ValidatePolicy(pol []byte) error {
@@ -1554,6 +1828,33 @@ func (s *State) ValidatePolicy(pol []byte) error {
 	return nil
 }
 
+// UpdatePolicy validates, stores and installs pol. The live policy is only
+// ever installed from what was stored, so a refused or unstored write leaves
+// it untouched. The changes are returned alongside a reload error, as from
+// [State.ReloadPolicy].
+func (s *State) UpdatePolicy(pol []byte) (*types.Policy, []change.Change, error) {
+	err := s.ValidatePolicy(pol)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Held from store to install: on PostgreSQL a concurrent writer could
+	// otherwise commit an older row after a newer one pruned the rest.
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+
+	stored, err := s.db.SetPolicy(string(pol))
+	if err != nil {
+		return nil, nil, fmt.Errorf("storing policy: %w", err)
+	}
+
+	// Reload even when content is unchanged: routes manually disabled before
+	// may now qualify for auto-approval, so they must be re-evaluated.
+	cs, err := s.reloadPolicyLocked()
+
+	return stored, cs, err
+}
+
 // GetNodePrimaryRoutes returns the primary routes for a node.
 func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 	return s.nodeStore.PrimaryRoutesForNode(nodeID)
@@ -1563,9 +1864,8 @@ func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 // AllowedIPs, combining primary routes (from HA election), approved exit
 // routes, and via grant steering.
 //
-// Approved exit routes (0.0.0.0/0, ::/0) are included alongside subnet
-// routes — they appear in every peer's AllowedIPs, while unapproved
-// ones do not.
+// Approved exit routes (0.0.0.0/0, ::/0) are reduced alongside subnet
+// routes: a viewer gets them when its rules reach the internet.
 func (s *State) RoutesForPeer(
 	viewer, peer types.NodeView,
 	matchers []matcher.Match,
@@ -1619,11 +1919,15 @@ func (s *State) RoutesForPeer(
 	// that the peer is HA primary for, the viewer must see that route
 	// regardless of matcher authorization. HA secondaries need this to
 	// know which peer is primary for their shared prefix.
-	viewerSubnets := viewer.SubnetRoutes()
-	if len(viewerSubnets) > 0 {
-		for _, p := range globalPrimaries {
-			if slices.Contains(viewerSubnets, p) && !slices.Contains(reduced, p) {
-				reduced = append(reduced, p)
+	if len(globalPrimaries) > 0 {
+		viewerSubnets := set.SetOf(viewer.SubnetRoutes())
+		if len(viewerSubnets) > 0 {
+			seen := set.SetOf(reduced)
+			for _, p := range globalPrimaries {
+				if viewerSubnets.Contains(p) && !seen.Contains(p) {
+					reduced = append(reduced, p)
+					seen.Add(p)
+				}
 			}
 		}
 	}
@@ -1648,7 +1952,7 @@ func (s *State) IsNodeHealthy(id types.NodeID) bool {
 }
 
 // SetNodeHealth flips the runtime health bit for one node and reports
-// whether the resulting primary-route assignment changed, so the HA
+// whether peers need to recompute global or via routes, so the HA
 // prober can decide whether to fan out a PolicyChange. true means
 // healthy; false means unhealthy. An unhealthy mark is dropped when
 // the node is no longer an HA candidate (offline or no approved
@@ -1664,7 +1968,7 @@ func (s *State) SetNodeHealth(id types.NodeID, healthy bool) bool {
 // BatchSetNodeHealth applies a set of health updates atomically: the
 // election runs once after every flag has been flipped, so observers
 // never see an intermediate snapshot. Returns true when the
-// primary-route assignment differs from before the batch so callers
+// global primary routes or a via target's health changed, so callers
 // can gate a single PolicyChange dispatch. Map value true = healthy;
 // false = unhealthy (gated as in [State.SetNodeHealth]).
 //
@@ -1700,7 +2004,18 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 
 	s.nodeStore.UpdateNodes(fns)
 
-	return !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes())
+	if !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes()) {
+		return true
+	}
+
+	for id := range fns {
+		nv, ok := s.nodeStore.GetNode(id)
+		if ok && nv.Unhealthy() == !updates[id] && s.polMan.NodeIsViaTarget(nv) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // healthSetter returns an UpdateNodeFunc that flips n.Unhealthy to
@@ -1789,6 +2104,11 @@ func (s *State) DestroyAPIKey(key types.APIKey) error {
 // The userID parameter is now optional (can be nil) for system-created tagged keys.
 func (s *State) CreatePreAuthKey(userID *types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKeyNew, error) {
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
+}
+
+// CreateTokenPreAuthKey creates a key an OAuth access token makes.
+func (s *State) CreateTokenPreAuthKey(userID *types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKeyNew, error) {
+	return s.db.CreateTokenPreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
 }
 
 // Test helpers for the state layer
@@ -2037,18 +2357,33 @@ func (s *State) SetLastSSHAuth(src, dst types.NodeID) {
 	s.sshCheckMu.Lock()
 	defer s.sshCheckMu.Unlock()
 
-	s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}] = time.Now()
+	node, ok := s.nodeStore.GetNode(src)
+	if !ok {
+		return
+	}
+
+	s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}] = sshCheckAuthRecord{
+		at: time.Now(), src: node,
+	}
 }
 
 // GetLastSSHAuth returns when src last authenticated for SSH check
-// to dst.
+// to dst, while the source still has the owner that authenticated.
 func (s *State) GetLastSSHAuth(src, dst types.NodeID) (time.Time, bool) {
 	s.sshCheckMu.RLock()
 	defer s.sshCheckMu.RUnlock()
 
-	t, ok := s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}]
+	record, ok := s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}]
+	if !ok {
+		return time.Time{}, false
+	}
 
-	return t, ok
+	node, exists := s.nodeStore.GetNode(src)
+	if !exists || !sameOwner(record.src, node) {
+		return time.Time{}, false
+	}
+
+	return record.at, true
 }
 
 // ClearSSHCheckAuth clears all recorded SSH check auth times.
@@ -2057,7 +2392,7 @@ func (s *State) ClearSSHCheckAuth() {
 	s.sshCheckMu.Lock()
 	defer s.sshCheckMu.Unlock()
 
-	s.sshCheckAuth = make(map[sshCheckPair]time.Time)
+	s.sshCheckAuth = make(map[sshCheckPair]sshCheckAuthRecord)
 }
 
 // preserveNetInfo preserves NetInfo from an existing node for faster DERP connectivity.
@@ -2085,6 +2420,8 @@ type newNodeParams struct {
 
 	// Optional: Pre-auth key specific fields
 	PreAuthKey *types.PreAuthKey
+	// Tags the key login was allowed to request; they replace the key's.
+	Tags []string
 
 	// Optional: Existing node for netinfo preservation
 	ExistingNodeForNetinfo types.NodeView
@@ -2108,12 +2445,25 @@ type authNodeUpdateParams struct {
 	IsConvertFromTag bool
 }
 
+// sameOwner reports whether a and b have one owner: the same tag set for
+// tagged nodes, the same user otherwise.
+func sameOwner(a, b types.NodeView) bool {
+	if !a.Valid() || !b.Valid() || a.IsTagged() != b.IsTagged() {
+		return false
+	}
+
+	if a.IsTagged() {
+		return views.SliceEqualAnyOrder(a.Tags(), b.Tags())
+	}
+
+	return a.UserID().Valid() && b.UserID().Valid() && a.UserID().Get() == b.UserID().Get()
+}
+
 // applyAuthNodeUpdate applies common update logic for re-authenticating or converting
 // an existing node. It updates the node in [NodeStore], processes RequestTags, and
-// persists changes to the database. The bool reports whether peers read the
-// node it replaced and the update the same, apart from its keys; see
-// [onlyKeysChanged].
-func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, bool, error) {
+// persists changes to the database. It also returns the node the NodeStore
+// writer replaced.
+func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, types.NodeView, error) {
 	regData := params.RegData
 	// Log the operation type
 	if params.IsConvertFromTag {
@@ -2154,7 +2504,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 	rejectedTags := s.validateRequestTagsForReauth(params.ExistingNode, authUser, requestTags)
 	if len(rejectedTags) > 0 {
-		return types.NodeView{}, false, fmt.Errorf(
+		return types.NodeView{}, types.NodeView{}, fmt.Errorf(
 			"%w %v are invalid or not permitted",
 			ErrRequestedTagsInvalidOrNotPermitted,
 			rejectedTags,
@@ -2169,7 +2519,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// the NodeStore NodeKey index (denying the victim service).
 	if existing, ok := s.nodeStore.GetNodeByNodeKey(regData.NodeKey); ok &&
 		existing.MachineKey() != regData.MachineKey {
-		return types.NodeView{}, false, ErrNodeKeyInUse
+		return types.NodeView{}, types.NodeView{}, ErrNodeKeyInUse
 	}
 
 	var hostinfoErr error
@@ -2245,17 +2595,18 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			exp := time.Now().Add(s.cfg.Node.Expiry)
 			node.Expiry = &exp
 		}
+
+		// Route approvals stay on an owner change, as on Tailscale SaaS;
+		// autoApprovers only add.
 	})
 
 	if !ok {
-		return types.NodeView{}, false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
+		return types.NodeView{}, types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
 	}
 
 	if hostinfoErr != nil {
-		return types.NodeView{}, false, hostinfoErr
+		return types.NodeView{}, types.NodeView{}, hostinfoErr
 	}
-
-	keysOnly := onlyKeysChanged(before, updatedNodeView, time.Now())
 
 	// Persist to database.
 	// Explicitly select all node columns so GORM includes nil/zero-value fields
@@ -2264,8 +2615,8 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// AuthKeyID is excluded from nodeUpdateColumns (#2862: never persist a
 	// possibly-deleted key's stale reference on the shared update path). But
 	// when a re-auth untags a node it clears AuthKeyID to nil (above), and that
-	// must persist or the node reloads as tagged/ephemeral after a restart and
-	// is garbage-collected. Writing NULL can never cause an FK error, so include
+	// must persist or the node reloads bound to the tagged key after a
+	// restart. Writing NULL can never cause an FK error, so include
 	// the column only in that clearing case; the other transitions keep the
 	// #2862-safe column set untouched.
 	updateColumns := nodeUpdateColumns
@@ -2273,16 +2624,9 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		updateColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
 	}
 
-	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := tx.Select(updateColumns).Updates(updatedNodeView.AsStruct()).Error
-		if err != nil {
-			return nil, fmt.Errorf("saving node: %w", err)
-		}
-
-		return nil, nil //nolint:nilnil // side-effect only write
-	})
+	_, err := s.persistNodeWith(updatedNodeView, updateColumns, nil)
 	if err != nil {
-		return types.NodeView{}, false, err
+		return types.NodeView{}, types.NodeView{}, err
 	}
 
 	// Log completion
@@ -2296,7 +2640,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			Msg("Node re-authorized")
 	}
 
-	return updatedNodeView, keysOnly, nil
+	return updatedNodeView, before, nil
 }
 
 // createAndSaveNewNode creates a new node, allocates IPs, saves to DB, and adds to [NodeStore].
@@ -2341,10 +2685,15 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 
 	// Assign ownership based on PreAuthKey
 	if params.PreAuthKey != nil {
-		if params.PreAuthKey.IsTagged() {
+		tags := params.PreAuthKey.Tags
+		if params.Tags != nil {
+			tags = params.Tags
+		}
+
+		if len(tags) > 0 {
 			// Tagged nodes are owned by their tags, not a user.
 			// UserID is intentionally left nil.
-			nodeToRegister.Tags = params.PreAuthKey.Tags
+			nodeToRegister.Tags = tags
 
 			// Tagged nodes have key expiry disabled.
 			nodeToRegister.Expiry = nil
@@ -2357,6 +2706,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 
 		nodeToRegister.AuthKey = params.PreAuthKey.AsCredential()
 		nodeToRegister.AuthKeyID = &params.PreAuthKey.ID
+		nodeToRegister.Ephemeral = params.PreAuthKey.Ephemeral
 	} else {
 		// Non-PreAuthKey registration (OIDC, CLI) - always user-owned
 		nodeToRegister.UserID = &params.User.ID
@@ -2455,7 +2805,18 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	}
 
 	// Add to [NodeStore] after database creates the ID
-	return s.nodeStore.PutNode(*savedNode), nil
+	node := s.nodeStore.PutNode(*savedNode)
+	if node.Valid() && node.GivenName() != savedNode.GivenName {
+		fresh, err := s.persistNode(node)
+		if err != nil {
+			// The node is already committed; callers still need to schedule cleanup.
+			return node, err
+		}
+
+		return fresh, nil
+	}
+
+	return node, nil
 }
 
 // validateRequestTags validates that the requested tags are permitted for the node.
@@ -2542,14 +2903,13 @@ func (s *State) processReauthTags(
 			node.User = user
 
 			// The node is no longer tagged, so it must not keep a reference to
-			// the tagged auth key. Leaving AuthKey set means a node created by a
-			// tagged+ephemeral key stays IsEphemeral() after converting to
-			// user-owned and is garbage-collected on its next disconnect,
-			// silently deleting the user's just-claimed device. Clearing the
-			// reference is persisted via the AuthKeyID column added to this
-			// path's write below.
+			// the tagged auth key, nor its ephemeral flag: an ephemeral node is
+			// garbage-collected on its next disconnect, silently deleting the
+			// user's just-claimed device. Clearing the reference is persisted
+			// via the AuthKeyID column added to this path's write below.
 			node.AuthKey = nil
 			node.AuthKeyID = nil
+			node.Ephemeral = false
 		}
 
 		return nil
@@ -2703,21 +3063,24 @@ func (s *State) HandleNodeFromAuthPath(
 
 	var (
 		finalNode types.NodeView
-		keysOnly  bool
+		before    types.NodeView
+		changed   relogin
 	)
 
 	if nodeExists && !existingNode.IsTagged() {
 		updateParams.ExistingNode = existingNode
 
-		finalNode, keysOnly, err = s.applyAuthNodeUpdate(updateParams)
+		finalNode, before, err = s.applyAuthNodeUpdate(updateParams)
 		if err != nil {
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
+
+		changed = reloginChanged(before, finalNode, time.Now())
 	} else if nodeExists {
 		updateParams.ExistingNode = existingNode
 		updateParams.IsConvertFromTag = true
 
-		finalNode, _, err = s.applyAuthNodeUpdate(updateParams)
+		finalNode, before, err = s.applyAuthNodeUpdate(updateParams)
 		if err != nil {
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
@@ -2771,10 +3134,14 @@ func (s *State) HandleNodeFromAuthPath(
 
 	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	// keysOnly is set only for a same-user relogin; a tag->user conversion is
+	// changed is set only for a same-user relogin; a tag->user conversion is
 	// excluded, as it changes the peer's User — a structural change peers must
 	// see in full, not a key-rotation patch.
-	return finalNode, reauthChange(finalNode, keysOnly, policyChanged), nil
+	return s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, changed, policyChanged))
+}
+
+func sortedPrefixes(p []netip.Prefix) []netip.Prefix {
+	return slices.SortedFunc(slices.Values(p), netip.Prefix.Compare)
 }
 
 // createNewNodeFromAuth creates a new node during auth callback.
@@ -2820,21 +3187,8 @@ func (s *State) findExistingNodeForPAK(
 ) (types.NodeView, bool, error) {
 	all := s.nodeStore.GetNodesByMachineKeyAllUsers(machineKey)
 
-	if pak.User != nil {
-		node, ok := all[types.UserID(pak.User.ID)]
-		if !ok {
-			// The machine's tagged node, when the key speaks for it. Any other
-			// key under its own node key is the device restarting (#3312);
-			// pakReregister lets that key only wake it.
-			node, ok = all[0]
-			ok = ok && node.IsTagged() && (pak.CanReauthenticate(node) || node.NodeKey() == nodeKey)
-		}
-
-		return node, ok, nil
-	}
-
-	// A tagged key re-registers the same machine regardless of how it is
-	// currently owned. An existing tagged node is a plain re-registration. A
+	// A tagged key, whether or not it records its creator, re-registers the
+	// same machine regardless of how it is currently owned. An existing tagged node is a plain re-registration. A
 	// single user-owned node is converted to tagged in place (handled by the
 	// caller). More than one user-owned node is ambiguous - we cannot know
 	// which to convert - so reject rather than convert an arbitrary one and
@@ -2863,6 +3217,19 @@ func (s *State) findExistingNodeForPAK(
 		default:
 			return types.NodeView{}, false, ErrAmbiguousNodeOwnership
 		}
+	}
+
+	if pak.User != nil {
+		node, ok := all[types.UserID(pak.User.ID)]
+		if !ok {
+			// The machine's tagged node, when the key speaks for it. Any other
+			// key under its own node key is the device restarting (#3312);
+			// pakReregister lets that key only wake it.
+			node, ok = all[0]
+			ok = ok && node.IsTagged() && (pak.CanReauthenticate(node) || node.NodeKey() == nodeKey)
+		}
+
+		return node, ok, nil
 	}
 
 	return types.NodeView{}, false, nil
@@ -2899,9 +3266,8 @@ func loginNode(all map[types.UserID]types.NodeView, userID types.UserID) (types.
 // --authkey=KEY") re-presents a spent key legitimately. Anything that
 // authorises something new must present a valid key:
 //   - a node key rotation;
-//   - an expired node. Tagged nodes can carry an administrative expiry or
-//     retain their expiry after an admin tags them. Legacy logout stamps
-//     were cleared by migration; logout no longer expires tagged nodes;
+//   - an expired node. Tagged nodes expire at logout, by an administrative
+//     expiry, or keep the expiry they had when an admin tagged them;
 //   - a tagged key converting a user-owned node to tagged;
 //   - a tagged key other than the one the node last authed with, which retags
 //     it.
@@ -2924,22 +3290,29 @@ func pakSkipsValidation(n types.NodeView, pak *types.PreAuthKey, nodeKey key.Nod
 		!isOwnershipConversion && !isRetag
 }
 
-// pakReregister is the authorisation decision for re-registering n with pak
-// at now: whether the key re-authenticates n, and nil when validation may be
-// skipped, else the key's validity. A key that does not speak for n only
-// wakes it under its own node key.
+// pakReregister distinguishes re-authentication with a valid key from a
+// wake-up that only refreshes a live node's reported metadata.
 func pakReregister(n types.NodeView, pak *types.PreAuthKey, nodeKey key.NodePublic, now time.Time) (bool, error) {
-	reauth := pak.CanReauthenticate(n)
-	if pakSkipsValidation(n, pak, nodeKey, now) {
-		return reauth, nil
+	// As on Tailscale SaaS, an expired node is asked for a new node key before
+	// any key is judged.
+	if n.NodeKey() == nodeKey && n.IsExpiredAt(now) {
+		return false, ErrNodeKeyExpired
 	}
 
 	err := pak.ValidAt(now)
-	if err == nil && !reauth {
+	if err == nil {
+		if pak.CanReauthenticate(n) {
+			return true, nil
+		}
+
 		err = types.PAKError("authkey cannot re-authenticate this node")
 	}
 
-	return reauth, err
+	if pakSkipsValidation(n, pak, nodeKey, now) {
+		return false, nil
+	}
+
+	return false, err
 }
 
 //nolint:gocyclo // sequential validation/update/create paths with security-sensitive ordering
@@ -2959,22 +3332,47 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.NodeView{}, s.policyChangeSince(genBefore), err
 	}
 
-	// A pre-auth key node's tags come from the key, never from RequestTags.
+	if !pak.Reusable && !pak.Used {
+		mu := &s.singleUseKeyLocks[pak.ID%uint64(len(s.singleUseKeyLocks))]
+		mu.Lock()
+		defer mu.Unlock()
+
+		// A different machine may have consumed the key while we waited.
+		pak, err = s.GetPreAuthKeyByID(pak.ID)
+		if err != nil {
+			return types.NodeView{}, s.policyChangeSince(genBefore), err
+		}
+	}
+
 	// Advertising a subset of the key's tags is redundant, not an escalation,
-	// and the tailscale client's OAuth authkey flow always does it; any other
-	// tag is rejected. Checked before key validation or resource allocation so
-	// new nodes and re-registrations are held to the same rule.
-	if regReq.Hostinfo != nil {
-		var extraTags []string
+	// and the tailscale client's OAuth authkey flow always does it. Other
+	// requested tags replace the key's when a tagged key's tags own each one,
+	// or a user's key's user owns it directly, as on Tailscale SaaS; otherwise
+	// they are refused, ahead of the key's own error, so new nodes and
+	// re-registrations are held to the same rule.
+	var (
+		requestedTags []string
+		tagsErr       error
+	)
+
+	if regReq.Hostinfo != nil && slices.ContainsFunc(regReq.Hostinfo.RequestTags, func(tag string) bool {
+		return !slices.Contains(pak.Tags, tag)
+	}) {
+		var refused []string
 
 		for _, tag := range regReq.Hostinfo.RequestTags {
-			if !slices.Contains(pak.Tags, tag) {
-				extraTags = append(extraTags, tag)
+			owned := s.polMan.TagOwnedByTags(tag, pak.Tags) ||
+				(!pak.IsTagged() && pak.User != nil && s.polMan.UserCanHaveTag(pak.User.View(), tag))
+			if !owned {
+				refused = append(refused, tag)
 			}
 		}
 
-		if len(extraTags) > 0 {
-			return types.NodeView{}, s.policyChangeSince(genBefore), fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, extraTags)
+		if len(refused) > 0 {
+			tagsErr = fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, refused)
+		} else {
+			// Sort a copy: RequestTags is the node's reported Hostinfo.
+			requestedTags = slices.Compact(slices.Sorted(slices.Values(regReq.Hostinfo.RequestTags)))
 		}
 	}
 
@@ -2986,24 +3384,20 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// This decision is only an early reject that keeps a key error ahead of
 	// ErrNodeKeyInUse. An in-place re-registration decides again in the
 	// NodeStore writer, on the node it replaces; see reregisterNodeWithPAK.
-	if existsSameUser && pakSkipsValidation(existingNodeSameUser, pak, regReq.NodeKey, time.Now()) {
-		log.Debug().
-			Caller().
-			Uint64(zf.NodeID, existingNodeSameUser.ID().Uint64()).
-			Str(zf.NodeName, existingNodeSameUser.Hostname()).
-			Str(zf.MachineKey, machineKey.ShortString()).
-			Str(zf.NodeKeyExisting, existingNodeSameUser.NodeKey().ShortString()).
-			Str(zf.NodeKeyRequest, regReq.NodeKey.ShortString()).
-			Uint64(zf.AuthKeyID, pak.ID).
-			Bool(zf.AuthKeyUsed, pak.Used).
-			Bool(zf.AuthKeyExpired, pak.Expiration != nil && pak.Expiration.Before(time.Now())).
-			Bool(zf.AuthKeyReusable, pak.Reusable).
-			Msg("Existing node re-registering with same NodeKey; lookup permits skipping key validation, writer re-decides")
+	reauth := true
+	if existsSameUser {
+		reauth, err = pakReregister(existingNodeSameUser, pak, regReq.NodeKey, time.Now())
 	} else {
 		err = pak.Validate()
-		if err != nil {
-			return types.NodeView{}, s.policyChangeSince(genBefore), err
-		}
+	}
+
+	// A wake-up writes no tags, so the tags it asks for are not refused.
+	if tagsErr != nil && !errors.Is(err, ErrNodeKeyExpired) && (reauth || err != nil) {
+		return types.NodeView{}, s.policyChangeSince(genBefore), tagsErr
+	}
+
+	if err != nil {
+		return types.NodeView{}, s.policyChangeSince(genBefore), err
 	}
 
 	// Preserve the raw hostname as reported by the client. Sanitisation
@@ -3027,18 +3421,22 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	var (
 		finalNode types.NodeView
-		keysOnly  bool
+		changed   relogin
 	)
+
+	var before types.NodeView
 
 	// If this node exists for this user, update the node in place. For a
 	// tags-only key (pak.User == nil) this is true when the machine already has
 	// a tagged node (findExistingNodeForPAK matches it under UserID 0); for a
 	// user-owned key it is true when the same user already has the node.
 	if existsSameUser && existingNodeSameUser.Valid() {
-		finalNode, keysOnly, err = s.reregisterNodeWithPAK(existingNodeSameUser, pak, regReq, machineKey, hostname, validHostinfo)
+		finalNode, before, err = s.reregisterNodeWithPAK(existingNodeSameUser, pak, requestedTags, regReq, machineKey, hostname, validHostinfo)
 		if err != nil {
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
+
+		changed = reloginChanged(before, finalNode, time.Now())
 	} else {
 		// Node does not exist for this user with this machine key.
 		// For a user-owned key, check whether the machine key is already held
@@ -3112,10 +3510,16 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Expiry:                 reqExpiry,
 			RegisterMethod:         util.RegisterMethodAuthKey,
 			PreAuthKey:             pak,
+			Tags:                   requestedTags,
 			ExistingNodeForNetinfo: differentUserNode,
 		})
 		if err != nil {
-			return types.NodeView{}, s.policyChangeSince(genBefore), fmt.Errorf("creating new node: %w", err)
+			c := s.policyChangeSince(genBefore)
+			if finalNode.Valid() {
+				c = nodeWriteFailed(finalNode.ID(), c)
+			}
+
+			return finalNode, c, fmt.Errorf("creating new node: %w", err)
 		}
 	}
 
@@ -3132,7 +3536,34 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	return finalNode, reauthChange(finalNode, keysOnly, policyChanged), nil
+	return s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, changed, policyChanged))
+}
+
+// approveRoutesAfterRegistration runs route auto-approval after a
+// registration whose NodeStore writer replaced before with node, merging its
+// change into c. As on Tailscale SaaS it runs for a new node, a new node key
+// or a change to the announced routes; a login that changes neither approves
+// nothing. before is what the writer replaced, not the caller's lookup, so an
+// announcement and an admin revoke landing in between do not count as a
+// change. It waits for the registration: the policy manager must know the
+// node's owner first.
+func (s *State) approveRoutesAfterRegistration(
+	before, node types.NodeView,
+	c change.Change,
+) (types.NodeView, change.Change, error) {
+	if before.Valid() && before.NodeKey() == node.NodeKey() &&
+		slices.Equal(sortedPrefixes(before.AnnouncedRoutes()), sortedPrefixes(node.AnnouncedRoutes())) {
+		return node, c, nil
+	}
+
+	routesChange, err := s.AutoApproveRoutes(node)
+	c = c.Merge(routesChange)
+
+	if err != nil {
+		return node, c, fmt.Errorf("auto approving routes: %w", err)
+	}
+
+	return node, c, nil
 }
 
 // reregisterNodeWithPAK updates an existing node in place for a pre-auth key
@@ -3143,16 +3574,16 @@ func (s *State) HandleNodeFromPreAuthKey(
 // in between, and the key or the node can expire. So the writer decides
 // whether the key must be valid on the node it replaces, at its own clock, and
 // leaves the node untouched when it is not. existingNodeSameUser is used only
-// for its ID and for logging. The bool reports whether peers read the node it
-// replaced and the update the same, apart from its keys; see [onlyKeysChanged].
+// for its ID and for logging. It also returns the node the writer replaced.
 func (s *State) reregisterNodeWithPAK(
 	existingNodeSameUser types.NodeView,
 	pak *types.PreAuthKey,
+	requestedTags []string,
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 	hostname string,
 	validHostinfo *tailcfg.Hostinfo,
-) (types.NodeView, bool, error) {
+) (types.NodeView, types.NodeView, error) {
 	log.Trace().
 		Caller().
 		Str(zf.NodeName, existingNodeSameUser.Hostname()).
@@ -3170,13 +3601,15 @@ func (s *State) reregisterNodeWithPAK(
 	// NodeStore NodeKey index, denying the victim service.
 	if existing, ok := s.nodeStore.GetNodeByNodeKey(regReq.NodeKey); ok &&
 		existing.MachineKey() != machineKey {
-		return types.NodeView{}, false, ErrNodeKeyInUse
+		return types.NodeView{}, types.NodeView{}, ErrNodeKeyInUse
 	}
 
 	// prior is the node the writer replaced: the NetInfo source and the
-	// rollback target if the database write below fails.
+	// rollback target if the database write below fails. written is what this
+	// write left; the view after the batch can hold later writes.
 	var (
 		prior   *types.Node
+		written *types.Node
 		authErr error
 		reauth  bool
 	)
@@ -3187,6 +3620,7 @@ func (s *State) reregisterNodeWithPAK(
 		now := time.Now()
 
 		prior = node.Clone()
+		defer func() { written = node.Clone() }()
 
 		reauth, authErr = pakReregister(node.View(), pak, regReq.NodeKey, now)
 		if authErr != nil {
@@ -3226,10 +3660,19 @@ func (s *State) reregisterNodeWithPAK(
 		// node.AuthKeyID still holds the prior key's ID here (it is reassigned
 		// below), and SetNodeTags leaves AuthKeyID intact, so an admin retag
 		// cannot masquerade as a new key.
-		if pak.ConvertsNodeToTagged(node.View()) || pak.RetagsNode(node.View()) {
+		//
+		// Tags the login was allowed to request replace the node's instead.
+		tags := pak.Tags
+		retag := pak.ConvertsNodeToTagged(node.View()) || pak.RetagsNode(node.View())
+
+		if requestedTags != nil {
+			tags, retag = requestedTags, !slices.Equal(node.Tags, requestedTags)
+		}
+
+		if retag {
 			wasUserOwned := !node.IsTagged()
 
-			node.Tags = pak.Tags
+			node.Tags = tags
 			node.UserID = nil
 			node.User = nil
 
@@ -3243,13 +3686,16 @@ func (s *State) reregisterNodeWithPAK(
 			if wasUserOwned || node.IsExpiredAt(now) {
 				node.Expiry = nil
 			}
-		} else if node.IsTagged() && !pak.IsTagged() && prior.NodeKey != regReq.NodeKey {
+		} else if requestedTags == nil && node.IsTagged() && !pak.IsTagged() &&
+			prior.NodeKey != regReq.NodeKey {
 			// A user key that speaks for a tagged node, with a new node key,
 			// takes it back as that user's device, as on Tailscale SaaS. A
-			// relogin under the same node key keeps it tagged.
+			// relogin under the same node key keeps it tagged. As at a login
+			// that untags it, the claimed device is not ephemeral.
 			node.Tags = nil
 			node.UserID = &pak.User.ID
 			node.User = pak.User
+			node.Ephemeral = false
 		}
 
 		node.AuthKey = pak.AsCredential()
@@ -3261,32 +3707,38 @@ func (s *State) reregisterNodeWithPAK(
 			node.AuthKey.Used = true
 		}
 
-		// Tagged nodes keep their existing expiry (disabled).
 		// User-owned nodes update expiry from the client request,
 		// falling back to the configured default if the client
 		// did not request a specific expiry. If neither is set,
 		// clear the expiry so the database holds NULL instead of
 		// a pointer to zero time.
-		if !node.IsTagged() {
-			if !regReq.Expiry.IsZero() {
-				node.Expiry = &regReq.Expiry
-			} else if s.cfg.Node.Expiry > 0 {
-				exp := now.Add(s.cfg.Node.Expiry)
-				node.Expiry = &exp
-			} else {
+		switch {
+		case node.IsTagged():
+			// Tagged nodes keep their expiry; a valid key lifts a past one. A
+			// future administrative expiry has not taken effect and stays.
+			if node.IsExpiredAt(now) {
 				node.Expiry = nil
 			}
-		} else if node.IsExpiredAt(now) {
-			// A valid key re-authenticated this expired tagged node. A future
-			// administrative expiry has not taken effect and stays untouched.
+		case prior.NodeKey == regReq.NodeKey:
+			// A node that keeps its node key keeps its expiry, as on Tailscale
+			// SaaS: renewal comes with a new node key.
+		case !regReq.Expiry.IsZero():
+			node.Expiry = &regReq.Expiry
+		case s.cfg.Node.Expiry > 0:
+			exp := now.Add(s.cfg.Node.Expiry)
+			node.Expiry = &exp
+		default:
 			node.Expiry = nil
 		}
+
+		// Route approvals stay on an owner change, as on Tailscale SaaS;
+		// autoApprovers only add.
 	})
 
 	// A nil prior means the writer never saw the node (deleted, or the store
 	// stopped), so nothing was decided and nothing may be persisted.
 	if !ok || prior == nil {
-		return types.NodeView{}, false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeSameUser.ID())
+		return types.NodeView{}, types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeSameUser.ID())
 	}
 
 	if authErr != nil {
@@ -3298,59 +3750,35 @@ func (s *State) reregisterNodeWithPAK(
 			Err(authErr).
 			Msg("Re-registration needs a valid auth key when it applies, rejecting")
 
-		return types.NodeView{}, false, authErr
+		return types.NodeView{}, types.NodeView{}, authErr
 	}
 
-	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		// Explicitly select all node columns so GORM includes nil/zero-value fields
-		// (see nodeUpdateColumns comment). AuthKeyID is excluded on MapRequest
-		// so a deleted key's stale reference is not persisted, but
-		// re-registration presents a key just loaded from the database, so
-		// its ID must be persisted here — otherwise a restart reloads the old
-		// key and any key-scoped property (e.g. Ephemeral) silently reverts.
-		// A wake-up keeps the prior key, which may have been deleted (#2862).
-		reregColumns := nodeUpdateColumns
-		if reauth {
-			reregColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
-		}
+	// Only re-authentication writes a newly loaded key's reference. A wake-up
+	// keeps the prior key, which may have been deleted (#2862).
+	reregColumns := nodeUpdateColumns
+	if reauth {
+		reregColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
+	}
 
-		err := tx.Select(reregColumns).Updates(updatedNodeView.AsStruct()).Error
-		if err != nil {
-			return nil, fmt.Errorf("saving node: %w", err)
-		}
-
+	_, err := s.persistNodeWith(updatedNodeView, reregColumns, func(tx *gorm.DB) error {
 		// Only mark the key used on the *first* registration. On
 		// re-registration the same key is already used and the
 		// atomic compare-and-set in [hsdb.UsePreAuthKey] would otherwise
 		// reject it as "authkey already used", locking out containers
 		// that restart with the same one-shot key.
 		if reauth && !pak.Reusable && !pak.Used {
-			err = hsdb.UsePreAuthKey(tx, pak)
+			err := hsdb.UsePreAuthKey(tx, pak)
 			if err != nil {
-				return nil, fmt.Errorf("using pre auth key: %w", err)
+				return fmt.Errorf("using pre auth key: %w", err)
 			}
 		}
 
-		return nil, nil //nolint:nilnil // intentional: transaction success
+		return nil
 	})
 	if err != nil {
-		// Restore the registration fields from the node the writer replaced.
-		// Sessions, endpoints and health may have moved since that snapshot;
-		// preserve them. LastSeen stays because the node did contact us.
-		s.nodeStore.UpdateNode(prior.ID, func(n *types.Node) {
-			n.NodeKey = prior.NodeKey
-			n.Hostname = prior.Hostname
-			n.Hostinfo = prior.Hostinfo
-			n.RegisterMethod = prior.RegisterMethod
-			n.Tags = prior.Tags
-			n.UserID = prior.UserID
-			n.User = prior.User
-			n.Expiry = prior.Expiry
-			n.AuthKey = prior.AuthKey
-			n.AuthKeyID = prior.AuthKeyID
-		})
+		s.undoReregistration(prior, written)
 
-		return types.NodeView{}, false, fmt.Errorf("writing node to database: %w", err)
+		return types.NodeView{}, types.NodeView{}, fmt.Errorf("writing node to database: %w", err)
 	}
 
 	log.Trace().
@@ -3362,41 +3790,127 @@ func (s *State) reregisterNodeWithPAK(
 		Str(zf.UserName, pak.Username()).
 		Msg("Node re-authorized")
 
-	return updatedNodeView, onlyKeysChanged(before, updatedNodeView, time.Now()), nil
+	return updatedNodeView, before, nil
 }
 
+// undoReregistration puts back the fields of a failed re-registration that
+// still hold what it wrote, so later admin and map writes survive, and saves
+// the result. LastSeen stays because the node did contact us; sessions,
+// endpoints and health are not rolled back.
+func (s *State) undoReregistration(prior, written *types.Node) {
+	restored, exists := s.nodeStore.UpdateNode(prior.ID, func(n *types.Node) {
+		if n.NodeKey == written.NodeKey {
+			n.NodeKey = prior.NodeKey
+		}
+
+		if n.Hostname == written.Hostname {
+			n.Hostname = prior.Hostname
+		}
+
+		if reflect.DeepEqual(n.Hostinfo, written.Hostinfo) {
+			n.Hostinfo = prior.Hostinfo
+		}
+
+		if n.RegisterMethod == written.RegisterMethod {
+			n.RegisterMethod = prior.RegisterMethod
+		}
+
+		if slices.Equal(n.Tags, written.Tags) &&
+			reflect.DeepEqual(n.UserID, written.UserID) &&
+			reflect.DeepEqual(n.User, written.User) {
+			n.Tags = prior.Tags
+			n.UserID = prior.UserID
+			n.User = prior.User
+		}
+
+		if n.Ephemeral == written.Ephemeral {
+			n.Ephemeral = prior.Ephemeral
+		}
+
+		if reflect.DeepEqual(n.Expiry, written.Expiry) {
+			n.Expiry = prior.Expiry
+		}
+
+		if reflect.DeepEqual(n.AuthKeyID, written.AuthKeyID) &&
+			reflect.DeepEqual(n.AuthKey, written.AuthKey) {
+			n.AuthKey = prior.AuthKey
+			n.AuthKeyID = prior.AuthKeyID
+		}
+	})
+	if !exists {
+		return
+	}
+
+	_, err := s.persistNode(restored)
+	if err != nil {
+		log.Error().Err(err).Uint64(zf.NodeID, prior.ID.Uint64()).Msg("Persisting re-registration rollback failed")
+	}
+}
+
+// relogin is what a same-user relogin changed that its peers read.
+type relogin int
+
+const (
+	// reloginWhole: something [change.NodeKeyRotated] cannot patch.
+	reloginWhole relogin = iota
+	// reloginKeys: only what [change.NodeKeyRotated] patches.
+	reloginKeys
+	// reloginNone: nothing, as when a client logs in again on its node key;
+	// Tailscale SaaS sends its peers nothing then.
+	reloginNone
+)
+
 // reauthChange returns the [change.Change] to broadcast after an authentication
-// that updated or created a node. keysOnly marks a same-user relogin that
-// changed nothing peers read besides its keys; see [onlyKeysChanged].
+// that updated or created a node; r is [reloginWhole] for any but a same-user
+// relogin.
 //
-// Such a relogin is sent as the minimal peer patch [change.NodeKeyRotated].
-// Anything else is a whole-node add, and a policy change forces a full
-// recompute.
-func reauthChange(node types.NodeView, keysOnly, policyChanged bool) change.Change {
+// A keys-only relogin is sent as the minimal peer patch
+// [change.NodeKeyRotated]. Anything else is a whole-node add, and a policy
+// change forces a full recompute.
+func reauthChange(node types.NodeView, r relogin, policyChanged bool) change.Change {
 	switch {
 	case policyChanged:
 		return change.PolicyChange()
-	case keysOnly:
+	case r == reloginNone:
+		return change.Change{}
+	case r == reloginKeys:
 		return change.NodeKeyRotated(node)
 	default:
 		return change.NodeAdded(node.ID())
 	}
 }
 
-// onlyKeysChanged reports whether peers read before and after the same, apart
-// from what [change.NodeKeyRotated] patches. [tailcfg.PeerChange] carries
-// neither [tailcfg.Node.Expired] nor Hostinfo: peers left holding an expired
-// node drop its WireGuard handshakes, and the relogin stored the Hostinfo, so
-// no later MapRequest shows the change.
-func onlyKeysChanged(before, after types.NodeView, now time.Time) bool {
-	return before.IsExpiredAt(now) == after.IsExpiredAt(now) &&
-		peerHostinfoEqual(before.Hostinfo(), after.Hostinfo())
+// reloginChanged compares what peers read before and after a relogin.
+// [tailcfg.PeerChange] carries neither [tailcfg.Node.Expired] nor Hostinfo:
+// peers left holding an expired node drop its WireGuard handshakes, and the
+// relogin stored the Hostinfo, so no later MapRequest shows the change.
+func reloginChanged(before, after types.NodeView, now time.Time) relogin {
+	expiry := func(n types.NodeView) time.Time {
+		e, _ := n.Expiry().GetOk()
+
+		return e
+	}
+
+	switch {
+	case before.IsExpiredAt(now) != after.IsExpiredAt(now) ||
+		!peerHostinfoEqual(before.Hostinfo(), after.Hostinfo()):
+		return reloginWhole
+	case before.NodeKey() == after.NodeKey() && before.DiscoKey() == after.DiscoKey() &&
+		expiry(before).Equal(expiry(after)) &&
+		views.SliceEqual(before.Endpoints(), after.Endpoints()):
+		return reloginNone
+	default:
+		return reloginKeys
+	}
 }
 
 // updatePolicyManagerUsers pushes the current user list into the policy
 // manager, rebuilds peer adjacency when user identity changed, and returns
 // a PolicyChange when clients need a refresh.
 func (s *State) updatePolicyManagerUsers() (change.Change, error) {
+	s.policyUsersMu.Lock()
+	defer s.policyUsersMu.Unlock()
+
 	users, err := s.ListAllUsers()
 	if err != nil {
 		return change.Change{}, fmt.Errorf("listing users for policy update: %w", err)
@@ -3526,102 +4040,25 @@ func (s *State) PingDB(ctx context.Context) error {
 	return s.db.PingDB(ctx)
 }
 
-// autoApproveNodes mass approves routes on all nodes. It is _only_ intended for
-// use when the policy is replaced. It is not sending or reporting any changes
-// or updates as we send full updates after replacing the policy.
-// TODO(kradalby): This is kind of messy, maybe this is another +1
-// for an event bus. See example comments here.
-// autoApproveNodes automatically approves nodes based on policy rules.
-func (s *State) autoApproveNodes() ([]change.Change, error) {
-	nodes := s.ListNodes()
-
-	// Compute every node's approval first, then apply them all in a single
-	// NodeStore batch and a single policy/peer-map rebuild. One
-	// SetApprovedRoutes per node would otherwise drive an O(n) policy SetNodes
-	// and O(n^2) peer-map rebuild for each changed node, i.e. O(m*n^2) per
-	// policy reload.
-	approvedByID := make(map[types.NodeID][]netip.Prefix)
-
-	for _, nv := range nodes.All() {
-		approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
-		if !changed {
-			continue
-		}
-
-		log.Debug().
-			Uint64(zf.NodeID, nv.ID().Uint64()).
-			Str(zf.NodeName, nv.Hostname()).
-			Strs(zf.RoutesApprovedOld, util.PrefixesToString(nv.ApprovedRoutes().AsSlice())).
-			Strs(zf.RoutesApprovedNew, util.PrefixesToString(approved)).
-			Msg("Routes auto-approved by policy")
-
-		approvedByID[nv.ID()] = approved
-	}
-
-	if len(approvedByID) == 0 {
-		return nil, nil
-	}
-
-	genBefore := s.polMan.NodesGeneration()
-
-	updates := make(map[types.NodeID]UpdateNodeFunc, len(approvedByID))
-	for id, approved := range approvedByID {
-		updates[id] = func(n *types.Node) {
-			n.ApprovedRoutes = approved
-
-			// A node with no approved routes is no longer an HA candidate;
-			// drop any stale Unhealthy bit (mirrors SetApprovedRoutes).
-			if len(n.AllApprovedRoutes()) == 0 {
-				n.Unhealthy = false
-			}
-		}
-	}
-
-	s.nodeStore.UpdateNodes(updates)
-
-	for id := range approvedByID {
-		fresh, ok := s.nodeStore.GetNode(id)
-		if !ok {
-			continue
-		}
-
-		_, err := s.persistNode(fresh)
-		if err != nil {
-			return []change.Change{s.policyChangeSince(genBefore)}, err
-		}
-	}
-
-	c, err := s.updatePolicyManagerNodes(genBefore)
-	if err != nil {
-		return []change.Change{c}, err
-	}
-
-	if c.IsEmpty() {
-		c = change.PolicyChange()
-	}
-
-	return []change.Change{c}, nil
-}
-
 // isAutoDerivedGivenName reports whether given matches what
 // dnsname.SanitizeHostname(hostname) would produce, optionally with a
-// [NodeStore] collision-bump "-N" suffix. It is used to detect whether a
-// GivenName has been admin-renamed (in which case it must not be
-// overwritten by client-side hostname changes).
+// [NodeStore] collision-bump "-N" suffix ([bumpedLabel]). It is used to
+// detect whether a GivenName has been admin-renamed (in which case it must
+// not be overwritten by client-side hostname changes).
 func isAutoDerivedGivenName(given, hostname string) bool {
 	base := dnsname.SanitizeHostname(hostname)
 	if given == base {
 		return true
 	}
 
-	suffix, ok := strings.CutPrefix(given, base+"-")
+	_, suffix, ok := strings.CutLast(given, "-")
 	if !ok {
 		return false
 	}
 
-	_, err := strconv.Atoi(suffix)
+	n, err := strconv.Atoi(suffix)
 
-	return err == nil
+	return err == nil && given == bumpedLabel(base, n)
 }
 
 // UpdateNodeFromMapRequest is the sync point where Hostinfo changes,
@@ -3644,10 +4081,9 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		Msg("Processing MapRequest for node")
 
 	var (
-		delta              mapRequestDelta
-		routeChange        bool
-		needsRouteApproval bool
-		autoApprovedRoutes []netip.Prefix
+		delta        mapRequestDelta
+		routeChange  bool
+		staleNodeKey bool
 	)
 	// Snapshot the primary assignment so we can tell whether the
 	// Hostinfo + auto-approval that follows shifted any prefix.
@@ -3657,10 +4093,14 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// We need to ensure we update the node as it is in the [NodeStore] at
 	// the time of the request.
 	updatedNode, ok := s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
+		if currentNode.NodeKey != req.NodeKey {
+			staleNodeKey = true
+			return
+		}
+
 		// Capture the raw wire-level peer change. LastSeen is always
 		// stamped here, so classification tests must not rely on it.
 		delta.peerChange = currentNode.PeerChangeFromMapRequest(req)
-		delta.keyChanged = delta.peerChange.Key != nil
 		delta.discoKeyChanged = delta.peerChange.DiscoKey != nil
 
 		// Normalize before classifying. A nil req.Hostinfo means the client
@@ -3730,46 +4170,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 
 		hostinfoToStore := delta.hostinfoChanged || delta.derpChanged
 
-		// Calculate route approval before [NodeStore] update to avoid
-		// calling View() inside callback
-		var hasNewRoutes bool
-		if hi := req.Hostinfo; hi != nil {
-			hasNewRoutes = len(hi.RoutableIPs) > 0
-		}
-
-		needsRouteApproval = delta.hostinfoChanged &&
-			(delta.routesChanged || (hasNewRoutes && len(currentNode.ApprovedRoutes) == 0))
-		if needsRouteApproval {
-			// Extract announced routes from request
-			var announcedRoutes []netip.Prefix
-			if req.Hostinfo != nil {
-				announcedRoutes = req.Hostinfo.RoutableIPs
-			}
-
-			// Apply policy-based auto-approval if routes are announced
-			if len(announcedRoutes) > 0 {
-				autoApprovedRoutes, routeChange = policy.ApproveRoutesWithPolicy(
-					s.polMan,
-					currentNode.View(),
-					currentNode.ApprovedRoutes,
-					announcedRoutes,
-				)
-			}
-		}
-
-		// Log when routes change but approval doesn't
-		if delta.routesChanged && !routeChange {
-			if hi := req.Hostinfo; hi != nil {
-				log.Debug().
-					Caller().
-					Uint64(zf.NodeID, id.Uint64()).
-					Strs(zf.OldAnnouncedRoutes, util.PrefixesToString(currentNode.AnnouncedRoutes())).
-					Strs(zf.NewAnnouncedRoutes, util.PrefixesToString(hi.RoutableIPs)).
-					Strs(zf.ApprovedRoutes, util.PrefixesToString(currentNode.ApprovedRoutes)).
-					Bool(zf.RouteChanged, routeChange).
-					Msg("announced routes changed but approved routes did not")
-			}
-		}
+		oldAnnounced := currentNode.AnnouncedRoutes()
 
 		currentNode.ApplyPeerChange(&delta.peerChange)
 
@@ -3795,31 +4196,42 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			}
 		}
 
-		if routeChange {
-			log.Info().
-				Uint64(zf.NodeID, id.Uint64()).
-				Strs(zf.OldApprovedRoutes, util.PrefixesToString(currentNode.ApprovedRoutes)).
-				Strs(zf.NewApprovedRoutes, util.PrefixesToString(autoApprovedRoutes)).
-				Bool(zf.RouteChanged, routeChange).
-				Msg("applying route approval results")
+		// Approval follows the announced set, only when it changes: any
+		// other report would re-grant a route an admin revoked. Deciding in
+		// this write keeps one request at one NodeStore write, one peer
+		// build and one row update; persisting is already due, as the
+		// Hostinfo changed.
+		if delta.routesChanged {
+			oldApproved := currentNode.ApprovedRoutes
+			dropped := dropWithdrawnAutoApprovals(currentNode)
+			routeChange = s.approveAnnouncedRoutes(currentNode) || dropped
 
-			// Approving in this write keeps one request at one NodeStore
-			// write, one peer build and one row update. Persisting is
-			// already due: route approval only runs on a Hostinfo change.
-			currentNode.ApprovedRoutes = autoApprovedRoutes
+			log.Debug().
+				Caller().
+				Uint64(zf.NodeID, id.Uint64()).
+				Strs(zf.OldAnnouncedRoutes, util.PrefixesToString(oldAnnounced)).
+				Strs(zf.NewAnnouncedRoutes, util.PrefixesToString(currentNode.AnnouncedRoutes())).
+				Strs(zf.RoutesApprovedOld, util.PrefixesToString(oldApproved)).
+				Strs(zf.RoutesApprovedNew, util.PrefixesToString(currentNode.ApprovedRoutes)).
+				Bool(zf.RouteChanged, routeChange).
+				Msg("announced routes changed")
 		}
 
 		// AllApprovedRoutes is announced ∩ approved; a Hostinfo
 		// update that shrinks the announced set can drop the node
 		// out of HA candidacy without touching ApprovedRoutes.
 		// Clear any stale Unhealthy bit in that case.
-		if len(currentNode.AllApprovedRoutes()) == 0 {
+		if currentNode.Unhealthy && len(currentNode.AllApprovedRoutes()) == 0 {
 			currentNode.Unhealthy = false
 		}
 	})
 
 	if !ok {
 		return change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
+	}
+
+	if staleNodeKey {
+		return change.Change{}, ErrNodeKeyNotCurrent
 	}
 
 	if delta.dnsMetadataChanged {
@@ -3985,6 +4397,11 @@ func buildMapRequestChangeResponse(
 		return change.NodeAdded(id)
 	}
 
+	// Peers get an expired node without its endpoints or home DERP region.
+	if node.IsExpired() {
+		delta.endpointBroadcast, delta.derpChanged = false, false
+	}
+
 	var currentDERP tailcfg.DERPRegionID
 
 	if delta.derpChanged {
@@ -3997,7 +4414,7 @@ func buildMapRequestChangeResponse(
 		}
 	}
 
-	if delta.keyChanged || delta.discoKeyChanged {
+	if delta.discoKeyChanged {
 		c := change.NodeKeyRotated(node)
 		if delta.derpChanged {
 			c.PeerPatches[0].DERPRegion = currentDERP
@@ -4017,7 +4434,7 @@ func buildMapRequestChangeResponse(
 			patch.DERPRegion = currentDERP
 		}
 
-		return change.EndpointOrDERPUpdate(id, patch)
+		return change.EndpointOrDERPUpdate(patch)
 	}
 
 	return change.Change{}
@@ -4045,8 +4462,7 @@ func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
 // [Node.PeerChangeFromMapRequest] always stamps: a keepalive that only bumps
 // LastSeen should not trigger a full-row UPDATE and policy rescan.
 func peerChangePersistWorthy(peerChange tailcfg.PeerChange) bool {
-	return peerChange.Key != nil ||
-		peerChange.DiscoKey != nil ||
+	return peerChange.DiscoKey != nil ||
 		peerChange.Online != nil ||
 		peerChange.Endpoints != nil ||
 		peerChange.DERPRegion != 0 ||

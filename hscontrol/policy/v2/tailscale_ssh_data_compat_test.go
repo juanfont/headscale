@@ -127,142 +127,7 @@ func TestSSHForwardingDataCompat(t *testing.T) {
 var sshSkipReasons = map[string]string{
 	"ssh-b5":  "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
 	"ssh-d10": "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
-
-	"ssh-a1/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-a1/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-a1/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-a2/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-a2/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-a2/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-a3/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-a3/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-a3/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-a4/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-a5/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-a6/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-a6/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-a6/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-a7/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-a7/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-a7/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-a8/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-a8/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-a8/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-acceptenv-null/beedrill/uid-zero":                           sshUIDZero,
-	"ssh-acceptenv-omitted/beedrill/uid-zero":                        sshUIDZero,
-	"ssh-b1/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-b2/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-b3/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-b6/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-c1/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-c1/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-c1/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-c2/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-c3/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-c4/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-c4/kakuna/uid-zero":                                         sshUIDZero,
-	"ssh-checkperiod-null/beedrill/uid-zero":                         sshUIDZero,
-	"ssh-d11/beedrill/uid-zero":                                      sshUIDZero,
-	"ssh-d11/bulbasaur/uid-zero":                                     sshUIDZero,
-	"ssh-d11/ivysaur/uid-zero":                                       sshUIDZero,
-	"ssh-d11/venusaur/uid-zero":                                      sshUIDZero,
-	"ssh-d12/beedrill/uid-zero":                                      sshUIDZero,
-	"ssh-d12/bulbasaur/uid-zero":                                     sshUIDZero,
-	"ssh-d12/ivysaur/uid-zero":                                       sshUIDZero,
-	"ssh-d12/venusaur/uid-zero":                                      sshUIDZero,
-	"ssh-d2/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-d2/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-d2/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-d2/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-d3/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-d3/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-d3/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-d3/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-d4/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-d4/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-d4/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-d4/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-d5/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-d5/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-d5/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-d5/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-d6/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-d6/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-d6/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-d6/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-d7/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-d7/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-d7/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-d7/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-d8/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-d8/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-d8/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-d9/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-d9/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-d9/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-dst-trailing-whitespace/beedrill/uid-zero":                  sshUIDZero,
-	"ssh-duplicate-rules/beedrill/uid-zero":                          sshUIDZero,
-	"ssh-duplicate-rules/kakuna/uid-zero":                            sshUIDZero,
-	"ssh-e5/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-e5/kakuna/uid-zero":                                         sshUIDZero,
-	"ssh-e6/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-e6/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-e6/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-e6/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-equal-src-aliases/beedrill/uid-zero":                        sshUIDZero,
-	"ssh-f1/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-f1/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-f1/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-f1/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-f2/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-f3/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-f3/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-f3/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-f3/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-f4/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-f4/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-f4/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-f4/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-f5/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-f5/bulbasaur/uid-zero":                                      sshUIDZero,
-	"ssh-f5/ivysaur/uid-zero":                                        sshUIDZero,
-	"ssh-f5/venusaur/uid-zero":                                       sshUIDZero,
-	"ssh-g1/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-g2/beedrill/uid-zero":                                       sshUIDZero,
-	"ssh-malformed-acceptenv-bad-glob/beedrill/uid-zero":             sshUIDZero,
-	"ssh-malformed-acceptenv-glob-shapes/beedrill/uid-zero":          sshUIDZero,
-	"ssh-malformed-action-whitespace/beedrill/uid-zero":              sshUIDZero,
-	"ssh-malformed-checkperiod-exact-max/beedrill/uid-zero":          sshUIDZero,
-	"ssh-malformed-checkperiod-too-short/beedrill/uid-zero":          sshUIDZero,
-	"ssh-malformed-checkperiod-zero/beedrill/uid-zero":               sshUIDZero,
-	"ssh-malformed-user-autogroup-internet/beedrill/uid-zero":        sshUIDZero,
-	"ssh-malformed-user-autogroup-member/beedrill/uid-zero":          sshUIDZero,
-	"ssh-malformed-user-autogroup-self/beedrill/uid-zero":            sshUIDZero,
-	"ssh-malformed-user-autogroup-tagged/beedrill/uid-zero":          sshUIDZero,
-	"ssh-malformed-user-group-prefix/beedrill/uid-zero":              sshUIDZero,
-	"ssh-malformed-user-localpart-empty/beedrill/uid-zero":           sshUIDZero,
-	"ssh-malformed-user-localpart-no-at/beedrill/uid-zero":           sshUIDZero,
-	"ssh-malformed-user-localpart-no-domain/beedrill/uid-zero":       sshUIDZero,
-	"ssh-malformed-user-localpart-no-glob/beedrill/uid-zero":         sshUIDZero,
-	"ssh-malformed-user-tag-prefix/beedrill/uid-zero":                sshUIDZero,
-	"ssh-malformed-user-whitespace-leading/beedrill/uid-zero":        sshUIDZero,
-	"ssh-many-tags-as-dst/beedrill/uid-zero":                         sshUIDZero,
-	"ssh-many-tags-as-dst/kakuna/uid-zero":                           sshUIDZero,
-	"ssh-multi-rule-accept-then-check/beedrill/uid-zero":             sshUIDZero,
-	"ssh-multi-rule-check-then-accept/beedrill/uid-zero":             sshUIDZero,
-	"ssh-multi-rule-disjoint-srcs/beedrill/uid-zero":                 sshUIDZero,
-	"ssh-multi-rule-overlap-conflicting-acceptenv/beedrill/uid-zero": sshUIDZero,
-	"ssh-multi-rule-overlap-different-users/beedrill/uid-zero":       sshUIDZero,
-	"ssh-multi-src-multi-dst-multi-user/beedrill/uid-zero":           sshUIDZero,
-	"ssh-multi-src-multi-dst-multi-user/kakuna/uid-zero":             sshUIDZero,
-	"ssh-src-autogroup-tagged-no-tagged-nodes/beedrill/uid-zero":     sshUIDZero,
-	"ssh-src-leading-whitespace/beedrill/uid-zero":                   sshUIDZero,
-	"ssh-tab-in-user/beedrill/uid-zero":                              sshUIDZero,
-	"ssh-unicode-emoji-user/beedrill/uid-zero":                       sshUIDZero,
-	"ssh-unicode-rtl-user/beedrill/uid-zero":                         sshUIDZero,
 }
-
-const sshUIDZero = `SSH_UID_ZERO: SaaS maps login "0" to no local user in every rule; headscale leaves it out`
 
 // sshRejectSkipReasons documents captures the upstream control plane
 // rejects for reasons headscale cannot apply, keyed <test_id> for the whole
@@ -274,7 +139,6 @@ var sshRejectSkipReasons = map[string]string{
 	"ssh-e2": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-malformed-user-localpart-multi-glob": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 
-	"ssh-check-tag-src/refused":                  "SSH_CHECK_TAG_SRC: SaaS refuses a check rule with a tag source; headscale accepts it",
 	"ssh-malformed-checkperiod-too-long/message": "SSH_CHECKPERIOD_TEXT: SaaS quotes a refused checkPeriod as written; headscale prints the parsed duration",
 }
 
@@ -514,7 +378,7 @@ func withoutUIDZero(capture testcapture.Node) testcapture.Node {
 	rules := make([]*tailcfg.SSHRule, 0, len(capture.SSHRules))
 
 	for _, r := range capture.SSHRules {
-		if local, ok := r.SSHUsers["0"]; ok && local == "" {
+		if mapsUIDZero(r) {
 			c := *r
 			c.SSHUsers = maps.Clone(r.SSHUsers)
 			delete(c.SSHUsers, "0")
@@ -529,6 +393,13 @@ func withoutUIDZero(capture testcapture.Node) testcapture.Node {
 	return capture
 }
 
+// mapsUIDZero reports whether r maps login "0" to no local user.
+func mapsUIDZero(r *tailcfg.SSHRule) bool {
+	local, ok := r.SSHUsers["0"]
+
+	return ok && local == ""
+}
+
 // uidZeroMismatch compares, rule by rule, which rules map login "0" to no
 // local user; "" is a match.
 func uidZeroMismatch(pm *PolicyManager, node *types.Node, capture testcapture.Node) string {
@@ -540,8 +411,7 @@ func uidZeroMismatch(pm *PolicyManager, node *types.Node, capture testcapture.No
 	uidZero := func(rules []*tailcfg.SSHRule) []bool {
 		out := make([]bool, 0, len(rules))
 		for _, r := range rules {
-			local, ok := r.SSHUsers["0"]
-			out = append(out, ok && local == "")
+			out = append(out, mapsUIDZero(r))
 		}
 
 		return out
@@ -679,22 +549,25 @@ func TestSSHCheckParamsMatchesCaptures(t *testing.T) {
 
 // TestSSHCheckParamsMatchesCompiledRules pins SSHCheckParams to headscale's
 // own compiled rules for shapes the captures lack, such as a user whose
-// email localpart is root.
+// email localpart is root or "0".
 func TestSSHCheckParamsMatchesCompiledRules(t *testing.T) {
 	t.Parallel()
 
 	users := types.Users{
 		{Name: "root", Email: "root@example.com"},
 		{Name: "alice", Email: "alice@example.com"},
+		{Name: "zero", Email: "0@example.com"},
 	}
 	users[0].ID = 1
 	users[1].ID = 2
+	users[2].ID = 3
 
 	nodes := types.Nodes{
 		node("root-1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
 		node("root-2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
 		node("alice-1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
 		node("server", "100.64.0.4", "fd7a:115c:a1e0::4", users[1]),
+		node("zero-1", "100.64.0.5", "fd7a:115c:a1e0::5", users[2]),
 	}
 	for i, n := range nodes {
 		n.ID = types.NodeID(i + 1) //nolint:gosec
@@ -715,6 +588,7 @@ func TestSSHCheckParamsMatchesCompiledRules(t *testing.T) {
 		"localpart on self":           {check("autogroup:self", "localpart:*@example.com")},
 		"localpart then root":         {check("tag:server", "localpart:*@example.com"), check("autogroup:self", "root")},
 		"nonroot and literal on self": {check("autogroup:self", "autogroup:nonroot", "deploy")},
+		"literal 0 on self":           {check("autogroup:self", "0", "autogroup:nonroot")},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

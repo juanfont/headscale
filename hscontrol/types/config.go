@@ -285,7 +285,6 @@ type GormConfig struct {
 	SlowThreshold         time.Duration
 	SkipErrRecordNotFound bool
 	ParameterizedQueries  bool
-	PrepareStmt           bool
 }
 
 type DatabaseConfig struct {
@@ -716,10 +715,55 @@ func validateServerConfig() error {
 	return v.Err()
 }
 
+var boolConfigKeys = []string{
+	"auto_update.enabled",
+	"cli.insecure",
+	"database.debug",
+	"database.gorm.parameterized_queries",
+	"database.gorm.skip_err_record_not_found",
+	"database.sqlite.write_ahead_log",
+	"derp.auto_update_enabled",
+	"derp.server.automatically_add_embedded_derp_region",
+	"derp.server.enabled",
+	"derp.server.verify_clients",
+	"disable_check_updates",
+	"dns.certificates.enabled",
+	"dns.magic_dns",
+	"dns.override_local_dns",
+	"logtail.enabled",
+	"oidc.email_verified_required",
+	"oidc.only_start_if_oidc_is_available",
+	"oidc.pkce.enabled",
+	"oidc.use_expiry_from_token",
+	"taildrop.enabled",
+}
+
+// Validate raw values before GetBool can discard conversion errors.
+func validateBoolConfig(v *configValidator, keys ...string) {
+	for _, key := range keys {
+		value := viper.Get(key)
+		if value == nil {
+			continue
+		}
+
+		_, err := strconv.ParseBool(fmt.Sprint(value))
+		if err != nil {
+			v.Add(&ConfigError{
+				Reason:  key + " is not a boolean",
+				Current: []KV{{key, value}},
+				Hint:    "use true or false",
+				Cause:   err,
+			})
+		}
+	}
+}
+
 // validateServerConfigInto runs every viper-level validation rule
 // against the provided validator. Caller owns the validator and is
 // responsible for inspecting v.Err() once all sub-builders have run.
 func validateServerConfigInto(v *configValidator) {
+	validateBoolConfig(v, boolConfigKeys...)
+
 	depr := deprecator{seen: make(set.Set[string])}
 
 	// Register aliases for backward compatibility
@@ -759,6 +803,10 @@ func validateServerConfigInto(v *configValidator) {
 
 	// Removed: oidc.expiry -> node.expiry
 	depr.fatalIfSet("oidc.expiry", "node.expiry")
+
+	// Ignored: database.gorm.prepare_stmt. A warning, not a fatal, so configs
+	// that shipped with it set still start.
+	depr.warn("database.gorm.prepare_stmt")
 
 	// OIDC is activated by setting oidc.issuer (see app.go), not by a
 	// dedicated oidc.enabled key. Gate validation on the real activation
@@ -1237,7 +1285,6 @@ func databaseConfig() DatabaseConfig {
 	skipErrRecordNotFound := viper.GetBool("database.gorm.skip_err_record_not_found")
 	slowThreshold := time.Duration(viper.GetInt64("database.gorm.slow_threshold")) * time.Millisecond
 	parameterizedQueries := viper.GetBool("database.gorm.parameterized_queries")
-	prepareStmt := viper.GetBool("database.gorm.prepare_stmt")
 
 	switch type_ {
 	case DatabaseSqlite, DatabasePostgres:
@@ -1254,7 +1301,6 @@ func databaseConfig() DatabaseConfig {
 			SkipErrRecordNotFound: skipErrRecordNotFound,
 			SlowThreshold:         slowThreshold,
 			ParameterizedQueries:  parameterizedQueries,
-			PrepareStmt:           prepareStmt,
 		},
 		Sqlite: SqliteConfig{
 			Path: util.AbsolutePathFromConfigPath(
@@ -1467,6 +1513,14 @@ func trustedProxies() ([]netip.Prefix, error) {
 // LoadCLIConfig returns the needed configuration for the CLI client
 // of Headscale to connect to a Headscale server.
 func LoadCLIConfig() (*Config, error) {
+	v := &configValidator{}
+	validateBoolConfig(v, "cli.insecure", "disable_check_updates")
+
+	err := v.Err()
+	if err != nil {
+		return nil, err
+	}
+
 	logConfig := logConfig()
 	zerolog.SetGlobalLevel(logConfig.Level)
 
@@ -1660,7 +1714,7 @@ func LoadServerConfig() (*Config, error) {
 		}
 	}
 
-	serverURL := viper.GetString("server_url")
+	serverURL := strings.TrimRight(viper.GetString("server_url"), "/")
 
 	// BaseDomain cannot be the same as the server URL.
 	// This is because Tailscale takes over the domain in BaseDomain,
@@ -1955,8 +2009,6 @@ func (d *deprecator) warnNoAlias(newKey, oldKey string) {
 
 // warn records a non-blocking warning when oldKey is set, with no
 // replacement to point at.
-//
-//nolint:unused
 func (d *deprecator) warn(oldKey string) {
 	if viper.IsSet(oldKey) {
 		d.addWarn(deprecation{OldKey: oldKey})
@@ -1977,7 +2029,7 @@ func (d *deprecator) Apply(v *configValidator) {
 			continue
 		}
 
-		log.Warn().Msgf("configuration key %q is deprecated", w.OldKey)
+		log.Warn().Msgf("configuration key %q is ignored", w.OldKey)
 	}
 
 	for _, f := range d.fatals {
@@ -2022,10 +2074,17 @@ func (c *Config) CloneTailcfgDNSConfig() *tailcfg.DNSConfig {
 	return c.TailcfgDNSConfig.Clone()
 }
 
-// extraRecordAtOrBelow reports whether an extra DNS record is name or a
-// subdomain of it. Case is ignored, as in TLS name matching; name is
+// HasExtraRecord reports whether an extra DNS record is exactly name,
+// ignoring case and a trailing dot. Safe for concurrent use with
+// [Config.SetExtraRecords].
+func (c *Config) HasExtraRecord(name string) bool {
+	return c.extraRecordAt(strings.ToLower(strings.TrimSuffix(name, ".")), false)
+}
+
+// extraRecordAt reports whether an extra DNS record is name or, with orBelow,
+// a subdomain of it. Case is ignored, as in TLS name matching; name is
 // lowercase.
-func (c *Config) extraRecordAtOrBelow(name string) bool {
+func (c *Config) extraRecordAt(name string, orBelow bool) bool {
 	tailcfgDNSMu.RLock()
 	defer tailcfgDNSMu.RUnlock()
 
@@ -2035,7 +2094,7 @@ func (c *Config) extraRecordAtOrBelow(name string) bool {
 
 	for _, r := range c.TailcfgDNSConfig.ExtraRecords {
 		rn := strings.ToLower(strings.TrimSuffix(r.Name, "."))
-		if rn == name || strings.HasSuffix(rn, "."+name) {
+		if rn == name || (orBelow && strings.HasSuffix(rn, "."+name)) {
 			return true
 		}
 	}

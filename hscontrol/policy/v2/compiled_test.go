@@ -320,14 +320,15 @@ func TestCompileOtherDestsMatchesReference(t *testing.T) {
 					hp("undefined"),
 				}
 			case "partial-group":
+				// An ambiguous member matches no one; the others stay.
 				users = append(users, types.User{ID: 100, Name: users[0].Name})
 				ips, err := grant.Destinations[0].Resolve(pol, users, nodes.ViewSlice())
-				require.Error(t, err)
+				require.NoError(t, err)
 				require.NotNil(t, ips)
 				require.False(
 					t,
 					ips.Empty(),
-					"exercise a partial result alongside the error",
+					"exercise a partial result",
 				)
 			}
 

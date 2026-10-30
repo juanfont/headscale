@@ -35,6 +35,11 @@ type SSHPolicyTestResult struct {
 	DenyFail   map[string][]string `json:"deny_fail,omitempty"`
 	CheckOK    map[string][]string `json:"check_ok,omitempty"`
 	CheckFail  map[string][]string `json:"check_fail,omitempty"`
+
+	// CheckDenied holds the check failures where a node was not reached at
+	// all. A dst alias can cover nodes that fail in different ways, and one
+	// node not reached makes the alias DENIED.
+	CheckDenied map[string][]string `json:"check_denied,omitempty"`
 }
 
 // SSHPolicyTestResults aggregates one evaluation run.
@@ -43,53 +48,63 @@ type SSHPolicyTestResults struct {
 	Results   []SSHPolicyTestResult `json:"results"`
 }
 
-// Errors renders the per-test failure breakdown joined by newlines.
+// Errors renders the per-test failure breakdown joined by newlines,
+// bounded by [testFailures].
 func (r SSHPolicyTestResults) Errors() string {
 	if r.AllPassed {
 		return ""
 	}
 
-	var lines []string
+	var failures testFailures
 
 	for _, res := range r.Results {
 		if res.Passed {
 			continue
 		}
 
+		src := clipTestLabel(res.Src)
+
 		for _, e := range res.Errors {
-			lines = append(lines, fmt.Sprintf("%s: %s", res.Src, e))
+			failures.addf("%s: %s", src, clipTestLabel(e))
 		}
 
 		for _, user := range sortedUsers(res.AcceptFail) {
 			for _, dst := range res.AcceptFail[user] {
-				lines = append(lines, fmt.Sprintf(
+				failures.addf(
 					"%s/%s -> %s: expected ALLOWED, got DENIED",
-					res.Src, displayUser(user), dst,
-				))
+					src, clipTestLabel(displayUser(user)), clipTestLabel(dst),
+				)
 			}
 		}
 
 		for _, user := range sortedUsers(res.DenyFail) {
 			for _, dst := range res.DenyFail[user] {
-				lines = append(lines, fmt.Sprintf(
+				failures.addf(
 					"%s/%s -> %s: expected DENIED, got ALLOWED",
-					res.Src, displayUser(user), dst,
-				))
+					src, clipTestLabel(displayUser(user)), clipTestLabel(dst),
+				)
 			}
 		}
 
 		for _, user := range sortedUsers(res.CheckFail) {
 			for _, dst := range res.CheckFail[user] {
-				lines = append(lines, fmt.Sprintf(
+				// The reason scans CheckDenied; skip it for lines that
+				// are only counted.
+				var reason string
+				if !failures.full() {
+					reason = checkFailReason(res, user, dst)
+				}
+
+				failures.addf(
 					"%s/%s -> %s: expected ALLOWED via check, got %s",
-					res.Src, displayUser(user), dst,
-					checkFailReason(res, user, dst),
-				))
+					src, clipTestLabel(displayUser(user)), clipTestLabel(dst),
+					reason,
+				)
 			}
 		}
 	}
 
-	return strings.Join(lines, "\n")
+	return failures.String()
 }
 
 // failures is the breakdown apart per failing entry, so an API answer can
@@ -123,11 +138,11 @@ func displayUser(u string) string {
 // checkFailReason annotates a check-fail with whether the user reached
 // the dst via an accept rule or did not reach at all.
 func checkFailReason(res SSHPolicyTestResult, user, dst string) string {
-	if slices.Contains(res.AcceptOK[user], dst) {
-		return "ALLOWED via accept"
+	if slices.Contains(res.CheckDenied[user], dst) {
+		return "DENIED"
 	}
 
-	return "DENIED"
+	return "ALLOWED via accept"
 }
 
 // RunSSHTests evaluates the live policy's sshTests block and wraps any
@@ -140,8 +155,7 @@ func (pm *PolicyManager) RunSSHTests() error {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
-	results := runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache)
+	results := runSSHPolicyTests(pm.resolvedPol, pm.users, pm.nodes)
 
 	return wrapTestResult(errSSHPolicyTestsFailed, results.AllPassed, results)
 }
@@ -156,20 +170,28 @@ func evaluateSSHTests(
 		return nil
 	}
 
-	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
-	results := runSSHPolicyTests(pol, users, nodes, cache)
+	pol = pol.withResolvedGroups(users, nodes)
+	results := runSSHPolicyTests(pol, users, nodes)
 
 	return wrapTestResult(errSSHPolicyTestsFailed, results.AllPassed, results)
 }
 
-// runSSHPolicyTests evaluates every sshTests entry. The cache is keyed
-// by dst [types.NodeID] so repeat destinations only compile once per pass.
+// runSSHPolicyTests evaluates every sshTests entry. The SSH rules are
+// compiled once per pass and each dst's rules are selected once.
 func runSSHPolicyTests(
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
-	cache map[types.NodeID]*tailcfg.SSHPolicy,
 ) SSHPolicyTestResults {
+	// baseURL is empty because reachability only checks for the presence
+	// of [tailcfg.SSHAction.HoldAndDelegate], not its value.
+	rules, err := pol.compileSSHRules("", users, nodes)
+	cache := &sshTestCache{
+		rules:  rules,
+		err:    err,
+		byNode: make(map[types.NodeID]sshRulesBySrc),
+	}
+
 	results := SSHPolicyTestResults{
 		AllPassed: true,
 		Results:   make([]SSHPolicyTestResult, 0, len(pol.SSHTests)),
@@ -194,11 +216,11 @@ func runSSHPolicyTest(
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
-	cache map[types.NodeID]*tailcfg.SSHPolicy,
+	cache *sshTestCache,
 ) SSHPolicyTestResult {
 	srcLabel := ""
 	if test.Src != nil {
-		srcLabel = test.Src.String()
+		srcLabel = sshTestLabel(test.Src)
 	}
 
 	res := SSHPolicyTestResult{
@@ -232,23 +254,12 @@ func runSSHPolicyTest(
 		return res
 	}
 
-	dstNodes, emptyDsts, err := resolveSSHTestDestNodes(test.Dst, pol, users, nodes, srcUserID)
+	dsts, err := resolveSSHTestDests(test.Dst, pol, users, nodes, srcUserID)
 	if err != nil {
 		res.Passed = false
 		res.Errors = append(res.Errors,
 			fmt.Sprintf("failed to resolve destinations: %v", err))
 
-		return res
-	}
-
-	// A dst resolving to zero nodes would silently pass.
-	for _, dst := range emptyDsts {
-		res.Passed = false
-		res.Errors = append(res.Errors,
-			fmt.Sprintf("dst alias %q resolved to no nodes", dst))
-	}
-
-	if len(dstNodes) == 0 {
 		return res
 	}
 
@@ -260,11 +271,14 @@ func runSSHPolicyTest(
 		{test.Deny, assertDeny},
 		{test.Check, assertCheck},
 	} {
+		// Each distinct name and alias is evaluated once and reported at
+		// every occurrence, as Tailscale SaaS repeats them.
+		seen := make(map[sshTestKey]sshTestOutcome)
+
 		for _, user := range g.users {
 			evaluateAssertion(
-				pol, users, nodes, cache,
-				srcAddrs, dstNodes, user.String(),
-				g.kind, &res,
+				cache, srcAddrs, dsts, user.String(),
+				g.kind, seen, &res,
 			)
 		}
 	}
@@ -280,94 +294,122 @@ const (
 	assertCheck
 )
 
-// evaluateAssertion walks every (srcAddr, dstNode) pair for one user
-// and records the outcome. Empty username fails — SSH login users
-// cannot be empty even when parse accepted it.
+// evaluateAssertion records one user's outcome for each dst alias of an
+// entry, under the alias as written: the report goes back to the policy
+// author, who may not be allowed to list nodes. An alias passes when every
+// node it selects does, for every src address; one selecting no node is not
+// reached. seen holds the outcomes of one assertion kind already
+// evaluated.
 func evaluateAssertion(
-	pol *Policy,
-	users []types.User,
-	nodes views.Slice[types.NodeView],
-	cache map[types.NodeID]*tailcfg.SSHPolicy,
+	cache *sshTestCache,
+	srcAddrs []netip.Addr,
+	dsts []sshTestDst,
+	user string,
+	kind sshAssertion,
+	seen map[sshTestKey]sshTestOutcome,
+	res *SSHPolicyTestResult,
+) {
+	for _, dst := range dsts {
+		key := sshTestKey{user: user, dst: dst.label}
+
+		o, ok := seen[key]
+		if !ok {
+			passed, notReached, err := sshTestAliasOutcome(
+				cache, srcAddrs, dst.nodes, user, kind,
+			)
+			if err != nil {
+				res.Passed = false
+				res.Errors = append(res.Errors,
+					fmt.Sprintf("compiling SSH policy for %s: %v", dst.label, err))
+			}
+
+			o = sshTestOutcome{passed, notReached, err != nil}
+			seen[key] = o
+		}
+
+		if o.failed {
+			continue
+		}
+
+		if !o.passed {
+			res.Passed = false
+		}
+
+		switch {
+		case kind == assertAccept && o.passed:
+			res.AcceptOK = appendUserDst(res.AcceptOK, user, dst.label)
+		case kind == assertAccept:
+			res.AcceptFail = appendUserDst(res.AcceptFail, user, dst.label)
+		case kind == assertDeny && o.passed:
+			res.DenyOK = appendUserDst(res.DenyOK, user, dst.label)
+		case kind == assertDeny:
+			res.DenyFail = appendUserDst(res.DenyFail, user, dst.label)
+		case o.passed:
+			res.CheckOK = appendUserDst(res.CheckOK, user, dst.label)
+		default:
+			res.CheckFail = appendUserDst(res.CheckFail, user, dst.label)
+
+			if o.notReached {
+				res.CheckDenied = appendUserDst(res.CheckDenied, user, dst.label)
+			}
+		}
+	}
+}
+
+// sshTestKey is one login name checked against one dst alias.
+type sshTestKey struct{ user, dst string }
+
+// sshTestOutcome is what evaluating an [sshTestKey] found; failed means it
+// could not be evaluated.
+type sshTestOutcome struct{ passed, notReached, failed bool }
+
+// sshTestAliasOutcome reports whether user's assertion holds on every node
+// of one dst alias from every src address, and whether a failing node was
+// not reached at all. All src addresses must agree: the first
+// counter-example fails the node.
+func sshTestAliasOutcome(
+	cache *sshTestCache,
 	srcAddrs []netip.Addr,
 	dstNodes []types.NodeView,
 	user string,
 	kind sshAssertion,
-	res *SSHPolicyTestResult,
-) {
-dstLoop:
+) (bool, bool, error) {
+	if len(dstNodes) == 0 {
+		return kind == assertDeny, true, nil
+	}
+
+	passed, notReached := true, false
+
 	for _, dst := range dstNodes {
-		dstPol, err := compiledSSHPolicy(pol, users, nodes, cache, dst)
+		dstRules, err := compiledSSHPolicy(cache, dst)
 		if err != nil {
-			res.Passed = false
-			res.Errors = append(res.Errors,
-				fmt.Sprintf("compiling SSH policy for %s: %v",
-					dst.Hostname(), err))
-
-			continue
+			return false, false, err
 		}
-
-		dstLabel := dst.Hostname()
-
-		acceptHit := false
-		checkHit := false
 
 		for _, srcAddr := range srcAddrs {
-			a, c := reachability(dstPol, srcAddr, user)
-			if a {
-				acceptHit = true
-			}
+			a, c := reachability(dstRules[srcAddr], user)
 
-			if c {
-				checkHit = true
-			}
+			var holds bool
 
-			// All src IPs must agree; one counter-example fails
-			// the whole (user, dst) pair.
 			switch kind {
 			case assertAccept:
-				if !a {
-					res.Passed = false
-					res.AcceptFail = appendUserDst(res.AcceptFail, user, dstLabel)
-
-					continue dstLoop
-				}
+				holds = a
 			case assertDeny:
-				if a {
-					res.Passed = false
-					res.DenyFail = appendUserDst(res.DenyFail, user, dstLabel)
-
-					continue dstLoop
-				}
+				holds = !a
 			case assertCheck:
-				if !c {
-					res.Passed = false
-					res.CheckFail = appendUserDst(res.CheckFail, user, dstLabel)
-
-					// Record whether the accept side passed so
-					// the rendered error can say "ALLOWED via
-					// accept" instead of "DENIED".
-					if a {
-						res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
-					}
-
-					continue dstLoop
-				}
+				holds = c
 			}
-		}
 
-		switch kind {
-		case assertAccept:
-			if acceptHit {
-				res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
-			}
-		case assertDeny:
-			res.DenyOK = appendUserDst(res.DenyOK, user, dstLabel)
-		case assertCheck:
-			if checkHit {
-				res.CheckOK = appendUserDst(res.CheckOK, user, dstLabel)
+			if !holds {
+				passed = false
+				notReached = notReached || !a
+
+				break
 			}
 		}
 	}
+
+	return passed, notReached, nil
 }
 
 // appendUserDst appends dst to m[user], allocating m on first use.
@@ -384,6 +426,12 @@ func appendUserDst(m map[string][]string, user, dst string) map[string][]string 
 // resolveSSHTestSource returns the src's principal addresses and, for
 // user-shaped sources, the user ID (so autogroup:self can scope to it).
 // [Tag], [Host], and IP sources return userID 0.
+//
+// SSH principals are always node addresses, so a src is represented by
+// the node addresses it covers plus one address standing in for all
+// the others, which no rule can match. The result is bounded by the
+// node count; a CIDR, `*`, or autogroup:internet src is never walked
+// address by address.
 func resolveSSHTestSource(
 	src Alias,
 	pol *Policy,
@@ -411,7 +459,36 @@ func resolveSSHTestSource(
 		return nil, 0, nil
 	}
 
-	out := slices.Collect(addrs.Iter())
+	var (
+		out  []netip.Addr
+		rest netipx.IPSetBuilder
+	)
+
+	for _, p := range addrs.Prefixes() {
+		rest.AddPrefix(p)
+	}
+
+	for _, n := range nodes.All() {
+		for _, ip := range n.IPs() {
+			if addrs.Contains(ip) {
+				out = append(out, ip)
+				rest.Remove(ip)
+			}
+		}
+	}
+
+	restSet, err := rest.IPSet()
+	if err != nil {
+		return nil, 0, fmt.Errorf("resolving: %w", err)
+	}
+
+	if ranges := restSet.Ranges(); len(ranges) > 0 {
+		out = append(out, ranges[0].From())
+	}
+
+	// Address order, as a full walk has: the first failing address
+	// decides how a check failure is rendered.
+	slices.SortFunc(out, netip.Addr.Compare)
 
 	var userID uint
 
@@ -426,105 +503,107 @@ func resolveSSHTestSource(
 	return out, userID, nil
 }
 
-// resolveSSHTestDestNodes maps each dst alias to its destination
-// [types.NodeView]s. autogroup:self needs special handling: it cannot
-// resolve without per-node context, so it walks the node set keyed on
-// src's owning user. Other aliases resolve to an [netipx.IPSet] and match
-// via [types.NodeView.InIPSet].
-func resolveSSHTestDestNodes(
+// sshTestLabel names an sshTests alias as its author writes it: a single
+// address bare, not as a /32 or /128 prefix.
+func sshTestLabel(alias Alias) string {
+	if p, ok := alias.(*Prefix); ok {
+		return filterIP(netip.Prefix(*p))
+	}
+
+	return alias.String()
+}
+
+// sshTestDst is one dst alias of an sshTests entry and the nodes it
+// selects.
+type sshTestDst struct {
+	label string
+	nodes []types.NodeView
+}
+
+// resolveSSHTestDests resolves each dst alias of an entry, in order and
+// once per occurrence, so the report can name every alias as written.
+// Each distinct alias resolves once.
+func resolveSSHTestDests(
 	dsts SSHTestDestinations,
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
 	srcUserID uint,
-) ([]types.NodeView, []string, error) {
-	seen := make(map[types.NodeID]struct{})
-
-	var (
-		out       []types.NodeView
-		emptyDsts []string
-	)
+) ([]sshTestDst, error) {
+	selected := make(map[string][]types.NodeView, len(dsts))
+	out := make([]sshTestDst, 0, len(dsts))
 
 	for _, alias := range dsts {
-		dstLabel := alias.String()
-		matched := false
+		label := sshTestLabel(alias)
 
-		if ag, ok := alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-			// autogroup:self resolves to non-tagged nodes owned by
-			// the same user as src; tagged/IP sources have no user.
-			if srcUserID == 0 {
-				emptyDsts = append(emptyDsts, dstLabel)
+		dstNodes, ok := selected[label]
+		if !ok {
+			var err error
 
-				continue
+			dstNodes, err = sshTestDstNodes(alias, pol, users, nodes, srcUserID)
+			if err != nil {
+				return nil, err
 			}
 
-			for _, n := range nodes.All() {
-				if n.IsTagged() {
-					continue
-				}
-
-				if !n.User().Valid() {
-					continue
-				}
-
-				if n.User().ID() != srcUserID {
-					continue
-				}
-
-				matched = true
-
-				if _, dup := seen[n.ID()]; dup {
-					continue
-				}
-
-				seen[n.ID()] = struct{}{}
-				out = append(out, n)
-			}
-
-			if !matched {
-				emptyDsts = append(emptyDsts, dstLabel)
-			}
-
-			continue
+			selected[label] = dstNodes
 		}
 
-		ips, err := alias.Resolve(pol, users, nodes)
-		if err != nil {
-			return nil, nil, fmt.Errorf("resolving destination %q: %w", dstLabel, err)
-		}
+		out = append(out, sshTestDst{label: label, nodes: dstNodes})
+	}
 
-		if ips == nil || ips.Empty() {
-			emptyDsts = append(emptyDsts, dstLabel)
+	return out, nil
+}
 
-			continue
-		}
+// sshTestDstNodes returns the nodes one dst alias selects. autogroup:self
+// cannot resolve without per-node context, so it walks the node set keyed
+// on src's owning user. Other aliases resolve to an [netipx.IPSet] and
+// match via [types.NodeView.InIPSet].
+func sshTestDstNodes(
+	alias Alias,
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	srcUserID uint,
+) ([]types.NodeView, error) {
+	var out []types.NodeView
 
-		set, err := prefixesToIPSet(ips.Prefixes())
-		if err != nil {
-			return nil, nil, fmt.Errorf("building IPSet for %q: %w", dstLabel, err)
+	if ag, ok := alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+		// autogroup:self is the src user's untagged nodes; tagged and
+		// address sources have no user.
+		if srcUserID == 0 {
+			return nil, nil
 		}
 
 		for _, n := range nodes.All() {
-			if !n.InIPSet(set) {
-				continue
+			if !n.IsTagged() && n.User().Valid() && n.User().ID() == srcUserID {
+				out = append(out, n)
 			}
-
-			matched = true
-
-			if _, dup := seen[n.ID()]; dup {
-				continue
-			}
-
-			seen[n.ID()] = struct{}{}
-			out = append(out, n)
 		}
 
-		if !matched {
-			emptyDsts = append(emptyDsts, dstLabel)
+		return out, nil
+	}
+
+	ips, err := alias.Resolve(pol, users, nodes)
+	if err != nil {
+		return nil, fmt.Errorf("resolving destination %q: %w", sshTestLabel(alias), err)
+	}
+
+	if ips == nil || ips.Empty() {
+		return nil, nil
+	}
+
+	set, err := prefixesToIPSet(ips.Prefixes())
+	if err != nil {
+		return nil, fmt.Errorf("building IPSet for %q: %w", sshTestLabel(alias), err)
+	}
+
+	for _, n := range nodes.All() {
+		if n.InIPSet(set) {
+			out = append(out, n)
 		}
 	}
 
-	return out, emptyDsts, nil
+	return out, nil
 }
 
 // prefixesToIPSet builds the [netipx.IPSet] that [types.NodeView.InIPSet]
@@ -539,50 +618,64 @@ func prefixesToIPSet(prefixes []netip.Prefix) (*netipx.IPSet, error) {
 	return b.IPSet()
 }
 
-// compiledSSHPolicy returns the per-node compiled [tailcfg.SSHPolicy], caching
-// on miss. baseURL is empty because reachability only checks for the
-// presence of [tailcfg.SSHAction.HoldAndDelegate], not its value.
-func compiledSSHPolicy(
-	pol *Policy,
-	users []types.User,
-	nodes views.Slice[types.NodeView],
-	cache map[types.NodeID]*tailcfg.SSHPolicy,
-	node types.NodeView,
-) (*tailcfg.SSHPolicy, error) {
-	if sshPol, ok := cache[node.ID()]; ok {
-		return sshPol, nil
-	}
-
-	sshPol, err := pol.compileSSHPolicy("", users, node, nodes)
-	if err != nil {
-		return nil, err
-	}
-
-	cache[node.ID()] = sshPol
-
-	return sshPol, nil
+// sshTestCache holds one sshTests pass's compiled SSH rules and, per dst,
+// the rules selected from them.
+type sshTestCache struct {
+	rules  []compiledSSHRule
+	err    error
+	byNode map[types.NodeID]sshRulesBySrc
 }
 
-// reachability reports whether srcAddr can log in as user via:
-//
-//   - any matching rule (acceptHit, satisfies accept assertions)
-//   - a check-action rule (checkHit, satisfies check assertions)
-func reachability(
-	dstPolicy *tailcfg.SSHPolicy,
-	srcAddr netip.Addr,
-	user string,
-) (bool, bool) {
-	if dstPolicy == nil {
-		return false, false
+// sshRulesBySrc is one destination's SSH rules keyed by principal address,
+// so an assertion walks only the rules its source can match and every
+// principal is parsed once per destination.
+type sshRulesBySrc map[netip.Addr][]*tailcfg.SSHRule
+
+// compiledSSHPolicy returns node's SSH rules, selecting them from the
+// compiled rules on first use.
+func compiledSSHPolicy(
+	cache *sshTestCache,
+	node types.NodeView,
+) (sshRulesBySrc, error) {
+	if cache.err != nil {
+		return nil, cache.err
 	}
 
+	if rules, ok := cache.byNode[node.ID()]; ok {
+		return rules, nil
+	}
+
+	rules := make(sshRulesBySrc)
+
+	for _, rule := range sshPolicyForNode(cache.rules, node).Rules {
+		for _, p := range rule.Principals {
+			if p == nil {
+				continue
+			}
+
+			addr, err := netip.ParseAddr(p.NodeIP)
+			if err != nil {
+				continue
+			}
+
+			rules[addr] = append(rules[addr], rule)
+		}
+	}
+
+	cache.byNode[node.ID()] = rules
+
+	return rules, nil
+}
+
+// reachability reports whether a source with these rules can log in as
+// user via:
+//
+//   - any of its rules (acceptHit, satisfies accept assertions)
+//   - a check-action rule (checkHit, satisfies check assertions)
+func reachability(rules []*tailcfg.SSHRule, user string) (bool, bool) {
 	var acceptHit, checkHit bool
 
-	for _, rule := range dstPolicy.Rules {
-		if !principalContainsAddr(rule.Principals, srcAddr) {
-			continue
-		}
-
+	for _, rule := range rules {
 		if !sshUserMapAllows(rule.SSHUsers, user) {
 			continue
 		}
@@ -605,34 +698,6 @@ func reachability(
 	}
 
 	return acceptHit, checkHit
-}
-
-// principalContainsAddr reports whether any principal's [tailcfg.SSHPrincipal.NodeIP]
-// matches srcAddr exactly (the SSH compiler emits one principal per source IP).
-func principalContainsAddr(
-	principals []*tailcfg.SSHPrincipal,
-	srcAddr netip.Addr,
-) bool {
-	for _, p := range principals {
-		if p == nil {
-			continue
-		}
-
-		if p.NodeIP == "" {
-			continue
-		}
-
-		addr, err := netip.ParseAddr(p.NodeIP)
-		if err != nil {
-			continue
-		}
-
-		if addr == srcAddr {
-			return true
-		}
-	}
-
-	return false
 }
 
 // sshUserMapAllows reports whether [SSHUsers] permits user. The [SSHUsers]

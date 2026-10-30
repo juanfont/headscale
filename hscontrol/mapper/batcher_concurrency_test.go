@@ -273,7 +273,7 @@ func TestAddToBatchDifferential(t *testing.T) {
 		lb.b.nodes.Store(99, nil)
 	}
 
-	endpoint := change.EndpointOrDERPUpdate(1, &tailcfg.PeerChange{
+	endpoint := change.EndpointOrDERPUpdate(&tailcfg.PeerChange{
 		NodeID: 1, DERPRegion: 7, Online: new(true),
 	})
 	ping := change.PingNode(2, &tailcfg.PingRequest{URL: "https://example.com/one"})
@@ -291,7 +291,7 @@ func TestAddToBatchDifferential(t *testing.T) {
 			change.PeersChanged("several peers", 3, 1),
 		}},
 		{"deletion", []change.Change{
-			change.NodeRemoved(4), change.SelfUpdate(4), change.PeersRemoved(3),
+			change.NodeRemoved(4, 1)[1], change.SelfUpdate(4), change.PeersRemoved(3),
 		}},
 		{
 			"full_with_pings",
@@ -510,7 +510,7 @@ func TestAddToBatch_NodeRemovalCleanup(t *testing.T) {
 	_, exists := lb.b.nodes.Load(removedNode)
 	require.True(t, exists, "node 3 should exist before removal")
 
-	lb.b.addToBatch(change.NodeRemoved(removedNode))
+	lb.b.addToBatch(change.NodeRemoved(removedNode)...)
 
 	// Node should be removed from the nodes map
 	_, exists = lb.b.nodes.Load(removedNode)

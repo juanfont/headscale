@@ -11,6 +11,40 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestDestroyUserKeepsTaggedNodeEphemeral(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user := db.CreateUserForTest("tagged-ephemeral-user")
+	pak, err := db.CreatePreAuthKey(
+		user.TypedID(),
+		true,
+		true,
+		nil,
+		[]string{"tag:server"},
+	)
+	require.NoError(t, err)
+
+	node := &types.Node{
+		Hostname:  "tagged-ephemeral-node",
+		Tags:      []string{"tag:server"},
+		AuthKeyID: &pak.ID,
+		Ephemeral: true,
+	}
+	require.NoError(t, db.DB.Create(node).Error)
+	require.NoError(t, db.DestroyUser(types.UserID(user.ID)))
+	nodes, err := db.ListNodes()
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	require.True(t, nodes[0].IsTagged())
+	require.True(t, nodes[0].IsEphemeral())
+
+	retained, err := db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	require.Nil(t, retained.Revoked, "a tagged key outlives the user that made it")
+	require.Nil(t, retained.UserID)
+}
+
 func TestCreateAndDestroyUser(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	require.NoError(t, err)
@@ -61,6 +95,27 @@ func TestDestroyUserErrors(t *testing.T) {
 
 				result := db.DB.First(&foundPak, "kind = ? AND id = ?", types.CredentialPreAuthKey, pak.ID)
 				assert.ErrorIs(t, result.Error, gorm.ErrRecordNotFound)
+			},
+		},
+		{
+			// A tagged key belongs to its tags, so it outlives the user that
+			// made it and only loses the reference.
+			name: "success_keeps_tagged_preauthkeys",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				user := db.CreateUserForTest("test")
+
+				tagged, err := db.CreatePreAuthKey(user.TypedID(), true, false, nil, []string{"tag:ci"})
+				require.NoError(t, err)
+
+				err = db.DestroyUser(types.UserID(user.ID))
+				require.NoError(t, err)
+
+				got, err := db.GetPreAuthKeyByID(tagged.ID)
+				require.NoError(t, err)
+				assert.Nil(t, got.UserID)
+				assert.Equal(t, []string{"tag:ci"}, got.Tags)
 			},
 		},
 		{

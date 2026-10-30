@@ -16,6 +16,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
@@ -29,6 +31,9 @@ import (
 // ErrInvalidTagOwner is returned when a tag owner is not an [Alias] type.
 var ErrInvalidTagOwner = errors.New("tag owner is not an Alias")
 
+// ErrPolicyEmpty is returned by [PolicyManager.SetPolicy] for a zero-length policy.
+var ErrPolicyEmpty = errors.New(`policy is empty, use "{}" to allow all`)
+
 type PolicyManager struct {
 	// RWMutex, not Mutex, so concurrent map generation does not serialise on
 	// reads. The per-node caches are xsync.Maps so a read can fill them without
@@ -39,6 +44,15 @@ type PolicyManager struct {
 	nodes views.Slice[types.NodeView]
 	// nodesByID indexes nodes; see [PolicyManager.cacheableLocked].
 	nodesByID map[types.NodeID]types.NodeView
+	// nodeAddrs is every node's addresses, for
+	// [policyutil.ReduceFilterRules].
+	nodeAddrs *netipx.IPSet
+
+	// resolvedPol is pol with its tags indexed and its groups resolved
+	// against users and nodes, see [Policy.withNodesByTag] and
+	// [Policy.withResolvedGroups]. Readers that resolve aliases on demand
+	// go through it; pol itself is what is hashed.
+	resolvedPol *Policy
 
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
@@ -63,6 +77,15 @@ type PolicyManager struct {
 
 	// Lazy map of SSH policies
 	sshPolicyMap *xsync.Map[types.NodeID, *tailcfg.SSHPolicy]
+
+	// sshRules are the SSH rules with sources and destinations
+	// pre-resolved, shared by every node's policy in sshPolicyMap so
+	// the principal lists exist once rather than once per rule and
+	// node. They are reset to nil wherever sshPolicyMap is cleared
+	// and filled by the first SSHPolicy call after that; sshRulesMu
+	// serialises that fill between readers of mu.
+	sshRulesMu sync.Mutex
+	sshRules   []compiledSSHRule
 
 	// compiledGrants are the grants with sources pre-resolved.
 	// The single source of truth for filter compilation. Both
@@ -100,6 +123,8 @@ type PolicyManager struct {
 	// nodeAttrsPending mirrors len(nodeAttrsChanged) > 0 so the drain,
 	// called on every dispatched change, skips pm.mu when idle.
 	nodeAttrsPending atomic.Bool
+
+	routerSession func(types.NodeID) (time.Time, bool)
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -110,8 +135,7 @@ type filterAndPolicy struct {
 	Policy *Policy
 }
 
-// validateUserReferences surfaces ambiguous user@ tokens at policy load so
-// duplicate DB rows fail loudly instead of silently dropping rules.
+// validateUserReferences reports ambiguous user@ tokens so writes can refuse them.
 // Missing-user tokens stay tolerant. Empty users → no-op for
 // syntax-only checks.
 func validateUserReferences(pol *Policy, users types.Users) error {
@@ -182,6 +206,22 @@ func validateUserReferences(pol *Policy, users types.Users) error {
 		}
 	}
 
+	for _, grant := range pol.Grants {
+		for _, src := range grant.Sources {
+			checkAlias(src)
+		}
+
+		for _, dst := range grant.Destinations {
+			checkAlias(dst)
+		}
+	}
+
+	for _, attr := range pol.NodeAttrs {
+		for _, target := range attr.Targets {
+			checkAlias(target)
+		}
+	}
+
 	for _, ssh := range pol.SSHs {
 		for _, src := range ssh.Sources {
 			checkAlias(src)
@@ -206,7 +246,7 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 
 	err = validateUserReferences(policy, users)
 	if err != nil {
-		return nil, fmt.Errorf("validating policy user references: %w", err)
+		log.Error().Err(err).Msg("ambiguous policy users at boot")
 	}
 
 	pm := PolicyManager{
@@ -223,6 +263,8 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 	if err != nil {
 		return nil, err
 	}
+
+	warnMalformedNextDNSAttrs(policy)
 
 	// Boot path: log a warning if the stored policy's tests would
 	// fail against the current users and nodes, but keep the server
@@ -246,8 +288,10 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 // pm is written, so a caller that restores its own input on error leaves pm
 // as it was, and a retry with the same input recompiles.
 func (pm *PolicyManager) updateLocked() (bool, error) {
-	// One tag index serves every resolution in this compile.
-	pol := pm.pol.withNodesByTag(pm.nodes)
+	// One tag index and one resolution of every group serve this whole
+	// compile; each step below would otherwise resolve them again for
+	// every rule naming them.
+	pol := pm.pol.withNodesByTag(pm.nodes).withResolvedGroups(pm.users, pm.nodes)
 
 	// Compile all grants once. Both global and per-node filter
 	// rules are derived from these compiled grants.
@@ -288,8 +332,10 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		}
 	}
 
+	pm.resolvedPol = pol
 	pm.compiledGrants = grants
 	pm.userNodeIdx = buildUserNodeIndex(pm.nodes)
+	pm.nodeAddrs = nodeAddrSet(pm.nodes)
 	pm.needsPerNodeFilter = hasPerNodeGrants(pm.compiledGrants)
 	pm.viaTargetTags = collectViaTargetTags(pm.compiledGrants)
 	pm.relayTargetIPs = relayTargetIPs
@@ -394,6 +440,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		// policies for nodes that have changed. Particularly if the only difference is
 		// that nodes has been added or removed.
 		pm.sshPolicyMap.Clear()
+		pm.sshRules = nil
 		pm.filterRulesMap.Clear()
 		pm.matchersForNodeMap.Clear()
 	}
@@ -446,6 +493,22 @@ func (pm *PolicyManager) NodeNeedsPeerRecompute(node types.NodeView) bool {
 		return true
 	}
 
+	return pm.isViaTargetLocked(node)
+}
+
+// NodeIsViaTarget reports whether a grant steers traffic through node.
+func (pm *PolicyManager) NodeIsViaTarget(node types.NodeView) bool {
+	if pm == nil || !node.Valid() {
+		return false
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	return pm.isViaTargetLocked(node)
+}
+
+func (pm *PolicyManager) isViaTargetLocked(node types.NodeView) bool {
 	for tag := range pm.viaTargetTags {
 		if node.HasTag(string(tag)) {
 			return true
@@ -468,16 +531,38 @@ func (pm *PolicyManager) SSHPolicy(baseURL string, node types.NodeView) (*tailcf
 		return sshPol, nil
 	}
 
-	sshPol, err := pm.pol.compileSSHPolicy(baseURL, pm.users, node, pm.nodes)
+	rules, err := pm.sshRulesLocked(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("compiling SSH policy: %w", err)
 	}
+
+	sshPol := sshPolicyForNode(rules, node)
 
 	if pm.cacheableLocked(node) {
 		pm.sshPolicyMap.Store(node.ID(), sshPol)
 	}
 
 	return sshPol, nil
+}
+
+// sshRulesLocked returns the compiled SSH rules, compiling them on first
+// access. It must be called with pm.mu held, for reading or writing;
+// writers reset pm.sshRules directly. The rules keep the baseURL of the
+// call that compiled them; [state.State] always passes the server URL.
+func (pm *PolicyManager) sshRulesLocked(baseURL string) ([]compiledSSHRule, error) {
+	pm.sshRulesMu.Lock()
+	defer pm.sshRulesMu.Unlock()
+
+	if pm.sshRules == nil {
+		rules, err := pm.resolvedPol.compileSSHRules(baseURL, pm.users, pm.nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		pm.sshRules = rules
+	}
+
+	return pm.sshRules, nil
 }
 
 // SSHCheckParams resolves the SSH check period for src logging in to dst
@@ -529,7 +614,7 @@ func (pm *PolicyManager) SSHCheckParams(
 		}
 
 		// Resolve sources and check if src node matches.
-		srcIPs, err := rule.Sources.Resolve(pm.pol, pm.users, pm.nodes)
+		srcIPs, err := rule.Sources.Resolve(pm.resolvedPol, pm.users, pm.nodes)
 		if err != nil || srcIPs == nil {
 			continue
 		}
@@ -556,7 +641,7 @@ func (pm *PolicyManager) SSHCheckParams(
 
 			hasOtherDests = true
 
-			dstIPs, err := dst.Resolve(pm.pol, pm.users, pm.nodes)
+			dstIPs, err := dst.Resolve(pm.resolvedPol, pm.users, pm.nodes)
 			if err != nil || dstIPs == nil {
 				continue
 			}
@@ -595,18 +680,22 @@ func sshNodesShareUser(srcNode, dstNode types.NodeView) bool {
 // sshRuleAllowsUser reports whether rule lets src log in as localUser,
 // mirroring the SSHUsers maps compileSSHPolicy emits: root when listed,
 // other users via autogroup:nonroot or a literal name, and anyone, root
-// included, whose name is the source user's localpart.
+// included, whose name is the source user's localpart. Login "0" only the
+// last way: the rule that maps root maps it to no local user.
 func (pm *PolicyManager) sshRuleAllowsUser(rule SSH, srcNode types.NodeView, localUser string) bool {
 	isRoot := localUser == "root"
 
 	switch {
 	case localUser == "":
 		return false
+	case localUser == uidZeroLogin:
 	case isRoot && rule.Users.ContainsRoot(),
 		!isRoot && rule.Users.ContainsNonRoot(),
 		!isRoot && slices.Contains(rule.Users.NormalUsers(), SSHUser(localUser)):
 		return true
-	case srcNode.IsTagged() || !srcNode.User().Valid() || !rule.Users.ContainsLocalpart():
+	}
+
+	if srcNode.IsTagged() || !srcNode.User().Valid() || !rule.Users.ContainsLocalpart() {
 		return false
 	}
 
@@ -617,7 +706,7 @@ func (pm *PolicyManager) sshRuleAllowsUser(rule SSH, srcNode types.NodeView, loc
 
 func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	if len(polB) == 0 {
-		return false, nil
+		return false, ErrPolicyEmpty
 	}
 
 	pol, err := unmarshalPolicy(polB)
@@ -625,10 +714,11 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		return false, fmt.Errorf("parsing policy: %w", err)
 	}
 
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+	pm.mu.RLock()
+	users, nodes := pm.users, pm.nodes
+	pm.mu.RUnlock()
 
-	err = validateUserReferences(pol, pm.users)
+	err = validateUserReferences(pol, users)
 	if err != nil {
 		return false, fmt.Errorf("validating policy user references: %w", err)
 	}
@@ -638,16 +728,24 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	// they fail, return without mutating the live PolicyManager so the
 	// failed write does not knock the running config offline.
 	//
+	// They run before the write lock is taken: how long they take is up
+	// to the policy author, and every map response and node write needs
+	// the lock. A user or node that changes meanwhile counts as changed
+	// right after the write.
+	//
 	// Aggregate ACL and SSH test failures via multierr so operators
 	// see both classes in a single response instead of having to
 	// fix-and-retry to discover the second one.
 	testErr := multierr.New(
-		evaluateTests(pol, pm.users, pm.nodes),
-		evaluateSSHTests(pol, pm.users, pm.nodes),
+		evaluateTests(pol, users, nodes),
+		evaluateSSHTests(pol, users, nodes),
 	)
 	if testErr != nil {
 		return false, testErr
 	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 
 	// Log policy metadata for debugging
 	log.Debug().
@@ -672,7 +770,25 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		return false, err
 	}
 
+	// Reloading the same bytes leaves changed false, so each policy warns once.
+	if changed {
+		warnMalformedNextDNSAttrs(pol)
+	}
+
 	return changed, nil
+}
+
+// warnMalformedNextDNSAttrs logs, once per policy load, the nextdns: attrs
+// the resolver skips, which the mapper does in silence on every DNS build.
+func warnMalformedNextDNSAttrs(pol *Policy) {
+	bad := pol.malformedNextDNSAttrs()
+	if len(bad) == 0 {
+		return
+	}
+
+	log.Warn().
+		Strs(zf.NodeAttrs, bad).
+		Msg("nextdns attrs have no effect: a profile must match [A-Za-z0-9._-]{1,64}")
 }
 
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.
@@ -706,16 +822,18 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	// Precompute each node's subnet routes and exit-node status once; the
+	// Precompute each node's route ranges and exit-node status once; the
 	// O(n^2) pair scans below would otherwise recompute them for every pair.
 	type nodeRoutes struct {
-		subnet []netip.Prefix
+		subnet []netipx.IPRange
 		isExit bool
 	}
 
 	routeInfo := make(map[types.NodeID]nodeRoutes, nodes.Len())
 	for _, n := range nodes.All() {
-		routeInfo[n.ID()] = nodeRoutes{subnet: n.SubnetRoutes(), isExit: n.IsExitNode()}
+		routeInfo[n.ID()] = nodeRoutes{
+			subnet: types.RouteRanges(n.SubnetRoutes()), isExit: n.IsExitNode(),
+		}
 	}
 
 	// If we have a global filter, use it for all nodes (normal case).
@@ -750,7 +868,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			for k := range pm.matchers {
 				m := &pm.matchers[k]
 
-				if m.SrcsContainsIPs(ips...) || (routed && m.SrcsOverlapsPrefixes(ri.subnet...)) {
+				if m.SrcsContainsIPs(ips...) || (routed && m.SrcsOverlapsRanges(ri.subnet)) {
 					if srcOf[i] == nil {
 						srcOf[i] = make([]uint64, words)
 					}
@@ -758,7 +876,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 					srcOf[i][k/64] |= 1 << (k % 64) //nolint:mnd
 				}
 
-				if m.DestsContainsIP(ips...) || (routed && m.DestsOverlapsPrefixes(ri.subnet...)) ||
+				if m.DestsContainsIP(ips...) || (routed && m.DestsOverlapsRanges(ri.subnet)) ||
 					(ri.isExit && m.DestsIsTheInternet()) {
 					if dstOf[i] == nil {
 						dstOf[i] = make([]uint64, words)
@@ -896,7 +1014,7 @@ func (pm *PolicyManager) filterForNodeLocked(
 		)
 	}
 
-	reduced := policyutil.ReduceFilterRules(node, unreduced)
+	reduced := policyutil.ReduceFilterRules(node, unreduced, pm.nodeAddrs)
 	if pm.cacheableLocked(node) {
 		pm.filterRulesMap.Store(node.ID(), reduced)
 	}
@@ -981,10 +1099,15 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 	prev := pm.users
 	pm.users = users
 
+	// A via grant left without sources is not compiled, so the recompile
+	// can clear the flag while clients still hold its rules.
+	hadPerNodeFilter := pm.needsPerNodeFilter
+
 	// SSH policies and autogroup:self sources resolve users by name, and
 	// the self sources are outside the filter hash, so updateLocked can
 	// report no change while per-node results moved.
 	pm.sshPolicyMap.Clear()
+	pm.sshRules = nil
 	pm.filterRulesMap.Clear()
 	pm.matchersForNodeMap.Clear()
 
@@ -998,9 +1121,15 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 		return false, false, err
 	}
 
+	err = validateUserReferences(pm.pol, users)
+	if err != nil {
+		log.Error().Err(err).Msg("ambiguous policy users after updating users")
+	}
+
 	// SSH rules and per-node filters embed user identity outside the filter
 	// hash, so a user change needs a client refresh even when it did not move.
-	if pm.needsPerNodeFilter || (pm.pol != nil && len(pm.pol.SSHs) > 0) {
+	if hadPerNodeFilter || pm.needsPerNodeFilter ||
+		(pm.pol != nil && len(pm.pol.SSHs) > 0) {
 		policyChanged = true
 	}
 
@@ -1066,6 +1195,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 		if !needsUpdate {
 			// This ensures fresh filter rules are generated for all nodes
 			pm.sshPolicyMap.Clear()
+			pm.sshRules = nil
 			pm.filterRulesMap.Clear()
 			pm.matchersForNodeMap.Clear()
 		}
@@ -1100,7 +1230,7 @@ func (pm *PolicyManager) NodesGeneration() uint64 {
 func (pm *PolicyManager) cacheableLocked(node types.NodeView) bool {
 	own, ok := pm.nodesByID[node.ID()]
 
-	return ok && !node.HasPolicyChange(own) && !node.HasNetworkChanges(own)
+	return ok && !node.HasPolicyChange(own)
 }
 
 // nodeIDViewMap indexes a slice of node views by node ID. On duplicate IDs the
@@ -1128,14 +1258,6 @@ func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[ty
 		}
 
 		if newNode.HasPolicyChange(oldNode) {
-			return true
-		}
-
-		// Via grants and autogroup:self compile filter rules per-node
-		// that depend on the node's route state (SubnetRoutes, ExitRoutes).
-		// Route changes are policy-affecting in this context because they
-		// alter which filter rules get generated for the via-designated node.
-		if pm.needsPerNodeFilter && newNode.HasNetworkChanges(oldNode) {
 			return true
 		}
 	}
@@ -1225,63 +1347,35 @@ func (pm *PolicyManager) UserCanHaveTag(user types.UserView, tag string) bool {
 }
 
 // TagOwnedByTags reports whether a credential holding ownerTags is authorised to
-// apply tag. It is true when tag is one of ownerTags, or when tag's tagOwners
-// chain (tag-to-tag ownership) transitively includes one of ownerTags. This is
-// the tag-level check used when an OAuth access token mints an auth key: the
-// requested tags must each be owned by the token's tags, so an operator token
-// tagged tag:k8s-operator may mint tag:k8s keys when the policy declares
-// "tag:k8s": ["tag:k8s-operator"]. It is purely tag-relational and does not
-// consult node IPs.
+// apply tag: tag is one of ownerTags, or tag's tagOwners list one of them.
+// Ownership reaches one hop, as on Tailscale SaaS: a tag owned by a tag that
+// ownerTags own is not reached. This is the tag-level check used when an
+// OAuth access token mints an auth key: the requested tags must each be owned
+// by the token's tags, so an operator token tagged tag:k8s-operator may mint
+// tag:k8s keys when the policy declares "tag:k8s": ["tag:k8s-operator"]. It is
+// purely tag-relational and does not consult node IPs.
 func (pm *PolicyManager) TagOwnedByTags(tag string, ownerTags []string) bool {
 	if pm == nil {
 		return false
 	}
 
-	owns := make(map[string]bool, len(ownerTags))
-	for _, t := range ownerTags {
-		owns[t] = true
-	}
-
 	// A credential may always apply a tag it directly holds; this needs no policy.
-	if owns[tag] {
+	if slices.Contains(ownerTags, tag) {
 		return true
 	}
 
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	// Owned-by delegation requires the policy's tagOwners.
 	if pm.pol == nil {
 		return false
 	}
 
-	// Walk tag-to-tag ownership transitively, guarding against cycles.
-	visited := make(map[Tag]bool)
+	return slices.ContainsFunc(pm.pol.TagOwners[Tag(tag)], func(owner Owner) bool {
+		ot, ok := owner.(*Tag)
 
-	var walk func(t Tag) bool
-
-	walk = func(t Tag) bool {
-		if visited[t] {
-			return false
-		}
-
-		visited[t] = true
-
-		for _, owner := range pm.pol.TagOwners[t] {
-			ot, ok := owner.(*Tag)
-			if !ok {
-				continue
-			}
-
-			if owns[string(*ot)] || walk(*ot) {
-				return true
-			}
-		}
-
-		return false
-	}
-
-	return walk(Tag(tag))
+		return ok && slices.Contains(ownerTags, string(*ot))
+	})
 }
 
 // userMatchesOwner checks if a user matches a tag owner entry.
@@ -1398,6 +1492,22 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	return false
 }
 
+// SetRouterSession installs the session check used by the via election: when
+// a router's control session began and whether it may win. Runtime status
+// changes bypass SetNodes; nil treats every router as available, with one
+// session age. The callback runs with pm.mu held and must remain a lock-free
+// snapshot read.
+func (pm *PolicyManager) SetRouterSession(session func(types.NodeID) (time.Time, bool)) {
+	if pm == nil {
+		return
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	pm.routerSession = session
+}
+
 // ViaRoutesForPeer computes via grant effects for a viewer-peer pair.
 // For each via grant where the viewer matches the source, it checks whether the
 // peer advertises any of the grant's destination prefixes. If the peer has the
@@ -1435,11 +1545,24 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		return result
 	}
 
+	// A peer without routes has nothing to steer.
+	if len(peer.SubnetRoutes()) == 0 && !peer.IsExitNode() {
+		return result
+	}
+
 	// Clip so the appends below allocate: callers share pm.pol under RLock,
 	// and writing into its spare capacity races between them.
 	grants := slices.Clip(pm.pol.Grants)
+
+	// Ports never steer routes, so an ACL is one grant here, not one per
+	// destination that would match its sources once per destination.
 	for _, acl := range pm.pol.ACLs {
-		grants = append(grants, aclToGrants(acl)...)
+		dsts := make(Aliases, 0, len(acl.Destinations))
+		for _, d := range acl.Destinations {
+			dsts = append(dsts, d.Alias)
+		}
+
+		grants = append(grants, Grant{Sources: acl.Sources, Destinations: dsts})
 	}
 
 	// matchViewer resolves a grant lazily and at most once: non-via
@@ -1459,7 +1582,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		resolved[i] = true
 
 		for _, src := range grants[i].Sources {
-			ips, err := src.Resolve(pm.pol, pm.users, pm.nodes)
+			ips, err := src.Resolve(pm.resolvedPol, pm.users, pm.nodes)
 			if err != nil {
 				continue
 			}
@@ -1473,7 +1596,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 
 		if viewerMatchesGrant[i] {
 			resolvedDstPrefixes[i], grantHasAutoGroupInternet[i] = resolveViaDestinations(
-				pm.pol, pm.users, pm.nodes, grants[i].Destinations,
+				pm.resolvedPol, pm.users, pm.nodes, grants[i].Destinations,
 			)
 		}
 
@@ -1499,11 +1622,13 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 
 		var matchedPrefixes []netip.Prefix
 
-		for _, dstPrefix := range resolvedDstPrefixes[i] {
-			for _, route := range peerSubnetRoutes {
-				if dstPrefix.Overlaps(route) {
-					matchedPrefixes = append(matchedPrefixes, route)
-				}
+		// Emit each route once, however many dst prefixes overlap it:
+		// the passes below walk Include and Exclude per grant, so their
+		// size must be bounded by the peer's routes, not by the grant's
+		// destinations.
+		for _, route := range peerSubnetRoutes {
+			if slices.ContainsFunc(resolvedDstPrefixes[i], route.Overlaps) {
+				matchedPrefixes = append(matchedPrefixes, route)
 			}
 		}
 
@@ -1531,10 +1656,16 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			}
 		}
 
-		if peerHasVia {
-			result.Include = append(result.Include, matchedPrefixes...)
-		} else {
-			result.Exclude = append(result.Exclude, matchedPrefixes...)
+		// Several grants, or repeated announcements, can match the same
+		// route; keep one entry per route.
+		for _, p := range matchedPrefixes {
+			if peerHasVia {
+				if !slices.Contains(result.Include, p) {
+					result.Include = append(result.Include, p)
+				}
+			} else if !slices.Contains(result.Exclude, p) {
+				result.Exclude = append(result.Exclude, p)
+			}
 		}
 	}
 
@@ -1549,10 +1680,11 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	// When neither condition is met, per-viewer via steering applies.
 	if len(result.Include) > 0 || len(result.Exclude) > 0 {
 		// Multi-router via election: when a via grant's tag matches
-		// multiple peers advertising the same prefix, only the
-		// lowest-ID peer (the via-group primary) keeps the prefix in
-		// Include. The others move to Exclude. This mirrors HA
-		// primary election scoped to the via tag group.
+		// multiple peers advertising the same prefix, only the available
+		// peer with the oldest control session (lower ID on a tie) keeps
+		// the prefix in Include, as the global election picks. The others
+		// move to Exclude. With no available router, the lowest ID keeps the
+		// prefix so the viewer still gets exactly one route.
 		//
 		// Unlike the global [tailcfg.Node.PrimaryRoutes] election
 		// (routes/primary.go), which picks one primary across ALL
@@ -1574,33 +1706,55 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 
 			// Elect per matched route, not per dst — a peer can only
 			// be primary for a prefix it actually advertises, and one
-			// dst may cover multiple distinct routes.
-			for _, dstPrefix := range resolvedDstPrefixes[i] {
-				for _, included := range slices.Clone(result.Include) {
-					if !dstPrefix.Overlaps(included) {
-						continue
-					}
+			// dst may cover multiple distinct routes. The election
+			// does not depend on which dst matched, so each included
+			// route is looked at once per grant.
+			for _, included := range slices.Clone(result.Include) {
+				if !slices.ContainsFunc(resolvedDstPrefixes[i], included.Overlaps) {
+					continue
+				}
 
-					var viaPrimaryID types.NodeID
+				var (
+					viaPrimaryID, viaFallbackID types.NodeID
+					viaPrimarySince             time.Time
+				)
 
-					for _, viaTag := range grant.Via {
-						for _, node := range pm.nodes.All() {
-							if node.HasTag(string(viaTag)) &&
-								slices.Contains(node.SubnetRoutes(), included) {
-								if viaPrimaryID == 0 || node.ID() < viaPrimaryID {
-									viaPrimaryID = node.ID()
+				for _, viaTag := range grant.Via {
+					for _, node := range pm.nodes.All() {
+						if node.HasTag(string(viaTag)) &&
+							slices.Contains(node.SubnetRoutes(), included) {
+							if viaFallbackID == 0 || node.ID() < viaFallbackID {
+								viaFallbackID = node.ID()
+							}
+
+							var since time.Time
+
+							if pm.routerSession != nil {
+								var ok bool
+								if since, ok = pm.routerSession(node.ID()); !ok {
+									continue
 								}
+							}
+
+							if viaPrimaryID == 0 || since.Before(viaPrimarySince) ||
+								(since.Equal(viaPrimarySince) && node.ID() < viaPrimaryID) {
+								viaPrimaryID, viaPrimarySince = node.ID(), since
 							}
 						}
 					}
+				}
 
-					if viaPrimaryID != 0 && peer.ID() != viaPrimaryID {
-						result.Include = slices.DeleteFunc(result.Include, func(p netip.Prefix) bool {
-							return p == included
-						})
-						if !slices.Contains(result.Exclude, included) {
-							result.Exclude = append(result.Exclude, included)
-						}
+				if viaPrimaryID == 0 {
+					viaPrimaryID = viaFallbackID
+				}
+
+				if viaPrimaryID != 0 && peer.ID() != viaPrimaryID {
+					result.Include = slices.DeleteFunc(
+						result.Include,
+						func(p netip.Prefix) bool { return p == included },
+					)
+					if !slices.Contains(result.Exclude, included) {
+						result.Exclude = append(result.Exclude, included)
 					}
 				}
 			}
@@ -1622,14 +1776,19 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				continue
 			}
 
+			reachesInternet := grantReachesInternet(grant, resolvedDstPrefixes[i])
+
 			// A non-via grant covering routes that a via grant included
 			// defers to global HA primary election. Match by overlap so
 			// a broader or narrower regular dst still catches the
 			// routes the via grant added to Include.
 			for _, dstPrefix := range resolvedDstPrefixes[i] {
 				for _, p := range result.Include {
-					if dstPrefix.Overlaps(p) &&
-						!slices.Contains(result.UsePrimary, p) {
+					// Only a grant to the internet covers an exit route,
+					// as [types.Node.CanAccessRoutes] decides.
+					covers := dstPrefix.Overlaps(p) &&
+						(reachesInternet || !tsaddr.IsExitRoute(p))
+					if covers && !slices.Contains(result.UsePrimary, p) {
 						result.UsePrimary = append(result.UsePrimary, p)
 					}
 				}
@@ -1643,7 +1802,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 
 			// A regular grant to the internet lets the viewer use any
 			// exit node, not just the via-tagged ones.
-			if grantReachesInternet(grant) {
+			if reachesInternet {
 				result.Exclude = slices.DeleteFunc(result.Exclude, tsaddr.IsExitRoute)
 			}
 		}
@@ -1652,11 +1811,13 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	return result
 }
 
-// grantReachesInternet reports whether a grant's destinations include
-// the internet. Neither the wildcard nor autogroup:internet resolves
-// to 0.0.0.0/0, so check the aliases themselves.
-func grantReachesInternet(grant Grant) bool {
-	return slices.ContainsFunc(grant.Destinations, func(d Alias) bool {
+// grantReachesInternet reports whether a grant's destinations, resolved
+// to dsts, reach the internet by the test the grant's filter rule gets
+// ([matcher.Match.DestsIsTheInternet]). Neither the wildcard nor
+// autogroup:internet resolves to the internet here, so check those
+// aliases themselves.
+func grantReachesInternet(grant Grant, dsts []netip.Prefix) bool {
+	internetAlias := slices.ContainsFunc(grant.Destinations, func(d Alias) bool {
 		if ag, ok := d.(*AutoGroup); ok {
 			return ag.Is(AutoGroupInternet)
 		}
@@ -1665,6 +1826,19 @@ func grantReachesInternet(grant Grant) bool {
 
 		return ok
 	})
+	if internetAlias {
+		return true
+	}
+
+	var b netipx.IPSetBuilder
+	for _, p := range dsts {
+		b.AddPrefix(p)
+	}
+
+	// Resolved prefixes are valid, so the builder cannot fail.
+	set, _ := b.IPSet()
+
+	return util.CoversTheInternet(set)
 }
 
 func (pm *PolicyManager) Version() int {
@@ -1891,7 +2065,7 @@ func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.
 			continue
 		}
 
-		if newNode.HasNetworkChanges(oldNode) {
+		if newNode.HasPolicyChange(oldNode) {
 			pm.filterRulesMap.Delete(nodeID)
 			pm.matchersForNodeMap.Delete(nodeID)
 		}
@@ -1915,93 +2089,31 @@ func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.
 	})
 }
 
-// flattenTags resolves nested tag-owner references. Cycles
-// (tag:a -> tag:b -> tag:a, or tag:a -> tag:a) drop the cycle-causing
-// edge and contribute no addresses; non-cycle owners on the cycled tags
-// still resolve. Undefined-tag references remain a hard error.
-func flattenTags(tagOwners TagOwners, tag Tag, visiting map[Tag]bool, chain []Tag) (Owners, error) {
-	if visiting[tag] {
-		return nil, nil
-	}
-
-	visiting[tag] = true
-
-	chain = append(chain, tag)
-	defer delete(visiting, tag)
-
-	var result Owners
-
-	for _, owner := range tagOwners[tag] {
-		switch o := owner.(type) {
-		case *Tag:
-			if _, ok := tagOwners[*o]; !ok {
-				return nil, fmt.Errorf("tag %q %w %q", tag, ErrUndefinedTagReference, *o)
-			}
-
-			nested, err := flattenTags(tagOwners, *o, visiting, chain)
-			if err != nil {
-				return nil, err
-			}
-
-			result = append(result, nested...)
-		default:
-			result = append(result, owner)
-		}
-	}
-
-	return result, nil
-}
-
-// flattenTagOwners flattens all [TagOwners] by resolving nested tags and detecting cycles.
-// It will return a new [TagOwners] map where all the [Tag] types have been resolved to their underlying [Owners].
-func flattenTagOwners(tagOwners TagOwners) (TagOwners, error) {
-	ret := make(TagOwners)
-
-	for tag := range tagOwners {
-		flattened, err := flattenTags(tagOwners, tag, make(map[Tag]bool), nil)
-		if err != nil {
-			return nil, err
-		}
-
-		slices.SortFunc(flattened, func(a, b Owner) int {
-			return cmp.Compare(a.String(), b.String())
-		})
-		ret[tag] = slices.CompactFunc(flattened, func(a, b Owner) bool {
-			return a.String() == b.String()
-		})
-	}
-
-	return ret, nil
-}
-
 // resolveTagOwners resolves the [TagOwners] to a map of [Tag] to [netipx.IPSet].
 // The resulting map can be used to quickly look up the IPSet for a given [Tag].
 // It is intended for internal use in a [PolicyManager].
+//
+// Only a tag's own users and groups count: owning a tag does not give the
+// tags it owns, as on Tailscale SaaS. A tag listed as owner is answered by
+// [PolicyManager.TagOwnedByTags].
 func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
-	if p == nil {
-		return make(map[Tag]*netipx.IPSet), nil
-	}
-
-	if len(p.TagOwners) == 0 {
-		return make(map[Tag]*netipx.IPSet), nil
-	}
-
 	ret := make(map[Tag]*netipx.IPSet)
-
-	tagOwners, err := flattenTagOwners(p.TagOwners)
-	if err != nil {
-		return nil, err
+	if p == nil {
+		return ret, nil
 	}
 
-	for tag, owners := range tagOwners {
+	for tag, owners := range p.TagOwners {
 		var ips netipx.IPSetBuilder
 
 		for _, owner := range owners {
 			switch o := owner.(type) {
 			case *Tag:
-				// After flattening, Tag types should not appear in the owners list.
-				// If they do, skip them as they represent already-resolved references.
-
+				// validate refuses this; a policy built in code can still
+				// name one.
+				if _, ok := p.TagOwners[*o]; !ok {
+					return nil, fmt.Errorf("tagOwners[%q]: %q: %w",
+						string(tag), string(*o), ErrUndefinedTagReference)
+				}
 			case Alias:
 				// If it does not resolve, that means the tag is not associated with any IP addresses.
 				resolved, _ := o.Resolve(p, users, nodes)
@@ -2012,7 +2124,6 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 				}
 
 			default:
-				// Should never happen - after flattening, all owners should be Alias types
 				return nil, fmt.Errorf("%w: %v", ErrInvalidTagOwner, owner)
 			}
 		}

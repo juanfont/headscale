@@ -350,12 +350,18 @@ func (b *Batcher) AddNode(
 				b.totalNodes.Add(1)
 			}
 
-			existing.addConnection(newEntry)
+			existing.addConnectionWithLimit(
+				newEntry,
+				maxConcurrentMapSessionsPerNode,
+			)
 			nodeConn = existing
 
 			return existing, xsync.UpdateOp
 		},
 	)
+
+	// Read before the map is built, so every map recorded after it counts.
+	tracked := nodeConn.trackedInitialMaps.Load()
 
 	// Use the worker pool for controlled concurrency instead of direct generation
 	initialMap, err := b.MapResponseFromChange(id, change.FullSelf(id))
@@ -378,40 +384,69 @@ func (b *Batcher) AddNode(
 		// cannot interleave its own lastSentPeers update.
 		nodeConn.workMu.Lock()
 
-		// Peers removed while the node had no stream: the initial map is a
-		// full rebuild, so follow it with the removal as a delta, see
-		// [withRemovals], and keep the removed peers tracked across the
-		// baseline reset below.
-		//
-		// TODO(kradalby): delete with the tailscale/tailscale#15660 compat, see
-		// capver.CanOldCodeBeCleanedUp.
-		peerIDs := make([]tailcfg.NodeID, 0, len(initialMap.Peers))
-		for _, peer := range initialMap.Peers {
-			peerIDs = append(peerIDs, peer.ID)
+		// Evicted by a newer stream: that stream owns the node's peer
+		// tracking and connected state, and this map may predate its own.
+		if newEntry.closed.Load() {
+			nodeConn.workMu.Unlock()
+			nlog.Debug().Caller().Msg("evicted while its initial map was in flight")
+
+			return nil
 		}
 
-		removedIDs := nodeConn.computePeerDiff(peerIDs)
+		if nodeConn.trackedInitialMaps.Load() != tracked {
+			// Another stream recorded its map since this one was requested,
+			// and may hold a newer view: diffing this map against it would
+			// remove peers that stream rightly holds. Track this stream's
+			// peers too, and send the node a full to bring every stream to
+			// the current state.
+			for _, peer := range initialMap.Peers {
+				nodeConn.lastSentPeers.Store(peer.ID, struct{}{})
+			}
 
-		removed := make([]types.NodeID, 0, len(removedIDs))
-		for _, peerID := range removedIDs {
-			removed = append(removed, types.NodeID(peerID)) //nolint:gosec // NodeID types are equivalent
+			nodeConn.collapsePendingToFull(nil)
+		} else {
+			// Peers removed while the node had no stream: the initial map is
+			// a full rebuild, so follow it with the removal as a delta, see
+			// [withRemovals], and keep the removed peers tracked across the
+			// baseline reset below.
+			//
+			// TODO(kradalby): delete with the tailscale/tailscale#15660 compat,
+			// see capver.CanOldCodeBeCleanedUp.
+			peerIDs := make([]tailcfg.NodeID, 0, len(initialMap.Peers))
+			for _, peer := range initialMap.Peers {
+				peerIDs = append(peerIDs, peer.ID)
+			}
+
+			removedIDs := nodeConn.computePeerDiff(peerIDs)
+
+			removed := make([]types.NodeID, 0, len(removedIDs))
+			for _, peerID := range removedIDs {
+				//nolint:gosec // NodeID types are equivalent
+				removed = append(removed, types.NodeID(peerID))
+			}
+
+			if len(removed) > 0 {
+				rm := change.PeersRemoved(removed...)
+				rm.TargetNode = id
+				b.AddWork(rm)
+			}
+
+			nodeConn.updateSentPeers(initialMap)
+
+			// The client has not had these removals as a delta yet. Pending
+			// may lose the queued one (a full supersedes it, or the node
+			// leaves before it is sent), so keep them tracked until delivery
+			// drops them: the next full or reconnect then re-derives them.
+			for _, peerID := range removedIDs {
+				nodeConn.lastSentPeers.Store(peerID, struct{}{})
+			}
 		}
 
-		if len(removed) > 0 {
-			rm := change.PeersRemoved(removed...)
-			rm.TargetNode = id
-			b.AddWork(rm)
-		}
+		nodeConn.trackedInitialMaps.Add(1)
 
-		nodeConn.updateSentPeers(initialMap)
-
-		// The client has not had these removals as a delta yet. Pending
-		// may lose the queued one (a full supersedes it, or the node
-		// leaves before it is sent), so keep them tracked until delivery
-		// drops them: the next full or reconnect then re-derives them.
-		for _, peerID := range removedIDs {
-			nodeConn.lastSentPeers.Store(peerID, struct{}{})
-		}
+		// Under workMu, so it lands before any newer stream's AddNode
+		// finishes and that stream can leave.
+		nodeConn.markConnected()
 
 		nodeConn.workMu.Unlock()
 
@@ -430,9 +465,6 @@ func (b *Batcher) AddNode(
 
 		return fmt.Errorf("%w for node %d", ErrInitialMapSendTimeout, id)
 	}
-
-	// Mark the node as connected now that the initial map was sent.
-	nodeConn.markConnected()
 
 	// Node will automatically receive updates through the normal flow
 	// The initial full map already contains all current state
@@ -482,8 +514,8 @@ func (b *Batcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) boo
 
 // AddWork queues a change to be processed by the batcher. Empty changes
 // carry no work for any recipient and are dropped here so they never create
-// pending entries or in-flight work. A PeersRemoved change is not empty, so
-// deletion cleanup in addToBatch still runs.
+// pending entries or in-flight work. A deletion's teardown change is not
+// empty, so its cleanup in addToBatch still runs.
 func (b *Batcher) AddWork(r ...change.Change) {
 	if slices.ContainsFunc(r, change.Change.IsEmpty) {
 		kept := slices.DeleteFunc(slices.Clone(r), change.Change.IsEmpty)
@@ -639,7 +671,22 @@ func (b *Batcher) worker(workerID int) {
 				var retry []change.Change
 
 				nc.workMu.Lock()
+				nc.sendBlocked.Store(0)
+
 				for i, ch := range w.changes {
+					// A node that drains slower than it is sent to must not
+					// hold the worker from the other nodes for its whole bundle.
+					if time.Duration(nc.sendBlocked.Load()) >= connectionSendWait {
+						retry = w.changes[i:]
+
+						wlog.Debug().
+							Uint64(zf.NodeID, w.nodeID.Uint64()).
+							Int("deferred_changes", len(retry)).
+							Msg("node drains slowly, deferring rest of bundle to next tick")
+
+						break
+					}
+
 					err := nc.change(ch)
 					if errors.Is(err, errNoReadyConnections) || errors.Is(err, errConnectionBackpressure) {
 						// Keep the unsent suffix ahead of newer pending changes.

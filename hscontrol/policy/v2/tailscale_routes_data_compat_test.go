@@ -183,9 +183,6 @@ var routesSkipReasons = map[string]string{
 	"routes-m4-member-self/m-odin2/filter":           filterAddressForm,
 	"routes-m4-member-self/r-exit/filter":            "FILTER_ADDRESS_FORM: same addresses, different wire form and rule order",
 
-	"routes-m1-wildcard-src-multi-range/srv/peer-allowed-ips":         exitRoutesOnOverlap,
-	"routes-m6-subnet-to-subnet-multi-route/r-multi/peer-allowed-ips": exitRoutesOnOverlap,
-
 	"routes-m1-wildcard-src-multi-range/m-odin1/peers":     sameUserPeers,
 	"routes-m1-wildcard-src-multi-range/m-odin2/peers":     sameUserPeers,
 	"routes-m2-member-partial-subnet/m-odin1/peers":        sameUserPeers,
@@ -271,8 +268,6 @@ func notCompared(prefixes []string, key string) bool {
 }
 
 const filterAddressForm = "FILTER_ADDRESS_FORM: same addresses, different wire form"
-
-const exitRoutesOnOverlap = "EXIT_ROUTES_ON_OVERLAP: headscale offers a peer's exit routes to a viewer whose rules reach only nodes or subnets; SaaS leaves them out"
 
 const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
 
@@ -366,6 +361,7 @@ func TestRoutesCompat(t *testing.T) {
 					gotRules := policyutil.ReduceFilterRules(
 						node.View(),
 						compiledRules,
+						nodeAddrSet(nodes.ViewSlice()),
 					)
 
 					wantRules := capture.PacketFilterRules

@@ -913,13 +913,15 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 // Test Suite 3: Auth Key WITHOUT Tags
 // =============================================================================
 
-// TestTagsAuthKeyWithoutTagCannotRequestTags tests that nodes cannot request tags
-// when using an auth key that has no tags.
+// TestTagsAuthKeyWithoutTagCanRequestOwnedTag tests that a node registering
+// with a user's auth key that has no tags gets the tags it requests when the
+// user owns them, as on Tailscale SaaS. Tags the user does not own are still
+// refused (Test 3.8).
 //
-// Test 3.1: Cannot request tags with tagless key
+// Test 3.1: Request an owned tag with a tagless key
 // Setup: Run `tailscale up --advertise-tags="tag:valid-owned" --auth-key AUTH_KEY_WITHOUT_TAG`
-// Expected: Registration fails with error containing "requested tags [tag:valid-owned] are invalid or not permitted".
-func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
+// Expected: Registration succeeds and the node is tagged tag:valid-owned.
+func TestTagsAuthKeyWithoutTagCanRequestOwnedTag(t *testing.T) {
 	IntegrationSkip(t)
 
 	policy := tagsTestPolicy()
@@ -962,26 +964,18 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Login should fail because the auth key has no tags
 	err = client.Login(headscale.GetEndpoint(), authKey.Key)
-	if err != nil {
-		t.Logf("Test 3.1 PASS: Registration correctly rejected: %v", err)
-		assert.ErrorContains(t, err, "requested tags")
-	} else {
-		// If it succeeded, document this unexpected behavior
-		t.Logf("Test 3.1 UNEXPECTED: Registration succeeded when it should have failed")
+	require.NoError(t, err)
 
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes()
-			assert.NoError(c, err)
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
 
-			if len(nodes) == 1 {
-				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].Tags)
-			}
-		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node state")
-
-		t.Fail()
-	}
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "node should carry the owned tag it requested")
 }
 
 // TestTagsAuthKeyWithoutTagRegisterNoTags tests that registering with a tagless auth key
@@ -3419,10 +3413,9 @@ func TestTagsAuthKeyWithoutUserCLIRegisterAddsUserDevice(t *testing.T) {
 // TestTaggedNodeLogoutReloginSingleUseKeyOnline reproduces issue #3371
 // end-to-end with a real tailscale client: a tagged node registered with a
 // single-use key logs out (`tailscale logout`) and re-authenticates with a
-// FRESH single-use tagged key. Tagged nodes never expire (KB 1068), so logout
-// must not stamp an expiry; before the fix the node was left permanently
-// expired and the fresh key was consumed on a re-registration that still
-// reported NodeKeyExpired, locking the node out forever.
+// FRESH single-use tagged key. Logout expires the tagged node, as on Tailscale
+// SaaS; before the fix the fresh key was consumed on a re-registration that
+// still reported NodeKeyExpired, locking the node out forever.
 //
 // The observable proof at the integration level is that after relogin the node
 // is back online with a NULL expiry and the same node ID — not stuck expired.
@@ -3483,15 +3476,13 @@ func TestTaggedNodeLogoutReloginSingleUseKeyOnline(t *testing.T) {
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
 
-	// `tailscale logout`. A tagged node must not be expired by this.
+	// `tailscale logout` expires the tagged node.
 	err = client.Logout()
 	require.NoError(t, err)
 
 	err = client.WaitForNeedsLogin(integrationutil.ScaledTimeout(60 * time.Second))
 	require.NoError(t, err)
 
-	// The node must remain in the DB, tagged, and crucially NOT carry a
-	// stale expiry. This is the #3371 root cause (a) surface.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
@@ -3499,9 +3490,9 @@ func TestTaggedNodeLogoutReloginSingleUseKeyOnline(t *testing.T) {
 
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
-			assert.Nil(c, nodes[0].Expiry, "#3371: logout must not stamp expiry on a tagged node")
+			assert.NotNil(c, nodes[0].Expiry, "logout expires a tagged node")
 		}
-	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "tagged node must survive logout without expiry")
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "tagged node must survive logout, expired")
 
 	// KEY2: a FRESH single-use tagged key. Relogin.
 	key2, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})

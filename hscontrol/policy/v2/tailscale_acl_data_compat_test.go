@@ -204,12 +204,6 @@ func loadACLTestFile(t *testing.T, path string) *testcapture.Capture {
 // aclSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>[/<node>]/<check>.
 var aclSkipReasons = map[string]string{
-	"acl-err10/refused": routeHostBits,
-	"acl-err11/refused": routeHostBits,
-
-	"acl-tagowner-undefined-nested/message":      tagOwnerUndefinedText,
-	"acl-tagowner-undefined-nested-deep/message": tagOwnerUndefinedText,
-
 	"acl-n01/beedrill/filter":   allowAllForm,
 	"acl-n01/bulbasaur/filter":  allowAllForm,
 	"acl-n01/charmander/filter": allowAllForm,
@@ -219,27 +213,14 @@ var aclSkipReasons = map[string]string{
 	"acl-n01/venusaur/filter":   allowAllForm,
 	"acl-n01/weedle/filter":     allowAllForm,
 
-	"acl-dup-src-dst/beedrill/filter":   aclDstDedupe,
-	"acl-dup-src-dst/bulbasaur/filter":  aclDstDedupe,
-	"acl-dup-src-dst/charmander/filter": aclDstDedupe,
-	"acl-dup-src-dst/ivysaur/filter":    aclDstDedupe,
-	"acl-dup-src-dst/kakuna/filter":     aclDstDedupe,
-	"acl-dup-src-dst/squirtle/filter":   aclDstDedupe,
-	"acl-dup-src-dst/venusaur/filter":   aclDstDedupe,
-	"acl-dup-src-dst/weedle/filter":     aclDstDedupe,
-	"acl-dxp-dup-ports/beedrill/filter": aclDstDedupe,
-
 	"acl-self-plus-dsts/kakuna/filter":    srcAddressForm,
-	"acl-self-plus-dsts/beedrill/filter":  "FILTER_ADDRESS_FORM+ACL_DST_DEDUPE: sources listed one by one, a repeated destination written once",
+	"acl-self-plus-dsts/beedrill/filter":  srcAddressForm,
 	"acl-self-plus-dsts/bulbasaur/filter": "FILTER_ADDRESS_FORM+SELF_DST_REPEAT: sources listed one by one, the autogroup:self destination written once per source alias",
 }
 
 const (
-	routeHostBits         = "ROUTE_HOST_BITS: SaaS refuses an autoApprovers route with host bits; headscale accepts it"
-	tagOwnerUndefinedText = "TAG_OWNER_UNDEFINED_TEXT: SaaS names the owning tag and its undefined owner in one line; headscale words it differently"
-	allowAllForm          = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
-	aclDstDedupe          = "ACL_DST_DEDUPE: SaaS writes a destination repeated within one ACL once, headscale once per mention"
-	srcAddressForm        = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
+	allowAllForm   = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
+	srcAddressForm = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
 )
 
 // TestACLCompat is a data-driven test that loads all ACL-*.json test files
@@ -391,6 +372,7 @@ func testACLSuccess(
 					gotRules := policyutil.ReduceFilterRules(
 						node.View(),
 						pol.compileFilterRulesForNode(users, node.View(), nodes.ViewSlice()),
+						nodeAddrSet(nodes.ViewSlice()),
 					)
 
 					if diff := cmp.Diff(wantRules, gotRules, opts...); diff != "" {

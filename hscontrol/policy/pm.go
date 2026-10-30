@@ -47,9 +47,9 @@ type PolicyManager interface {
 	TagExists(tag string) bool
 
 	// TagOwnedByTags reports whether a credential holding ownerTags may apply
-	// tag: true if tag is one of ownerTags, or tag's tag-to-tag ownership chain
-	// transitively includes one of ownerTags. Authorises the tags an OAuth
-	// access token may set on the auth keys it mints.
+	// tag: true if tag is one of ownerTags, or tag's tagOwners list one of
+	// them (one hop). Authorises the tags an OAuth access token may set on the
+	// auth keys it mints.
 	TagOwnedByTags(tag string, ownerTags []string) bool
 
 	// NodeCanApproveRoute reports whether the given node can approve the given route.
@@ -63,11 +63,19 @@ type PolicyManager interface {
 	// avoid a tailnet-wide recompute on every ordinary reconnect.
 	NodeNeedsPeerRecompute(node types.NodeView) bool
 
+	// NodeIsViaTarget reports whether a grant steers traffic through the node.
+	NodeIsViaTarget(node types.NodeView) bool
+
 	// ViaRoutesForPeer computes via grant effects for a viewer-peer pair.
 	// It returns which routes should be included (peer is via-designated for viewer)
 	// and excluded (steered to a different peer). When no via grants apply,
 	// both fields are empty and the caller falls back to existing behavior.
 	ViaRoutesForPeer(viewer, peer types.NodeView) types.ViaRouteResult
+
+	// SetRouterSession sets the via election's runtime check: when a
+	// router's control session began and whether it may win.
+	// The callback runs under the policy lock and must remain lock-free.
+	SetRouterSession(session func(types.NodeID) (time.Time, bool))
 
 	// NodeCapMap returns compiled policy capabilities for the given node,
 	// or nil when none target it. The map is a defensive clone; its values

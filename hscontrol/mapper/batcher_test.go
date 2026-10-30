@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1135,8 +1136,17 @@ func TestBatcherCoalescesPolicyRecomputesPerTick(t *testing.T) {
 			// a sentinel. All land in one tick; the sentinel rides the same work
 			// item after the recompute(s), so its arrival marks the end of this
 			// tick's policy responses for a node.
-			for range policyChangesPerTick {
-				batcher.AddWork(change.PolicyChange())
+			for i := range policyChangesPerTick {
+				c := change.PolicyChange()
+
+				// Every other one carries an origin, as a tag write's
+				// recompute does (State.SetNodeTags). The mapper renders it
+				// like any other recompute, so it must coalesce like one.
+				if i%2 == 1 {
+					c.OriginNode = testData.Nodes[0].n.ID
+				}
+
+				batcher.AddWork(c)
 			}
 
 			batcher.AddWork(change.DERPMap())
@@ -2039,10 +2049,17 @@ func TestBatcherMultiConnection(t *testing.T) {
 
 			thirdChannel := make(chan *tailcfg.MapResponse, 10)
 
-			err = batcher.AddNode(node1.n.ID, thirdChannel, tailcfg.CapabilityVersion(100), nil)
-			if err != nil {
-				t.Fatalf("Failed to add third connection for node1: %v", err)
-			}
+			err = batcher.Batcher.AddNode(node1.n.ID, thirdChannel, tailcfg.CapabilityVersion(100), nil)
+			require.NoError(t, err)
+
+			fourthChannel := make(chan *tailcfg.MapResponse, 10)
+			err = batcher.Batcher.AddNode(node1.n.ID, fourthChannel, tailcfg.CapabilityVersion(100), nil)
+			require.NoError(t, err)
+
+			// The fifth connection replaces the oldest while preserving the cap.
+			fifthChannel := make(chan *tailcfg.MapResponse, 10)
+			err = batcher.Batcher.AddNode(node1.n.ID, fifthChannel, tailcfg.CapabilityVersion(100), nil)
+			require.NoError(t, err)
 
 			// Yield to allow connection to be processed
 			runtime.Gosched()
@@ -2055,14 +2072,14 @@ func TestBatcherMultiConnection(t *testing.T) {
 			if info, exists := debugInfo[node1.n.ID]; exists {
 				t.Logf("Node1 debug info: %+v", info)
 
-				if info.ActiveConnections != 3 {
-					t.Errorf("Node1 should have 3 active connections, got %d", info.ActiveConnections)
+				if info.ActiveConnections != maxConcurrentMapSessionsPerNode {
+					t.Errorf("Node1 should have %d active connections, got %d", maxConcurrentMapSessionsPerNode, info.ActiveConnections)
 				} else {
-					t.Logf("SUCCESS: Node1 correctly shows 3 active connections")
+					t.Logf("SUCCESS: Node1 correctly bounds overlapping connections")
 				}
 
 				if !info.Connected {
-					t.Errorf("Node1 should show as connected with 3 active connections")
+					t.Errorf("Node1 should show as connected with overlapping connections")
 				}
 			}
 
@@ -2090,6 +2107,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 			clearChannel(node1.ch)
 			clearChannel(secondChannel)
 			clearChannel(thirdChannel)
+			clearChannel(fourthChannel)
+			clearChannel(fifthChannel)
 			clearChannel(node2.ch)
 
 			// Send a change notification from node2 (so node1 should receive it on all connections)
@@ -2102,17 +2121,17 @@ func TestBatcherMultiConnection(t *testing.T) {
 				assert.Positive(c, len(node1.ch)+len(secondChannel)+len(thirdChannel), "should have received updates")
 			}, 5*time.Second, 50*time.Millisecond, "waiting for updates to propagate")
 
-			// Verify all three connections for node1 receive the update
+			// Verify the two newest connections receive the update.
 			connection1Received := false
 			connection2Received := false
 			connection3Received := false
+			connection4Received := false
+			connection5Received := false
 
 			select {
-			case mapResp := <-node1.ch:
-				connection1Received = (mapResp != nil)
-				t.Logf("Node1 connection 1 received update: %t", connection1Received)
-			case <-time.After(500 * time.Millisecond):
-				t.Errorf("Node1 connection 1 did not receive update")
+			case <-node1.ch:
+				t.Errorf("Replaced connection received an update")
+			case <-time.After(100 * time.Millisecond):
 			}
 
 			select {
@@ -2131,11 +2150,29 @@ func TestBatcherMultiConnection(t *testing.T) {
 				t.Errorf("Node1 connection 3 did not receive update")
 			}
 
-			if connection1Received && connection2Received && connection3Received {
-				t.Logf("SUCCESS: All three connections for node1 received the update")
+			select {
+			case mapResp := <-fourthChannel:
+				connection4Received = (mapResp != nil)
+				t.Logf("Node1 connection 4 received update: %t", connection4Received)
+			case <-time.After(500 * time.Millisecond):
+				t.Errorf("Node1 connection 4 did not receive update")
+			}
+
+			select {
+			case mapResp := <-fifthChannel:
+				connection5Received = (mapResp != nil)
+				t.Logf("Node1 connection 5 received update: %t", connection5Received)
+			case <-time.After(500 * time.Millisecond):
+				t.Errorf("Node1 connection 5 did not receive update")
+			}
+
+			if !connection1Received && connection2Received && connection3Received &&
+				connection4Received && connection5Received {
+				t.Logf("SUCCESS: Only the four newest connections received the update")
 			} else {
-				t.Errorf("FAILURE: Multi-connection broadcast failed - conn1: %t, conn2: %t, conn3: %t",
-					connection1Received, connection2Received, connection3Received)
+				t.Errorf("FAILURE: Bounded multi-connection broadcast failed - conn1: %t, conn2: %t, conn3: %t, conn4: %t, conn5: %t",
+					connection1Received, connection2Received, connection3Received,
+					connection4Received, connection5Received)
 			}
 
 			// Test connection removal and verify remaining connections still work.
@@ -2150,52 +2187,44 @@ func TestBatcherMultiConnection(t *testing.T) {
 			// Yield to allow removal to be processed
 			runtime.Gosched()
 
-			// Verify debug status shows 2 connections now
+			// Verify the other three admitted connections remain.
 			debugInfo2 := batcher.Debug()
 			if info, exists := debugInfo2[node1.n.ID]; exists {
-				if info.ActiveConnections != 2 {
-					t.Errorf("Node1 should have 2 active connections after removal, got %d", info.ActiveConnections)
+				if info.ActiveConnections != maxConcurrentMapSessionsPerNode-1 {
+					t.Errorf("Node1 should have %d active connections after removal, got %d",
+						maxConcurrentMapSessionsPerNode-1, info.ActiveConnections)
 				} else {
-					t.Logf("SUCCESS: Node1 correctly shows 2 active connections after removal")
+					t.Logf("SUCCESS: Node1 correctly shows %d active connections after removal",
+						maxConcurrentMapSessionsPerNode-1)
 				}
 			}
 
 			// Send another update and verify remaining connections still work
-			clearChannel(node1.ch)
 			clearChannel(thirdChannel)
 
 			testChangeSet2 := change.NodeAdded(node2.n.ID)
 
 			batcher.AddWork(testChangeSet2)
 
-			// Wait for updates to propagate to remaining channels
+			// Wait for updates to propagate to the remaining channel.
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.Positive(c, len(node1.ch)+len(thirdChannel), "should have received updates")
+				assert.NotEmpty(c, thirdChannel, "should have received updates")
 			}, 5*time.Second, 50*time.Millisecond, "waiting for updates to propagate")
 
-			// Verify remaining connections still receive updates
+			// Verify only the remaining connection receives updates.
 			remaining1Received := false
-			remaining3Received := false
-
-			select {
-			case mapResp := <-node1.ch:
-				remaining1Received = (mapResp != nil)
-			case <-time.After(500 * time.Millisecond):
-				t.Errorf("Node1 connection 1 did not receive update after removal")
-			}
 
 			select {
 			case mapResp := <-thirdChannel:
-				remaining3Received = (mapResp != nil)
+				remaining1Received = (mapResp != nil)
 			case <-time.After(500 * time.Millisecond):
 				t.Errorf("Node1 connection 3 did not receive update after removal")
 			}
 
-			if remaining1Received && remaining3Received {
-				t.Logf("SUCCESS: Remaining connections still receive updates after removal")
+			if remaining1Received {
+				t.Logf("SUCCESS: Remaining connection still receives updates after removal")
 			} else {
-				t.Errorf("FAILURE: Remaining connections failed to receive updates - conn1: %t, conn3: %t",
-					remaining1Received, remaining3Received)
+				t.Errorf("FAILURE: Remaining connection did not receive updates")
 			}
 
 			// Drain secondChannel of any messages received before removal
@@ -2210,6 +2239,234 @@ func TestBatcherMultiConnection(t *testing.T) {
 				t.Logf("SUCCESS: Removed connection correctly no longer receives updates")
 			}
 		})
+	}
+}
+
+func TestMapSessionOverlapLimitConcurrent(t *testing.T) {
+	t.Parallel()
+
+	mc := newMultiChannelNodeConn(1, nil)
+
+	const attempts = 64
+
+	panics := runConcurrentlyWithTimeout(t, attempts, 5*time.Second, func(i int) {
+		entry := makeConnectionEntry(
+			fmt.Sprintf("connection-%d", i),
+			make(chan *tailcfg.MapResponse, 1),
+		)
+		mc.addConnectionWithLimit(entry, maxConcurrentMapSessionsPerNode)
+	})
+
+	require.Zero(t, panics)
+	assert.Equal(t, maxConcurrentMapSessionsPerNode, mc.getActiveConnectionCount())
+}
+
+// waitInitialMapSendParked waits until a goroutine is blocked in AddNode's
+// initial map send, which proves that map has been generated.
+func waitInitialMapSendParked(t *testing.T) {
+	t.Helper()
+
+	const addNode = "github.com/juanfont/headscale/hscontrol/mapper.(*Batcher).AddNode("
+
+	buf := make([]byte, 1<<22)
+
+	require.Eventually(t, func() bool {
+		stacks := string(buf[:runtime.Stack(buf, true)])
+		for g := range strings.SplitSeq(stacks, "\n\n") {
+			header, frames, _ := strings.Cut(g, "\n")
+			if strings.Contains(header, "[select") &&
+				strings.HasPrefix(frames, addNode) {
+				return true
+			}
+		}
+
+		return false
+	}, 5*time.Second, time.Millisecond)
+}
+
+// TestEvictedSessionLeavesPeerTrackingAlone evicts a stream whose initial map,
+// generated while a peer was hidden, is still in flight. The newer streams
+// list the peer, and the evicted call must not remove it from them.
+func TestEvictedSessionLeavesPeerTrackingAlone(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(
+		t,
+		NewBatcherAndMapper,
+		1,
+		2,
+		normalBufferSize,
+	)
+	defer cleanup()
+
+	b := unwrapBatcher(td.Batcher)
+	peer, target := td.Nodes[0].n.ID.NodeID(), td.Nodes[1].n.ID
+	capVer := tailcfg.CapabilityVersion(100)
+
+	peerIDs := func(resp *tailcfg.MapResponse) []tailcfg.NodeID {
+		ids := make([]tailcfg.NodeID, 0, len(resp.Peers))
+		for _, p := range resp.Peers {
+			ids = append(ids, p.ID)
+		}
+
+		return ids
+	}
+
+	_, err := td.State.SetPolicy([]byte(`{"acls":[]}`))
+	require.NoError(t, err)
+
+	// Unbuffered and unread: AddNode parks on the initial map send.
+	evictedCh := make(chan *tailcfg.MapResponse)
+	addErr := make(chan error, 1)
+
+	go func() { addErr <- b.AddNode(target, evictedCh, capVer, nil) }()
+
+	waitInitialMapSendParked(t)
+
+	_, err = td.State.SetPolicy(
+		[]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`),
+	)
+	require.NoError(t, err)
+
+	// The last of these evicts the parked stream.
+	newer := make([]chan *tailcfg.MapResponse, maxConcurrentMapSessionsPerNode)
+	for i := range newer {
+		newer[i] = make(chan *tailcfg.MapResponse, normalBufferSize)
+		require.NoError(t, b.AddNode(target, newer[i], capVer, nil))
+		require.Contains(t, peerIDs(<-newer[i]), peer, "stream %d initial map", i)
+	}
+
+	stale := <-evictedCh
+	require.NotContains(t, peerIDs(stale), peer, "the map predates the policy change")
+	require.NoError(t, <-addErr)
+
+	// Queued behind anything the evicted call queued.
+	b.AddWork(change.DERPMap())
+
+	for i, ch := range newer {
+		for done := false; !done; {
+			select {
+			case resp := <-ch:
+				require.NotContains(t, resp.PeersRemoved, peer, "stream %d", i)
+				done = resp.DERPMap != nil
+			case <-time.After(5 * time.Second):
+				t.Fatalf("stream %d never got the DERP map", i)
+			}
+		}
+	}
+
+	nc, ok := b.nodes.Load(target)
+	require.True(t, ok)
+
+	assert.True(t, tracked(nc, peer), "the peer stays tracked as sent")
+}
+
+// tracked reports whether nc tracks id as sent. It reads under workMu, as
+// the batcher does: a full map replaces the set with Clear then Store, so a
+// read outside it can land between the two.
+func tracked(nc *multiChannelNodeConn, id tailcfg.NodeID) bool {
+	nc.workMu.Lock()
+	defer nc.workMu.Unlock()
+
+	_, ok := nc.lastSentPeers.Load(id)
+
+	return ok
+}
+
+// TestOlderInitialMapLeavesNewerStreamsPeers keeps a stream whose initial map,
+// generated while a peer was hidden, in flight until newer streams of the node
+// have recorded theirs, which list the peer. Finishing the older call must not
+// remove the peer from them, and must bring the older stream up to date.
+func TestOlderInitialMapLeavesNewerStreamsPeers(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(
+		t,
+		NewBatcherAndMapper,
+		1,
+		2,
+		normalBufferSize,
+	)
+	defer cleanup()
+
+	b := unwrapBatcher(td.Batcher)
+	peer, target := td.Nodes[0].n.ID.NodeID(), td.Nodes[1].n.ID
+	capVer := tailcfg.CapabilityVersion(100)
+
+	peerIDs := func(resp *tailcfg.MapResponse) []tailcfg.NodeID {
+		ids := make([]tailcfg.NodeID, 0, len(resp.Peers))
+		for _, p := range resp.Peers {
+			ids = append(ids, p.ID)
+		}
+
+		return ids
+	}
+
+	_, err := td.State.SetPolicy([]byte(`{"acls":[]}`))
+	require.NoError(t, err)
+
+	// Unbuffered and unread: AddNode parks on the initial map send.
+	olderCh := make(chan *tailcfg.MapResponse)
+	addErr := make(chan error, 1)
+
+	go func() { addErr <- b.AddNode(target, olderCh, capVer, nil) }()
+
+	waitInitialMapSendParked(t)
+
+	_, err = td.State.SetPolicy(
+		[]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`),
+	)
+	require.NoError(t, err)
+
+	// One short of the cap, so the older stream stays.
+	newer := make([]chan *tailcfg.MapResponse, maxConcurrentMapSessionsPerNode-1)
+	for i := range newer {
+		newer[i] = make(chan *tailcfg.MapResponse, normalBufferSize)
+		require.NoError(t, b.AddNode(target, newer[i], capVer, nil))
+		require.Contains(t, peerIDs(<-newer[i]), peer, "stream %d initial map", i)
+	}
+
+	// Read from here on, so later sends find the older stream draining.
+	older := make(chan *tailcfg.MapResponse, normalBufferSize)
+
+	go func() {
+		for {
+			select {
+			case resp := <-olderCh:
+				older <- resp
+			case <-t.Context().Done():
+				return
+			}
+		}
+	}()
+
+	stale := <-older
+	require.NotContains(t, peerIDs(stale), peer, "the map predates the policy change")
+	require.NoError(t, <-addErr)
+
+	// Queued behind anything the older call queued.
+	b.AddWork(change.DERPMap())
+
+	for i, ch := range newer {
+		for done := false; !done; {
+			select {
+			case resp := <-ch:
+				require.NotContains(t, resp.PeersRemoved, peer, "stream %d", i)
+				done = resp.DERPMap != nil
+			case <-time.After(5 * time.Second):
+				t.Fatalf("stream %d never got the DERP map", i)
+			}
+		}
+	}
+
+	nc, ok := b.nodes.Load(target)
+	require.True(t, ok)
+
+	assert.True(t, tracked(nc, peer), "the peer stays tracked as sent")
+
+	for listed := false; !listed; {
+		select {
+		case resp := <-older:
+			listed = slices.Contains(peerIDs(resp), peer)
+		case <-time.After(5 * time.Second):
+			t.Fatal("the older stream never got the peer")
+		}
 	}
 }
 
@@ -2511,26 +2768,114 @@ func TestSSHPolicyEmptyOnWire(t *testing.T) {
 	}
 }
 
-// TestAddWorkPeersRemovedNotTreatedAsEmpty ensures the empty filter does
-// not swallow a PeersRemoved change — deletion cleanup must still run, and
-// surviving recipients must still see the removal.
-func TestAddWorkPeersRemovedNotTreatedAsEmpty(t *testing.T) {
+// TestAddWorkDeletionNotTreatedAsEmpty ensures the empty filter does not
+// swallow a deletion — its teardown must still run, and the deleted node's
+// peers must still see the removal.
+func TestAddWorkDeletionNotTreatedAsEmpty(t *testing.T) {
 	lb := setupLightweightBatcher(t, 4, 16)
 	defer lb.cleanup()
 
-	// Remove node 4.
-	removal := change.NodeRemoved(types.NodeID(4))
-	require.False(t, removal.IsEmpty(), "PeersRemoved change is not empty")
+	// Remove node 4, a peer of nodes 1 and 2 only.
+	removal := change.NodeRemoved(types.NodeID(4), 1, 2)
+	require.False(t, removal[0].IsEmpty(), "the teardown change is not empty")
 
-	lb.b.AddWork(removal)
+	lb.b.AddWork(removal...)
 
 	// Node 4 must be evicted from the batcher.
 	_, exists := lb.b.nodes.Load(types.NodeID(4))
 	require.False(t, exists, "removed node must be evicted from batcher")
 
-	// Surviving nodes must see the removal pending.
-	require.Equal(t, 3, countNodesPending(lb.b),
-		"surviving 3 nodes must have the removal pending")
+	// Only its peers have the removal pending.
+	require.Equal(t, 2, countNodesPending(lb.b),
+		"only the deleted node's 2 peers must have the removal pending")
+}
+
+// TestDeleteWhileInitialMapInFlight deletes a peer while a node's initial
+// map, which still lists it, is in flight. The node must be told the peer is
+// gone once the map is out, also when the policy refresh fails and only the
+// deletion's own removals go out.
+func TestDeleteWhileInitialMapInFlight(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		policyChange bool
+	}{
+		{"with_policy_change", true},
+		{"removal_only", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			td, cleanup := setupBatcherWithTestData(
+				t,
+				NewBatcherAndMapper,
+				1,
+				3,
+				normalBufferSize,
+			)
+			defer cleanup()
+
+			b := td.Batcher
+			n1, n2, n3 := &td.Nodes[0], &td.Nodes[1], &td.Nodes[2]
+			capVer := tailcfg.CapabilityVersion(100)
+
+			n2.start()
+			n3.start()
+
+			defer n2.cleanup()
+			defer n3.cleanup()
+
+			require.NoError(t, b.AddNode(n2.n.ID, n2.ch, capVer, nil))
+			require.NoError(t, b.AddNode(n3.n.ID, n3.ch, capVer, nil))
+
+			// Unbuffered and unread: AddNode blocks on the initial map.
+			ch1 := make(chan *tailcfg.MapResponse)
+			addErr := make(chan error, 1)
+
+			go func() { addErr <- b.AddNode(n1.n.ID, ch1, capVer, nil) }()
+
+			waitInitialMapSendParked(t)
+
+			v3, ok := td.State.GetNodeByID(n3.n.ID)
+			require.True(t, ok)
+
+			changes, err := td.State.DeleteNode(v3)
+			require.NoError(t, err)
+
+			if !tc.policyChange {
+				changes = slices.DeleteFunc(changes, func(c change.Change) bool {
+					return c.RequiresRuntimePeerComputation
+				})
+			}
+
+			b.AddWork(changes...)
+
+			// Let ticks render n1's changes while its stream waits.
+			time.Sleep(300 * time.Millisecond) //nolint:forbidigo // test coordination
+
+			initial := <-ch1
+			require.NotNil(t, initial.Node, "first frame is the initial map")
+
+			initialPeers := make([]tailcfg.NodeID, 0, len(initial.Peers))
+			for _, p := range initial.Peers {
+				initialPeers = append(initialPeers, p.ID)
+			}
+
+			require.Contains(t, initialPeers, n3.n.ID.NodeID(),
+				"the initial map predates the delete")
+
+			deadline := time.After(3 * time.Second)
+
+			for {
+				select {
+				case resp := <-ch1:
+					if slices.Contains(resp.PeersRemoved, n3.n.ID.NodeID()) {
+						require.NoError(t, <-addErr)
+						return
+					}
+				case <-deadline:
+					t.Fatal("n1 was never told that deleted n3 is gone")
+				}
+			}
+		})
+	}
 }
 
 // TestHandleNodeChangeSendsRemovalsAsDelta checks that peers missing from a
@@ -2639,11 +2984,6 @@ func TestAddNodeRemovalSurvivesPendingLoss(t *testing.T) {
 		// the removal entirely.
 		{"no_peers", 1},
 		{"with_peer", 2},
-	}
-
-	tracked := func(nc *multiChannelNodeConn, id tailcfg.NodeID) bool {
-		_, ok := nc.lastSentPeers.Load(id)
-		return ok
 	}
 
 	recv := func(t *testing.T, ch <-chan *tailcfg.MapResponse) *tailcfg.MapResponse {
@@ -3050,4 +3390,82 @@ func TestInvisiblePeerChangeSendsNoFrame(t *testing.T) {
 
 	deliver(other, change.PingNode(other.n.ID, &tailcfg.PingRequest{URL: "https://ping.test"}))
 	assert.NotNil(t, expectReceive(t, other.ch, "ping").PingRequest)
+}
+
+// TestWorkerDefersBundleOfSlowConnection pins that a connection which keeps
+// draining, but slower than a bundle is sent, does not hold the worker for
+// every send of the bundle. The node chooses how many responses its bundle
+// carries, while the worker holds workMu and is shared by every other node:
+// once the sends have waited connectionSendWait in total, the rest of the
+// bundle waits in pending for the next tick.
+func TestWorkerDefersBundleOfSlowConnection(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(
+		t,
+		NewBatcherAndMapper,
+		1,
+		1,
+		normalBufferSize,
+	)
+	defer cleanup()
+
+	// A batcher that never ticks, so deferred changes stay in pending.
+	b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+
+	b.Start()
+	defer b.Close()
+
+	id := testData.Nodes[0].n.ID
+	ch := make(chan *tailcfg.MapResponse) // unbuffered
+
+	nc := newMultiChannelNodeConn(id, b.mapper)
+	nc.addConnection(makeConnectionEntry("slow", ch))
+	b.nodes.Store(id, nc)
+
+	// Read one response per fifth of the wait: every send blocks, but well
+	// short of backpressure.
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		for {
+			select {
+			case <-time.After(connectionSendWait / 5):
+			case <-done:
+				return
+			}
+
+			select {
+			case <-ch:
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	bundle := make([]change.Change, 100)
+	for i := range bundle {
+		bundle[i] = change.DERPMap()
+		bundle[i].Reason = fmt.Sprintf("derp map update %d", i)
+	}
+
+	start := time.Now()
+
+	nc.inFlight.Store(true)
+	b.queueWork(work{changes: bundle, nodeID: id})
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.False(c, nc.inFlight.Load())
+	}, 5*time.Second, time.Millisecond, "worker should finish with the bundle")
+
+	assert.Less(t, time.Since(start), 10*connectionSendWait,
+		"the sends of one bundle should not each wait for the connection")
+	assert.Equal(t, 1, nc.getActiveConnectionCount(),
+		"a connection that keeps draining is not stale")
+
+	pending := getPendingForNode(b, id)
+	sent := len(bundle) - len(pending)
+	assert.Positive(t, sent, "sends should go through until the wait is used up")
+	assert.NotEmpty(t, pending, "the rest of the bundle should be deferred")
+	assert.Equal(t, bundle[sent:], pending,
+		"what was not sent should be pending, in order")
 }

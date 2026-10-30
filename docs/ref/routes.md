@@ -345,6 +345,10 @@ availability](https://tailscale.com/docs/how-to/set-up-high-availability#subnet-
 This feature is enabled by default when at least two nodes advertise the same prefix. See the configuration options
 `node.routes.ha` in the [configuration file](configuration.md) for details.
 
+Of the routers that are online, healthy and not expired, the one connected to Headscale the longest serves a route. A
+router that reconnects becomes a standby, while a router that stays connected takes its routes back once it is approved,
+healthy or unexpired again. When none is available, the route stays with the router that served it last.
+
 ## Troubleshooting
 
 ### Enable IP forwarding

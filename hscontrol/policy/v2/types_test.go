@@ -2,9 +2,11 @@ package v2
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1544,9 +1546,39 @@ func TestUnmarshalPolicy(t *testing.T) {
   },
 }
 `,
-			wantErr: `tag "tag:child" references undefined tag "tag:nonexistent"`,
+			wantErr: `tagOwners["tag:child"]: "tag:nonexistent": does not exist`,
 		},
 		// SSH source/destination validation tests (#3009, #3010)
+		{
+			name: "ssh-check-tag-src-rejected",
+			input: `
+{
+  "tagOwners": {"tag:client": ["admin@"], "tag:server": ["admin@"]},
+  "ssh": [{
+    "action": "check",
+    "src": ["admin@", "tag:client"],
+    "dst": ["tag:server"],
+    "users": ["root"]
+  }]
+}
+`,
+			wantErr: `[ssh] "check" action does not support tags in src`,
+		},
+		{
+			name: "ssh-check-autogroup-tagged-src-rejected",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@"]},
+  "ssh": [{
+    "action": "check",
+    "src": ["admin@", "autogroup:tagged"],
+    "dst": ["tag:server"],
+    "users": ["root"]
+  }]
+}
+`,
+			wantErr: `[ssh] "check" action does not support tags in src`,
+		},
 		{
 			name: "ssh-tag-to-user-rejected",
 			input: `
@@ -3526,9 +3558,37 @@ func TestResolveTagOwners(t *testing.T) {
 			},
 			want: map[Tag]*netipx.IPSet{
 				Tag("tag:bigbrother"):   mustIPSet("100.64.0.1/32"),
-				Tag("tag:smallbrother"): mustIPSet("100.64.0.1/32"),
+				Tag("tag:smallbrother"): mustIPSet(),
 			},
 			wantErr: false,
+		},
+		{
+			name: "tag-owner-chain-keeps-direct-owners",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:a"): Owners{new(Username("user1@"))},
+					Tag("tag:b"): Owners{new(Tag("tag:a"))},
+					Tag("tag:c"): Owners{new(Tag("tag:b")), new(Username("user2@"))},
+				},
+			},
+			want: map[Tag]*netipx.IPSet{
+				Tag("tag:a"): mustIPSet("100.64.0.1/32"),
+				Tag("tag:b"): mustIPSet(),
+				Tag("tag:c"): mustIPSet("100.64.0.2/32"),
+			},
+		},
+		{
+			name: "tag-owner-cycle",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:a"): Owners{new(Tag("tag:b")), new(Username("user1@"))},
+					Tag("tag:b"): Owners{new(Tag("tag:a"))},
+				},
+			},
+			want: map[Tag]*netipx.IPSet{
+				Tag("tag:a"): mustIPSet("100.64.0.1/32"),
+				Tag("tag:b"): mustIPSet(),
+			},
 		},
 	}
 
@@ -4229,193 +4289,6 @@ func mustParseAlias(s string) Alias {
 	}
 
 	return alias
-}
-
-func TestFlattenTagOwners(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   TagOwners
-		want    TagOwners
-		wantErr string
-	}{
-		{
-			name: "tag-owns-tag",
-			input: TagOwners{
-				Tag("tag:bigbrother"):   Owners{new(Group("group:user1"))},
-				Tag("tag:smallbrother"): Owners{new(Tag("tag:bigbrother"))},
-			},
-			want: TagOwners{
-				Tag("tag:bigbrother"):   Owners{new(Group("group:user1"))},
-				Tag("tag:smallbrother"): Owners{new(Group("group:user1"))},
-			},
-			wantErr: "",
-		},
-		{
-			// SaaS tolerates tag:a <-> tag:b cycles by dropping the
-			// cycle edge; both tags resolve to an empty owner set
-			// because neither chain reaches a non-tag owner.
-			name: "circular-reference-resolves-to-empty",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:b"))},
-				Tag("tag:b"): Owners{new(Tag("tag:a"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): nil,
-				Tag("tag:b"): nil,
-			},
-			wantErr: "",
-		},
-		{
-			// tag:a -> tag:a self-reference: the only owner is the
-			// cycle edge itself; result is empty.
-			name: "self-reference-resolves-to-empty",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:a"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): nil,
-			},
-			wantErr: "",
-		},
-		{
-			// Cycle plus a sibling non-tag owner: the cycle edge
-			// drops out, the sibling owner survives.
-			name: "cycle-plus-sibling-keeps-sibling",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:b")), new(Username("alice@example.com"))},
-				Tag("tag:b"): Owners{new(Tag("tag:a"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): Owners{new(Username("alice@example.com"))},
-				Tag("tag:b"): Owners{new(Username("alice@example.com"))},
-			},
-			wantErr: "",
-		},
-		{
-			name: "mixed-owners",
-			input: TagOwners{
-				Tag("tag:x"): Owners{new(Username("user1@")), new(Tag("tag:y"))},
-				Tag("tag:y"): Owners{new(Username("user2@"))},
-			},
-			want: TagOwners{
-				Tag("tag:x"): Owners{new(Username("user1@")), new(Username("user2@"))},
-				Tag("tag:y"): Owners{new(Username("user2@"))},
-			},
-			wantErr: "",
-		},
-		{
-			name: "mixed-dupe-owners",
-			input: TagOwners{
-				Tag("tag:x"): Owners{new(Username("user1@")), new(Tag("tag:y"))},
-				Tag("tag:y"): Owners{new(Username("user1@"))},
-			},
-			want: TagOwners{
-				Tag("tag:x"): Owners{new(Username("user1@"))},
-				Tag("tag:y"): Owners{new(Username("user1@"))},
-			},
-			wantErr: "",
-		},
-		{
-			name: "no-tag-owners",
-			input: TagOwners{
-				Tag("tag:solo"): Owners{new(Username("user1@"))},
-			},
-			want: TagOwners{
-				Tag("tag:solo"): Owners{new(Username("user1@"))},
-			},
-			wantErr: "",
-		},
-		{
-			name: "tag-long-owner-chain",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Group("group:user1"))},
-				Tag("tag:b"): Owners{new(Tag("tag:a"))},
-				Tag("tag:c"): Owners{new(Tag("tag:b"))},
-				Tag("tag:d"): Owners{new(Tag("tag:c"))},
-				Tag("tag:e"): Owners{new(Tag("tag:d"))},
-				Tag("tag:f"): Owners{new(Tag("tag:e"))},
-				Tag("tag:g"): Owners{new(Tag("tag:f"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): Owners{new(Group("group:user1"))},
-				Tag("tag:b"): Owners{new(Group("group:user1"))},
-				Tag("tag:c"): Owners{new(Group("group:user1"))},
-				Tag("tag:d"): Owners{new(Group("group:user1"))},
-				Tag("tag:e"): Owners{new(Group("group:user1"))},
-				Tag("tag:f"): Owners{new(Group("group:user1"))},
-				Tag("tag:g"): Owners{new(Group("group:user1"))},
-			},
-			wantErr: "",
-		},
-		{
-			// Long cycle: every tag eventually points back to itself.
-			// Each tag resolves to the empty owner set.
-			name: "tag-long-circular-chain-resolves-to-empty",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:g"))},
-				Tag("tag:b"): Owners{new(Tag("tag:a"))},
-				Tag("tag:c"): Owners{new(Tag("tag:b"))},
-				Tag("tag:d"): Owners{new(Tag("tag:c"))},
-				Tag("tag:e"): Owners{new(Tag("tag:d"))},
-				Tag("tag:f"): Owners{new(Tag("tag:e"))},
-				Tag("tag:g"): Owners{new(Tag("tag:f"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): nil,
-				Tag("tag:b"): nil,
-				Tag("tag:c"): nil,
-				Tag("tag:d"): nil,
-				Tag("tag:e"): nil,
-				Tag("tag:f"): nil,
-				Tag("tag:g"): nil,
-			},
-			wantErr: "",
-		},
-		{
-			name: "undefined-tag-reference",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:nonexistent"))},
-			},
-			wantErr: `tag "tag:a" references undefined tag "tag:nonexistent"`,
-		},
-		{
-			name: "tag-with-empty-owners-is-valid",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:b"))},
-				Tag("tag:b"): Owners{}, // empty owners but exists
-			},
-			want: TagOwners{
-				Tag("tag:a"): nil,
-				Tag("tag:b"): nil,
-			},
-			wantErr: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := flattenTagOwners(tt.input)
-			if tt.wantErr != "" {
-				if err == nil {
-					t.Fatalf("flattenTagOwners() expected error %q, got nil", tt.wantErr)
-				}
-
-				if err.Error() != tt.wantErr {
-					t.Fatalf("flattenTagOwners() expected error %q, got %q", tt.wantErr, err.Error())
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("flattenTagOwners() unexpected error: %v", err)
-			}
-
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("flattenTagOwners() mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
 }
 
 func TestSSHCheckPeriodUnmarshal(t *testing.T) {
@@ -5420,6 +5293,36 @@ func TestUnmarshalGrants(t *testing.T) {
 			wantErr: "ip and app can not both be empty",
 		},
 		{
+			name: "invalid-grant-ip-port-list",
+			input: `
+{
+	"grants": [
+		{
+			"src": ["*"],
+			"dst": ["*"],
+			"ip": ["tcp:80,443"]
+		}
+	]
+}
+`,
+			wantErr: `only one port range allowed: "tcp:80,443"`,
+		},
+		{
+			name: "invalid-grant-ip-bare-port-list",
+			input: `
+{
+	"grants": [
+		{
+			"src": ["*"],
+			"dst": ["*"],
+			"ip": ["80-90,443"]
+		}
+	]
+}
+`,
+			wantErr: `only one port range allowed: "80-90,443"`,
+		},
+		{
 			name: "valid-grant-empty-sources",
 			input: `
 {
@@ -6192,12 +6095,60 @@ func TestUnmarshalPolicySSHTests(t *testing.T) {
 			},
 		},
 		{
+			name: "src-cidr",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "100.64.0.0/24", "dst": ["tag:server"], "deny": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestSrcDisallowedElement,
+		},
+		{
+			name: "src-hosts-cidr",
+			input: `
+{
+  "hosts": {"lan": "192.168.1.0/24"},
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "lan", "dst": ["tag:server"], "deny": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestSrcDisallowedElement,
+		},
+		{
+			name: "src-bare-ip-accepted",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "100.64.0.30", "dst": ["tag:server"], "accept": ["root"]}
+  ]
+}
+`,
+		},
+		{
 			name: "dst-autogroup-internet",
 			input: `
 {
   "tagOwners": {"tag:server": ["admin@example.org"]},
   "sshTests": [
     {"src": "thor@example.org", "dst": ["autogroup:internet"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstDisallowedElement,
+		},
+		{
+			name: "dst-autogroup-member",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["autogroup:member"], "accept": ["root"]}
   ]
 }
 `,
@@ -6443,5 +6394,254 @@ func TestPolicyMetadataFields(t *testing.T) {
 				tt.check(t, pol)
 			}
 		})
+	}
+}
+
+// TestUnmarshalPolicyMaxDstPorts checks that the size limit counts what the
+// filter holds an entry for, the combinations of destination prefix and port
+// range, and not the length of either list.
+func TestUnmarshalPolicyMaxDstPorts(t *testing.T) {
+	list := func(item string, n int) string {
+		return strings.TrimSuffix(strings.Repeat(item+",", n), ",")
+	}
+	grant := func(extra, dst string, dsts int, ip string) string {
+		return fmt.Sprintf(
+			`{"src": ["*"], %s "dst": [%s], "ip": [%s]}`,
+			extra, list(`"`+dst+`"`, dsts), ip,
+		)
+	}
+	// One range per ip entry; repeats still count.
+	ports := func(n int) string {
+		return list(`"443"`, n)
+	}
+
+	tests := []struct {
+		name    string
+		policy  string
+		wantErr bool
+	}{
+		{
+			name:   "grant with many ports",
+			policy: `{"grants": [` + grant("", "*", 1, ports(50_000)) + `]}`,
+		},
+		{
+			name:   "grant with many destinations",
+			policy: `{"grants": [` + grant("", "*", 50_000, ports(1)) + `]}`,
+		},
+		{
+			name: "many destinations and many ports in different grants",
+			policy: `{"grants": [` + grant("", "*", 50_000, ports(1)) + `,` +
+				grant("", "*", 1, ports(50_000)) + `]}`,
+		},
+		{
+			name:   "grant at the limit",
+			policy: `{"grants": [` + grant("", "*", 100, ports(1000)) + `]}`,
+		},
+		{
+			name:    "grant with many destinations and many ports",
+			policy:  `{"grants": [` + grant("", "*", 1000, ports(1000)) + `]}`,
+			wantErr: true,
+		},
+		{
+			name: "via grant",
+			policy: `{"tagOwners": {"tag:router": []}, "grants": [` +
+				grant(`"via": ["tag:router"],`, "10.0.0.0/24", 1000, ports(1000)) +
+				`]}`,
+			wantErr: true,
+		},
+		{
+			name:    "grants that add up",
+			policy:  `{"grants": [` + list(grant("", "*", 100, ports(100)), 11) + `]}`,
+			wantErr: true,
+		},
+		{
+			name: "autogroup:internet counts as its prefixes",
+			policy: `{"grants": [` +
+				grant("", "autogroup:internet", 100, ports(100)) + `]}`,
+			wantErr: true,
+		},
+		{
+			name: "acl with many ports",
+			policy: `{"acls": [{"action": "accept", "src": ["*"], "dst": ["*:` +
+				list("443", 50_000) + `"]}]}`,
+		},
+		{
+			name: "acl with many ports on autogroup:internet",
+			policy: `{"acls": [{"action": "accept", "src": ["*"], ` +
+				`"dst": ["autogroup:internet:` + list("443", 50_000) + `"]}]}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := unmarshalPolicy([]byte(tt.policy))
+
+			if tt.wantErr {
+				require.ErrorIs(t, err, ErrTooManyDstPorts)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestResolveUserPrecedence(t *testing.T) {
+	const (
+		address    = "alice@example.com"
+		providerID = "https://idp.example/alice"
+	)
+
+	owner := types.User{ID: 1, Name: "alice", Email: address}
+	oidcName := types.User{ID: 2, Name: address, Provider: "oidc"}
+	localName := types.User{ID: 3, Name: address}
+	both := types.User{ID: 4, Name: address, Email: address}
+	provider := types.User{
+		ID:                 5,
+		Name:               "provider-user",
+		ProviderIdentifier: sql.NullString{String: providerID, Valid: true},
+	}
+
+	tests := []struct {
+		name    string
+		token   Username
+		users   types.Users
+		want    types.User
+		wantErr error
+	}{
+		{
+			name:  "email owner beats OIDC username",
+			token: Username(address),
+			users: types.Users{owner, oidcName},
+			want:  owner,
+		},
+		{
+			name:  "email owner beats local username",
+			token: Username(address),
+			users: types.Users{owner, localName},
+			want:  owner,
+		},
+		{
+			name:  "address-shaped username without email owner",
+			token: Username(address),
+			users: types.Users{oidcName, {ID: 6, Name: "other", Email: "other@example.com"}},
+			want:  oidcName,
+		},
+		{
+			name:  "email and username on the same user count once",
+			token: Username(address),
+			users: types.Users{both, oidcName},
+			want:  both,
+		},
+		{
+			name:    "duplicate usernames remain ambiguous",
+			token:   Username(address),
+			users:   types.Users{oidcName, localName},
+			wantErr: ErrMultipleUsersFound,
+		},
+		{
+			name:    "duplicate emails remain ambiguous despite a unique username",
+			token:   Username(address),
+			users:   types.Users{owner, {ID: 7, Name: "second-owner", Email: address}, oidcName},
+			wantErr: ErrMultipleUsersFound,
+		},
+		{
+			name:  "provider identifier wins",
+			token: Username(providerID + "@"),
+			users: types.Users{provider, {ID: 8, Name: providerID}},
+			want:  provider,
+		},
+		{
+			name:    "unknown user",
+			token:   "missing@",
+			users:   types.Users{owner, oidcName, localName},
+			wantErr: ErrUserNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		for _, reverse := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/reverse=%t", tt.name, reverse), func(t *testing.T) {
+				users := slices.Clone(tt.users)
+				if reverse {
+					slices.Reverse(users)
+				}
+
+				got, err := tt.token.resolveUser(users)
+				if tt.wantErr != nil {
+					require.ErrorIs(t, err, tt.wantErr)
+
+					return
+				}
+
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
+			})
+		}
+	}
+}
+
+func TestBareAtTokenMatchesNobody(t *testing.T) {
+	users := types.Users{
+		{ID: 1, Name: "first-private-user"},
+		{ID: 2, Name: "second-private-user"},
+	}
+
+	for count := range 3 {
+		t.Run(fmt.Sprintf("users=%d", count), func(t *testing.T) {
+			token := Username("@")
+			_, err := token.resolveUser(users[:count])
+			require.ErrorIs(t, err, ErrUserNotFound)
+
+			for _, user := range users {
+				require.NotContains(t, err.Error(), user.Name)
+			}
+
+			pm, err := NewPolicyManager([]byte(`{
+				"grants": [{"src":["@"], "dst":["*"], "ip":["*"]}]
+			}`), users[:count], types.Nodes{}.ViewSlice())
+			require.NoError(t, err, "stored policies with a bare @ must still load")
+
+			filter, _ := pm.Filter()
+			require.Empty(t, filter)
+		})
+	}
+}
+
+func TestSetPolicyBareAtToken(t *testing.T) {
+	users := types.Users{
+		{ID: 1, Name: "first-private-user"},
+		{ID: 2, Name: "second-private-user"},
+	}
+
+	nodes := types.Nodes{node("first-node", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])}
+	nodes[0].ID = 1
+
+	const allowAll = `"acls": [{"action":"accept", "src":["*"], "dst":["*:*"]}]`
+
+	for _, count := range []int{1, 2} {
+		for _, tt := range []struct {
+			name string
+			src  string
+			dst  string
+		}{
+			{name: "source", src: "@", dst: "100.64.0.1:22"},
+			{name: "destination", src: "100.64.0.1", dst: "@:22"},
+		} {
+			t.Run(fmt.Sprintf("%s/users=%d", tt.name, count), func(t *testing.T) {
+				pm, err := NewPolicyManager([]byte(`{`+allowAll+`}`), users[:count], nodes.ViewSlice())
+				require.NoError(t, err)
+
+				candidate := fmt.Sprintf(`{%s, "tests":[{"src":%q, "accept":[%q]}]}`, allowAll, tt.src, tt.dst)
+				_, err = pm.SetPolicy([]byte(candidate))
+				require.ErrorIs(t, err, errPolicyTestsFailed)
+
+				for _, user := range users {
+					require.NotContains(t, err.Error(), user.Name)
+				}
+			})
+		}
 	}
 }

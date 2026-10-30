@@ -60,54 +60,6 @@ func TestRoutes(t *testing.T) {
 		}
 	})
 
-	t.Run("advertised_routes_in_hostinfo", func(t *testing.T) {
-		t.Parallel()
-
-		srv := servertest.NewServer(t)
-		user := srv.CreateUser(t, "advroute-user")
-
-		routePrefix := netip.MustParsePrefix("192.168.1.0/24")
-
-		c1 := servertest.NewClient(t, srv, "advroute-node1",
-			servertest.WithUser(user))
-		c2 := servertest.NewClient(t, srv, "advroute-node2",
-			servertest.WithUser(user))
-
-		c1.WaitForPeers(t, 1, 10*time.Second)
-
-		// Update hostinfo with advertised routes.
-		c1.Direct().SetHostinfo(&tailcfg.Hostinfo{
-			BackendLogID: "servertest-advroute-node1",
-			Hostname:     "advroute-node1",
-			RoutableIPs:  []netip.Prefix{routePrefix},
-		})
-
-		// Send a non-streaming update to push the new [tailcfg.Hostinfo].
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		_ = c1.Direct().SendUpdate(ctx)
-
-		// The observer should eventually see the advertised routes
-		// in the peer's [tailcfg.Hostinfo].
-		c2.WaitForCondition(t, "advertised route in hostinfo",
-			15*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				for _, p := range nm.Peers {
-					hi := p.Hostinfo()
-					if hi.Valid() && hi.Hostname() == "advroute-node1" {
-						for i := range hi.RoutableIPs().Len() {
-							if hi.RoutableIPs().At(i) == routePrefix {
-								return true
-							}
-						}
-					}
-				}
-
-				return false
-			})
-	})
-
 	t.Run("route_advertise_and_approve", func(t *testing.T) {
 		t.Parallel()
 
@@ -134,22 +86,8 @@ func TestRoutes(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		_ = c1.Direct().SendUpdate(ctx)
-
-		// Wait for the server to process the [tailcfg.Hostinfo] update
-		// by waiting for observer to see the advertised route.
-		c2.WaitForCondition(t, "hostinfo update propagated",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				for _, p := range nm.Peers {
-					hi := p.Hostinfo()
-					if hi.Valid() && hi.Hostname() == "fullrt-advertiser" {
-						return hi.RoutableIPs().Len() > 0
-					}
-				}
-
-				return false
-			})
+		// The server stores the announcement before it answers.
+		require.NoError(t, c1.Direct().SendUpdate(ctx))
 
 		// Step 2: Approve the route on the server.
 		nodeID := findNodeID(t, srv, "fullrt-advertiser")
@@ -307,11 +245,14 @@ func TestRoutes(t *testing.T) {
 			20*time.Second, 200*time.Millisecond,
 			"r2 should take over as primary after r1 offline")
 
-		// 2. Take r2 offline. With both routers gone, no primary should remain.
+		// 2. Take r2 offline. With both routers gone, r2 keeps the route.
 		r2.Disconnect(t)
-		assert.Eventually(t, func() bool { return !hasRoute(r1ID) && !hasRoute(r2ID) },
-			20*time.Second, 200*time.Millisecond,
-			"no primary should be assigned while both routers are offline")
+		assert.Eventually(t, func() bool {
+			nv, ok := srv.State().GetNodeByID(r2ID)
+
+			return ok && !nv.IsOnline().Get() && hasRoute(r2ID) && !hasRoute(r1ID)
+		}, 20*time.Second, 200*time.Millisecond,
+			"the last primary keeps the route while both routers are offline")
 
 		// 3. Reconnect r2 (cable plugged back in).
 		r2.Reconnect(t)
@@ -370,50 +311,7 @@ var routeOverlapCompatTests = []string{
 // routeOverlapSkipReasons lists checks where headscale differs from SaaS,
 // keyed <test_id>/<node>/<check>. A listed check that matches fails, so a fix
 // must delete its entry.
-var routeOverlapSkipReasons = map[string]string{
-	// Once a router is sent its own routes, its self-primary also needs the
-	// approved singles in the tailnet range left unserved.
-	"routes-t1-auto-v4-default/ovl-r-ctrl/self-allowed":      selfRoutesReduced,
-	"routes-t1-auto-v4-default/ovl-r-ctrl/self-primary":      selfRoutesReduced,
-	"routes-t1-auto-v4-default/ovl-r-host4/self-allowed":     selfRoutesReduced,
-	"routes-t1-auto-v4-default/ovl-r-narrow/self-allowed":    selfRoutesReduced,
-	"routes-t1-auto-v4-default/ovl-r-narrow/self-primary":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-host6/self-allowed":     selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-mapped/self-allowed":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-mapped/self-primary":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-narrow/self-allowed":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-narrow/self-primary":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-via/self-allowed":       selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-via/self-primary":       selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-ctrl/self-allowed":     selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-ctrl/self-primary":     selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-host4/self-allowed":    selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-host6/self-allowed":    selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-narrow/self-allowed":   selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-narrow/self-primary":   selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-via/self-allowed":      selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-via/self-primary":      selfRoutesReduced,
-	"routes-t4-admin/ovl-r-ctrl/self-allowed":                selfRoutesReduced,
-	"routes-t4-admin/ovl-r-ctrl/self-primary":                selfRoutesReduced,
-	"routes-t4-admin/ovl-r-host4/self-allowed":               selfRoutesReduced,
-	"routes-t4-admin/ovl-r-host6/self-allowed":               selfRoutesReduced,
-	"routes-t4-admin/ovl-r-mapped/self-allowed":              selfRoutesReduced,
-	"routes-t4-admin/ovl-r-mapped/self-primary":              selfRoutesReduced,
-	"routes-t4-admin/ovl-r-narrow/self-allowed":              selfRoutesReduced,
-	"routes-t4-admin/ovl-r-narrow/self-primary":              selfRoutesReduced,
-	"routes-t4-admin/ovl-r-via/self-allowed":                 selfRoutesReduced,
-	"routes-t4-admin/ovl-r-via/self-primary":                 selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-ctrl/self-allowed":   selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-ctrl/self-primary":   selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-host4/self-allowed":  selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-host6/self-allowed":  selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-mapped/self-allowed": selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-mapped/self-primary": selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-narrow/self-allowed": selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-narrow/self-primary": selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-via/self-allowed":    selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-via/self-primary":    selfRoutesReduced,
-}
+var routeOverlapSkipReasons = map[string]string{}
 
 // routeOverlapNotCompared lists, by key prefix, checks left out: SaaS's
 // answer there is in doubt, so it is no reference.
@@ -640,8 +538,9 @@ func sortedStrings(s []string) string {
 
 // TestRoutesNodeRangeSingleNotServed checks that a router's approved single
 // addresses inside the node ranges, in either spelling, reach no viewer
-// through a plain grant or a via grant. They stay approved, the router's own
-// entry keeps them, and its wider route is still served.
+// through a plain grant or a via grant. They stay approved and in the
+// router's own AllowedIPs, never in its PrimaryRoutes, and its wider route
+// is still served.
 func TestRoutesNodeRangeSingleNotServed(t *testing.T) {
 	t.Parallel()
 
@@ -701,9 +600,9 @@ func TestRoutesNodeRangeSingleNotServed(t *testing.T) {
 
 					return ok && views.SliceContains(p.PrimaryRoutes(), subnet)
 				})
-			router.WaitForCondition(t, "router holds its routes", 15*time.Second,
+			router.WaitForCondition(t, "router serves its subnet", 15*time.Second,
 				func(nm *netmap.NetworkMap) bool {
-					return views.SliceContains(nm.SelfNode.AllowedIPs(), subnet)
+					return views.SliceContains(nm.SelfNode.PrimaryRoutes(), subnet)
 				})
 
 			peer, _ := viewer.PeerByName("router")
@@ -716,6 +615,8 @@ func TestRoutesNodeRangeSingleNotServed(t *testing.T) {
 					"%s served in PrimaryRoutes", single)
 				assert.Truef(t, views.SliceContains(self.AllowedIPs(), single),
 					"%s missing from the router's own AllowedIPs", single)
+				assert.Falsef(t, views.SliceContains(self.PrimaryRoutes(), single),
+					"%s in the router's own PrimaryRoutes", single)
 			}
 
 			node, ok := srv.State().GetNodeByID(routerID)

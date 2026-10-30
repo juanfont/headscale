@@ -8,6 +8,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"tailscale.com/util/set"
 )
 
 // ReduceRoutes returns a reduced list of routes for a given node that it can access.
@@ -16,15 +17,7 @@ func ReduceRoutes(
 	routes []netip.Prefix,
 	matchers []matcher.Match,
 ) []netip.Prefix {
-	var result []netip.Prefix
-
-	for _, route := range routes {
-		if node.CanAccessRoute(matchers, route) {
-			result = append(result, route)
-		}
-	}
-
-	return result
+	return node.CanAccessRoutes(matchers, routes)
 }
 
 // ApproveRoutesWithPolicy checks if the node can approve the announced routes
@@ -44,11 +37,12 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 
 	// Start with ALL currently approved routes - we never remove approved routes
 	newApproved := slices.Clone(currentApproved)
+	approvedSet := set.SetOf(currentApproved)
 
 	// Then, check for new routes that can be auto-approved
 	for _, route := range announcedRoutes {
 		// Skip if already approved
-		if slices.Contains(newApproved, route) {
+		if approvedSet.Contains(route) {
 			continue
 		}
 
@@ -56,6 +50,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 		canApprove := pm.NodeCanApproveRoute(nv, route)
 		if canApprove {
 			newApproved = append(newApproved, route)
+			approvedSet.Add(route)
 		}
 	}
 
@@ -73,21 +68,21 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	// Only update if the routes actually changed
 	if !slices.Equal(sortedCurrent, newApproved) {
 		// Log what changed
-		var added, kept []netip.Prefix
+		var added []netip.Prefix
 
 		for _, route := range newApproved {
-			if !slices.Contains(sortedCurrent, route) {
+			_, exists := slices.BinarySearchFunc(
+				sortedCurrent, route, netip.Prefix.Compare,
+			)
+			if !exists {
 				added = append(added, route)
-			} else {
-				kept = append(kept, route)
 			}
 		}
 
 		if len(added) > 0 {
-			log.Debug().
+			log.Info().
 				EmbedObject(nv).
 				Strs("routes.added", util.PrefixesToString(added)).
-				Strs("routes.kept", util.PrefixesToString(kept)).
 				Int("routes.total", len(newApproved)).
 				Msg("Routes auto-approved by policy")
 		}

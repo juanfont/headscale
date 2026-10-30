@@ -552,3 +552,70 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 		})
 	}
 }
+
+func TestOIDCClaimsIdentifierKeepsSubject(t *testing.T) {
+	kept := []string{
+		"c8872e9e-9a4f-4b8f-b111-c6191595d450",
+		"1234567890", "0123456789abcdef", "ab_C-dEF0123",
+		"ab/cd+ef==", "auth0|12345", "google-oauth2|12345",
+		"samlp|connection|alice@example.com", "f:realm:alice",
+		"alice@example.com", "\u7528\u6237", "alice smith", ".", "..",
+	}
+	refused := []string{
+		"", "/alice", "alice/", "alice//smith", " alice", "alice ",
+		"alice/ smith", "alice /smith", "alice#", "alice?x", "alice%23",
+		"alice%3Fx", "alice%2F", "alice%252F", "alice%20", "alice%2520",
+		"alice%zz", "a\x01b", "a\nb", "a\tb",
+	}
+
+	for _, issuer := range []string{
+		"https://sso.example.com",
+		"https://sso.example.com/realm/",
+		"https://login.microsoftonline.com/tenant/v2.0",
+	} {
+		t.Run(issuer, func(t *testing.T) {
+			identifiers := make(map[string]string)
+
+			for _, subject := range kept {
+				claims := OIDCClaims{Iss: issuer, Sub: subject}
+				assert.True(t, claims.IdentifierKeepsSubject(), "subject %q", subject)
+				identifier := claims.Identifier()
+				assert.NotContains(t, identifiers, identifier, "subject %q", subject)
+				identifiers[identifier] = subject
+			}
+
+			for _, subject := range refused {
+				claims := OIDCClaims{Iss: issuer, Sub: subject}
+				assert.False(t, claims.IdentifierKeepsSubject(), "subject %q", subject)
+			}
+		})
+	}
+}
+
+func TestFromClaimReplacesEmail(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		email    string
+		verified FlexibleBoolean
+		required bool
+		want     string
+	}{
+		{"verified", "current@example.com", true, true, "current@example.com"},
+		{"unverified", "current@example.com", false, true, ""},
+		{"absent", "", false, true, ""},
+		{"malformed", "not-an-address", true, true, ""},
+		{"verification optional", "current@example.com", false, false, "current@example.com"},
+		{"optional but absent", "", false, false, ""},
+		{"optional but malformed", "not-an-address", false, false, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			user := User{Name: "alice", Email: "previous@example.com"}
+			user.FromClaim(&OIDCClaims{
+				Iss: "https://idp.example.com", Sub: "alice",
+				Email: tt.email, EmailVerified: tt.verified,
+			}, tt.required)
+			assert.Equal(t, tt.want, user.Email)
+			assert.Equal(t, "alice", user.Name)
+		})
+	}
+}

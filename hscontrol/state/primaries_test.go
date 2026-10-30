@@ -4,8 +4,10 @@ import (
 	"net/netip"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -22,6 +24,24 @@ func mp(prefix string) netip.Prefix {
 type primariesFixture struct {
 	t  *testing.T
 	ns *NodeStore
+
+	// clock orders the control sessions advertise and approveRoutes open.
+	clock time.Time
+}
+
+// session returns an update that opens a control session, as State.Connect
+// does, when the node is offline: each opens later than the one before.
+func (f *primariesFixture) session() func(*types.Node) {
+	f.clock = f.clock.Add(time.Second)
+	start := f.clock
+
+	return func(n *types.Node) {
+		if !n.Online() {
+			n.SessionStart = start
+		}
+
+		n.IsOnline = new(true)
+	}
 }
 
 func newPrimariesFixture(t *testing.T, ids ...types.NodeID) *primariesFixture {
@@ -43,8 +63,10 @@ func newPrimariesFixture(t *testing.T, ids ...types.NodeID) *primariesFixture {
 // prefs argument leaves the node online but advertising nothing.
 func (f *primariesFixture) advertise(id types.NodeID, prefs ...netip.Prefix) {
 	f.t.Helper()
+
+	connect := f.session()
 	f.ns.UpdateNode(id, func(n *types.Node) {
-		n.IsOnline = new(true)
+		connect(n)
 		n.Unhealthy = false
 		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: prefs}
 		n.ApprovedRoutes = prefs
@@ -56,8 +78,10 @@ func (f *primariesFixture) advertise(id types.NodeID, prefs ...netip.Prefix) {
 // Unhealthy.
 func (f *primariesFixture) approveRoutes(id types.NodeID, prefs ...netip.Prefix) {
 	f.t.Helper()
+
+	connect := f.session()
 	f.ns.UpdateNode(id, func(n *types.Node) {
-		n.IsOnline = new(true)
+		connect(n)
 		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: prefs}
 		n.ApprovedRoutes = prefs
 	})
@@ -145,10 +169,10 @@ func TestPrimaries_OverlappingRoutesLowerIDWins(t *testing.T) {
 	f.requireNodeRoutes(2)
 }
 
-func TestPrimaries_AntiFlapPreservesCurrentPrimary(t *testing.T) {
+func TestPrimaries_ReconnectJoinsAsStandby(t *testing.T) {
 	// A primary that disappears (advertiser leaves the set) should
-	// trigger failover. When the original primary returns, the new
-	// primary keeps the assignment — anti-flap.
+	// trigger failover. When the original primary returns on a new
+	// session, the new primary's session is older and keeps the route.
 	f := newPrimariesFixture(t, 1, 2)
 	f.advertise(1, mp("192.168.1.0/24"))
 	f.advertise(2, mp("192.168.1.0/24"))
@@ -170,13 +194,98 @@ func TestPrimaries_ClearRoutesDropsPrimary(t *testing.T) {
 	f.requireNoPrimary(mp("192.168.1.0/24"))
 }
 
-func TestPrimaries_DisconnectDropsLastAdvertiserPrimary(t *testing.T) {
+func TestPrimaries_DisconnectKeepsLastRouterPrimary(t *testing.T) {
 	f := newPrimariesFixture(t, 1)
 	f.advertise(1, mp("192.168.1.0/24"))
 	f.requirePrimary(mp("192.168.1.0/24"), 1)
 
 	f.disconnect(1)
-	f.requireNoPrimary(mp("192.168.1.0/24"))
+	f.requirePrimary(mp("192.168.1.0/24"), 1)
+}
+
+func TestPrimaries_NoRouterAvailable(t *testing.T) {
+	prefix := mp("10.0.0.0/24")
+	expire := func(f *primariesFixture, id types.NodeID) {
+		f.ns.UpdateNode(id, func(n *types.Node) {
+			n.Expiry = new(time.Now().Add(-time.Minute))
+		})
+	}
+	unapprove := func(f *primariesFixture, id types.NodeID) {
+		f.ns.UpdateNode(id, func(n *types.Node) { n.ApprovedRoutes = nil })
+	}
+
+	tests := []struct {
+		name  string
+		setup func(*primariesFixture)
+		want  types.NodeID
+	}{
+		{
+			name: "expired router keeps its route",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				expire(f, 1)
+			},
+			want: 1,
+		},
+		{
+			name: "previous primary kept over a lower ID",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				f.disconnect(1)
+				f.disconnect(2)
+			},
+			want: 2,
+		},
+		{
+			name: "lowest ID approver once the previous primary is gone",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				f.advertise(3, prefix)
+				f.disconnect(2)
+				f.disconnect(3)
+				f.disconnect(1)
+				unapprove(f, 1)
+			},
+			want: 2,
+		},
+		{
+			name: "unhealthy router passed over",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				f.advertise(3, prefix)
+				f.disconnect(2)
+				f.unhealthy(1)
+				f.disconnect(3)
+				unapprove(f, 3)
+			},
+			want: 2,
+		},
+		{
+			name: "only unhealthy routers left",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(3, prefix)
+				f.unhealthy(1)
+				unapprove(f, 3)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPrimariesFixture(t, 1, 2, 3)
+			tt.setup(f)
+
+			if tt.want == 0 {
+				f.requireNoPrimary(prefix)
+			} else {
+				f.requirePrimary(prefix, tt.want)
+			}
+		})
+	}
 }
 
 func TestPrimaries_UnhealthyTriggersFailover(t *testing.T) {
@@ -189,15 +298,75 @@ func TestPrimaries_UnhealthyTriggersFailover(t *testing.T) {
 	f.requirePrimary(mp("192.168.1.0/24"), 2)
 }
 
-func TestPrimaries_RecoveryFromUnhealthyNoFlap(t *testing.T) {
-	f := newPrimariesFixture(t, 1, 2)
-	f.advertise(1, mp("192.168.1.0/24"))
-	f.advertise(2, mp("192.168.1.0/24"))
-	f.unhealthy(1)
-	f.requirePrimary(mp("192.168.1.0/24"), 2)
+func TestPrimaries_OldestSessionWins(t *testing.T) {
+	prefix := mp("192.168.1.0/24")
+	withdraw := func(f *primariesFixture, id types.NodeID) {
+		f.ns.UpdateNode(id, func(n *types.Node) { n.Hostinfo = &tailcfg.Hostinfo{} })
+	}
 
-	f.healthy(1)
-	f.requirePrimary(mp("192.168.1.0/24"), 2)
+	tests := []struct {
+		name  string
+		setup func(*primariesFixture)
+		want  types.NodeID
+	}{
+		{
+			name: "older session over lower ID",
+			setup: func(f *primariesFixture) {
+				f.advertise(2, prefix)
+				f.advertise(1, prefix)
+			},
+			want: 2,
+		},
+		{
+			name: "healthy again takes the route back",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				f.unhealthy(1)
+				f.healthy(1)
+			},
+			want: 1,
+		},
+		{
+			name: "approved again takes the route back",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				f.approveRoutes(1)
+				f.approveRoutes(1, prefix)
+			},
+			want: 1,
+		},
+		{
+			name: "advertised again takes the route back",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				withdraw(f, 1)
+				f.requirePrimary(prefix, 2)
+				f.approveRoutes(1, prefix)
+			},
+			want: 1,
+		},
+		{
+			name: "reconnected router stays standby",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				f.disconnect(1)
+				f.advertise(1, prefix)
+			},
+			want: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPrimariesFixture(t, 1, 2)
+			tt.setup(f)
+			f.requirePrimary(prefix, tt.want)
+		})
+	}
 }
 
 func TestPrimaries_AllUnhealthyKeepsAPrimary(t *testing.T) {
@@ -237,6 +406,29 @@ func TestPrimaries_AllUnhealthyPreservesPrevious(t *testing.T) {
 	f.requirePrimary(prefix, 2)
 }
 
+func TestPrimaries_ExpiredRouterNotElected(t *testing.T) {
+	// Expiry alone takes a router out of the election, even while its
+	// cached online flag still says connected.
+	prefix := mp("10.0.0.0/24")
+	f := newPrimariesFixture(t, 1, 2)
+	f.advertise(1, prefix)
+	f.advertise(2, prefix)
+	f.requirePrimary(prefix, 1)
+	_, ok := f.ns.RouterSession(1)
+	require.True(t, ok)
+
+	f.ns.UpdateNode(1, func(n *types.Node) {
+		n.Expiry = new(time.Now().Add(-time.Minute))
+	})
+
+	f.requirePrimary(prefix, 2)
+	_, ok = f.ns.RouterSession(1)
+	require.False(t, ok)
+
+	_, ok = f.ns.RouterSession(2)
+	require.True(t, ok)
+}
+
 func TestPrimaries_ExitRouteNotElected(t *testing.T) {
 	// Exit routes (0.0.0.0/0, ::/0) are not subject to HA primary
 	// election — every approved exit-route advertiser keeps it.
@@ -248,10 +440,9 @@ func TestPrimaries_ExitRouteNotElected(t *testing.T) {
 }
 
 func TestPrimaries_BothOfflineThenOneReturns(t *testing.T) {
-	// With two HA advertisers, dropping both then bringing one back
-	// used to leave the prefix without any primary. The snapshot
-	// recomputes primaries on every NodeStore write, so the
-	// returning advertiser must be elected.
+	// With two HA advertisers both offline, the last primary keeps the
+	// prefix. The snapshot recomputes primaries on every NodeStore
+	// write, so the first advertiser to return must be elected.
 	prefix := mp("10.0.0.0/24")
 	f := newPrimariesFixture(t, 1, 2)
 	f.advertise(1, prefix)
@@ -262,10 +453,10 @@ func TestPrimaries_BothOfflineThenOneReturns(t *testing.T) {
 	f.requirePrimary(prefix, 2)
 
 	f.disconnect(2)
-	f.requireNoPrimary(prefix)
-
-	f.advertise(2, prefix)
 	f.requirePrimary(prefix, 2)
+
+	f.advertise(1, prefix)
+	f.requirePrimary(prefix, 1)
 }
 
 func TestPrimaries_HANodes(t *testing.T) {
@@ -278,6 +469,29 @@ func TestPrimaries_HANodes(t *testing.T) {
 			name: "single-node-not-ha",
 			setup: func(f *primariesFixture) {
 				f.advertise(1, mp("192.168.1.0/24"))
+			},
+			want: map[netip.Prefix][]types.NodeID{},
+		},
+		{
+			name: "unhealthy-node-left-alone-is-still-monitored",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, mp("192.168.1.0/24"))
+				f.advertise(2, mp("192.168.1.0/24"))
+				f.unhealthy(1)
+				f.approveRoutes(2)
+			},
+			want: map[netip.Prefix][]types.NodeID{
+				mp("192.168.1.0/24"): {1},
+			},
+		},
+		{
+			name: "node-left-alone-not-ha-once-healthy",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, mp("192.168.1.0/24"))
+				f.advertise(2, mp("192.168.1.0/24"))
+				f.unhealthy(1)
+				f.approveRoutes(2)
+				f.healthy(1)
 			},
 			want: map[netip.Prefix][]types.NodeID{},
 		},
@@ -336,6 +550,58 @@ func TestPrimaries_HANodes(t *testing.T) {
 
 			got := f.ns.HANodes()
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestUndecidedHANodes(t *testing.T) {
+	office := mp("10.70.0.0/24")
+	lab := mp("10.80.0.0/24")
+	shared := mp("10.90.0.0/24")
+
+	tests := []struct {
+		name     string
+		haNodes  map[netip.Prefix][]types.NodeID
+		deferred []types.NodeID
+		want     []types.NodeID
+	}{
+		{
+			name: "nothing deferred",
+			haNodes: map[netip.Prefix][]types.NodeID{
+				office: {1, 2},
+				lab:    {3, 4},
+			},
+		},
+		{
+			name: "disjoint prefixes",
+			haNodes: map[netip.Prefix][]types.NodeID{
+				office: {1, 2},
+				lab:    {3, 4},
+			},
+			deferred: []types.NodeID{3},
+			want:     []types.NodeID{3, 4},
+		},
+		{
+			name: "shared router carries the deferral across",
+			haNodes: map[netip.Prefix][]types.NodeID{
+				office: {1, 2},
+				shared: {2, 5},
+				lab:    {3, 4},
+			},
+			deferred: []types.NodeID{5},
+			want:     []types.NodeID{1, 2, 5},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deferred := xsync.NewMap[types.NodeID, struct{}]()
+			for _, id := range tt.deferred {
+				deferred.Store(id, struct{}{})
+			}
+
+			got := undecidedHANodes(tt.haNodes, deferred)
+			assert.ElementsMatch(t, tt.want, got.Slice())
 		})
 	}
 }

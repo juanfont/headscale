@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -240,7 +241,7 @@ func TestIssuesRoutes(t *testing.T) {
 			servertest.WithUser(user))
 
 		exit.WaitForPeers(t, 1, 10*time.Second)
-		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
+		advertiseRoutes(t, exit, tsaddr.ExitRoutes())
 
 		_, c, err := srv.State().SetApprovedRoutes(
 			findNodeID(t, srv, "selfexit-node"), tsaddr.ExitRoutes())
@@ -274,7 +275,7 @@ func TestIssuesRoutes(t *testing.T) {
 		require.NoError(t, err)
 		srv.App.Change(c)
 
-		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
+		advertiseRoutes(t, exit, tsaddr.ExitRoutes())
 
 		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
 			peerOffersExit("preexit-node"))
@@ -282,40 +283,8 @@ func TestIssuesRoutes(t *testing.T) {
 			selfOffersExit)
 	})
 
-	// A policy reload that auto-approves an advertised exit route goes
-	// through autoApproveNodes, a third producer of the same change.
-	t.Run("exit_route_auto_approved_on_reload_reaches_self", func(t *testing.T) {
-		t.Parallel()
-
-		srv := servertest.NewServer(t)
-		user := srv.CreateUser(t, "reloadexit-user")
-
-		exit := servertest.NewClient(t, srv, "reloadexit-node",
-			servertest.WithUser(user))
-		obs := servertest.NewClient(t, srv, "reloadexit-obs",
-			servertest.WithUser(user))
-
-		exit.WaitForPeers(t, 1, 10*time.Second)
-		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
-
-		_, err := srv.State().SetPolicyInDB(`{
-			"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
-			"autoApprovers": {"exitNode": ["reloadexit-user@"]}
-		}`)
-		require.NoError(t, err)
-
-		changes, err := srv.State().ReloadPolicy()
-		require.NoError(t, err)
-		srv.App.Change(changes...)
-
-		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
-			peerOffersExit("reloadexit-node"))
-		exit.WaitForCondition(t, "self offers exit node", 10*time.Second,
-			selfOffersExit)
-	})
-
 	// An auto-approver approves the route inside the advertising map
-	// request, a fourth producer of the same change.
+	// request, a third producer of the same change.
 	t.Run("exit_route_auto_approved_on_advertise_reaches_self", func(t *testing.T) {
 		t.Parallel()
 
@@ -338,7 +307,7 @@ func TestIssuesRoutes(t *testing.T) {
 			servertest.WithUser(user))
 
 		exit.WaitForPeers(t, 1, 10*time.Second)
-		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
+		advertiseRoutes(t, exit, tsaddr.ExitRoutes())
 
 		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
 			peerOffersExit("advexit-node"))
@@ -355,7 +324,7 @@ func TestIssuesRoutes(t *testing.T) {
 
 		c1 := servertest.NewClient(t, srv, "histore-node1",
 			servertest.WithUser(user))
-		c2 := servertest.NewClient(t, srv, "histore-node2",
+		servertest.NewClient(t, srv, "histore-node2",
 			servertest.WithUser(user))
 
 		c1.WaitForPeers(t, 1, 10*time.Second)
@@ -371,19 +340,7 @@ func TestIssuesRoutes(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		_ = c1.Direct().SendUpdate(ctx)
-
-		c2.WaitForCondition(t, "route in peer hostinfo", 10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				for _, p := range nm.Peers {
-					hi := p.Hostinfo()
-					if hi.Valid() && hi.Hostname() == "histore-node1" {
-						return hi.RoutableIPs().Len() > 0
-					}
-				}
-
-				return false
-			})
+		require.NoError(t, c1.Direct().SendUpdate(ctx))
 
 		nodeID := findNodeID(t, srv, "histore-node1")
 		nv, ok := srv.State().GetNodeByID(nodeID)
@@ -1181,6 +1138,52 @@ func TestPeerRemovedAsDelta(t *testing.T) {
 	})
 }
 
+// TestDeletedNodeNotAnnouncedToHiddenPeers deletes a node another user's node
+// cannot see under the policy: only the deleted node's peers are told it is
+// gone.
+func TestDeletedNodeNotAnnouncedToHiddenPeers(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	_, err := srv.State().SetPolicy([]byte(`{
+		"acls": [
+			{"action": "accept", "src": ["alice@"], "dst": ["alice@:*"]},
+			{"action": "accept", "src": ["bob@"], "dst": ["bob@:*"]}
+		]
+	}`))
+	require.NoError(t, err)
+
+	alice := srv.CreateUser(t, "alice")
+	bob := srv.CreateUser(t, "bob")
+
+	laptop := servertest.NewClient(t, srv, "alice-laptop",
+		servertest.WithUser(alice), servertest.WithDeltaUpdates())
+	servertest.NewClient(t, srv, "alice-db", servertest.WithUser(alice))
+	other := servertest.NewClient(t, srv, "bob-node",
+		servertest.WithUser(bob), servertest.WithDeltaUpdates())
+
+	laptop.WaitForPeers(t, 1, 10*time.Second)
+	other.WaitForPeers(t, 0, 10*time.Second)
+
+	db := findNodeID(t, srv, "alice-db")
+	dbView, ok := srv.State().GetNodeByID(db)
+	require.True(t, ok)
+
+	changes, err := srv.State().DeleteNode(dbView)
+	require.NoError(t, err)
+	srv.App.Change(changes...)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Contains(c, laptop.DeltaRemovedPeers(), db.NodeID())
+	}, 10*time.Second, 50*time.Millisecond, "a peer of the deleted node must be told it is gone")
+
+	// bob-node's stream got the same batch; give it time to deliver.
+	assert.Never(t, func() bool {
+		return slices.Contains(other.DeltaRemovedPeers(), db.NodeID())
+	}, 2*time.Second, 50*time.Millisecond,
+		"a node the policy hid the deleted node from must not be told of it")
+}
+
 func findNodeID(tb testing.TB, srv *servertest.TestServer, hostname string) types.NodeID {
 	tb.Helper()
 
@@ -1197,9 +1200,9 @@ func findNodeID(tb testing.TB, srv *servertest.TestServer, hostname string) type
 	return 0
 }
 
-// advertiseRoutes pushes routes in c's Hostinfo and waits until obs sees
-// them, so the server has stored the announcement.
-func advertiseRoutes(tb testing.TB, c, obs *servertest.TestClient, routes []netip.Prefix) {
+// advertiseRoutes pushes routes in c's Hostinfo. The server stores the
+// announcement before it answers.
+func advertiseRoutes(tb testing.TB, c *servertest.TestClient, routes []netip.Prefix) {
 	tb.Helper()
 
 	c.Direct().SetHostinfo(&tailcfg.Hostinfo{
@@ -1211,14 +1214,7 @@ func advertiseRoutes(tb testing.TB, c, obs *servertest.TestClient, routes []neti
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_ = c.Direct().SendUpdate(ctx)
-
-	obs.WaitForCondition(tb, "routes in peer hostinfo", 10*time.Second,
-		func(nm *netmap.NetworkMap) bool {
-			p, ok := peerByHostname(nm, c.Name)
-
-			return ok && p.Hostinfo().RoutableIPs().Len() == len(routes)
-		})
+	require.NoError(tb, c.Direct().SendUpdate(ctx))
 }
 
 // selfOffersExit mirrors how tailscaled computes Self.ExitNodeOption.
@@ -1242,4 +1238,35 @@ func peerByHostname(nm *netmap.NetworkMap, hostname string) (tailcfg.NodeView, b
 	}
 
 	return tailcfg.NodeView{}, false
+}
+
+func TestUserProfileFollowsRename(t *testing.T) {
+	srv := servertest.NewServer(t)
+	owner := srv.CreateUser(t, "profile-original")
+	profileID := owner.TailscaleUserProfile().ID
+	peer := srv.CreateUser(t, "profile-peer")
+	ownerClient := servertest.NewClient(t, srv, "owner", servertest.WithUser(owner))
+	peerClient := servertest.NewClient(t, srv, "peer", servertest.WithUser(peer))
+	ownerClient.WaitForPeers(t, 1, 5*time.Second)
+	peerClient.WaitForPeers(t, 1, 5*time.Second)
+
+	_, c, err := srv.State().RenameUser(types.UserID(owner.ID), "profile-renamed")
+	require.NoError(t, err)
+
+	srv.App.Change(c)
+
+	for _, client := range []*servertest.TestClient{ownerClient, peerClient} {
+		client.WaitForCondition(t, "renamed user profile", 5*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				profile, ok := nm.UserProfiles[profileID]
+				return ok && profile.LoginName() == "profile-renamed"
+			})
+	}
+
+	late := servertest.NewClient(t, srv, "late", servertest.WithUser(peer))
+	late.WaitForCondition(t, "renamed user profile on join", 5*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			profile, ok := nm.UserProfiles[profileID]
+			return ok && profile.LoginName() == "profile-renamed"
+		})
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/netip"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -618,7 +617,6 @@ func TestConcurrentMapRequestDERPUsesPersistedState(t *testing.T) {
 				require.NoError(t, err)
 
 				if rotateKey {
-					req.NodeKey = key.NewNode().Public()
 					req.DiscoKey = key.NewDisco().Public()
 				}
 
@@ -887,7 +885,13 @@ func TestPeerHostinfoEqual(t *testing.T) {
 			want:   false,
 		},
 		{name: "ssh host keys", mutate: func(hi *tailcfg.Hostinfo) { hi.SSH_HostKeys = []string{"ssh-ed25519 AAAA"} }, want: false},
-		{name: "location", mutate: func(hi *tailcfg.Hostinfo) { hi.Location = &tailcfg.Location{Priority: 5} }, want: false},
+		{name: "location", mutate: func(hi *tailcfg.Hostinfo) { hi.Location = &tailcfg.Location{Priority: 5} }, want: true},
+		{
+			name:   "dns proxy service",
+			mutate: func(hi *tailcfg.Hostinfo) { hi.Services = []tailcfg.Service{{Proto: tailcfg.PeerAPIDNS, Port: 1}} },
+			want:   true,
+		},
+		{name: "app connector false", mutate: func(hi *tailcfg.Hostinfo) { hi.AppConnector = opt.NewBool(false) }, want: true},
 		{name: "app connector", mutate: func(hi *tailcfg.Hostinfo) { hi.AppConnector = opt.NewBool(true) }, want: false},
 		{
 			name:   "routes",
@@ -906,54 +910,6 @@ func TestPeerHostinfoEqual(t *testing.T) {
 
 	require.True(t, peerHostinfoEqual(tailcfg.HostinfoView{}, tailcfg.HostinfoView{}))
 	require.False(t, peerHostinfoEqual(tailcfg.HostinfoView{}, base().View()))
-}
-
-// TestPeerHostinfoEqualSeesEveryField fails when tailscale adds a field to
-// [tailcfg.Service] or [tailcfg.Location] that servicesEqual or locationEqual
-// does not compare.
-func TestPeerHostinfoEqualSeesEveryField(t *testing.T) {
-	set := func(t *testing.T, f reflect.Value) {
-		t.Helper()
-
-		switch {
-		case f.Kind() == reflect.String:
-			f.SetString("x")
-		case f.CanInt():
-			f.SetInt(1)
-		case f.CanUint():
-			f.SetUint(1)
-		case f.CanFloat():
-			f.SetFloat(1)
-		default:
-			t.Fatalf("field kind %s not handled; compare it", f.Kind())
-		}
-	}
-
-	for _, field := range reflect.VisibleFields(reflect.TypeFor[tailcfg.Service]()) {
-		if !field.IsExported() {
-			continue
-		}
-
-		t.Run("Service."+field.Name, func(t *testing.T) {
-			var svc tailcfg.Service
-			set(t, reflect.ValueOf(&svc).Elem().FieldByIndex(field.Index))
-
-			a := &tailcfg.Hostinfo{Services: []tailcfg.Service{{}}}
-			b := &tailcfg.Hostinfo{Services: []tailcfg.Service{svc}}
-			assert.False(t, peerHostinfoEqual(a.View(), b.View()))
-		})
-	}
-
-	for _, field := range reflect.VisibleFields(reflect.TypeFor[tailcfg.Location]()) {
-		t.Run("Location."+field.Name, func(t *testing.T) {
-			var loc tailcfg.Location
-			set(t, reflect.ValueOf(&loc).Elem().FieldByIndex(field.Index))
-
-			a := &tailcfg.Hostinfo{Location: &tailcfg.Location{}}
-			b := &tailcfg.Hostinfo{Location: &loc}
-			assert.False(t, peerHostinfoEqual(a.View(), b.View()))
-		})
-	}
 }
 
 func TestNetInfoEqualIgnoringDERP(t *testing.T) {
@@ -1504,6 +1460,73 @@ func TestSetApprovedRoutesReportsVisibility(t *testing.T) {
 			}
 
 			checkAutoApproveAdjacency(t, s)
+		})
+	}
+}
+
+func TestMapRequestKeepsCurrentNodeKey(t *testing.T) {
+	for _, queued := range []bool{false, true} {
+		t.Run(fmt.Sprintf("queued=%t", queued), func(t *testing.T) {
+			s := newRetagTestState(t)
+			user := s.CreateUserForTest("map-key-user")
+			k, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+			require.NoError(t, err)
+			c := registerForPAKRereg(t, s, k)
+			view, pak := c.lookup(t, k.Key)
+			req := c.regReq
+			req.NodeKey = key.NewNode().Public()
+			oldRequest := tailcfg.MapRequest{
+				NodeKey:   c.regReq.NodeKey,
+				Endpoints: []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:1234")},
+				Hostinfo:  &tailcfg.Hostinfo{Hostname: "stale-host"},
+			}
+
+			if queued {
+				entered, release := make(chan struct{}), make(chan struct{})
+
+				unblock := sync.OnceFunc(func() { close(release) })
+				defer unblock()
+
+				go s.nodeStore.UpdateNode(c.node.ID(), func(*types.Node) {
+					close(entered)
+					<-release
+				})
+
+				<-entered
+
+				registered := make(chan error, 1)
+
+				go func() { _, err := c.reregister(view, pak, req); registered <- err }()
+
+				waitParkedOnWriteQueue(t, "reregisterNodeWithPAK")
+
+				mapped := make(chan error, 1)
+
+				go func() { _, err := s.UpdateNodeFromMapRequest(c.node.ID(), oldRequest); mapped <- err }()
+
+				waitParkedOnWriteQueue(t, "UpdateNodeFromMapRequest")
+				unblock()
+				require.NoError(t, <-registered)
+				require.ErrorContains(t, <-mapped, "node key is no longer current")
+			} else {
+				_, err := c.reregister(view, pak, req)
+				require.NoError(t, err)
+				change, err := s.UpdateNodeFromMapRequest(c.node.ID(), oldRequest)
+				require.ErrorContains(t, err, "node key is no longer current")
+				require.True(t, change.IsEmpty())
+			}
+
+			current, ok := s.GetNodeByID(c.node.ID())
+			require.True(t, ok)
+
+			stored, err := s.db.GetNodeByID(c.node.ID())
+			require.NoError(t, err)
+			require.Equal(t, req.NodeKey, current.NodeKey())
+			require.Equal(t, req.NodeKey, stored.NodeKey)
+			require.Equal(t, "h1", current.Hostname())
+			require.Equal(t, "h1", stored.Hostname)
+			require.Empty(t, current.Endpoints().AsSlice())
+			require.Empty(t, stored.Endpoints)
 		})
 	}
 }

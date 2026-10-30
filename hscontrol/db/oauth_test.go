@@ -128,6 +128,73 @@ func TestVerifySecretConcurrent(t *testing.T) {
 	}
 }
 
+// TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
+func TestVerifySecretGivesUpWhenLimiterBusy(t *testing.T) {
+	const secret = "s3cr3t"
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.MinCost)
+	require.NoError(t, err)
+
+	previousWait := legacyHashWait
+	legacyHashWait = 10 * time.Millisecond
+
+	t.Cleanup(func() { legacyHashWait = previousWait })
+
+	for range cap(legacyHashLimiter) {
+		legacyHashLimiter <- struct{}{}
+	}
+
+	release := sync.OnceFunc(func() {
+		for range cap(legacyHashLimiter) {
+			<-legacyHashLimiter
+		}
+	})
+
+	var wg sync.WaitGroup
+
+	defer func() {
+		release()
+		wg.Wait()
+	}()
+
+	_, err = verifySecret(hashSecret(secret), secret)
+	require.NoError(t, err)
+
+	type result struct {
+		needsRehash bool
+		err         error
+	}
+
+	const n = 8
+
+	results := make(chan result, n)
+	for range n {
+		wg.Go(func() {
+			needsRehash, err := verifySecret(hash, secret)
+			results <- result{needsRehash: needsRehash, err: err}
+		})
+	}
+
+	deadline := time.After(time.Second)
+
+	for range n {
+		select {
+		case got := <-results:
+			require.ErrorIs(t, got.err, errLegacyHashBusy)
+			assert.False(t, got.needsRehash)
+		case <-deadline:
+			t.Fatal("legacy verification did not give up while the limiter was full")
+		}
+	}
+
+	release()
+	wg.Wait()
+
+	needsRehash, err := verifySecret(hash, secret)
+	require.NoError(t, err)
+	assert.True(t, needsRehash)
+}
+
 // TestGenerateSecret verifies the unified key shape
 // <prefix><identifier(12)>-<secret(64)> and that the stored hash verifies the
 // secret without needing a rehash.
@@ -401,4 +468,56 @@ func TestOAuthClientCreateReportsEveryUnknownScope(t *testing.T) {
 	require.ErrorIs(t, err, ErrOAuthClientScopeInvalid)
 	assert.Contains(t, err.Error(), "devices:everything")
 	assert.Contains(t, err.Error(), "EVIL:superuser")
+}
+
+// TestMintAccessTokenKeepsNewestPerClient: minting needs only the client
+// secret, so the rows one client can hold must be bounded.
+func TestMintAccessTokenKeepsNewestPerClient(t *testing.T) {
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		_, client, err := db.CreateOAuthClient([]string{"users:read"}, nil, "", nil)
+		require.NoError(t, err)
+		_, other, err := db.CreateOAuthClient([]string{"users:read"}, nil, "", nil)
+		require.NoError(t, err)
+
+		future := time.Now().Add(time.Hour)
+		otherTok, _, err := db.MintAccessToken(other.ClientID, other.Scopes, nil, &future)
+		require.NoError(t, err)
+
+		toks := make([]string, maxAccessTokensPerClient+2)
+		for i := range toks {
+			toks[i], _, err = db.MintAccessToken(
+				client.ClientID, []string{"users:read", "users:read"}, nil, &future,
+			)
+			require.NoError(t, err)
+		}
+
+		var rows int64
+		require.NoError(t, db.DB.Model(&types.Credential{}).
+			Where("kind = ? AND client_id = ?", types.CredentialOAuthToken, client.ClientID).
+			Count(&rows).Error)
+		assert.EqualValues(t, maxAccessTokensPerClient, rows)
+
+		for _, tok := range toks[:2] {
+			_, err = db.AuthenticateAccessToken(tok)
+			require.ErrorIs(t, err, ErrAccessTokenNotFound)
+		}
+
+		for _, tok := range []string{toks[2], toks[len(toks)-1], otherTok} {
+			at, err := db.AuthenticateAccessToken(tok)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"users:read"}, at.Scopes)
+		}
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) {
+		test(t, newPostgresTestDB(t))
+	})
 }

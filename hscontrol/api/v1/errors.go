@@ -46,7 +46,8 @@ func mapError(msg string, err error) error {
 		errors.Is(err, db.ErrUserStillHasNodes),
 		errors.Is(err, db.ErrCannotChangeOIDCUser),
 		errors.Is(err, db.ErrPreAuthKeyNotTaggedOrOwned),
-		errors.Is(err, db.ErrSingleUseAuthKeyHasBeenUsed):
+		errors.Is(err, db.ErrSingleUseAuthKeyHasBeenUsed),
+		errors.Is(err, state.ErrInvalidPolicy):
 		return huma.Error400BadRequest(msg, err)
 
 	case errors.Is(err, state.ErrNodeKeyInUse),

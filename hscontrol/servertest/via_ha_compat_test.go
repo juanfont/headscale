@@ -221,26 +221,7 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 // viaHAFailoverSkipReasons lists checks where headscale differs from SaaS,
 // keyed <test_id>/<step>/<viewer>/<check>. A listed check that matches
 // fails, so a fix must delete its entry.
-var viaHAFailoverSkipReasons = map[string]string{
-	"via-ha-failover/V1/client-a/route-owner": viaOfflineRouterKept,
-	"via-ha-failover/V9/client-a/route-owner": viaOfflineRouterKept,
-
-	"via-ha-failover/V2/client-a/route-owner":  viaLowestIDAfterRestart,
-	"via-ha-failover/V10/client-a/route-owner": viaLowestIDAfterRestart,
-
-	"via-ha-failover/V5/client-a/route-owner":  viaExpiredRouterKept,
-	"via-ha-failover/V5b/client-a/route-owner": viaExpiredRouterKept,
-
-	"via-ha-failover/V12/client-a/route-owner": readvertisedRouterTakesRoute,
-	"via-ha-failover/V12/client-b/route-owner": readvertisedRouterTakesRoute,
-}
-
-const (
-	viaOfflineRouterKept         = "VIA_OFFLINE_ROUTER_KEPT: headscale keeps a via route on an offline router while another router of the via group is online; SaaS moves it to the online one"
-	viaExpiredRouterKept         = "VIA_EXPIRED_ROUTER_KEPT: headscale keeps a via route on a router whose key expired while another router of the via group is live; SaaS moves it to the live one"
-	viaLowestIDAfterRestart      = "VIA_LOWEST_ID_AFTER_RESTART: headscale serves a via route from the group's lowest-ID router once it reconnects; SaaS keeps the router that served while it was down"
-	readvertisedRouterTakesRoute = "READVERTISED_ROUTER_TAKES_ROUTE: SaaS hands a route back to an HA router that withdrew and re-advertised it, taking it from the router that served it meanwhile; headscale keeps that router"
-)
+var viaHAFailoverSkipReasons = map[string]string{}
 
 // viaHAFailoverViewers are the clients whose views are compared: one reaches
 // the route only through the via group, the other through the global

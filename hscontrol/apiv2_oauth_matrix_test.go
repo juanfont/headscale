@@ -181,9 +181,30 @@ func TestAPIv2OAuthMatrix_ScopeNarrowing(t *testing.T) {
 	}
 }
 
+// TestAPIv2OAuthMatrix_CreateKeyScopeBeforeBody: createKey declares no static
+// scope, so a token that may create neither kind of key must be refused before
+// huma reads and validates the body.
+func TestAPIv2OAuthMatrix_CreateKeyScopeBeforeBody(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+	invalid := map[string]any{"tags": []int{0}}
+
+	for _, s := range scope.Known() {
+		held := []scope.Scope{s}
+		mayCreate := scope.Grants(held, scope.AuthKeys) || scope.Grants(held, scope.OAuthKeys)
+
+		status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys",
+			mintScopedToken(t, baseURL, admin, s), invalid)
+		if mayCreate {
+			assert.Equalf(t, http.StatusUnprocessableEntity, status, "%s: %s", s, body)
+		} else {
+			assert.Truef(t, scopeDenied(status, body), "%s: %d %s", s, status, body)
+		}
+	}
+}
+
 // TestAPIv2OAuthMatrix_TagNarrowing proves P1 for tags at mint time: a client may
 // only mint a token for tags within its grant (closing the /oauth/token tags-param
-// path). A client with the "all" scope may request any tag.
+// path). Only an untagged client with the "all" scope may request any tag.
 func TestAPIv2OAuthMatrix_TagNarrowing(t *testing.T) {
 	_, baseURL, admin := newOAuthTestServer(t)
 
@@ -202,10 +223,15 @@ func TestAPIv2OAuthMatrix_TagNarrowing(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, st, mm)
 	assert.Equal(t, "invalid_target", mm["error"])
 
-	// An all-scope client may request any tag.
+	// A tagged all-scope client stays inside its tags; an untagged one may
+	// request any tag.
 	_, allSecret := createClient(t, baseURL, admin, []string{"all"}, []string{"tag:a"})
 	stAll, mAll := mintTokenWithTags(t, baseURL, allSecret, "tag:anything")
-	assert.Equalf(t, http.StatusOK, stAll, "all-scope client may assign any tag: %v", mAll)
+	assert.Equalf(t, http.StatusBadRequest, stAll, "tagged all-scope client: %v", mAll)
+
+	_, anySecret := createClient(t, baseURL, admin, []string{"all"}, nil)
+	stAny, mAny := mintTokenWithTags(t, baseURL, anySecret, "tag:anything")
+	assert.Equalf(t, http.StatusOK, stAny, "untagged all-scope client may assign any tag: %v", mAny)
 }
 
 // TestAPIv2OAuthMatrix_Lifecycle proves expired and revoked credentials are denied

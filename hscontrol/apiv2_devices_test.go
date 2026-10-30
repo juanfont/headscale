@@ -61,6 +61,11 @@ func newDeviceTestEnv(t *testing.T) deviceTestEnv {
 
 	node := app.state.CreateRegisteredNodeForTest(user, "contract-dut")
 	node.User = user
+
+	pak, err := app.state.GetPreAuthKeyByID(*node.AuthKeyID)
+	require.NoError(t, err)
+
+	node.AuthKey = pak.AsCredential()
 	view := app.state.PutNodeInStoreForTest(*node)
 
 	return deviceTestEnv{
@@ -146,6 +151,39 @@ func TestAPIv2Device_Get(t *testing.T) {
 	assert.Equal(t, n.IPsAsString(), dev.Addresses)
 }
 
+// TestAPIv2Device_EmptyRouteLists: fields=all sends a device's route lists
+// even when they are empty; the default read leaves them out.
+func TestAPIv2Device_EmptyRouteLists(t *testing.T) {
+	e := newDeviceTestEnv(t)
+
+	all := e.api.Get("/api/v2/device/" + e.deviceID + "?fields=all")
+	require.Equalf(t, http.StatusOK, all.Code, "body: %s", all.Body)
+	assert.Contains(t, all.Body.String(), `"advertisedRoutes":[]`)
+	assert.Contains(t, all.Body.String(), `"enabledRoutes":[]`)
+
+	def := e.api.Get("/api/v2/device/" + e.deviceID)
+	require.Equalf(t, http.StatusOK, def.Code, "body: %s", def.Body)
+	assert.NotContains(t, def.Body.String(), "advertisedRoutes")
+	assert.NotContains(t, def.Body.String(), "enabledRoutes")
+}
+
+// TestAPIv2Device_NameIsFQDN: with a base domain, a device's name is its
+// MagicDNS FQDN, in a read and in the list.
+func TestAPIv2Device_NameIsFQDN(t *testing.T) {
+	e := newDeviceTestEnv(t)
+	e.app.cfg.BaseDomain = "tailnet.example.com"
+
+	assert.Equal(t, "contract-dut.tailnet.example.com", getDevice(t, e.api, e.deviceID).Name)
+
+	resp := e.api.Get("/api/v2/tailnet/-/devices")
+	require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
+
+	var list struct{ Devices []apiv2.Device }
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &list))
+	require.Len(t, list.Devices, 1)
+	assert.Equal(t, "contract-dut.tailnet.example.com", list.Devices[0].Name)
+}
+
 func TestAPIv2Device_Get_UnknownID_404(t *testing.T) {
 	e := newDeviceTestEnv(t)
 
@@ -224,7 +262,8 @@ func TestAPIv2Device_SetTags(t *testing.T) {
 	assert.True(t, n.IsTagged())
 	assert.Equal(t, []string{"tag:ci"}, n.Tags().AsSlice())
 	assert.False(t, n.User().Valid())
-	assert.Equal(t, types.TaggedDevices.Username(), getDevice(t, e.api, e.deviceID).User)
+	assert.Equal(t, e.user.Username(), getDevice(t, e.api, e.deviceID).User,
+		"a tagged device shows the login that made its key")
 
 	// Two tags (sorted).
 	require.Equal(t, http.StatusOK, setTags([]string{"tag:ci", "tag:prod"}))
@@ -354,22 +393,7 @@ func containsDeviceID(devs []apiv2.Device, id string) bool {
 // from SaaS, keyed <test_id>/<step>/<i>/<check>, where <i> is the call's index
 // in its step. A listed check that matches fails, so a fix must delete its
 // entry.
-var routesAPICompatSkipReasons = map[string]string{
-	// The GET after each refused probe reads back what headscale stored.
-	"routes-t4-admin/probe/0/status":     routeHostBitsAccepted,
-	"routes-t4-admin/probe/1/enabled":    routeHostBitsAccepted,
-	"routes-t4-admin/probe/2/status":     routeHostBitsAccepted,
-	"routes-t4-admin/probe/3/enabled":    routeHostBitsAccepted,
-	"routes-t4-admin/probe/0/v1-status":  routeHostBitsAccepted,
-	"routes-t4-admin/probe/1/v1-enabled": routeHostBitsAccepted,
-	"routes-t4-admin/probe/2/v1-status":  routeHostBitsAccepted,
-	"routes-t4-admin/probe/3/v1-enabled": routeHostBitsAccepted,
-
-	"routes-t5-oauth-routes-scope/probe/0/status":  routeHostBitsAccepted,
-	"routes-t5-oauth-routes-scope/probe/1/enabled": routeHostBitsAccepted,
-}
-
-const routeHostBitsAccepted = "ROUTE_HOST_BITS_ACCEPTED: SaaS refuses a route with host bits set with 400, headscale approves it as sent"
+var routesAPICompatSkipReasons = map[string]string{}
 
 // routeCall is one routes API answer, as the compat replays compare it.
 type routeCall struct {

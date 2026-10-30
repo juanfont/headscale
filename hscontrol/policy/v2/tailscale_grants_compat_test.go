@@ -171,14 +171,8 @@ var grantSkipReasons = map[string]string{
 	"via-grant-v62": "FILTER_ADDRESS_FORM: same addresses, different wire form",
 
 	// Checks keyed <test_id>/<node>/filter: a listed check that matches
-	// fails, so a fix must delete its entry.
-	"via-grant-v63/blastoise/filter": viaDstAddressForm,
-	"via-grant-v63/squirtle/filter":  viaDstAddressForm,
-
-	"grant-dxp-comma-ports/refused": grantPortList,
-
-	// Contiguous pinned addresses; TestViaGrantHACompat compares these
-	// filters by address.
+	// fails, so a fix must delete its entry. Contiguous pinned addresses;
+	// TestViaGrantHACompat compares these filters by address.
 	"via-grant-v64/client-a/filter":  srcAddressForm,
 	"via-grant-v64/client-b/filter":  srcAddressForm,
 	"via-grant-v64/plain/filter":     srcAddressForm,
@@ -192,10 +186,6 @@ var grantSkipReasons = map[string]string{
 	"via-grant-v65/via-empty/filter": srcAddressForm,
 	"via-grant-v65/via-r/filter":     srcAddressForm,
 }
-
-const grantPortList = "GRANT_PORT_LIST: SaaS refuses a comma port list in a grant ip entry (only one port range allowed); headscale accepts it"
-
-const viaDstAddressForm = "FILTER_ADDRESS_FORM: SaaS writes a single-address via destination as a bare address, headscale as a /32 prefix"
 
 // TestGrantsCompat is a data-driven test that loads all GRANT-*.json
 // test files captured from Tailscale SaaS and compares headscale's grants
@@ -291,6 +281,7 @@ func testGrantSuccess(
 				gotRules := policyutil.ReduceFilterRules(
 					node.View(),
 					pol.compileFilterRulesForNode(users, node.View(), nodes.ViewSlice()),
+					nodeAddrSet(nodes.ViewSlice()),
 				)
 
 				pmRules, err := pm.FilterForNode(node.View())
