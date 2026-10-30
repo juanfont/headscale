@@ -175,6 +175,70 @@ func buildRoutesUsersAndNodes(
 // <test_id>/<node>/<check>. A listed check that matches fails, so a fix must
 // delete its entry.
 var routesSkipReasons = map[string]string{
+	"routes-t1-auto-v4-default/ovl-r-ctrl/peer-allowed-ips":      routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-host4/peer-allowed-ips":     routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-host6/peer-allowed-ips":     routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-mapped/peer-allowed-ips":    routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-narrow/peer-allowed-ips":    routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-via/peer-allowed-ips":       routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-wide-in/peer-allowed-ips":   routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-ctrl/peer-allowed-ips":      routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-host4/peer-allowed-ips":     routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-host6/peer-allowed-ips":     routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-mapped/peer-allowed-ips":    routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-narrow/peer-allowed-ips":    routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-via/peer-allowed-ips":       routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peer-allowed-ips":     routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-host4/peer-allowed-ips":    routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-host6/peer-allowed-ips":    routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-mapped/peer-allowed-ips":   routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/peer-allowed-ips":   routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-via/peer-allowed-ips":      routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-ctrl/peer-allowed-ips":                routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-host4/peer-allowed-ips":               routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-host6/peer-allowed-ips":               routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-mapped/peer-allowed-ips":              routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-narrow/peer-allowed-ips":              routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-via/peer-allowed-ips":                 routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peer-allowed-ips":   routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-host4/peer-allowed-ips":  routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-host6/peer-allowed-ips":  routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/peer-allowed-ips": routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/peer-allowed-ips": routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-via/peer-allowed-ips":    routerSeesEveryPeer,
+
+	"routes-t1-auto-v4-default/ovl-r-ctrl/peers":      routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-host4/peers":     routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-host6/peers":     routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-mapped/peers":    routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-narrow/peers":    routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-via/peers":       routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-wide-in/peers":   routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-ctrl/peers":      routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-host4/peers":     routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-host6/peers":     routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-mapped/peers":    routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-narrow/peers":    routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-via/peers":       routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peers":     routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-host4/peers":    routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-host6/peers":    routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-mapped/peers":   routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/peers":   routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-via/peers":      routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-ctrl/peers":                routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-host4/peers":               routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-host6/peers":               routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-mapped/peers":              routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-narrow/peers":              routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-via/peers":                 routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peers":   routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-host4/peers":  routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-host6/peers":  routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/peers": routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/peers": routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-via/peers":    routerSeesEveryPeer,
+
 	// SaaS lists contiguous source addresses one by one; headscale merges
 	// them into ranges.
 	"routes-m2-member-partial-subnet/r-exit/filter":  filterAddressForm,
@@ -193,83 +257,11 @@ var routesSkipReasons = map[string]string{
 	"routes-m6-subnet-to-subnet-multi-route/m-odin2/peers": sameUserPeers,
 }
 
-// routesNotCompared lists, by key prefix, checks left out: SaaS's answer
-// there is in doubt, so it is no reference.
-var routesNotCompared = []string{
-	"routes-t1-auto-v4-default/ovl-r-ctrl/peer-allowed-ips",
-	"routes-t1-auto-v4-default/ovl-r-host4/peer-allowed-ips",
-	"routes-t1-auto-v4-default/ovl-r-host6/peer-allowed-ips",
-	"routes-t1-auto-v4-default/ovl-r-mapped/peer-allowed-ips",
-	"routes-t1-auto-v4-default/ovl-r-narrow/peer-allowed-ips",
-	"routes-t1-auto-v4-default/ovl-r-via/peer-allowed-ips",
-	"routes-t1-auto-v4-default/ovl-r-wide-in/peer-allowed-ips",
-	"routes-t2-auto-v6-default/ovl-r-ctrl/peer-allowed-ips",
-	"routes-t2-auto-v6-default/ovl-r-host4/peer-allowed-ips",
-	"routes-t2-auto-v6-default/ovl-r-host6/peer-allowed-ips",
-	"routes-t2-auto-v6-default/ovl-r-mapped/peer-allowed-ips",
-	"routes-t2-auto-v6-default/ovl-r-narrow/peer-allowed-ips",
-	"routes-t2-auto-v6-default/ovl-r-via/peer-allowed-ips",
-	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peer-allowed-ips",
-	"routes-t3-auto-narrow-keys/ovl-r-host4/peer-allowed-ips",
-	"routes-t3-auto-narrow-keys/ovl-r-host6/peer-allowed-ips",
-	"routes-t3-auto-narrow-keys/ovl-r-mapped/peer-allowed-ips",
-	"routes-t3-auto-narrow-keys/ovl-r-narrow/peer-allowed-ips",
-	"routes-t3-auto-narrow-keys/ovl-r-via/peer-allowed-ips",
-	"routes-t4-admin/ovl-r-ctrl/peer-allowed-ips",
-	"routes-t4-admin/ovl-r-host4/peer-allowed-ips",
-	"routes-t4-admin/ovl-r-host6/peer-allowed-ips",
-	"routes-t4-admin/ovl-r-mapped/peer-allowed-ips",
-	"routes-t4-admin/ovl-r-narrow/peer-allowed-ips",
-	"routes-t4-admin/ovl-r-via/peer-allowed-ips",
-	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peer-allowed-ips",
-	"routes-t5-oauth-routes-scope/ovl-r-host4/peer-allowed-ips",
-	"routes-t5-oauth-routes-scope/ovl-r-host6/peer-allowed-ips",
-	"routes-t5-oauth-routes-scope/ovl-r-mapped/peer-allowed-ips",
-	"routes-t5-oauth-routes-scope/ovl-r-narrow/peer-allowed-ips",
-	"routes-t5-oauth-routes-scope/ovl-r-via/peer-allowed-ips",
-	"routes-t1-auto-v4-default/ovl-r-ctrl/peers",
-	"routes-t1-auto-v4-default/ovl-r-host4/peers",
-	"routes-t1-auto-v4-default/ovl-r-host6/peers",
-	"routes-t1-auto-v4-default/ovl-r-mapped/peers",
-	"routes-t1-auto-v4-default/ovl-r-narrow/peers",
-	"routes-t1-auto-v4-default/ovl-r-via/peers",
-	"routes-t1-auto-v4-default/ovl-r-wide-in/peers",
-	"routes-t2-auto-v6-default/ovl-r-ctrl/peers",
-	"routes-t2-auto-v6-default/ovl-r-host4/peers",
-	"routes-t2-auto-v6-default/ovl-r-host6/peers",
-	"routes-t2-auto-v6-default/ovl-r-mapped/peers",
-	"routes-t2-auto-v6-default/ovl-r-narrow/peers",
-	"routes-t2-auto-v6-default/ovl-r-via/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-host4/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-host6/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-mapped/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-narrow/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-via/peers",
-	"routes-t4-admin/ovl-r-ctrl/peers",
-	"routes-t4-admin/ovl-r-host4/peers",
-	"routes-t4-admin/ovl-r-host6/peers",
-	"routes-t4-admin/ovl-r-mapped/peers",
-	"routes-t4-admin/ovl-r-narrow/peers",
-	"routes-t4-admin/ovl-r-via/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-host4/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-host6/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-mapped/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-narrow/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-via/peers",
-}
-
-// notCompared reports whether key falls under one of prefixes.
-func notCompared(prefixes []string, key string) bool {
-	return slices.ContainsFunc(prefixes, func(p string) bool {
-		return strings.HasPrefix(key, p)
-	})
-}
-
 const filterAddressForm = "FILTER_ADDRESS_FORM: same addresses, different wire form"
 
 const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
+
+const routerSeesEveryPeer = "ROUTER_SEES_EVERY_PEER: SaaS gives a subnet router every device as a peer, with all the routes each serves, whatever the policy links"
 
 // routesSetByAPI reports whether the capture's routes were approved through
 // the routes API rather than by the policy.
@@ -1562,11 +1554,6 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 					continue
 				}
 
-				key := tf.TestID + "/" + viewerName + "/peer-allowed-ips"
-				if notCompared(routesNotCompared, key) {
-					continue
-				}
-
 				t.Run(viewerName, func(t *testing.T) {
 					matchers, err := pm.MatchersForNode(viewer.View())
 					require.NoError(t, err)
@@ -1613,7 +1600,7 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 						got = append(got, fmt.Sprintf("%s: %v", peerName, prefixStrings(gotAllowedIPs)))
 					}
 
-					compatCheck(t, routesSkipReasons, key,
+					compatCheck(t, routesSkipReasons, tf.TestID+"/"+viewerName+"/peer-allowed-ips",
 						func() string { return cmp.Diff(want, got) })
 				})
 			}
@@ -1666,11 +1653,6 @@ func TestRoutesCompatPeerMap(t *testing.T) {
 				viewer := findNodeByGivenName(nodes, viewerName)
 				require.NotNilf(t, viewer, "golden node %s not found in topology", viewerName)
 
-				key := tf.TestID + "/" + viewerName + "/peers"
-				if notCompared(routesNotCompared, key) {
-					continue
-				}
-
 				t.Run(viewerName, func(t *testing.T) {
 					want := []string{}
 
@@ -1689,7 +1671,7 @@ func TestRoutesCompatPeerMap(t *testing.T) {
 					slices.Sort(want)
 					slices.Sort(got)
 
-					compatCheck(t, routesSkipReasons, key,
+					compatCheck(t, routesSkipReasons, tf.TestID+"/"+viewerName+"/peers",
 						func() string { return cmp.Diff(want, got) })
 				})
 			}

@@ -14,7 +14,12 @@ import (
 
 // knownSSHTesterDivergences names the engine gap for each check where
 // headscale and upstream disagree, keyed <test_id>/<check>.
-var knownSSHTesterDivergences = map[string]string{}
+var knownSSHTesterDivergences = map[string]string{
+	"sshtest-malformed-dst-bare-ipv6/verdict": "bare-IPv6 sshTests dst: upstream parse-accepts then engine-rejects; headscale accepts (IPv4 mirror passes both sides)",
+
+	"sshtest-group-split-actions-accept/verdict": "SSHTEST_SRC_ONE_RULE: SaaS needs one accept rule to cover a group source; headscale lets each member pass through its own accept or check rule",
+	"sshtest-group-split-actions-deny/verdict":   "SSHTEST_SRC_ONE_RULE: SaaS denies a group source no single rule covers; headscale fails the deny because each member is let in",
+}
 
 func TestSSHTesterCompat(t *testing.T) {
 	t.Parallel()

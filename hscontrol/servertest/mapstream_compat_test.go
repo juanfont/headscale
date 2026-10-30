@@ -81,6 +81,18 @@ var mapStreamSkipReasons = map[string]string{
 	"route-announce/RA9/srv/presence":    policyResponseToEveryNode,
 	"route-announce/RA9/wit/presence":    policyResponseToEveryNode,
 
+	"route-announce/RA2/observer/presence":  announcePeerResent,
+	"route-announce/RA2/srv/presence":       announcePeerResent,
+	"route-announce/RA2/witness/presence":   announcePeerResent,
+	"route-announce/RA5/observer/presence":  announcePeerResent,
+	"route-announce/RA5/witness/presence":   announcePeerResent,
+	"route-announce/RA8/observer/presence":  announcePeerResent,
+	"route-announce/RA8/srv/presence":       announcePeerResent,
+	"route-announce/RA8/witness/presence":   announcePeerResent,
+	"route-announce/RA11/observer/presence": announcePeerResent,
+	"route-announce/RA11/srv/presence":      announcePeerResent,
+	"route-announce/RA11/witness/presence":  announcePeerResent,
+
 	"policy-generation/G2/thor-1/peers":       sameUserPeers,
 	"policy-generation/G2/thor-2/peers":       sameUserPeers,
 	"policy-generation/G3/thor-1/peers":       sameUserPeers,
@@ -93,66 +105,41 @@ var mapStreamSkipReasons = map[string]string{
 	"policy-generation/G3/thor-2/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-1/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-2/peer-owners": sameUserPeers,
+
+	"policy-generation/G7/rt-b/filter":     deletedDeviceInRules,
+	"policy-generation/G7/rt-plain/filter": deletedDeviceInRules,
+	"policy-generation/G7/srv/filter":      deletedDeviceInRules,
+	"policy-generation/G7/srv/ssh":         deletedDeviceInRules,
+
+	"user-role/S1/own-a/frames": userChangePushed,
+	"user-role/S1/own-b/frames": userChangePushed,
+	"user-role/S1/own-b/peers":  userChangePushed,
+	"user-role/S1/tag-a/frames": userChangePushed,
+	"user-role/S1/tag-a/peers":  userChangePushed,
+	"user-role/S1/tag-a/filter": userChangePushed,
+	"user-role/S1/tag-b/frames": userChangePushed,
+	"user-role/S1/tag-b/peers":  userChangePushed,
+	"user-role/S1/tag-b/filter": userChangePushed,
+
+	"user-role/S1-reconnect/own-b/peers":  userChangePushed,
+	"user-role/S1-reconnect/tag-b/peers":  userChangePushed,
+	"user-role/S1-reconnect/tag-b/filter": userChangePushed,
+
+	"user-role/S2/own-a/frames": userChangePushed,
+	"user-role/S2/own-b/frames": userChangePushed,
+	"user-role/S2/tag-a/frames": userChangePushed,
+	"user-role/S2/tag-a/peers":  userChangePushed,
+	"user-role/S2/tag-a/filter": userChangePushed,
+	"user-role/S2/tag-b/frames": userChangePushed,
 }
 
 const (
 	policyResponseToEveryNode = "POLICY_RESPONSE_TO_EVERY_NODE: headscale sends every connected node a policy response when the policy, a node's tags or approved routes, or the set of nodes change; SaaS sends only the nodes whose peers or filter change"
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
+	announcePeerResent        = "ANNOUNCE_PEER_RESENT: headscale sends a router's peers its entry again whenever its announced routes change; SaaS sends the unchanged entry only after some announcements"
+	deletedDeviceInRules      = "DELETED_DEVICE_IN_RULES: SaaS keeps a deleted device's addresses in other nodes' filter and SSH rules until the next policy change; headscale drops them with the device"
+	userChangePushed          = "USER_CHANGE_PUSHED: headscale sends every connected node a policy response as soon as a user change alters what the policy resolves; SaaS sends an admin role change to no open stream, so a node gets it only on its next new stream"
 )
-
-// mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer
-// there is in doubt, so it is no reference.
-var mapStreamNotCompared = []string{
-	"route-announce/RA2/observer/presence",
-	"route-announce/RA2/srv/presence",
-	"route-announce/RA2/witness/presence",
-	"route-announce/RA5/observer/presence",
-	"route-announce/RA5/srv/presence",
-	"route-announce/RA5/witness/presence",
-	"route-announce/RA7/observer/presence",
-	"route-announce/RA7/srv/presence",
-	"route-announce/RA7/witness/presence",
-	"route-announce/RA8/observer/presence",
-	"route-announce/RA8/srv/presence",
-	"route-announce/RA8/witness/presence",
-	"route-announce/RA10/observer/presence",
-	"route-announce/RA10/srv/presence",
-	"route-announce/RA10/witness/presence",
-	"route-announce/RA11/observer/presence",
-	"route-announce/RA11/srv/presence",
-	"route-announce/RA11/witness/presence",
-
-	"policy-generation/G7/rt-b/filter",
-	"policy-generation/G7/rt-plain/filter",
-	"policy-generation/G7/srv/filter",
-	"policy-generation/G7/srv/ssh",
-
-	"user-role/S1/own-a/frames",
-	"user-role/S1/own-b/frames",
-	"user-role/S1/own-b/peers",
-	"user-role/S1/tag-a/frames",
-	"user-role/S1/tag-a/peers",
-	"user-role/S1/tag-a/filter",
-	"user-role/S1/tag-b/frames",
-	"user-role/S1/tag-b/peers",
-	"user-role/S1/tag-b/filter",
-	"user-role/S1-reconnect/own-b/peers",
-	"user-role/S1-reconnect/tag-b/peers",
-	"user-role/S1-reconnect/tag-b/filter",
-	"user-role/S2/own-a/frames",
-	"user-role/S2/own-b/frames",
-	"user-role/S2/tag-a/frames",
-	"user-role/S2/tag-a/peers",
-	"user-role/S2/tag-a/filter",
-	"user-role/S2/tag-b/frames",
-}
-
-// compared drops the checks mapStreamNotCompared leaves out.
-func compared(prefix string, checks []stepCheck) []stepCheck {
-	return slices.DeleteFunc(checks, func(ch stepCheck) bool {
-		return notCompared(mapStreamNotCompared, prefix+ch.name)
-	})
-}
 
 // TestMapDeliveryCompat replays a device retagged through the API, a running
 // peer that picks new DERP homes, rotates its disco key, renames itself and
@@ -953,8 +940,7 @@ func replayVisibility(t *testing.T, id string) {
 		}
 
 		t.Run(step.Name, func(t *testing.T) {
-			prefix := id + "/" + step.Name + "/"
-			holdChecks(t, mapStreamSkipReasons, prefix, compared(prefix, visibilityChecks(t, r, step, before)), evaluated)
+			holdChecks(t, mapStreamSkipReasons, id+"/"+step.Name+"/", visibilityChecks(t, r, step, before), evaluated)
 		})
 	}
 
@@ -1186,8 +1172,7 @@ func replayPolicySequence(t *testing.T, id string) {
 		}
 
 		t.Run(step.Name, func(t *testing.T) {
-			prefix := id + "/" + step.Name + "/"
-			holdChecks(t, mapStreamSkipReasons, prefix, compared(prefix, sequenceChecks(t, r, step, saasNames, names)), evaluated)
+			holdChecks(t, mapStreamSkipReasons, id+"/"+step.Name+"/", sequenceChecks(t, r, step, saasNames, names), evaluated)
 		})
 	}
 
@@ -1335,9 +1320,8 @@ func TestUserChangeDispatchCompat(t *testing.T) {
 			r.applyUserRole(t, step)
 
 			t.Run(step.Name, func(t *testing.T) {
-				prefix := userRoleID + "/" + step.Name + "/"
-				holdChecks(t, mapStreamSkipReasons, prefix,
-					compared(prefix, userRoleChecks(t, r, step, saasNames, updates)), evaluated)
+				holdChecks(t, mapStreamSkipReasons, userRoleID+"/"+step.Name+"/",
+					userRoleChecks(t, r, step, saasNames, updates), evaluated)
 			})
 		}
 

@@ -43,6 +43,10 @@ var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings 
 	"policytest-dst-unknown-group/breakdown":      testUnknownAlias,
 	"policytest-src-unknown-group/breakdown":      testUnknownAlias,
 	"policytest-src-unknown-user-email/breakdown": testUnknownAlias,
+
+	"policytest-dst-multinode-partial-deny/verdict": "TEST_DST_EVERY_NODE: SaaS denies when one node of the dst alias is not reached; headscale only when none is",
+
+	"policytest-src-split-across-rules/verdict": "TEST_SRC_ONE_RULE: SaaS needs one rule to cover a group source; headscale lets each member pass through its own rule",
 }
 
 const (

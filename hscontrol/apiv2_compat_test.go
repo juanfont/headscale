@@ -64,6 +64,11 @@ var apiv2CompatSkipReasons = map[string]string{
 
 	"oauth/D0/1/listed": emptyKeyListNull,
 
+	"oauth/E7/0/status":  untaggedChildRefused,
+	"oauth/E7/0/outcome": untaggedChildRefused,
+	"oauth/D0/4/listed":  untaggedChildRefused,
+	"oauth/D0/5/listed":  untaggedChildRefused,
+
 	"oauth/D7/2/status":  deletedClientGone,
 	"oauth/D7/2/outcome": deletedClientGone,
 	"oauth/D7/3/message": deletedClientCredentialText,
@@ -74,36 +79,25 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/device:before/all/device-oauth-client": deviceOAuthClientMaker,
 	"oauth/device:joiner/all/device-oauth-client": deviceOAuthClientMaker,
 
+	"policy-api/P2/1/status":   emptyPolicyReset,
+	"policy-api/P2/1/outcome":  emptyPolicyReset,
+	"policy-api/P2/1/enforced": emptyPolicyReset,
+	"policy-api/P2/2/body":     emptyPolicyReset,
+	"policy-api/P2/2/etag":     emptyPolicyReset,
+
 	"policy-api/P7/0/body": hujsonFormatted,
 	"policy-api/P7/1/body": hujsonFormatted,
-}
 
-// apiv2CompatNotCompared lists, by key prefix, checks left out: SaaS's
-// answer there is in doubt, so it is no reference.
-var apiv2CompatNotCompared = []string{
-	"policy-api/P2/1/status",
-	"policy-api/P2/1/outcome",
-	"policy-api/P2/1/enforced",
-	"policy-api/P2/1/v1-verdict",
-	"policy-api/P2/1/v1-stored",
-	"policy-api/P2/1/v1-enforced",
-	"policy-api/P2/2/body",
-	"policy-api/P2/2/etag",
+	"policy-api/P2/1/v1-verdict":  emptyPolicyReset,
+	"policy-api/P2/1/v1-stored":   emptyPolicyReset,
+	"policy-api/P2/1/v1-enforced": emptyPolicyReset,
 }
 
 // apiv2CompatNotReplayed lists steps left out, keyed <test_id>/<step>, with
-// the objects only they create, which listings then leave out: SaaS's answer
-// there is in doubt, so it is no reference.
+// the objects only they create, which listings then leave out: they use an
+// object headscale refused to make.
 var apiv2CompatNotReplayed = map[string][]string{
-	"oauth/E7":  {"{client:C-all-2}"},
-	"oauth/E9b": {"{key:K-E9b}"},
-}
-
-// notCompared reports whether key falls under one of prefixes.
-func notCompared(prefixes []string, key string) bool {
-	return slices.ContainsFunc(prefixes, func(p string) bool {
-		return strings.HasPrefix(key, p)
-	})
+	"oauth/E9b": {"{key:K-E9b}"}, // uses E7's client
 }
 
 // Differences no planned change removes yet.
@@ -123,6 +117,8 @@ const (
 	deviceOAuthClientMaker = "DEVICE_OAUTH_CLIENT_ID: SaaS names, in oauthClientId, the OAuth client whose token made the device's key; headscale does not record which client that was, so it leaves the field out"
 	missingScopeNotFound   = "MISSING_SCOPE_NOT_FOUND: SaaS answers a call outside the token's scopes with 404 not found; headscale answers 403"
 	unknownScopeGranted    = "UNKNOWN_SCOPE_GRANTED: SaaS ignores an unknown requested scope and grants the client's own; headscale grants the unknown scope alone"
+	untaggedChildRefused   = "UNTAGGED_CHILD_REFUSED: SaaS lets a tag-limited token create an untagged all-scope client, whose token then takes any tag; headscale refuses the client"
+	emptyPolicyReset       = "EMPTY_POLICY_RESET: SaaS takes a zero-length policy write as a reset to its default policy and enforces it; headscale refuses the body"
 )
 
 // TestAPIv2OAuthCompat replays OAuth clients, token exchanges, auth keys,
@@ -350,17 +346,13 @@ func (r *apiReplay) step(t *testing.T, step testcapture.Step) {
 		}
 	}
 
-	keyPrefix := r.c.TestID + "/" + step.Name + "/"
-	checks = slices.DeleteFunc(checks, func(ch apiCheck) bool {
-		return notCompared(apiv2CompatNotCompared, keyPrefix+ch.name)
-	})
-
 	if len(checks) == 0 {
 		return
 	}
 
 	// Marked here, so a run filtered to other steps does not call these
 	// entries stale.
+	keyPrefix := r.c.TestID + "/" + step.Name + "/"
 	for _, ch := range checks {
 		r.evaluated[keyPrefix+ch.name] = true
 	}
