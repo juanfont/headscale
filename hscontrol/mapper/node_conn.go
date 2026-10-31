@@ -515,7 +515,15 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	defer func() { mc.sendBlocked.Add(int64(time.Since(start))) }()
 
 	for _, conn := range snapshot {
-		err := conn.send(conn.withSSHPolicyDelta(conn.withSelfDelta(data)))
+		stripped := conn.withSSHPolicyDelta(conn.withSelfDelta(data))
+
+		// Stripping can leave this stream nothing new, like the visibility
+		// filtering at build time.
+		if stripped != data && emptyMapResponse(stripped) {
+			stripped = nil
+		}
+
+		err := conn.send(stripped)
 		if errors.Is(err, errConnectionBackpressure) {
 			blocked = append(blocked, conn)
 			continue
