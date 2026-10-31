@@ -1594,6 +1594,40 @@ func (r *stepReplay) applyUserRole(t *testing.T, step testcapture.Step) {
 	}
 }
 
+// TestAdminRolePolicyRefusedCompat pins NO_USER_ROLES on the policy the replay
+// rewrites: SaaS accepts a policy naming autogroup:admin, and headscale, which
+// has no user roles, refuses all of it.
+func TestAdminRolePolicyRefusedCompat(t *testing.T) {
+	t.Parallel()
+
+	c := readStepCapture(t, userRoleID)
+	srv := servertest.NewServer(t)
+	refused := 0
+
+	for _, a := range c.Steps[0].Actions {
+		if a.Method != http.MethodPost || !strings.HasPrefix(a.Path, "/tailnet/-/acl") {
+			continue
+		}
+
+		require.Equal(t, http.StatusOK, a.Status, "%s: SaaS accepted this policy", a.Path)
+
+		// A HuJSON body is recorded as a string, a JSON one as it was sent.
+		body := a.Body
+
+		var text string
+		if json.Unmarshal(a.Body, &text) == nil {
+			body = []byte(text)
+		}
+
+		require.Contains(t, string(body), "autogroup:admin", a.Path)
+		require.ErrorContains(t, srv.State().ValidatePolicy(body), "autogroup", a.Path)
+
+		refused++
+	}
+
+	require.Positive(t, refused)
+}
+
 // adminPolicy replaces autogroup:admin in policy with the owner and the
 // names [stepReplay.roleRename] gives admins.
 func adminPolicy(owner, policy string) string {
