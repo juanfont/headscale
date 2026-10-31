@@ -978,23 +978,7 @@
 		"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		"Domain":           "odin@example.com",
 		"DomainAuditLogID": "",
-		"UserProfiles": {"1260082990019555": {
-			"ID":          1260082990019555,
-			"LoginName":   "tagged-devices",
-			"DisplayName": "Tagged Devices"
-		}, "3982058329734709": {
-			"ID":          3982058329734709,
-			"LoginName":   "freya@example.com",
-			"DisplayName": "freya"
-		}, "4156223528223174": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "4538565228176803": {
-			"ID":          4538565228176803,
-			"LoginName":   "thor@example.org",
-			"DisplayName": "thor"
-		}, "595996273316687": {
+		"UserProfiles": {"595996273316687": {
 			"ID":          595996273316687,
 			"LoginName":   "client.tail78f774.ts.net",
 			"DisplayName": "client"
@@ -2767,19 +2751,7 @@
 		"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		"Domain":           "odin@example.com",
 		"DomainAuditLogID": "",
-		"UserProfiles": {"1260082990019555": {
-			"ID":          1260082990019555,
-			"LoginName":   "tagged-devices",
-			"DisplayName": "Tagged Devices"
-		}, "3982058329734709": {
-			"ID":          3982058329734709,
-			"LoginName":   "freya@example.com",
-			"DisplayName": "freya"
-		}, "4156223528223174": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "4538565228176803": {
+		"UserProfiles": {"4538565228176803": {
 			"ID":          4538565228176803,
 			"LoginName":   "thor@example.org",
 			"DisplayName": "thor"
@@ -3663,26 +3635,10 @@
 		"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		"Domain":           "odin@example.com",
 		"DomainAuditLogID": "",
-		"UserProfiles": {"1260082990019555": {
-			"ID":          1260082990019555,
-			"LoginName":   "tagged-devices",
-			"DisplayName": "Tagged Devices"
-		}, "1817829895087832": {
+		"UserProfiles": {"1817829895087832": {
 			"ID":          1817829895087832,
 			"LoginName":   "prod.tail78f774.ts.net",
 			"DisplayName": "prod"
-		}, "3982058329734709": {
-			"ID":          3982058329734709,
-			"LoginName":   "freya@example.com",
-			"DisplayName": "freya"
-		}, "4156223528223174": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "4538565228176803": {
-			"ID":          4538565228176803,
-			"LoginName":   "thor@example.org",
-			"DisplayName": "thor"
 		}}
 	}}, "router": {"netmap": {
 		"Cached": false,
@@ -5505,26 +5461,14 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"1260082990019555": {
-				"ID":          1260082990019555,
-				"LoginName":   "tagged-devices",
-				"DisplayName": "Tagged Devices"
-			}, "338543803640054": {
+			"UserProfiles": {"338543803640054": {
 				"ID":          338543803640054,
 				"LoginName":   "server.tail78f774.ts.net",
 				"DisplayName": "server"
-			}, "3982058329734709": {
-				"ID":          3982058329734709,
-				"LoginName":   "freya@example.com",
-				"DisplayName": "freya"
 			}, "4156223528223174": {
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}
 	}, "user-tid": {"netmap": {
@@ -6438,18 +6382,10 @@
 			"ID":          1260082990019555,
 			"LoginName":   "tagged-devices",
 			"DisplayName": "Tagged Devices"
-		}, "3982058329734709": {
-			"ID":          3982058329734709,
-			"LoginName":   "freya@example.com",
-			"DisplayName": "freya"
 		}, "4156223528223174": {
 			"ID":          4156223528223174,
 			"LoginName":   "odin@example.com",
 			"DisplayName": "odin"
-		}, "4538565228176803": {
-			"ID":          4538565228176803,
-			"LoginName":   "thor@example.org",
-			"DisplayName": "thor"
 		}}
 	}}, "venusaur": {"netmap": {
 		"Cached": false,
@@ -7330,22 +7266,10 @@
 		"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		"Domain":           "odin@example.com",
 		"DomainAuditLogID": "",
-		"UserProfiles": {"1260082990019555": {
-			"ID":          1260082990019555,
-			"LoginName":   "tagged-devices",
-			"DisplayName": "Tagged Devices"
-		}, "3982058329734709": {
+		"UserProfiles": {"3982058329734709": {
 			"ID":          3982058329734709,
 			"LoginName":   "freya@example.com",
 			"DisplayName": "freya"
-		}, "4156223528223174": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "4538565228176803": {
-			"ID":          4538565228176803,
-			"LoginName":   "thor@example.org",
-			"DisplayName": "thor"
 		}}
 	}}}
 }

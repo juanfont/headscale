@@ -16261,10 +16261,6 @@
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}, "ssh_rules": [{
 			"principals": [{"nodeIP": "100.122.74.40"}, {"nodeIP": "fd7a:115c:a1e0::7d28:4a29"}],
@@ -16662,10 +16658,6 @@
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}, "backend_state": "Running"}, "rt-plain": {"packet_filter_rules": [{
 			"SrcIPs": [
@@ -16882,10 +16874,6 @@
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}, "backend_state": "Running"}, "srv": {"packet_filter_rules": [{"SrcIPs": [
 			"100.100.187.71",
@@ -17138,10 +17126,6 @@
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}, "ssh_rules": [{"principals": [
 			{"nodeIP": "100.100.187.71"},
@@ -17849,11 +17833,7 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"1260082990019555": {
-				"ID":          1260082990019555,
-				"LoginName":   "tagged-devices",
-				"DisplayName": "Tagged Devices"
-			}, "3982058329734709": {
+			"UserProfiles": {"3982058329734709": {
 				"ID":          3982058329734709,
 				"LoginName":   "freya@example.com",
 				"DisplayName": "freya"
@@ -18176,10 +18156,6 @@
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}, "ssh_rules": [{
 			"principals": [{"nodeIP": "100.122.74.40"}, {"nodeIP": "fd7a:115c:a1e0::7d28:4a29"}],
@@ -18461,18 +18437,10 @@
 				"ID":          3000953077253870,
 				"LoginName":   "rt-b.tail78f774.ts.net",
 				"DisplayName": "rt-b"
-			}, "3982058329734709": {
-				"ID":          3982058329734709,
-				"LoginName":   "freya@example.com",
-				"DisplayName": "freya"
 			}, "4156223528223174": {
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}, "backend_state": "Running"}, "rt-plain": {"packet_filter_rules": [{
 			"SrcIPs":   ["100.122.74.40", "fd7a:115c:a1e0::7d28:4a29"],
@@ -18609,11 +18577,7 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"3982058329734709": {
-				"ID":          3982058329734709,
-				"LoginName":   "freya@example.com",
-				"DisplayName": "freya"
-			}, "4044323459478186": {
+			"UserProfiles": {"4044323459478186": {
 				"ID":          4044323459478186,
 				"LoginName":   "rt-plain.tail78f774.ts.net",
 				"DisplayName": "rt-plain"
@@ -18621,10 +18585,6 @@
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}, "backend_state": "Running"}, "srv": {"packet_filter_rules": [{
 			"SrcIPs":   ["100.122.74.40", "fd7a:115c:a1e0::7d28:4a29"],
