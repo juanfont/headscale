@@ -214,6 +214,9 @@ configuration and attributes. At least the following node attributes are current
   port 41641.
 - `disable-captive-portal-detection`: [Disable automatic captive portal
   detection](https://tailscale.com/docs/integrations/captive-portals#disable-captive-portal-detection).
+- `ssh-behavior-v1`: Run Tailscale SSH sessions on a Linux node without `su`, PAM or a login environment, so `ssh -tt`
+  keeps job control but `~/.profile` is not read. Tailscale's own control plane sets it on every node; Headscale leaves
+  it off.
 
 ```json title="policy.json"
 {
