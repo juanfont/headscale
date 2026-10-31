@@ -66,19 +66,10 @@ func PeerCapMap(peer types.NodeView, peerSelfCaps tailcfg.NodeCapMap) tailcfg.No
 var unmodelledTailnetStateCaps = []nodecap.Cap{
 	// --- 1. User-role gated ---
 
-	// [tailcfg.CapabilityAdmin]: the hosted control plane stamps this
-	// on nodes whose owning user has the admin role; tagged nodes
-	// inherit from a tagOwner with the role. Headscale has no
-	// user-role model — [types.Node.TailNode] emits it as part of
-	// the always-on baseline. Stripping on both sides keeps the diff
-	// from failing on every user-owned non-admin node in a capture.
-	// Long-term fix is autogroup:admin support.
-	nodecap.Admin,
-
-	// [tailcfg.CapabilityOwner]: same shape as is-admin, conditional
-	// on the "owner" role rather than admin. Headscale does not emit
-	// this cap at all. autogroup:owner support is tracked under
-	// NO_USER_ROLES — see the compat skip list.
+	// [tailcfg.CapabilityOwner]: conditional on the "owner" role, which
+	// headscale does not model, so it does not emit this cap at all.
+	// autogroup:owner support is tracked under NO_USER_ROLES — see the
+	// compat skip list.
 	nodecap.Owner,
 
 	// --- 2. Feature not implemented ---
