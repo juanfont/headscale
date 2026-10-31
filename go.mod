@@ -39,7 +39,7 @@ require (
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/pkg/profile v1.7.0
 	github.com/prometheus/client_golang v1.25.0
-	github.com/prometheus/common v0.73.0
+	github.com/prometheus/common v0.73.1
 	github.com/pterm/pterm v0.12.84
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/realclientip/realclientip-go v1.0.0
@@ -83,7 +83,7 @@ require (
 	// go get modernc.org/libc@v1.55.3 modernc.org/sqlite@v1.33.1
 	modernc.org/sqlite v1.61.0
 	pgregory.net/rapid v1.3.0
-	tailscale.com v1.105.0-pre.0.20261028221719-f7c1b8e52600
+	tailscale.com v1.105.0-pre.0.20261030233906-133489986416
 	tailscale.com/client/tailscale/v2 v2.12.0
 	zombiezen.com/go/postgrestest v1.0.1
 )
@@ -162,7 +162,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
-	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect
 	github.com/hdevalence/ed25519consensus v0.2.0 // indirect
 	github.com/hetznercloud/hcloud-go/v2 v2.27.0 // indirect
@@ -202,7 +201,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runc v1.3.2 // indirect
-	github.com/pandatix/go-abnf v0.5.1 // indirect
+	github.com/pandatix/go-abnf v0.5.3 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/peterbourgon/ff/v3 v3.4.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260330135022-df67b199bc81 // indirect
@@ -224,7 +223,7 @@ require (
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/setec v0.0.0-20260824224040-f8d7a936837c // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20260917222731-e0ed2d0d0fea // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20261002162406-18e99eba5393 // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20261028173945-db3888e688e9 // indirect
 	github.com/toqueteos/webbrowser v1.2.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
@@ -243,7 +242,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	golang.org/x/image v0.46.0 // indirect
-	golang.org/x/net v0.61.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
