@@ -217,10 +217,7 @@ func (e *expiryStep) selfChecks(t *testing.T, x string) []stepCheck {
 				return "no netmap"
 			}
 
-			// Polled outside the test's own flow, so failures become text.
-			var errs errText
-
-			return strings.Join(append(hsFilterTriples(&errs, nm.PacketFilter, e.r.addrNames()), errs...), "\n")
+			return strings.Join(hsFilterTriples(nm.PacketFilter, e.r.addrNames()), "\n")
 		}},
 		{x + "/ssh-rules", renderSSHRules(saas, e.saasNames), func() string { return renderSSHRules(cl.Netmap(), e.r.addrNames()) }},
 	}
@@ -584,13 +581,6 @@ func (r *stepReplay) saasAddrNames(step testcapture.Step) map[netip.Addr]string 
 
 	return out
 }
-
-// errText is a [require.TestingT] that keeps failures as text.
-type errText []string
-
-func (e *errText) Errorf(format string, args ...any) { *e = append(*e, fmt.Sprintf(format, args...)) }
-
-func (e *errText) FailNow() {}
 
 // renderSSHRules gives a node's SSH rules in order: principals by name and
 // address family, local user mappings and the action. Addresses of nodes

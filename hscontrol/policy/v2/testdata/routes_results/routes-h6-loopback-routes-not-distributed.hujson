@@ -160,7 +160,7 @@
 			"DiscoKey":   "discokey:e65286ed41acbd185d61627ae562d2a1dfa3e27177be960d165837626f8b0e4e",
 			"Addresses":  ["100.65.116.59/32", "fd7a:115c:a1e0::6737:743b/128"],
 			"AllowedIPs": ["100.65.116.59/32", "fd7a:115c:a1e0::6737:743b/128"],
-			"Endpoints":  ["77.164.248.136:35538", "10.65.0.27:35538", "172.17.0.1:35538"],
+			"Endpoints":  ["192.0.2.1:35538", "10.65.0.27:35538", "172.17.0.1:35538"],
 			"Hostinfo": {"Hostname": "beedrill", "RequestTags": ["tag:server"], "Services": [
 				{"Proto": "peerapi4", "Port": 60211},
 				{"Proto": "peerapi6", "Port": 60211},
@@ -1038,7 +1038,7 @@
 			"DiscoKey":   "discokey:68f70299aa2ff0faf4b4d6679caf812b276b6f0085fe264a49c4246a411d752f",
 			"Addresses":  ["100.68.16.63/32", "fd7a:115c:a1e0::8237:103f/128"],
 			"AllowedIPs": ["100.68.16.63/32", "fd7a:115c:a1e0::8237:103f/128"],
-			"Endpoints":  ["77.164.248.136:35449", "10.65.0.27:35449", "172.17.0.1:35449"],
+			"Endpoints":  ["192.0.2.1:35449", "10.65.0.27:35449", "172.17.0.1:35449"],
 			"Hostinfo": {"Hostname": "bulbasaur", "Services": [
 				{"Proto": "peerapi4", "Port": 50018},
 				{"Proto": "peerapi6", "Port": 50018},
@@ -2797,7 +2797,7 @@
 			"DiscoKey":   "discokey:1e0ffc22a420916a035d2fefab5edaa3dac0870d5d8edc9200cbe0fa45bbf01b",
 			"Addresses":  ["100.83.209.88/32", "fd7a:115c:a1e0::5a37:d158/128"],
 			"AllowedIPs": ["100.83.209.88/32", "fd7a:115c:a1e0::5a37:d158/128", "10.0.0.0/8"],
-			"Endpoints":  ["77.164.248.136:41890", "10.65.0.27:41890", "172.17.0.1:41890"],
+			"Endpoints":  ["192.0.2.1:41890", "10.65.0.27:41890", "172.17.0.1:41890"],
 			"Hostinfo": {
 				"Hostname":    "caterpie",
 				"RoutableIPs": ["10.0.0.0/8"],
@@ -3680,7 +3680,7 @@
 			"DiscoKey":   "discokey:6a400852efde06071ea933136365c74aebd959e4f1093c79ca266d4f0dbebf6c",
 			"Addresses":  ["100.125.247.41/32", "fd7a:115c:a1e0::5337:f729/128"],
 			"AllowedIPs": ["100.125.247.41/32", "fd7a:115c:a1e0::5337:f729/128"],
-			"Endpoints":  ["77.164.248.136:36637", "10.65.0.27:36637", "172.17.0.1:36637"],
+			"Endpoints":  ["192.0.2.1:36637", "10.65.0.27:36637", "172.17.0.1:36637"],
 			"Hostinfo": {
 				"Hostname":    "charmander",
 				"RoutableIPs": ["0.0.0.0/0", "::/0"],
@@ -4563,7 +4563,7 @@
 			"DiscoKey":   "discokey:5078c28a0065460a9eb50ef0ea02752c429a03ac7577710ee819336e94cbd85b",
 			"Addresses":  ["100.68.114.93/32", "fd7a:115c:a1e0::837:725d/128"],
 			"AllowedIPs": ["100.68.114.93/32", "fd7a:115c:a1e0::837:725d/128"],
-			"Endpoints":  ["77.164.248.136:46373", "10.65.0.27:46373", "172.17.0.1:46373"],
+			"Endpoints":  ["192.0.2.1:46373", "10.65.0.27:46373", "172.17.0.1:46373"],
 			"Hostinfo": {"Hostname": "ivysaur", "Services": [
 				{"Proto": "peerapi4", "Port": 51763},
 				{"Proto": "peerapi6", "Port": 51763},
@@ -5437,7 +5437,7 @@
 			"DiscoKey":   "discokey:56993416555727790a014e255ed3b3ca0066badab2a7d946a5360184ed60ff70",
 			"Addresses":  ["100.67.64.70/32", "fd7a:115c:a1e0::4f37:4046/128"],
 			"AllowedIPs": ["100.67.64.70/32", "fd7a:115c:a1e0::4f37:4046/128"],
-			"Endpoints":  ["77.164.248.136:39345", "10.65.0.27:39345", "172.17.0.1:39345"],
+			"Endpoints":  ["192.0.2.1:39345", "10.65.0.27:39345", "172.17.0.1:39345"],
 			"Hostinfo": {"Hostname": "kakuna", "RequestTags": ["tag:prod"], "Services": [
 				{"Proto": "peerapi4", "Port": 49451},
 				{"Proto": "peerapi6", "Port": 49451},
@@ -6314,7 +6314,7 @@
 			"DiscoKey":   "discokey:48895e57eaf8c7a0182e550f85c82f825b2a8a1eebf1b0e97199195f21ccfd13",
 			"Addresses":  ["100.86.48.71/32", "fd7a:115c:a1e0::6237:3047/128"],
 			"AllowedIPs": ["100.86.48.71/32", "fd7a:115c:a1e0::6237:3047/128", "192.168.1.0/24"],
-			"Endpoints":  ["77.164.248.136:56313", "10.65.0.27:56313", "172.17.0.1:56313"],
+			"Endpoints":  ["192.0.2.1:56313", "10.65.0.27:56313", "172.17.0.1:56313"],
 			"Hostinfo": {
 				"Hostname":    "metapod",
 				"RoutableIPs": ["192.168.1.0/24"],
@@ -7197,7 +7197,7 @@
 			"DiscoKey":   "discokey:a4434eee60e512075920be0dcf828104f16d63bf4618c47282ea8d5df3eba73b",
 			"Addresses":  ["100.113.182.58/32", "fd7a:115c:a1e0::8d37:b63a/128"],
 			"AllowedIPs": ["100.113.182.58/32", "fd7a:115c:a1e0::8d37:b63a/128", "10.33.0.0/16"],
-			"Endpoints":  ["77.164.248.136:48514", "10.65.0.27:48514", "172.17.0.1:48514"],
+			"Endpoints":  ["192.0.2.1:48514", "10.65.0.27:48514", "172.17.0.1:48514"],
 			"Hostinfo": {
 				"Hostname":    "squirtle",
 				"RoutableIPs": ["10.33.0.0/16"],
@@ -8081,7 +8081,7 @@
 			"DiscoKey":   "discokey:20fff3f6c3aa31c7b2da798246d3e86ebc804c3b0a21b0f43f424172f1105133",
 			"Addresses":  ["100.71.52.95/32", "fd7a:115c:a1e0::2137:345f/128"],
 			"AllowedIPs": ["100.71.52.95/32", "fd7a:115c:a1e0::2137:345f/128"],
-			"Endpoints":  ["77.164.248.136:41303", "10.65.0.27:41303", "172.17.0.1:41303"],
+			"Endpoints":  ["192.0.2.1:41303", "10.65.0.27:41303", "172.17.0.1:41303"],
 			"Hostinfo": {"Hostname": "venusaur", "Services": [
 				{"Proto": "peerapi4", "Port": 64965},
 				{"Proto": "peerapi6", "Port": 64965},
@@ -8957,7 +8957,7 @@
 			"DiscoKey":   "discokey:c68c7aaf081377c4b9c81779e9ac312d6d4b24815342bfb87bd95496cc9cf322",
 			"Addresses":  ["100.84.213.65/32", "fd7a:115c:a1e0::1137:d541/128"],
 			"AllowedIPs": ["100.84.213.65/32", "fd7a:115c:a1e0::1137:d541/128", "172.16.0.0/24"],
-			"Endpoints":  ["77.164.248.136:49748", "10.65.0.27:49748", "172.17.0.1:49748"],
+			"Endpoints":  ["192.0.2.1:49748", "10.65.0.27:49748", "172.17.0.1:49748"],
 			"Hostinfo": {
 				"Hostname":    "wartortle",
 				"RoutableIPs": ["172.16.0.0/24", "0.0.0.0/0", "::/0"],
@@ -9840,7 +9840,7 @@
 			"DiscoKey":   "discokey:25cdf887e724536fa807b306bf6c1aae3a681b2867fa6c11e46b2d88af1db35e",
 			"Addresses":  ["100.101.92.88/32", "fd7a:115c:a1e0::37:5c58/128"],
 			"AllowedIPs": ["100.101.92.88/32", "fd7a:115c:a1e0::37:5c58/128"],
-			"Endpoints":  ["77.164.248.136:33702", "10.65.0.27:33702", "172.17.0.1:33702"],
+			"Endpoints":  ["192.0.2.1:33702", "10.65.0.27:33702", "172.17.0.1:33702"],
 			"Hostinfo": {"Hostname": "weedle", "RequestTags": ["tag:client"], "Services": [
 				{"Proto": "peerapi4", "Port": 39751},
 				{"Proto": "peerapi6", "Port": 39751},

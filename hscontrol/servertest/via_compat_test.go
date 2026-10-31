@@ -3,8 +3,8 @@
 // grant steering with peer connectivity, cross-subnet forwarding and
 // exit nodes.
 //
-// Test data source: ../policy/v2/testdata/{grant,routes}_results/, see
-// viaCompatTests and routesMapCompatTests
+// Test data source: ../policy/v2/testdata/{acl,grant,routes}_results/, see
+// viaCompatTests, routesMapCompatTests and aclMapCompatTests
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 package servertest_test
 
@@ -101,6 +101,21 @@ var routesMapCompatTests = []struct {
 	{"routes-m6-subnet-to-subnet-multi-route", "subnet of a multi-route router to a subnet of an exit node"},
 }
 
+// aclMapCompatTests lists ACL captures replayed through the mapper, with only
+// the policy approving routes: a router advertises in each, so each holds
+// auto-approval to SaaS. They are shared with TestACLCompat in policy/v2, which
+// reads their filters; this replay reads the netmaps. In acl-ah01 and acl-h03
+// some nodes have peers only through the route the policy approves.
+var aclMapCompatTests = []string{
+	"acl-ah01", "acl-ah02", "acl-au01", "acl-au06", "acl-c09",
+	"acl-d03", "acl-d04", "acl-d08", "acl-e01", "acl-e03",
+	"acl-h02", "acl-h03", "acl-h06", "acl-k01", "acl-k03",
+	"acl-k05", "acl-m02", "acl-m03", "acl-m10", "acl-mr09",
+	"acl-mr20", "acl-mu02", "acl-mu07", "acl-o04", "acl-pf03",
+	"acl-r02", "acl-r08", "acl-rs01", "acl-rs02", "acl-rs03",
+	"acl-rs07", "acl-t10", "acl-u11", "acl-w02",
+}
+
 // viaCompatSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>/<node>/<check>, or by check alone where every capture differs the
 // same way. A listed check that matches fails, so a fix must delete its entry.
@@ -136,6 +151,25 @@ func TestRoutesMapCompat(t *testing.T) {
 			require.NoError(t, err, "failed to read %s", path)
 
 			runViaMapCompat(t, c)
+		})
+	}
+}
+
+// TestACLMapCompat replays aclMapCompatTests through [runViaMapCompat].
+func TestACLMapCompat(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range aclMapCompatTests {
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join("..", "policy", "v2", "testdata", "acl_results", id+".hujson")
+
+			c, err := testcapture.Read(path)
+			require.NoError(t, err, "failed to read %s", path)
+
+			_, clients := startViaMapCompat(t, c, false)
+			compareViaMapCompat(t, c, clients)
 		})
 	}
 }
@@ -208,7 +242,7 @@ func TestViaGrantSourceLossCompat(t *testing.T) {
 
 	before, after := read("via-grant-v66"), read("via-grant-v67")
 
-	srv, clients := startViaMapCompat(t, before)
+	srv, clients := startViaMapCompat(t, before, true)
 	compareViaMapCompat(t, before, clients)
 
 	user, err := srv.State().GetUserByName("thor")
@@ -293,20 +327,21 @@ func passesOnce(check func(require.TestingT)) bool {
 func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 	t.Helper()
 
-	_, clients := startViaMapCompat(t, c)
+	_, clients := startViaMapCompat(t, c, true)
 	compareViaMapCompat(t, c, clients)
 }
 
 // startViaMapCompat starts a server holding the capture's policy and a
-// client per captured node, with the capture's routes approved, and waits
-// for every client's first netmap and the peers SaaS gave it.
+// client per captured node, approving routes as [startCaptureClients] does,
+// and waits for every client's first netmap and the peers SaaS gave it.
 func startViaMapCompat(
 	t *testing.T,
 	c *testcapture.Capture,
+	approve bool,
 ) (*servertest.TestServer, map[string]*servertest.TestClient) {
 	t.Helper()
 
-	srv, clients := startCaptureClients(t, c, true)
+	srv, clients := startCaptureClients(t, c, approve)
 
 	// Wait for peers based on golden [netmap.NetworkMap] expected counts.
 	// A viewer whose peers are a listed difference never reaches them.
@@ -593,6 +628,18 @@ func TestFilterSourcesKeepAddressFamily(t *testing.T) {
 		canonicaliseSrcStrings(t, []string{"100.64.0.1", "fd7a:115c:a1e0::1"}, addrs, 0))
 	assert.Equal(t, []string{"peer:a/ipv4"},
 		canonicaliseSrcStrings(t, []string{"100.64.0.1"}, addrs, 0))
+}
+
+func TestFilterSourcesKeepAddressesOfNoPeer(t *testing.T) {
+	t.Parallel()
+
+	addrs := map[netip.Addr]string{netip.MustParseAddr("100.64.0.1"): "a"}
+
+	assert.Equal(t, []string{"100.64.9.9/32", "peer:a/ipv4"},
+		canonicaliseSrcStrings(t, []string{"100.64.9.9", "100.64.0.1"}, addrs, 0))
+	assert.Equal(t, []string{"peer:a/ipv4"},
+		canonicaliseSrcStrings(t, []string{"100.64.0.0/24"}, addrs, 0),
+		"a range covering a peer names only the peer")
 }
 
 // requireNetmapHolds retries check until it passes on several consecutive
@@ -935,7 +982,7 @@ func comparePacketFilter(
 	}
 
 	wantList := saasFilterTriples(t, want.PacketFilterRules, saasAddrs)
-	gotList := hsFilterTriples(t, got.PacketFilter, hsAddrsByPeer(clients))
+	gotList := hsFilterTriples(got.PacketFilter, hsAddrsByPeer(clients))
 
 	if reason, listed := skips[key]; listed {
 		if slices.Equal(wantList, gotList) {
@@ -967,7 +1014,7 @@ func saasFilterTriples(t require.TestingT, rules []tailcfg.FilterRule, saasAddrs
 				"golden DstPorts[%d].IP %q should parse as prefix, addr or range", i, dp.IP)
 
 			for _, pfx := range pfxs {
-				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+				for _, dst := range peerIdents(pfx, saasAddrs) {
 					triples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
 				}
 			}
@@ -978,7 +1025,7 @@ func saasFilterTriples(t require.TestingT, rules []tailcfg.FilterRule, saasAddrs
 			caps = append(caps, cg.Caps...)
 
 			for _, pfx := range cg.Dsts {
-				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+				for _, dst := range peerIdents(pfx, saasAddrs) {
 					for _, c := range caps {
 						triples[capTriple(srcs, dst, c)] = struct{}{}
 					}
@@ -992,24 +1039,20 @@ func saasFilterTriples(t require.TestingT, rules []tailcfg.FilterRule, saasAddrs
 
 // hsFilterTriples renders a client's packet filter as the triples
 // [saasFilterTriples] gives, peers named by hsAddrs.
-func hsFilterTriples(t require.TestingT, matches []filter.Match, hsAddrs map[netip.Addr]string) []string {
-	if h, ok := t.(interface{ Helper() }); ok {
-		h.Helper()
-	}
-
+func hsFilterTriples(matches []filter.Match, hsAddrs map[netip.Addr]string) []string {
 	triples := map[string]struct{}{}
 
-	for i, match := range matches {
-		srcs := strings.Join(canonicaliseSrcPrefixes(t, match.Srcs, hsAddrs, i), ",")
+	for _, match := range matches {
+		srcs := strings.Join(canonicaliseSrcPrefixes(match.Srcs, hsAddrs), ",")
 
 		for _, dp := range match.Dsts {
-			for _, dst := range peerIdents(t, dp.Net, hsAddrs, i) {
+			for _, dst := range peerIdents(dp.Net, hsAddrs) {
 				triples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
 			}
 		}
 
 		for _, cm := range match.Caps {
-			for _, dst := range peerIdents(t, cm.Dst, hsAddrs, i) {
+			for _, dst := range peerIdents(cm.Dst, hsAddrs) {
 				triples[capTriple(srcs, dst, cm.Cap)] = struct{}{}
 			}
 		}
@@ -1028,18 +1071,9 @@ func capTriple(srcs, dst string, c peercap.Cap) string {
 
 // peerIdents resolves a prefix into sorted canonical identity tokens,
 // see [addIdentsForSrc].
-func peerIdents(
-	t require.TestingT,
-	pfx netip.Prefix,
-	addrToPeer map[netip.Addr]string,
-	ruleIndex int,
-) []string {
-	if h, ok := t.(interface{ Helper() }); ok {
-		h.Helper()
-	}
-
+func peerIdents(pfx netip.Prefix, addrToPeer map[netip.Addr]string) []string {
 	seen := map[string]struct{}{}
-	addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+	addIdentsForSrc(pfx, addrToPeer, seen)
 
 	return sortedKeys(seen)
 }
@@ -1128,7 +1162,7 @@ func canonicaliseSrcStrings(
 			"PacketFilter[%d]: unparseable SrcIP %q", ruleIndex, src)
 
 		for _, pfx := range pfxs {
-			addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+			addIdentsForSrc(pfx, addrToPeer, seen)
 		}
 	}
 
@@ -1138,16 +1172,7 @@ func canonicaliseSrcStrings(
 // canonicaliseSrcPrefixes is the headscale-side counterpart of
 // [canonicaliseSrcStrings], reading already-parsed [netip.Prefix] values
 // from [tailcfg.Match.Srcs].
-func canonicaliseSrcPrefixes(
-	t require.TestingT,
-	srcs []netip.Prefix,
-	addrToPeer map[netip.Addr]string,
-	ruleIndex int,
-) []string {
-	if h, ok := t.(interface{ Helper() }); ok {
-		h.Helper()
-	}
-
+func canonicaliseSrcPrefixes(srcs []netip.Prefix, addrToPeer map[netip.Addr]string) []string {
 	seen := map[string]struct{}{}
 
 	for _, pfx := range srcs {
@@ -1157,7 +1182,7 @@ func canonicaliseSrcPrefixes(
 			continue
 		}
 
-		addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+		addIdentsForSrc(pfx, addrToPeer, seen)
 	}
 
 	return sortedKeys(seen)
@@ -1166,20 +1191,11 @@ func canonicaliseSrcPrefixes(
 // addIdentsForSrc resolves one source prefix into canonical identity
 // tokens and inserts them into seen. A non-Tailscale prefix passes
 // through literally; a Tailscale-range prefix expands to the union
-// of peer names whose addresses fall within it. A single address must
-// be a known peer; a wider prefix may cover none, since SaaS writes
-// "*" as ranges over the whole Tailscale space.
-func addIdentsForSrc(
-	t require.TestingT,
-	pfx netip.Prefix,
-	addrToPeer map[netip.Addr]string,
-	ruleIndex int,
-	seen map[string]struct{},
-) {
-	if h, ok := t.(interface{ Helper() }); ok {
-		h.Helper()
-	}
-
+// of peer names whose addresses fall within it. A single address that
+// names no peer stays literal, as a policy can name any address, so a
+// side that lacks it still differs; a wider prefix may cover none, since
+// SaaS writes "*" as ranges over the whole Tailscale space.
+func addIdentsForSrc(pfx netip.Prefix, addrToPeer map[netip.Addr]string, seen map[string]struct{}) {
 	if !prefixInTailscaleRange(pfx) {
 		seen[pfx.String()] = struct{}{}
 
@@ -1202,9 +1218,9 @@ func addIdentsForSrc(
 		}
 	}
 
-	require.Truef(t, matched || !pfx.IsSingleIP(),
-		"PacketFilter[%d]: Tailscale-range SrcIP %s does not cover any known peer; addrToPeer=%v",
-		ruleIndex, pfx, addrToPeer)
+	if !matched && pfx.IsSingleIP() {
+		seen[pfx.String()] = struct{}{}
+	}
 }
 
 // prefixInTailscaleRange reports whether a prefix lies entirely
