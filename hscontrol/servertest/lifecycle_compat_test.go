@@ -418,6 +418,9 @@ type saasDevice struct {
 	Expires           string   `json:"expires"`
 	KeyExpiryDisabled bool     `json:"keyExpiryDisabled"`
 	IsEphemeral       bool     `json:"isEphemeral"`
+
+	ConnectedToControl bool    `json:"connectedToControl"`
+	LastSeen           *string `json:"lastSeen"`
 }
 
 // lastRoutesRead returns the step's last routes read: the device it named
