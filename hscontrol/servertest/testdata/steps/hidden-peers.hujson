@@ -6585,11 +6585,7 @@
 				"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				"Domain":           "odin@example.com",
 				"DomainAuditLogID": "",
-				"UserProfiles": {"4156223528223174": {
-					"ID":          4156223528223174,
-					"LoginName":   "odin@example.com",
-					"DisplayName": "odin"
-				}, "4538565228176803": {
+				"UserProfiles": {"4538565228176803": {
 					"ID":          4538565228176803,
 					"LoginName":   "thor@example.org",
 					"DisplayName": "thor"
@@ -6746,10 +6742,6 @@
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}, "backend_state": "Running"}},
 		"frames": {"observer": [{"offset_ms": 0, "response": {
@@ -6892,11 +6884,7 @@
 				"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				"Domain":           "odin@example.com",
 				"DomainAuditLogID": "",
-				"UserProfiles": {"4156223528223174": {
-					"ID":          4156223528223174,
-					"LoginName":   "odin@example.com",
-					"DisplayName": "odin"
-				}, "4538565228176803": {
+				"UserProfiles": {"4538565228176803": {
 					"ID":          4538565228176803,
 					"LoginName":   "thor@example.org",
 					"DisplayName": "thor"
@@ -7023,10 +7011,6 @@
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
-			}, "4538565228176803": {
-				"ID":          4538565228176803,
-				"LoginName":   "thor@example.org",
-				"DisplayName": "thor"
 			}}
 		}, "backend_state": "Running"}},
 		"frames": {

@@ -12183,11 +12183,7 @@
 				"TKAHead":           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				"Domain":            "odin@example.com",
 				"DomainAuditLogID":  "",
-				"UserProfiles": {"1260082990019555": {
-					"ID":          1260082990019555,
-					"LoginName":   "tagged-devices",
-					"DisplayName": "Tagged Devices"
-				}, "1725268417370232": {
+				"UserProfiles": {"1725268417370232": {
 					"ID":          1725268417370232,
 					"LoginName":   "db1.tail78f774.ts.net",
 					"DisplayName": "db1"
@@ -15432,11 +15428,7 @@
 				"TKAHead":           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				"Domain":            "odin@example.com",
 				"DomainAuditLogID":  "",
-				"UserProfiles": {"1260082990019555": {
-					"ID":          1260082990019555,
-					"LoginName":   "tagged-devices",
-					"DisplayName": "Tagged Devices"
-				}, "1725268417370232": {
+				"UserProfiles": {"1725268417370232": {
 					"ID":          1725268417370232,
 					"LoginName":   "db1.tail78f774.ts.net",
 					"DisplayName": "db1"
@@ -34146,10 +34138,6 @@
 					"ID":          169562425833569,
 					"LoginName":   "svc.tail78f774.ts.net",
 					"DisplayName": "svc"
-				}, "4156223528223174": {
-					"ID":          4156223528223174,
-					"LoginName":   "odin@example.com",
-					"DisplayName": "odin"
 				}}
 			}, "backend_state": "Running"}
 		},
@@ -34885,10 +34873,6 @@
 					"ID":          169562425833569,
 					"LoginName":   "svc.tail78f774.ts.net",
 					"DisplayName": "svc"
-				}, "4156223528223174": {
-					"ID":          4156223528223174,
-					"LoginName":   "odin@example.com",
-					"DisplayName": "odin"
 				}}
 			}, "backend_state": "Running"}
 		},
@@ -37046,11 +37030,7 @@
 			"TKAHead":           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":            "odin@example.com",
 			"DomainAuditLogID":  "",
-			"UserProfiles": {"4156223528223174": {
-				"ID":          4156223528223174,
-				"LoginName":   "odin@example.com",
-				"DisplayName": "odin"
-			}, "4778931629105895": {
+			"UserProfiles": {"4778931629105895": {
 				"ID":          4778931629105895,
 				"LoginName":   "appc.tail78f774.ts.net",
 				"DisplayName": "appc"
@@ -37158,11 +37138,7 @@
 			"TKAHead":           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":            "odin@example.com",
 			"DomainAuditLogID":  "",
-			"UserProfiles": {"1260082990019555": {
-				"ID":          1260082990019555,
-				"LoginName":   "tagged-devices",
-				"DisplayName": "Tagged Devices"
-			}, "4156223528223174": {
+			"UserProfiles": {"4156223528223174": {
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
@@ -37237,11 +37213,7 @@
 			"TKAHead":           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":            "odin@example.com",
 			"DomainAuditLogID":  "",
-			"UserProfiles": {"1260082990019555": {
-				"ID":          1260082990019555,
-				"LoginName":   "tagged-devices",
-				"DisplayName": "Tagged Devices"
-			}, "1725268417370232": {
+			"UserProfiles": {"1725268417370232": {
 				"ID":          1725268417370232,
 				"LoginName":   "db1.tail78f774.ts.net",
 				"DisplayName": "db1"
@@ -37348,11 +37320,7 @@
 			"TKAHead":           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":            "odin@example.com",
 			"DomainAuditLogID":  "",
-			"UserProfiles": {"1260082990019555": {
-				"ID":          1260082990019555,
-				"LoginName":   "tagged-devices",
-				"DisplayName": "Tagged Devices"
-			}, "4156223528223174": {
+			"UserProfiles": {"4156223528223174": {
 				"ID":          4156223528223174,
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
@@ -37437,10 +37405,6 @@
 				"ID":          1714016727135796,
 				"LoginName":   "router.tail78f774.ts.net",
 				"DisplayName": "router"
-			}, "4156223528223174": {
-				"ID":          4156223528223174,
-				"LoginName":   "odin@example.com",
-				"DisplayName": "odin"
 			}}
 		}, "backend_state": "Running"}, "sshd": {"netmap": {
 			"Cached": false,
@@ -37587,18 +37551,10 @@
 			"TKAHead":           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":            "odin@example.com",
 			"DomainAuditLogID":  "",
-			"UserProfiles": {"1260082990019555": {
-				"ID":          1260082990019555,
-				"LoginName":   "tagged-devices",
-				"DisplayName": "Tagged Devices"
-			}, "169562425833569": {
+			"UserProfiles": {"169562425833569": {
 				"ID":          169562425833569,
 				"LoginName":   "svc.tail78f774.ts.net",
 				"DisplayName": "svc"
-			}, "4156223528223174": {
-				"ID":          4156223528223174,
-				"LoginName":   "odin@example.com",
-				"DisplayName": "odin"
 			}}
 		}, "backend_state": "Running"}},
 		"frames": {
