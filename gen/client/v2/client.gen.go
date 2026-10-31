@@ -47,27 +47,28 @@ type DeleteKeyOutputBody = map[string]interface{}
 
 // Device defines model for Device.
 type Device struct {
-	Addresses         []string   `json:"addresses"`
-	AdvertisedRoutes  *[]string  `json:"advertisedRoutes,omitempty"`
-	Authorized        bool       `json:"authorized"`
-	ClientVersion     string     `json:"clientVersion"`
-	Created           time.Time  `json:"created"`
-	EnabledRoutes     *[]string  `json:"enabledRoutes,omitempty"`
-	Expires           *time.Time `json:"expires,omitempty"`
-	Hostname          string     `json:"hostname"`
-	Id                string     `json:"id"`
-	IsEphemeral       bool       `json:"isEphemeral"`
-	KeyExpiryDisabled bool       `json:"keyExpiryDisabled"`
-	LastSeen          *time.Time `json:"lastSeen,omitempty"`
-	MachineKey        string     `json:"machineKey"`
-	Name              string     `json:"name"`
-	NodeId            string     `json:"nodeId"`
-	NodeKey           string     `json:"nodeKey"`
-	OauthClientId     *string    `json:"oauthClientId,omitempty"`
-	Os                string     `json:"os"`
-	Tags              []string   `json:"tags"`
-	UpdateAvailable   bool       `json:"updateAvailable"`
-	User              string     `json:"user"`
+	Addresses          []string   `json:"addresses"`
+	AdvertisedRoutes   *[]string  `json:"advertisedRoutes,omitempty"`
+	Authorized         bool       `json:"authorized"`
+	ClientVersion      string     `json:"clientVersion"`
+	ConnectedToControl bool       `json:"connectedToControl"`
+	Created            time.Time  `json:"created"`
+	EnabledRoutes      *[]string  `json:"enabledRoutes,omitempty"`
+	Expires            *time.Time `json:"expires,omitempty"`
+	Hostname           string     `json:"hostname"`
+	Id                 string     `json:"id"`
+	IsEphemeral        bool       `json:"isEphemeral"`
+	KeyExpiryDisabled  bool       `json:"keyExpiryDisabled"`
+	LastSeen           *time.Time `json:"lastSeen,omitempty"`
+	MachineKey         string     `json:"machineKey"`
+	Name               string     `json:"name"`
+	NodeId             string     `json:"nodeId"`
+	NodeKey            string     `json:"nodeKey"`
+	OauthClientId      *string    `json:"oauthClientId,omitempty"`
+	Os                 string     `json:"os"`
+	Tags               []string   `json:"tags"`
+	UpdateAvailable    bool       `json:"updateAvailable"`
+	User               string     `json:"user"`
 }
 
 // DeviceRoutes defines model for DeviceRoutes.
