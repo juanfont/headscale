@@ -326,7 +326,9 @@ type Node struct {
 	PacketFilterMatches []filtertype.Match `json:"packet_filter_matches,omitempty"`
 
 	// Netmap is the full netmap as observed by the local tailscaled.
-	// NEVER trimmed. Consumers extract whatever fields they need.
+	// NEVER trimmed, with one exception: UserProfiles holds only what its
+	// node and peers use, as a client keeps every profile it was ever sent.
+	// Consumers extract whatever fields they need.
 	//
 	// IMPORTANT: the capture tool captures this by waiting for the IPN bus to
 	// settle on a fresh delta-triggered notification, NOT by reading

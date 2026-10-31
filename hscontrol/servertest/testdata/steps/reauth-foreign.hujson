@@ -1022,11 +1022,7 @@
 		"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		"Domain":           "odin@example.com",
 		"DomainAuditLogID": "",
-		"UserProfiles": {"1260082990019555": {
-			"ID":          1260082990019555,
-			"LoginName":   "tagged-devices",
-			"DisplayName": "Tagged Devices"
-		}, "5627281689581307": {
+		"UserProfiles": {"5627281689581307": {
 			"ID":          5627281689581307,
 			"LoginName":   "obs.tail78f774.ts.net",
 			"DisplayName": "obs"
@@ -8544,11 +8540,7 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"1260082990019555": {
-				"ID":          1260082990019555,
-				"LoginName":   "tagged-devices",
-				"DisplayName": "Tagged Devices"
-			}, "5627281689581307": {
+			"UserProfiles": {"5627281689581307": {
 				"ID":          5627281689581307,
 				"LoginName":   "obs.tail78f774.ts.net",
 				"DisplayName": "obs"
@@ -11023,11 +11015,7 @@
 				"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				"Domain":           "odin@example.com",
 				"DomainAuditLogID": "",
-				"UserProfiles": {"1260082990019555": {
-					"ID":          1260082990019555,
-					"LoginName":   "tagged-devices",
-					"DisplayName": "Tagged Devices"
-				}, "5627281689581307": {
+				"UserProfiles": {"5627281689581307": {
 					"ID":          5627281689581307,
 					"LoginName":   "obs.tail78f774.ts.net",
 					"DisplayName": "obs"
