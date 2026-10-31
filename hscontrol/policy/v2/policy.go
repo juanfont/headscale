@@ -1573,6 +1573,13 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		grants = append(grants, Grant{Sources: acl.Sources, Destinations: dsts})
 	}
 
+	// A grant's app part covers its routes as a regular grant does.
+	for _, grant := range pm.pol.Grants {
+		if app, ok := grant.appPart(); ok {
+			grants = append(grants, app)
+		}
+	}
+
 	// matchViewer resolves a grant lazily and at most once: non-via
 	// grants are only needed once a via grant has matched, and
 	// destinations only for grants that match the viewer.

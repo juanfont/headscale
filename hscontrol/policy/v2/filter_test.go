@@ -3913,7 +3913,7 @@ func TestCompileViaGrant(t *testing.T) {
 			},
 		},
 		{
-			name: "app-only via grant with no ip field returns nil",
+			name: "app-only via grant gets no filter rule",
 			grant: Grant{
 				Sources:      Aliases{up("testuser@")},
 				Destinations: Aliases{pp("10.0.0.0/24")},
@@ -3990,8 +3990,9 @@ func TestCompileViaGrant(t *testing.T) {
 	}
 }
 
-// TestViaGrantPeers pins who a via grant links, as via-grant-v81 records: with
-// ports, sources peer via routers only, also when a router is itself a source.
+// TestViaGrantPeers pins who a via grant links, as via-grant-v80 and v81 record:
+// with no ports via changes nothing, so sources peer everything serving the
+// destination and nobody gets a filter; with ports, sources peer via routers only.
 func TestViaGrantPeers(t *testing.T) {
 	t.Parallel()
 
@@ -4031,9 +4032,24 @@ func TestViaGrantPeers(t *testing.T) {
 		want  map[types.NodeID][]types.NodeID
 	}{
 		{
+			name:  "capability only",
+			grant: `"app": {"example.com/cap/test": [{}]}`,
+			want:  map[types.NodeID][]types.NodeID{1: {2, 5}, 2: {1, 5}, 5: {1, 2}},
+		},
+		{
 			name:  "ports",
 			grant: `"ip": ["tcp:80"]`,
 			want:  map[types.NodeID][]types.NodeID{1: {2}, 2: {1}},
+		},
+		{
+			name:  "ports and an empty capability map",
+			grant: `"ip": ["tcp:80"], "app": {}`,
+			want:  map[types.NodeID][]types.NodeID{1: {2}, 2: {1}},
+		},
+		{
+			name:  "ports and a capability",
+			grant: `"ip": ["tcp:80"], "app": {"example.com/cap/test": [{}]}`,
+			want:  map[types.NodeID][]types.NodeID{1: {2, 5}, 2: {1, 5}, 5: {1, 2}},
 		},
 	}
 
@@ -4052,6 +4068,24 @@ func TestViaGrantPeers(t *testing.T) {
 			assert.Equal(t, tt.want, pm.BuildPeerMap(nodes.ViewSlice()))
 		})
 	}
+
+	t.Run("capability only sends no filter", func(t *testing.T) {
+		t.Parallel()
+
+		pm, err := NewPolicyManager([]byte(`{
+			"tagOwners": {"tag:client": [], "tag:router": [], "tag:other": []},
+			"grants": [{"src": ["tag:client"], "dst": ["10.1.0.0/24"], "via": ["tag:router"], "app": {"example.com/cap/test": [{}]}}]
+		}`), nil, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		for _, nd := range nodes {
+			filter, err := pm.FilterForNode(nd.View())
+			require.NoError(t, err)
+			assert.Emptyf(t, filter, "node %d", nd.ID)
+		}
+
+		assert.Empty(t, pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View()))
+	})
 }
 
 func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {

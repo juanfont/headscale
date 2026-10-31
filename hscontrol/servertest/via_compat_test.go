@@ -42,6 +42,8 @@ var viaCompatTests = []struct {
 	{"grant-v11", "tag src steers subnet via router"},
 	{"grant-v12", "member src steers subnet via router"},
 	{"grant-v13", "group src steers subnet via router to members only"},
+	{"grant-k12", "capability-only via grant to a subnet"},
+	{"grant-k13", "the same via grant with a port"},
 	{"via-grant-v14", "tag src steers the internet via tag:exit"},
 	{"via-grant-v15", "wildcard src steers the internet via tag:exit"},
 	{"via-grant-v16", "tag and member srcs steer the internet via tag:exit"},

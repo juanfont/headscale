@@ -260,16 +260,24 @@ func (pol *Policy) compileGrants(
 	compiled := make([]compiledGrant, 0, len(grants))
 	srcs := sourceCache{}
 
-	for _, grant := range grants {
+	compile := func(grant Grant) {
 		cg, err := pol.compileOneGrant(grant, users, nodes, srcs)
 		if err != nil {
 			log.Trace().Err(err).Msg("compiling grant")
 
-			continue
+			return
 		}
 
 		if cg != nil {
 			compiled = append(compiled, *cg)
+		}
+	}
+
+	for _, grant := range grants {
+		compile(grant)
+
+		if app, ok := grant.appPart(); ok {
+			compile(app)
 		}
 	}
 
@@ -289,7 +297,7 @@ func (pol *Policy) compileOneGrant(
 	srcs sourceCache,
 ) (*compiledGrant, error) {
 	// Via grants: resolve sources, store deferred data.
-	if len(grant.Via) > 0 {
+	if grant.HasVia() {
 		return pol.compileOneViaGrant(grant, users, nodes)
 	}
 
@@ -443,10 +451,6 @@ func (pol *Policy) compileOneViaGrant(
 	users types.Users,
 	nodes views.Slice[types.NodeView],
 ) (*compiledGrant, error) {
-	if len(grant.InternetProtocols) == 0 {
-		return nil, nil //nolint:nilnil
-	}
-
 	resolvedSrcs, _, err := resolveSources(
 		pol, grant.Sources, users, nodes,
 	)
