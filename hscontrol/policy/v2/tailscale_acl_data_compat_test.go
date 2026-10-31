@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/netip"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,7 +28,10 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
+	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 )
 
@@ -235,13 +239,65 @@ var aclSkipReasons = map[string]string{
 
 	"acl-self-plus-dsts/kakuna/filter":    srcAddressForm,
 	"acl-self-plus-dsts/beedrill/filter":  srcAddressForm,
-	"acl-self-plus-dsts/bulbasaur/filter": "FILTER_ADDRESS_FORM+SELF_DST_REPEAT: sources listed one by one, the autogroup:self destination written once per source alias",
+	"acl-self-plus-dsts/bulbasaur/filter": srcAndSelfDstForm,
 }
 
 const (
-	allowAllForm   = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
-	srcAddressForm = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
+	allowAllForm      = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
+	srcAddressForm    = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
+	srcAndSelfDstForm = "FILTER_ADDRESS_FORM+SELF_DST_REPEAT: sources listed one by one, the autogroup:self destination written once per source alias"
 )
+
+// sourcesAsRanges rewrites each rule's sources as the ranges they cover, so
+// that one list of addresses and one range of them compare equal.
+func sourcesAsRanges(t *testing.T, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+	t.Helper()
+
+	out := make([]tailcfg.FilterRule, len(rules))
+
+	for i, rule := range rules {
+		var builder netipx.IPSetBuilder
+
+		for _, src := range rule.SrcIPs {
+			set, err := util.ParseIPSet(src, nil)
+			require.NoError(t, err)
+
+			builder.AddSet(set)
+		}
+
+		set, err := builder.IPSet()
+		require.NoError(t, err)
+
+		rule.SrcIPs = nil
+		for _, r := range set.Ranges() {
+			rule.SrcIPs = append(rule.SrcIPs, r.String())
+		}
+
+		out[i] = rule
+	}
+
+	return out
+}
+
+// withoutRepeatedDsts drops each rule's repeated destinations, keeping the
+// first of each.
+func withoutRepeatedDsts(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+	out := make([]tailcfg.FilterRule, len(rules))
+
+	for i, rule := range rules {
+		seen := map[string]bool{}
+		rule.DstPorts = slices.DeleteFunc(slices.Clone(rule.DstPorts), func(dst tailcfg.NetPortRange) bool {
+			key := dst.IP + ":" + dst.Ports.String()
+			repeat := seen[key]
+			seen[key] = true
+
+			return repeat
+		})
+		out[i] = rule
+	}
+
+	return out
+}
 
 // TestACLCompat is a data-driven test that loads all ACL-*.json test files
 // and compares headscale's ACL engine output against the expected behavior.
@@ -382,18 +438,43 @@ func testACLSuccess(
 			}
 
 			wantRules := capture.PacketFilterRules
+			key := tf.TestID + "/" + nodeName + "/filter"
 
-			compatCheck(t, aclSkipReasons, tf.TestID+"/"+nodeName+"/filter", func() string {
+			// Only the manager installs the allow-all default of a policy
+			// with neither acls nor grants.
+			compiles := pol.ACLs != nil || pol.Grants != nil
+			compiled := func() []tailcfg.FilterRule {
+				return policyutil.ReduceFilterRules(
+					node.View(),
+					pol.compileFilterRulesForNode(users, node.View(), nodes.ViewSlice()),
+					nodeAddrSet(nodes.ViewSlice()),
+				)
+			}
+
+			// How sources and their repeats are written is all this skip may hide.
+			if reason := aclSkipReasons[key]; reason == srcAddressForm || reason == srcAndSelfDstForm {
+				pmRules, err := pm.FilterForNode(node.View())
+				require.NoError(t, err)
+
+				want := sourcesAsRanges(t, wantRules)
+				if reason == srcAndSelfDstForm {
+					want = withoutRepeatedDsts(want)
+				}
+
+				assert.Empty(t, cmp.Diff(want, sourcesAsRanges(t, pmRules), opts...),
+					"manager filter differs in more than how it is written")
+
+				if compiles {
+					assert.Empty(t, cmp.Diff(want, sourcesAsRanges(t, compiled()), opts...),
+						"compiled filter differs in more than how it is written")
+				}
+			}
+
+			compatCheck(t, aclSkipReasons, key, func() string {
 				var diffs []string
 
-				// Only the manager installs the allow-all default of a
-				// policy with neither acls nor grants.
-				if pol.ACLs != nil || pol.Grants != nil {
-					gotRules := policyutil.ReduceFilterRules(
-						node.View(),
-						pol.compileFilterRulesForNode(users, node.View(), nodes.ViewSlice()),
-						nodeAddrSet(nodes.ViewSlice()),
-					)
+				if compiles {
+					gotRules := compiled()
 
 					if diff := cmp.Diff(wantRules, gotRules, opts...); diff != "" {
 						diffs = append(diffs, "filter rules mismatch (-want +got):\n"+diff)
