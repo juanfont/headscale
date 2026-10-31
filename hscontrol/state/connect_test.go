@@ -186,8 +186,6 @@ func TestConnectDisconnectSubnetRouterEmitsPolicyChangeNotFull(t *testing.T) {
 
 		assert.NotEmpty(t, runtimePeerComputationReasons(cs),
 			"subnet router must still drive a runtime peer recompute")
-		assert.True(t, hasPeerPatch(cs),
-			"subnet router should still emit the lightweight online/offline patch")
 
 		for _, c := range cs {
 			assert.Falsef(t, c.IsFull(),
@@ -200,6 +198,8 @@ func TestConnectDisconnectSubnetRouterEmitsPolicyChangeNotFull(t *testing.T) {
 		require.NotZero(t, epoch)
 
 		assertRecomputeNotFull(t, cs)
+		assert.True(t, hasPeerPatch(cs),
+			"subnet router should still emit the lightweight online patch")
 	})
 
 	t.Run("disconnect", func(t *testing.T) {
@@ -207,6 +207,8 @@ func TestConnectDisconnectSubnetRouterEmitsPolicyChangeNotFull(t *testing.T) {
 		cs := drainSessions(t, s, nodeID, epoch)
 
 		assertRecomputeNotFull(t, cs)
+		assert.False(t, hasPeerPatch(cs),
+			"the recompute carries the offline state, so one frame moves the routes")
 	})
 }
 
@@ -237,7 +239,7 @@ func TestReconnectWhileOnlineAnnouncesNothing(t *testing.T) {
 
 	cs, err = s.Disconnect(nodeID, second)
 	require.NoError(t, err)
-	require.True(t, hasPeerPatch(cs))
+	require.True(t, forcesPeerRecompute(cs))
 
 	cs, _ = s.Connect(nodeID)
 	assert.True(t, hasPeerPatch(cs), "a node that went offline must be announced online")
