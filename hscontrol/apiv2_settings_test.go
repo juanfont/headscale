@@ -122,6 +122,7 @@ func TestAPIv2SettingsConstantOffFields(t *testing.T) {
 		DevicesKeyDurationDays:                 90,
 		HTTPSEnabled:                           true,
 		UsersRoleAllowedToJoinExternalTailnets: "none",
+		RouteSelection:                         "active-passive-failover",
 	}
 	if diff := cmp.Diff(want, s); diff != "" {
 		t.Errorf("settings mismatch (-want +got):\n%s", diff)
