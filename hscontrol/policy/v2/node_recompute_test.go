@@ -37,6 +37,13 @@ func TestNodeNeedsPeerRecompute(t *testing.T) {
 		]
 	}`
 
+	viaAppPol := `{
+		"tagOwners": {"tag:via": ["user1@"]},
+		"grants": [
+			{"src": ["*"], "dst": ["10.0.0.0/24"], "app": {"example.com/cap/test": [{}]}, "via": ["tag:via"]}
+		]
+	}`
+
 	taildrivePol := `{
 		"tagOwners": {"tag:drive": ["user1@"]},
 		"grants": [
@@ -107,6 +114,13 @@ func TestNodeNeedsPeerRecompute(t *testing.T) {
 			nodes:   types.Nodes{viaTarget, ordinary},
 			subject: viaTarget,
 			want:    true,
+		},
+		{
+			name:    "capability-only via tag does not need recompute",
+			pol:     viaAppPol,
+			nodes:   types.Nodes{viaTarget, ordinary},
+			subject: viaTarget,
+			want:    false,
 		},
 		{
 			name:    "ordinary node in a via-using tailnet does not need recompute",
