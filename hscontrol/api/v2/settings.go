@@ -15,6 +15,10 @@ func init() {
 	registrations = append(registrations, registerSettings)
 }
 
+// routeSelectionFailover is the only way headscale picks between routers of one
+// prefix: one serves, the others take over when it fails.
+const routeSelectionFailover = "active-passive-failover"
+
 // TailnetSettings is the Tailscale tailnet-settings response. Headscale's config
 // is file-based and mostly not runtime-mutable, so only a few fields carry a
 // real value; the rest report the default "off".
@@ -33,6 +37,8 @@ type TailnetSettings struct {
 	RegionalRoutingOn           bool `json:"regionalRoutingOn"`
 	PostureIdentityCollectionOn bool `json:"postureIdentityCollectionOn"`
 	HTTPSEnabled                bool `json:"httpsEnabled"`
+
+	RouteSelection string `json:"routeSelection"`
 }
 
 type (
@@ -75,6 +81,7 @@ func registerSettings(api huma.API, b Backend) {
 			// Tailscale's toggle for node certificates, not headscale's own TLS.
 			HTTPSEnabled:                           cfg.DNSConfig.Certificates.Enabled,
 			UsersRoleAllowedToJoinExternalTailnets: "none",
+			RouteSelection:                         routeSelectionFailover,
 		}}, nil
 	})
 
