@@ -117,6 +117,7 @@ func TestAPIv2OAuthMatrix_Enforcement(t *testing.T) {
 		{"listDevices", http.MethodGet, "/api/v2/tailnet/-/devices", scope.DevicesCoreRead, nil, false},
 		{"deleteDevice", http.MethodDelete, "/api/v2/device/1", scope.DevicesCore, nil, false},
 		{"authorizeDevice", http.MethodPost, "/api/v2/device/1/authorized", scope.DevicesCore, map[string]any{}, false},
+		{"expireDevice", http.MethodPost, "/api/v2/device/1/expire", scope.DevicesCore, map[string]any{}, false},
 		{"setDeviceName", http.MethodPost, "/api/v2/device/1/name", scope.DevicesCore, map[string]any{}, false},
 		{"setDeviceTags", http.MethodPost, "/api/v2/device/1/tags", scope.DevicesCore, map[string]any{}, false},
 		{"setDeviceKey", http.MethodPost, "/api/v2/device/1/key", scope.DevicesCore, map[string]any{}, false},

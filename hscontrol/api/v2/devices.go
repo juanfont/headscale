@@ -354,6 +354,33 @@ func registerDevices(api huma.API, b Backend) {
 	})
 
 	huma.Register(api, requireScope(huma.Operation{
+		OperationID:   "expireDevice",
+		Method:        http.MethodPost,
+		Path:          "/api/v2/device/{id}/expire",
+		Summary:       "Expire a device's key",
+		Tags:          deviceTags,
+		Security:      security,
+		DefaultStatus: http.StatusOK,
+		Errors:        []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
+	}, scope.DevicesCore), func(ctx context.Context, in *deviceByIDInput) (*emptyOutput, error) {
+		node, err := lookupNode(b, in.DeviceID)
+		if err != nil {
+			return nil, err
+		}
+
+		now := time.Now()
+
+		_, nodeChange, err := b.State.SetNodeExpiry(node.ID(), &now)
+		b.Change(nodeChange)
+
+		if err != nil {
+			return nil, mapError("expiring device", err)
+		}
+
+		return &emptyOutput{}, nil
+	})
+
+	huma.Register(api, requireScope(huma.Operation{
 		OperationID:   "setDeviceKey",
 		Method:        http.MethodPost,
 		Path:          "/api/v2/device/{id}/key",
