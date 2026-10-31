@@ -69,7 +69,7 @@ func TestConnectionLifecycle(t *testing.T) {
 
 		h.Client(2).Disconnect(t)
 
-		// After the 10-second grace period, the remaining clients
+		// After the 15-second grace period, the remaining clients
 		// should see the departed node as offline. The peer stays
 		// in the peer list (non-ephemeral nodes are not removed).
 		h.Client(0).WaitForCondition(t, "peer goes offline", 30*time.Second,
@@ -693,7 +693,7 @@ func TestNodeExpiryRouteFailover(t *testing.T) {
 // unknown peers) match the real Tailscale client.
 func TestLogoutReloginAllClientsConverge(t *testing.T) {
 	if testing.Short() {
-		t.Skip("relogin convergence test includes 10s+ disconnect grace per iteration")
+		t.Skip("relogin convergence test includes 15s+ disconnect grace per iteration")
 	}
 
 	const (
@@ -758,7 +758,7 @@ func TestLogoutReloginAllClientsConverge(t *testing.T) {
 // older releases, so the rapid session replacement is the prime suspect.
 func TestLogoutReloginWithPollChurn(t *testing.T) {
 	if testing.Short() {
-		t.Skip("relogin convergence test includes 10s+ disconnect grace per iteration")
+		t.Skip("relogin convergence test includes 15s+ disconnect grace per iteration")
 	}
 
 	const (
@@ -827,7 +827,7 @@ func TestLogoutReloginWithPollChurn(t *testing.T) {
 
 // logoutAllAndWaitOffline logs every client out concurrently, then blocks
 // until the server reports each node expired and offline — the integration
-// tests' logout barrier, including the ~10s disconnect grace period.
+// tests' logout barrier, including the ~15s disconnect grace period.
 func logoutAllAndWaitOffline(t *testing.T, h *servertest.TestHarness) {
 	t.Helper()
 

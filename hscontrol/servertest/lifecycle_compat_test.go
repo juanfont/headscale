@@ -302,7 +302,8 @@ func holdChecks(
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 
-	for deadline := time.Now().Add(15 * time.Second); held < holdTicks && time.Now().Before(deadline); <-tick.C {
+	// Past the reconnect grace, so a node that left can read offline.
+	for deadline := time.Now().Add(25 * time.Second); held < holdTicks && time.Now().Before(deadline); <-tick.C {
 		settled := true
 
 		for i, c := range checks {

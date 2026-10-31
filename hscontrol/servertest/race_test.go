@@ -310,7 +310,7 @@ func TestRaceConcurrentServerMutations(t *testing.T) {
 func TestRaceConnectDuringGracePeriod(t *testing.T) {
 	t.Parallel()
 
-	// A node disconnects, and during the 10-second grace period
+	// A node disconnects, and during the 15-second grace period
 	// a new node joins. The new node should see the disconnecting
 	// node as a peer (it hasn't been removed yet).
 	t.Run("new_node_during_grace_period", func(t *testing.T) {

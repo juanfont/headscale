@@ -774,7 +774,7 @@ func TestIssuesGracePeriod(t *testing.T) {
 
 		h.Client(1).Disconnect(t)
 
-		h.Client(0).WaitForCondition(t, "peer offline", 20*time.Second,
+		h.Client(0).WaitForCondition(t, "peer offline", 25*time.Second,
 			func(nm *netmap.NetworkMap) bool {
 				for _, p := range nm.Peers {
 					hi := p.Hostinfo()
@@ -791,9 +791,10 @@ func TestIssuesGracePeriod(t *testing.T) {
 		elapsed := time.Since(disconnectTime)
 		t.Logf("offline status arrived after %v", elapsed)
 
-		assert.Greater(t, elapsed, 8*time.Second,
+		// SaaS tells peers after about 15 seconds.
+		assert.Greater(t, elapsed, 14*time.Second,
 			"offline status arrived too quickly -- grace period may not be working")
-		assert.Less(t, elapsed, 20*time.Second,
+		assert.Less(t, elapsed, 25*time.Second,
 			"offline status took too long -- propagation delay issue")
 	})
 
@@ -824,7 +825,7 @@ func TestIssuesGracePeriod(t *testing.T) {
 
 		ephemeral.Disconnect(t)
 
-		// Grace period (10s) + ephemeral GC timeout (3s) + propagation.
+		// Grace period (15s) + ephemeral GC timeout (3s) + propagation.
 		// Use a generous timeout for CI environments under load.
 		regular.WaitForCondition(t, "ephemeral peer removed", 60*time.Second,
 			func(nm *netmap.NetworkMap) bool {

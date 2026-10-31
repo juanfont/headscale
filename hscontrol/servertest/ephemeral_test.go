@@ -80,7 +80,7 @@ func TestEphemeralNodes(t *testing.T) {
 		// Disconnect the ephemeral node.
 		ephemeral.Disconnect(t)
 
-		// After the grace period (10s) + ephemeral timeout (3s),
+		// After the grace period (15s) + ephemeral timeout (3s),
 		// the ephemeral node should be deleted from the server and
 		// disappear from the regular node's peer list entirely.
 		// Unlike non-ephemeral nodes which go offline but stay in

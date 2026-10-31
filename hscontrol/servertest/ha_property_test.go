@@ -213,7 +213,7 @@ func checkHAInvariants(
 		}
 
 		// Invariant 1: primary IsOnline in the NodeStore view while any
-		// candidate is healthy. state.Disconnect's 10s grace can leave a
+		// candidate is healthy. state.Disconnect's 15s grace can leave a
 		// recently-disconnected node with IsOnline=true; the structural
 		// rule still requires the bit before the snapshot may keep it as
 		// primary over a healthy candidate.
@@ -333,7 +333,7 @@ func snapshotPrimaries(
 //     bypasses the prober entirely.
 //
 //   - Disconnect/Reconnect goes through the real poll-session
-//     lifecycle: mapBatcher.RemoveNode flips IsConnected, the 10s
+//     lifecycle: mapBatcher.RemoveNode flips IsConnected, the 15s
 //     grace period defers state.Disconnect, and state.Connect bumps
 //     SessionEpoch on rejoin. The prober defers fresh-session probes
 //     so a reconnect mid-cycle does not install a stale Unhealthy.
