@@ -498,6 +498,22 @@ func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types
 func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
+	// user:*@domain names every user of that email domain, as on SaaS.
+	if domain, ok := strings.CutPrefix(string(*u), "user:*@"); ok {
+		for _, node := range nodes.All() {
+			if node.IsTagged() || !node.User().Valid() {
+				continue
+			}
+
+			_, emailDomain, found := strings.CutLast(node.User().Email(), "@")
+			if found && strings.EqualFold(emailDomain, domain) {
+				node.AppendToIPSet(&ips)
+			}
+		}
+
+		return ips.IPSet()
+	}
+
 	user, err := u.resolveUser(users)
 	if err != nil {
 		// Users may be missing before registration (#2863), or become
