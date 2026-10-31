@@ -339,7 +339,7 @@ func evaluateTests(pol *Policy, users []types.User, nodes views.Slice[types.Node
 
 	var filter []tailcfg.FilterRule
 	if pol.ACLs == nil && pol.Grants == nil {
-		filter = tailcfg.FilterAllowAll
+		filter = noRulesFilter(users, nodes)
 	} else {
 		filter = globalFilterRules(grants)
 	}

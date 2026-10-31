@@ -342,7 +342,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 
 	var filter []tailcfg.FilterRule
 	if pm.pol == nil || (pm.pol.ACLs == nil && pm.pol.Grants == nil) {
-		filter = tailcfg.FilterAllowAll
+		filter = noRulesFilter(pm.users, pm.nodes)
 	} else {
 		filter = globalFilterRules(pm.compiledGrants)
 	}
