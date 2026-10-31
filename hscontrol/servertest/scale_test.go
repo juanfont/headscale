@@ -30,7 +30,6 @@ type scaleCase struct {
 	policy        string
 	taggedService bool
 	ssh           bool
-	peerCount     func(node, total int) int
 	canSend       func(source, destination int) bool
 }
 
@@ -47,10 +46,6 @@ func TestScale(t *testing.T) {
 		require.GreaterOrEqual(t, nodes, 2, "need at least two connected nodes")
 	}
 
-	personalPeers := func(node, total int) int {
-		first := node / scaleDevicesPerUser * scaleDevicesPerUser
-		return min(scaleDevicesPerUser, total-first) - 1
-	}
 	personalVisibility := func(node, peer int) bool {
 		return node/scaleDevicesPerUser == peer/scaleDevicesPerUser
 	}
@@ -61,14 +56,12 @@ func TestScale(t *testing.T) {
 			policy: `{
 				"grants": [{"src": ["*"], "dst": ["*"], "ip": ["tcp:443"]}]
 			}`,
-			peerCount: func(_, total int) int { return total - 1 },
-			canSend:   func(_, _ int) bool { return true },
+			canSend: func(_, _ int) bool { return true },
 		},
 		{
-			name:      "isolated",
-			policy:    `{"acls": []}`,
-			peerCount: func(_, _ int) int { return 0 },
-			canSend:   func(_, _ int) bool { return false },
+			name:    "isolated",
+			policy:  `{"acls": []}`,
+			canSend: func(_, _ int) bool { return false },
 		},
 		{
 			name: "personal_devices",
@@ -78,8 +71,7 @@ func TestScale(t *testing.T) {
 					"ip": ["tcp:443"]
 				}]
 			}`,
-			peerCount: personalPeers,
-			canSend:   personalVisibility,
+			canSend: personalVisibility,
 		},
 		{
 			name: "shared_service",
@@ -91,14 +83,7 @@ func TestScale(t *testing.T) {
 				}]
 			}`,
 			taggedService: true,
-			peerCount: func(node, total int) int {
-				if node == 0 {
-					return total - 1
-				}
-
-				return 1
-			},
-			canSend: func(source, destination int) bool { return source != 0 && destination == 0 },
+			canSend:       func(source, destination int) bool { return source != 0 && destination == 0 },
 		},
 		{
 			name: "personal_ssh",
@@ -112,9 +97,8 @@ func TestScale(t *testing.T) {
 					"dst": ["autogroup:self"], "users": ["root"]
 				}]
 			}`,
-			ssh:       true,
-			peerCount: personalPeers,
-			canSend:   personalVisibility,
+			ssh:     true,
+			canSend: personalVisibility,
 		},
 	}
 
@@ -220,10 +204,7 @@ func runScale(t *testing.T, nodes int, tc scaleCase) {
 		deadline := time.Now().Add(convergenceTimeout)
 
 		for i, c := range clients {
-			wantPeers := tc.peerCount(i, nodes)
-			if revoked {
-				wantPeers = 0
-			}
+			wantPeers := tc.peerCount(i, nodes, revoked)
 
 			c.WaitForCondition(
 				t,
@@ -244,10 +225,13 @@ func runScale(t *testing.T, nodes int, tc scaleCase) {
 						return false
 					}
 
-					return tc.peersMatch(nm, i, indices, osMarker)
+					// The policy's attribute can reach the node a frame ahead of
+					// its filter, and peers alone may not tell the two apart.
+					return tc.peersMatch(nm, i, indices, osMarker) &&
+						scalePacketFilterMismatch(tc, nm, selfNodes, i, revoked) == ""
 				},
 			)
-			checkScalePacketFilter(t, tc, c.Netmap(), selfNodes, i, revoked)
+			require.Empty(t, scalePacketFilterMismatch(tc, c.Netmap(), selfNodes, i, revoked))
 
 			if tc.ssh && !revoked {
 				checkScaleSSH(t, c.Netmap().SSHPolicy, selfNodes, i)
@@ -337,6 +321,40 @@ func runScale(t *testing.T, nodes int, tc scaleCase) {
 	})
 }
 
+// peerCount is how many peers viewer has: the nodes it can reach or be reached
+// from, and its user's other devices, which are peers under any policy.
+func (tc scaleCase) peerCount(viewer, total int, revoked bool) int {
+	count := 0
+
+	for j := range total {
+		if j == viewer {
+			continue
+		}
+
+		reachable := !revoked && tc.linked(viewer, j)
+		if reachable || tc.sameUser(viewer, j) {
+			count++
+		}
+	}
+
+	return count
+}
+
+// sameUser reports whether two nodes are devices of one user. The tagged
+// service belongs to no user.
+func (tc scaleCase) sameUser(a, b int) bool {
+	if tc.taggedService && (a == 0 || b == 0) {
+		return false
+	}
+
+	return a/scaleDevicesPerUser == b/scaleDevicesPerUser
+}
+
+// linked reports whether the policy lets either node reach the other.
+func (tc scaleCase) linked(a, b int) bool {
+	return tc.canSend(a, b) || tc.canSend(b, a)
+}
+
 func (tc scaleCase) peersMatch(
 	nm *netmap.NetworkMap,
 	viewer int,
@@ -347,8 +365,11 @@ func (tc scaleCase) peersMatch(
 
 	for _, peer := range nm.Peers {
 		j, ok := indices[peer.ID()]
-		if !ok || j == viewer || (!tc.canSend(viewer, j) && !tc.canSend(j, viewer)) ||
-			peer.ID() <= previous {
+		if !ok || j == viewer || peer.ID() <= previous {
+			return false
+		}
+
+		if !tc.linked(viewer, j) && !tc.sameUser(viewer, j) {
 			return false
 		}
 
@@ -405,24 +426,25 @@ func updateScaleClients(
 	}
 }
 
-// Probe a few sources per node instead of making the test itself all-pairs.
-func checkScalePacketFilter(
-	t *testing.T,
+// scalePacketFilterMismatch names the first verdict nm's packet filter gets
+// wrong, or returns "". Probe a few sources per node instead of making the test
+// itself all-pairs.
+func scalePacketFilterMismatch(
 	tc scaleCase,
 	nm *netmap.NetworkMap,
 	selfNodes []tailcfg.NodeView,
 	viewer int,
 	revoked bool,
-) {
-	t.Helper()
-
+) string {
 	var localIPs netipx.IPSetBuilder
 	for _, prefix := range nm.SelfNode.Addresses().All() {
 		localIPs.AddPrefix(prefix)
 	}
 
 	local, err := localIPs.IPSet()
-	require.NoError(t, err)
+	if err != nil {
+		return err.Error()
+	}
 
 	packetFilter := filter.New(nm.PacketFilter, nil, local, nil, nil, logger.Discard)
 
@@ -439,20 +461,30 @@ func checkScalePacketFilter(
 				want = filter.Accept
 			}
 
-			require.Equal(t, want, packetFilter.CheckTCP(src, dst.Addr(), 443),
-				"%d -> %d TCP 443", selfNodes[source].ID(), selfNodes[viewer].ID())
-			require.Equal(t, filter.Drop, packetFilter.CheckTCP(src, dst.Addr(), 80))
-			require.Equal(
-				t,
-				filter.Drop,
-				packetFilter.Check(src, dst.Addr(), 443, ipproto.UDP),
-			)
+			type verdict struct {
+				name      string
+				want, got filter.Response
+			}
 
+			checks := []verdict{
+				{"TCP 443", want, packetFilter.CheckTCP(src, dst.Addr(), 443)},
+				{"TCP 80", filter.Drop, packetFilter.CheckTCP(src, dst.Addr(), 80)},
+				{"UDP 443", filter.Drop, packetFilter.Check(src, dst.Addr(), 443, ipproto.UDP)},
+			}
 			if tc.ssh {
-				require.Equal(t, want, packetFilter.CheckTCP(src, dst.Addr(), 22))
+				checks = append(checks, verdict{"TCP 22", want, packetFilter.CheckTCP(src, dst.Addr(), 22)})
+			}
+
+			for _, check := range checks {
+				if check.got != check.want {
+					return fmt.Sprintf("%d -> %d %s: got %v, want %v",
+						selfNodes[source].ID(), selfNodes[viewer].ID(), check.name, check.got, check.want)
+				}
 			}
 		}
 	}
+
+	return ""
 }
 
 func checkScaleSSH(

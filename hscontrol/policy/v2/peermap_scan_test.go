@@ -44,8 +44,10 @@ func buildPeerMapPairScan(pm *PolicyManager, nodes views.Slice[types.NodeView]) 
 				}
 
 				ri, rj := routeInfo[nodes.At(i).ID()], routeInfo[nodes.At(j).ID()]
-				if nodes.At(i).CanAccessWithRoutes(pm.matchers, nodes.At(j), ri.subnet, rj.subnet, rj.isExit) ||
-					nodes.At(j).CanAccessWithRoutes(pm.matchers, nodes.At(i), rj.subnet, ri.subnet, ri.isExit) {
+
+				linked := nodes.At(i).CanAccessWithRoutes(pm.matchers, nodes.At(j), ri.subnet, rj.subnet, rj.isExit) ||
+					nodes.At(j).CanAccessWithRoutes(pm.matchers, nodes.At(i), rj.subnet, ri.subnet, ri.isExit)
+				if linked || sameUser(nodes.At(i), nodes.At(j)) {
 					ret[nodes.At(i).ID()] = append(ret[nodes.At(i).ID()], nodes.At(j).ID())
 					ret[nodes.At(j).ID()] = append(ret[nodes.At(j).ID()], nodes.At(i).ID())
 				}
@@ -70,10 +72,13 @@ func buildPeerMapPairScan(pm *PolicyManager, nodes views.Slice[types.NodeView]) 
 			matchersJ, hasFilterJ := nodeMatchers[nodeJ.ID()]
 			riJ := routeInfo[nodeJ.ID()]
 
-			if hasFilterI && nodeI.CanAccessWithRoutes(matchersI, nodeJ, riI.subnet, riJ.subnet, riJ.isExit) ||
-				hasFilterJ && nodeJ.CanAccessWithRoutes(matchersJ, nodeI, riJ.subnet, riI.subnet, riI.isExit) ||
-				hasFilterI && nodeJ.CanAccessWithRoutes(matchersI, nodeI, riJ.subnet, riI.subnet, riI.isExit) ||
-				hasFilterJ && nodeI.CanAccessWithRoutes(matchersJ, nodeJ, riI.subnet, riJ.subnet, riJ.isExit) {
+			canIAccessJ := hasFilterI && nodeI.CanAccessWithRoutes(matchersI, nodeJ, riI.subnet, riJ.subnet, riJ.isExit)
+			canJAccessI := hasFilterJ && nodeJ.CanAccessWithRoutes(matchersJ, nodeI, riJ.subnet, riI.subnet, riI.isExit)
+			canJReachI := hasFilterI && nodeJ.CanAccessWithRoutes(matchersI, nodeI, riJ.subnet, riI.subnet, riI.isExit)
+			canIReachJ := hasFilterJ && nodeI.CanAccessWithRoutes(matchersJ, nodeJ, riI.subnet, riJ.subnet, riJ.isExit)
+
+			linked := canIAccessJ || canJAccessI || canJReachI || canIReachJ
+			if linked || sameUser(nodeI, nodeJ) {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
 			}
@@ -578,8 +583,8 @@ func buildPeerMapSortedSlice(
 				continue
 			}
 
-			if sortedMatcherSetsIntersect(srcOf[i], dstOf[j]) ||
-				sortedMatcherSetsIntersect(srcOf[j], dstOf[i]) {
+			linked := sortedMatcherSetsIntersect(srcOf[i], dstOf[j]) || sortedMatcherSetsIntersect(srcOf[j], dstOf[i])
+			if linked || sameUser(nodes.At(i), nodes.At(j)) {
 				ret[ids[i]] = append(ret[ids[i]], ids[j])
 				ret[ids[j]] = append(ret[ids[j]], ids[i])
 			}
@@ -674,8 +679,8 @@ func buildPeerMapSliceMap(
 				continue
 			}
 
-			if sliceMapMatcherSetsIntersect(srcOf[i], dstOf[j]) ||
-				sliceMapMatcherSetsIntersect(srcOf[j], dstOf[i]) {
+			linked := sliceMapMatcherSetsIntersect(srcOf[i], dstOf[j]) || sliceMapMatcherSetsIntersect(srcOf[j], dstOf[i])
+			if linked || sameUser(nodes.At(i), nodes.At(j)) {
 				ret[ids[i]] = append(ret[ids[i]], ids[j])
 				ret[ids[j]] = append(ret[ids[j]], ids[i])
 			}

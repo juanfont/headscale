@@ -906,7 +906,8 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 					continue
 				}
 
-				if canAccess(srcOf[i], dstOf[j]) || canAccess(srcOf[j], dstOf[i]) {
+				linked := canAccess(srcOf[i], dstOf[j]) || canAccess(srcOf[j], dstOf[i])
+				if linked || sameUser(nodes.At(i), nodes.At(j)) {
 					ret[ids[i]] = append(ret[ids[i]], ids[j])
 					ret[ids[j]] = append(ret[ids[j]], ids[i])
 				}
@@ -959,7 +960,8 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			canJReachI := hasFilterI && nodeJ.CanAccessWithRoutes(matchersI, nodeI, riJ.subnet, riI.subnet, riI.isExit)
 			canIReachJ := hasFilterJ && nodeI.CanAccessWithRoutes(matchersJ, nodeJ, riI.subnet, riJ.subnet, riJ.isExit)
 
-			if canIAccessJ || canJAccessI || canJReachI || canIReachJ {
+			linked := canIAccessJ || canJAccessI || canJReachI || canIReachJ
+			if linked || sameUser(nodeI, nodeJ) {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
 			}
@@ -981,6 +983,21 @@ func matcherReachesDestination(
 ) bool {
 	return m.DestsContainsIP(ips...) || (len(routes) > 0 && m.DestsOverlapsRanges(routes)) ||
 		(isExit && m.DestsIsTheInternet())
+}
+
+// sameUser reports whether two nodes belong to one user. A user's own devices
+// are always each other's peers, whatever the rules say, as on SaaS: clients
+// need the peer to send a file to their own device. It grants no access, so
+// the packet filter still decides what can connect.
+func sameUser(a, b types.NodeView) bool {
+	if a.IsTagged() || b.IsTagged() {
+		return false
+	}
+
+	userA, okA := a.UserID().GetOk()
+	userB, okB := b.UserID().GetOk()
+
+	return okA && okB && userA == userB
 }
 
 // filterRulesForNodeLocked returns the unreduced compiled filter rules

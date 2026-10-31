@@ -197,7 +197,7 @@ func peerMapPrefixReference(
 				canAccessPrefixReference(b, a, mi) ||
 				canAccessPrefixReference(a, b, mj) ||
 				canAccessPrefixReference(b, a, mj)
-			if linkedByEitherPolicy {
+			if linkedByEitherPolicy || sameUser(a.View(), b.View()) {
 				peers[a.ID] = append(peers[a.ID], b.ID)
 				peers[b.ID] = append(peers[b.ID], a.ID)
 			}

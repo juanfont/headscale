@@ -63,9 +63,6 @@ var mapStreamSkipReasons = map[string]string{
 	"map-delivery/S2.5/laptop/endpoints-gap-bystander": restartEndpointsKept,
 	"map-delivery/S2.5/laptop/endpoints-gap-svc":       restartEndpointsKept,
 
-	"map-delivery/S3.6/bystander/peers": sameUserPeers,
-	"map-delivery/S3.6/laptop/peers":    sameUserPeers,
-
 	"hidden-peers/S2/witness/presence":   policyResponseToEveryNode,
 	"hidden-peers/S8/observer/presence":  policyResponseToEveryNode,
 	"hidden-peers/S9/observer/presence":  policyResponseToEveryNode,
@@ -81,19 +78,6 @@ var mapStreamSkipReasons = map[string]string{
 	"route-announce/RA9/rtr/presence":    policyResponseToEveryNode,
 	"route-announce/RA9/srv/presence":    policyResponseToEveryNode,
 	"route-announce/RA9/wit/presence":    policyResponseToEveryNode,
-
-	"policy-generation/G2/thor-1/peers":       sameUserPeers,
-	"policy-generation/G2/thor-2/peers":       sameUserPeers,
-	"policy-generation/G3/thor-1/peers":       sameUserPeers,
-	"policy-generation/G3/thor-2/peers":       sameUserPeers,
-	"policy-generation/G4/thor-1/peers":       sameUserPeers,
-	"policy-generation/G4/thor-2/peers":       sameUserPeers,
-	"policy-generation/G2/thor-1/peer-owners": sameUserPeers,
-	"policy-generation/G2/thor-2/peer-owners": sameUserPeers,
-	"policy-generation/G3/thor-1/peer-owners": sameUserPeers,
-	"policy-generation/G3/thor-2/peer-owners": sameUserPeers,
-	"policy-generation/G4/thor-1/peer-owners": sameUserPeers,
-	"policy-generation/G4/thor-2/peer-owners": sameUserPeers,
 }
 
 const (

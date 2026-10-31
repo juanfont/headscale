@@ -2291,8 +2291,8 @@ func TestEvictedSessionLeavesPeerTrackingAlone(t *testing.T) {
 	td, cleanup := setupBatcherWithTestData(
 		t,
 		NewBatcherAndMapper,
-		1,
 		2,
+		1,
 		normalBufferSize,
 	)
 	defer cleanup()
@@ -2379,8 +2379,8 @@ func TestOlderInitialMapLeavesNewerStreamsPeers(t *testing.T) {
 	td, cleanup := setupBatcherWithTestData(
 		t,
 		NewBatcherAndMapper,
-		1,
 		2,
+		1,
 		normalBufferSize,
 	)
 	defer cleanup()
