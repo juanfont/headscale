@@ -206,6 +206,9 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - User renames and OIDC updates refresh node users and clients without restarting Headscale. [#3471](https://github.com/juanfont/headscale/issues/3471), [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Routers receive their own approved routes regardless of policy. [#3626](https://github.com/juanfont/headscale/issues/3626), [#3619](https://github.com/juanfont/headscale/pull/3619)
 - `.json` files in `dns.extra_records_path` and `derp.paths` may contain comments and trailing commas, like `.hujson` files [#3627](https://github.com/juanfont/headscale/issues/3627)
+- Apply `via` only to the `ip` part of a grant, as on Tailscale SaaS: `app` peers its sources with every node serving the destination, and its routes follow the primary router, also beside an `ip` part with `via` [#3637](https://github.com/juanfont/headscale/pull/3637)
+- Stop sending a subnet router a capability for its subnet, as on Tailscale SaaS [#3637](https://github.com/juanfont/headscale/pull/3637)
+- Fix a `via` router that is also a source peering with others serving the route, and a router inside a subnet source missing `via` routes [#3637](https://github.com/juanfont/headscale/pull/3637)
 
 ## 0.29.7 (2026-10-30)
 
