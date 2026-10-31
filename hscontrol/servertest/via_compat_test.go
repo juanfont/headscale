@@ -595,6 +595,18 @@ func TestFilterSourcesKeepAddressFamily(t *testing.T) {
 		canonicaliseSrcStrings(t, []string{"100.64.0.1"}, addrs, 0))
 }
 
+func TestFilterSourcesKeepAddressesOfNoPeer(t *testing.T) {
+	t.Parallel()
+
+	addrs := map[netip.Addr]string{netip.MustParseAddr("100.64.0.1"): "a"}
+
+	assert.Equal(t, []string{"100.64.9.9/32", "peer:a/ipv4"},
+		canonicaliseSrcStrings(t, []string{"100.64.9.9", "100.64.0.1"}, addrs, 0))
+	assert.Equal(t, []string{"peer:a/ipv4"},
+		canonicaliseSrcStrings(t, []string{"100.64.0.0/24"}, addrs, 0),
+		"a range covering a peer names only the peer")
+}
+
 // requireNetmapHolds retries check until it passes on several consecutive
 // ticks. One passing tick is not enough: a netmap that matches and then
 // drifts, such as a primary flipping away, is the bug these oracles guard.
@@ -935,7 +947,7 @@ func comparePacketFilter(
 	}
 
 	wantList := saasFilterTriples(t, want.PacketFilterRules, saasAddrs)
-	gotList := hsFilterTriples(t, got.PacketFilter, hsAddrsByPeer(clients))
+	gotList := hsFilterTriples(got.PacketFilter, hsAddrsByPeer(clients))
 
 	if reason, listed := skips[key]; listed {
 		if slices.Equal(wantList, gotList) {
@@ -967,7 +979,7 @@ func saasFilterTriples(t require.TestingT, rules []tailcfg.FilterRule, saasAddrs
 				"golden DstPorts[%d].IP %q should parse as prefix, addr or range", i, dp.IP)
 
 			for _, pfx := range pfxs {
-				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+				for _, dst := range peerIdents(pfx, saasAddrs) {
 					triples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
 				}
 			}
@@ -978,7 +990,7 @@ func saasFilterTriples(t require.TestingT, rules []tailcfg.FilterRule, saasAddrs
 			caps = append(caps, cg.Caps...)
 
 			for _, pfx := range cg.Dsts {
-				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+				for _, dst := range peerIdents(pfx, saasAddrs) {
 					for _, c := range caps {
 						triples[capTriple(srcs, dst, c)] = struct{}{}
 					}
@@ -992,24 +1004,20 @@ func saasFilterTriples(t require.TestingT, rules []tailcfg.FilterRule, saasAddrs
 
 // hsFilterTriples renders a client's packet filter as the triples
 // [saasFilterTriples] gives, peers named by hsAddrs.
-func hsFilterTriples(t require.TestingT, matches []filter.Match, hsAddrs map[netip.Addr]string) []string {
-	if h, ok := t.(interface{ Helper() }); ok {
-		h.Helper()
-	}
-
+func hsFilterTriples(matches []filter.Match, hsAddrs map[netip.Addr]string) []string {
 	triples := map[string]struct{}{}
 
-	for i, match := range matches {
-		srcs := strings.Join(canonicaliseSrcPrefixes(t, match.Srcs, hsAddrs, i), ",")
+	for _, match := range matches {
+		srcs := strings.Join(canonicaliseSrcPrefixes(match.Srcs, hsAddrs), ",")
 
 		for _, dp := range match.Dsts {
-			for _, dst := range peerIdents(t, dp.Net, hsAddrs, i) {
+			for _, dst := range peerIdents(dp.Net, hsAddrs) {
 				triples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
 			}
 		}
 
 		for _, cm := range match.Caps {
-			for _, dst := range peerIdents(t, cm.Dst, hsAddrs, i) {
+			for _, dst := range peerIdents(cm.Dst, hsAddrs) {
 				triples[capTriple(srcs, dst, cm.Cap)] = struct{}{}
 			}
 		}
@@ -1028,18 +1036,9 @@ func capTriple(srcs, dst string, c peercap.Cap) string {
 
 // peerIdents resolves a prefix into sorted canonical identity tokens,
 // see [addIdentsForSrc].
-func peerIdents(
-	t require.TestingT,
-	pfx netip.Prefix,
-	addrToPeer map[netip.Addr]string,
-	ruleIndex int,
-) []string {
-	if h, ok := t.(interface{ Helper() }); ok {
-		h.Helper()
-	}
-
+func peerIdents(pfx netip.Prefix, addrToPeer map[netip.Addr]string) []string {
 	seen := map[string]struct{}{}
-	addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+	addIdentsForSrc(pfx, addrToPeer, seen)
 
 	return sortedKeys(seen)
 }
@@ -1128,7 +1127,7 @@ func canonicaliseSrcStrings(
 			"PacketFilter[%d]: unparseable SrcIP %q", ruleIndex, src)
 
 		for _, pfx := range pfxs {
-			addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+			addIdentsForSrc(pfx, addrToPeer, seen)
 		}
 	}
 
@@ -1138,16 +1137,7 @@ func canonicaliseSrcStrings(
 // canonicaliseSrcPrefixes is the headscale-side counterpart of
 // [canonicaliseSrcStrings], reading already-parsed [netip.Prefix] values
 // from [tailcfg.Match.Srcs].
-func canonicaliseSrcPrefixes(
-	t require.TestingT,
-	srcs []netip.Prefix,
-	addrToPeer map[netip.Addr]string,
-	ruleIndex int,
-) []string {
-	if h, ok := t.(interface{ Helper() }); ok {
-		h.Helper()
-	}
-
+func canonicaliseSrcPrefixes(srcs []netip.Prefix, addrToPeer map[netip.Addr]string) []string {
 	seen := map[string]struct{}{}
 
 	for _, pfx := range srcs {
@@ -1157,7 +1147,7 @@ func canonicaliseSrcPrefixes(
 			continue
 		}
 
-		addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+		addIdentsForSrc(pfx, addrToPeer, seen)
 	}
 
 	return sortedKeys(seen)
@@ -1166,20 +1156,11 @@ func canonicaliseSrcPrefixes(
 // addIdentsForSrc resolves one source prefix into canonical identity
 // tokens and inserts them into seen. A non-Tailscale prefix passes
 // through literally; a Tailscale-range prefix expands to the union
-// of peer names whose addresses fall within it. A single address must
-// be a known peer; a wider prefix may cover none, since SaaS writes
-// "*" as ranges over the whole Tailscale space.
-func addIdentsForSrc(
-	t require.TestingT,
-	pfx netip.Prefix,
-	addrToPeer map[netip.Addr]string,
-	ruleIndex int,
-	seen map[string]struct{},
-) {
-	if h, ok := t.(interface{ Helper() }); ok {
-		h.Helper()
-	}
-
+// of peer names whose addresses fall within it. A single address that
+// names no peer stays literal, as a policy can name any address, so a
+// side that lacks it still differs; a wider prefix may cover none, since
+// SaaS writes "*" as ranges over the whole Tailscale space.
+func addIdentsForSrc(pfx netip.Prefix, addrToPeer map[netip.Addr]string, seen map[string]struct{}) {
 	if !prefixInTailscaleRange(pfx) {
 		seen[pfx.String()] = struct{}{}
 
@@ -1202,9 +1183,9 @@ func addIdentsForSrc(
 		}
 	}
 
-	require.Truef(t, matched || !pfx.IsSingleIP(),
-		"PacketFilter[%d]: Tailscale-range SrcIP %s does not cover any known peer; addrToPeer=%v",
-		ruleIndex, pfx, addrToPeer)
+	if !matched && pfx.IsSingleIP() {
+		seen[pfx.String()] = struct{}{}
+	}
 }
 
 // prefixInTailscaleRange reports whether a prefix lies entirely
