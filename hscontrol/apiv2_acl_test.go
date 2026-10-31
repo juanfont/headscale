@@ -84,8 +84,10 @@ func TestAPIv2ACLContentNegotiation(t *testing.T) {
 
 	assert.Equal(t, "application/json", jsonResp.Header().Get("Content-Type"))
 	assert.Equal(t, "application/hujson", huResp.Header().Get("Content-Type"))
-	// Same bytes, same ETag — the ETag is over content, not type.
-	assert.Equal(t, jsonResp.Body.Bytes(), huResp.Body.Bytes())
+	// The default policy has comments: a JSON read must still parse. The ETag is
+	// over the stored bytes, not the type.
+	assert.True(t, json.Valid(jsonResp.Body.Bytes()), jsonResp.Body.String())
+	assert.Contains(t, huResp.Body.String(), "//")
 	assert.Equal(t, jsonResp.Header().Get("Etag"), huResp.Header().Get("Etag"))
 }
 
@@ -373,7 +375,7 @@ func TestAPIv2ACLFileModeReadOnly(t *testing.T) {
 	apiv2.Register(api, apiv2.Backend{Cfg: cfg})
 
 	// GET serves the file bytes + their ETag.
-	get := api.Get("/api/v2/tailnet/-/acl")
+	get := api.Get("/api/v2/tailnet/-/acl", "Accept: application/hujson")
 	require.Equalf(t, http.StatusOK, get.Code, "body: %s", get.Body)
 	assert.Equal(t, fileBytes, get.Body.String())
 	assert.Equal(t, policyETagOf(fileBytes), get.Header().Get("Etag"))

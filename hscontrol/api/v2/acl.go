@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/tailscale/hujson"
 )
 
 func init() {
@@ -142,7 +144,7 @@ func registerACL(api huma.API, b Backend) {
 			return nil, mapError("setting policy", err)
 		}
 
-		return streamPolicy([]byte(updated.Data), aclContentType(in.Accept)), nil
+		return streamPolicy([]byte(updated.Data), aclWriteContentType(in.Accept)), nil
 	})
 
 	registerValidateACL(api, b, aclTags)
@@ -235,19 +237,40 @@ func currentPolicy(b Backend) ([]byte, error) {
 	return nil, huma.Error500InternalServerError("unsupported policy mode", nil)
 }
 
-// streamPolicy writes the policy bytes as-is with the chosen content type and
-// a content-addressed ETag, bypassing huma's JSON marshaler so HuJSON survives.
+// streamPolicy writes the policy with the chosen content type and a
+// content-addressed ETag, bypassing huma's JSON marshaler so HuJSON survives. As
+// JSON, the policy loses its comments and trailing commas: a JSON reader cannot
+// parse them. The ETag stays over the stored bytes, so it holds for either read.
 func streamPolicy(data []byte, contentType string) *huma.StreamResponse {
 	return &huma.StreamResponse{Body: func(ctx huma.Context) {
+		body := data
+
+		if contentType == contentTypeJSON {
+			standard, err := hujson.Standardize(slices.Clone(data))
+			if err == nil {
+				body = standard
+			}
+		}
+
 		ctx.SetHeader("Content-Type", contentType)
 		ctx.SetHeader("ETag", policyETag(data))
 		ctx.SetStatus(http.StatusOK)
-		_, _ = ctx.BodyWriter().Write(data)
+		_, _ = ctx.BodyWriter().Write(body)
 	}}
 }
 
+// aclWriteContentType answers a policy write as HuJSON, as SaaS does, unless the
+// caller asks for JSON.
+func aclWriteContentType(accept string) string {
+	if strings.Contains(accept, contentTypeJSON) {
+		return contentTypeJSON
+	}
+
+	return contentTypeHuJSON
+}
+
 // aclContentType serves HuJSON only when explicitly asked; everything else
-// (including an empty Accept) gets application/json. The bytes are identical.
+// (including an empty Accept) gets application/json.
 func aclContentType(accept string) string {
 	if strings.Contains(accept, contentTypeHuJSON) {
 		return contentTypeHuJSON
