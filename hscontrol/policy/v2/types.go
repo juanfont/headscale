@@ -364,9 +364,10 @@ func (a Asterix) resolve(_ *Policy, _ types.Users, _ views.Slice[types.NodeView]
 	return asterixResolved(), nil
 }
 
-// approvedSubnetRoutes collects all approved non-exit subnet routes
-// advertised across all nodes. Per Tailscale documentation, wildcard
-// (*) SrcIPs include "any approved subnets".
+// approvedSubnetRoutes collects all approved non-exit subnet routes across all
+// nodes, advertised or not: SaaS keeps a route an admin approved after its node
+// withdraws it. Per Tailscale documentation, wildcard (*) SrcIPs include "any
+// approved subnets".
 //
 // These are collected separately from the Asterix IPSet because
 // IPSet merges overlapping ranges (e.g. 10.0.0.0/8 absorbs
@@ -377,7 +378,11 @@ func approvedSubnetRoutes(nodes views.Slice[types.NodeView]) []string {
 	var routes []string
 
 	for _, node := range nodes.All() {
-		for _, route := range node.SubnetRoutes() {
+		for _, route := range node.ApprovedRoutes().All() {
+			if tsaddr.IsExitRoute(route) {
+				continue
+			}
+
 			s := route.String()
 			if !seen.Contains(s) {
 				seen.Add(s)

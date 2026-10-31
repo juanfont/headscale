@@ -25,6 +25,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/netmap"
@@ -182,6 +183,9 @@ func runRouteLifecycleCompat(t *testing.T, id, observer string, skips map[string
 					}
 
 					return "user " + nodes[0].User().Name()
+				}},
+				{"filter-routes", filterRouteSources(step.Captures[observer].Netmap), func() string {
+					return filterRouteSources(r.clients[observer].Netmap())
 				}},
 				{"device", deviceState(
 					countDevicesOnMachine(t, step, dev.MachineKey),
@@ -362,6 +366,27 @@ func (r *stepReplay) hsDeviceRoutes(t *testing.T, alias string) (deviceRoutes, b
 	require.NoError(t, json.Unmarshal(body, &out))
 
 	return out, true
+}
+
+// filterRouteSources lists the sources in nm's packet filter that are no tailnet
+// addresses: the routes a wildcard source stands for.
+func filterRouteSources(nm *netmap.NetworkMap) string {
+	if nm == nil {
+		return "no netmap"
+	}
+
+	seen := map[string]bool{}
+
+	for _, m := range nm.PacketFilter {
+		for _, src := range m.Srcs {
+			tailnet := tsaddr.CGNATRange().Contains(src.Addr()) || tsaddr.TailscaleULARange().Contains(src.Addr())
+			if !tailnet {
+				seen[src.String()] = true
+			}
+		}
+	}
+
+	return fmt.Sprint(slices.Sorted(maps.Keys(seen)))
 }
 
 // saasDevice is the part of a SaaS device-list entry the checks read.
