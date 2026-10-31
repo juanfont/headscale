@@ -16,6 +16,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
 	"pgregory.net/rapid"
@@ -24,6 +25,26 @@ import (
 	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/views"
 )
+
+// TestApprovedSubnetRoutesIgnoreNodeOrder: the routes land in every wildcard
+// rule, and the filter hash decides whether a policy write changed anything.
+func TestApprovedSubnetRoutesIgnoreNodeOrder(t *testing.T) {
+	t.Parallel()
+
+	router := func(name, route string) *types.Node {
+		n := node(name, "100.64.0.1", "fd7a:115c:a1e0::1", types.User{Name: "owner"})
+		r := netip.MustParsePrefix(route)
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{r}}
+		n.ApprovedRoutes = []netip.Prefix{r}
+
+		return n
+	}
+	a, b := router("a", "10.2.0.0/16"), router("b", "10.1.0.0/16")
+
+	want := []string{"10.1.0.0/16", "10.2.0.0/16"}
+	assert.Equal(t, want, approvedSubnetRoutes(types.Nodes{a, b}.ViewSlice()))
+	assert.Equal(t, want, approvedSubnetRoutes(types.Nodes{b, a}.ViewSlice()))
+}
 
 func node(name, ipv4, ipv6 string, user types.User) *types.Node {
 	return &types.Node{

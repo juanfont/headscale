@@ -386,6 +386,10 @@ func approvedSubnetRoutes(nodes views.Slice[types.NodeView]) []string {
 		}
 	}
 
+	// Nodes come in no fixed order. Without this, the same policy compiles to a
+	// new filter hash and reads as changed.
+	slices.Sort(routes)
+
 	return routes
 }
 
