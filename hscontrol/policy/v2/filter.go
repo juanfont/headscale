@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -656,6 +657,13 @@ func resolveLocalparts(
 			}
 
 			if !strings.EqualFold(emailDomain, domain) {
+				continue
+			}
+
+			// The client looks a numeric login up as a UID, so 0@domain would
+			// reach root and another number someone else's account.
+			_, notNumeric := strconv.ParseUint(localpart, util.Base10, 32)
+			if notNumeric == nil {
 				continue
 			}
 

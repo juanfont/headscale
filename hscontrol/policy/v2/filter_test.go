@@ -3112,6 +3112,17 @@ func TestResolveLocalparts(t *testing.T) {
 			},
 			want: map[uint]string{1: "dave+ssh"},
 		},
+		{
+			name:    "numeric local part is not a login",
+			entries: []SSHUser{"localpart:*@example.com"},
+			users: types.Users{
+				{Name: "zero", Email: "0@example.com", ID: 1},
+				{Name: "zeros", Email: "00@example.com", ID: 2},
+				{Name: "employee", Email: "1042@example.com", ID: 3},
+				{Name: "mixed", Email: "1042a@example.com", ID: 4},
+			},
+			want: map[uint]string{4: "1042a"},
+		},
 	}
 
 	for _, tt := range tests {
