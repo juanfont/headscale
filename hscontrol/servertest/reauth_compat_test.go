@@ -349,6 +349,9 @@ func (run *reauthRun) cellChecks(
 		check("outcome", registerOutcome(step.Register[login.Node]), func() string {
 			return registerOutcome(r.clients[cell].RegisterAttempts()[prev.attempts[cell]:])
 		})
+		check("tag-refusal", tagRefusal(step.Register[login.Node]), func() string {
+			return tagRefusal(r.clients[cell].RegisterAttempts()[prev.attempts[cell]:])
+		})
 	}
 
 	if slices.ContainsFunc(want, func(v deviceView) bool { _, ok := run.saasPrev[v.id]; return ok }) {
@@ -462,6 +465,18 @@ func loginReplayable(step testcapture.Step, a testcapture.Action, keyTags map[st
 
 	return minted && len(tags) == 0 && step.Result == "observed" &&
 		strings.HasSuffix(registerOutcome(step.Register[a.Node]), "accepted")
+}
+
+// tagRefusal is the text of a login's refused-tags answer: a client shows it as
+// it is, so unlike other refusals its words are compared.
+func tagRefusal(attempts []testcapture.RegisterAttempt) string {
+	for _, a := range attempts {
+		if strings.Contains(a.Err, "requested tags") {
+			return a.Err
+		}
+	}
+
+	return ""
 }
 
 // registerOutcome reads a login's register exchanges up to the answer that
