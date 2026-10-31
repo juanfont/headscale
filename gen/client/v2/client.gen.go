@@ -277,6 +277,12 @@ type GetDeviceParams struct {
 	Fields *string `form:"fields,omitempty" json:"fields,omitempty"`
 }
 
+// ExpireDeviceParams defines parameters for ExpireDevice.
+type ExpireDeviceParams struct {
+	// Fields Set to "all" for route fields.
+	Fields *string `form:"fields,omitempty" json:"fields,omitempty"`
+}
+
 // GetDeviceRoutesParams defines parameters for GetDeviceRoutes.
 type GetDeviceRoutesParams struct {
 	// Fields Set to "all" for route fields.
@@ -457,6 +463,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v2/device/{id}/authorized (the `AuthorizeDevice` operationId).
 	AuthorizeDevice(ctx context.Context, id string, body AuthorizeDeviceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExpireDevice Expire a device's key
+	//
+	// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+	//
+	// Corresponds with POST /api/v2/device/{id}/expire (the `ExpireDevice` operationId).
+	ExpireDevice(ctx context.Context, id string, params *ExpireDeviceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetDeviceKeyWithBody Set a device's key settings
 	//
@@ -732,6 +745,23 @@ func (c *Client) AuthorizeDeviceWithBody(ctx context.Context, id string, content
 // Corresponds with POST /api/v2/device/{id}/authorized (the `AuthorizeDevice` operationId).
 func (c *Client) AuthorizeDevice(ctx context.Context, id string, body AuthorizeDeviceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAuthorizeDeviceRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExpireDevice Expire a device's key
+//
+// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+//
+// Corresponds with POST /api/v2/device/{id}/expire (the `ExpireDevice` operationId).
+func (c *Client) ExpireDevice(ctx context.Context, id string, params *ExpireDeviceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExpireDeviceRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1368,6 +1398,67 @@ func NewAuthorizeDeviceRequestWithBody(server string, id string, contentType str
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewExpireDeviceRequest constructs an http.Request for the ExpireDevice method
+func NewExpireDeviceRequest(server string, id string, params *ExpireDeviceParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/device/%s/expire", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Fields != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "fields", *params.Fields, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -2336,6 +2427,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v2/device/{id}/authorized (the `AuthorizeDevice` operationId).
 	AuthorizeDeviceWithResponse(ctx context.Context, id string, body AuthorizeDeviceJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthorizeDeviceResponse, error)
 
+	// ExpireDeviceWithResponse Expire a device's key
+	//
+	// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v2/device/{id}/expire (the `ExpireDevice` operationId).
+	ExpireDeviceWithResponse(ctx context.Context, id string, params *ExpireDeviceParams, reqEditors ...RequestEditorFn) (*ExpireDeviceResponse, error)
+
 	// SetDeviceKeyWithBodyWithResponse Set a device's key settings
 	//
 	// Requires the `devices:core` OAuth scope (an admin API key is all-access).
@@ -2795,6 +2895,82 @@ func (r AuthorizeDeviceResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r AuthorizeDeviceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ExpireDeviceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *EmptyOutputBody
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *ErrorModel
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *ErrorModel
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *ErrorModel
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ErrorModel
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *ErrorModel
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExpireDeviceResponse) GetJSON200() *EmptyOutputBody {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ExpireDeviceResponse) GetApplicationproblemJSON401() *ErrorModel {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ExpireDeviceResponse) GetApplicationproblemJSON403() *ErrorModel {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ExpireDeviceResponse) GetApplicationproblemJSON404() *ErrorModel {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ExpireDeviceResponse) GetApplicationproblemJSON422() *ErrorModel {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ExpireDeviceResponse) GetApplicationproblemJSON500() *ErrorModel {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ExpireDeviceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExpireDeviceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExpireDeviceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExpireDeviceResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4202,6 +4378,21 @@ func (c *ClientWithResponses) AuthorizeDeviceWithResponse(ctx context.Context, i
 	return ParseAuthorizeDeviceResponse(rsp)
 }
 
+// ExpireDeviceWithResponse Expire a device's key
+//
+// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v2/device/{id}/expire (the `ExpireDevice` operationId).
+func (c *ClientWithResponses) ExpireDeviceWithResponse(ctx context.Context, id string, params *ExpireDeviceParams, reqEditors ...RequestEditorFn) (*ExpireDeviceResponse, error) {
+	rsp, err := c.ExpireDevice(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExpireDeviceResponse(rsp)
+}
+
 // SetDeviceKeyWithBodyWithResponse Set a device's key settings
 //
 // Requires the `devices:core` OAuth scope (an admin API key is all-access).
@@ -4730,6 +4921,67 @@ func ParseAuthorizeDeviceResponse(rsp *http.Response) (*AuthorizeDeviceResponse,
 			return nil, err
 		}
 		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExpireDeviceResponse parses an HTTP response from a ExpireDeviceWithResponse call
+func ParseExpireDeviceResponse(rsp *http.Response) (*ExpireDeviceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExpireDeviceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EmptyOutputBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest ErrorModel
