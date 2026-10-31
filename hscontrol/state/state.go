@@ -511,14 +511,22 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	s.policyMu.Lock()
 	defer s.policyMu.Unlock()
 
-	return s.reloadPolicyLocked()
+	_, err := s.reloadPolicyLocked()
+	if err != nil {
+		return nil, err
+	}
+
+	// Nodes whose CapMap shifted get their self refresh from
+	// [State.DrainSelfRefreshes] when these changes are dispatched.
+	return []change.Change{change.PolicyChange()}, nil
 }
 
-// reloadPolicyLocked is [State.ReloadPolicy] for callers holding policyMu.
-func (s *State) reloadPolicyLocked() ([]change.Change, error) {
+// reloadPolicyLocked is [State.ReloadPolicy] for callers holding policyMu. It
+// reports whether the policy changed.
+func (s *State) reloadPolicyLocked() (bool, error) {
 	pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
 	if err != nil {
-		return nil, fmt.Errorf("loading policy: %w", err)
+		return false, fmt.Errorf("loading policy: %w", err)
 	}
 
 	// nil means no policy is configured: nothing to install.
@@ -526,13 +534,9 @@ func (s *State) reloadPolicyLocked() ([]change.Change, error) {
 	if pol != nil {
 		policyChanged, err = s.polMan.SetPolicy(pol)
 		if err != nil {
-			return nil, fmt.Errorf("setting policy: %w", err)
+			return false, fmt.Errorf("setting policy: %w", err)
 		}
 	}
-
-	// Clear SSH check auth times when policy changes to ensure stale
-	// approvals don't persist if checkPeriod rules are modified or removed.
-	s.ClearSSHCheckAuth()
 
 	// Rebuild peer maps after policy changes because the peersFunc in [NodeStore]
 	// uses the [policy.PolicyManager]'s filters. Without this, nodes won't see
@@ -547,16 +551,14 @@ func (s *State) reloadPolicyLocked() ([]change.Change, error) {
 	// the policy with [State.SetPolicy], which rebuilds, store it, and
 	// reload the very same bytes.
 	if policyChanged {
+		// Stale approvals must not persist if checkPeriod rules are modified
+		// or removed.
+		s.ClearSSHCheckAuth()
 		s.nodeStore.RebuildPeerMaps()
-	}
-
-	if policyChanged {
 		log.Info().Msg("Policy reload completed with changes")
 	}
 
-	// Nodes whose CapMap shifted get their self refresh from
-	// [State.DrainSelfRefreshes] when these changes are dispatched.
-	return []change.Change{change.PolicyChange()}, nil
+	return policyChanged, nil
 }
 
 // CreateUser creates a new user and updates the policy manager.
@@ -1720,12 +1722,10 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 		return changed, err
 	}
 
-	// Clear SSH check auth times when policy changes.
-	s.ClearSSHCheckAuth()
-
 	// Payload-only writes reuse the cached adjacency, so a policy swap
 	// must rebuild it here rather than wait for the next relation write.
 	if changed {
+		s.ClearSSHCheckAuth()
 		s.nodeStore.RebuildPeerMaps()
 	}
 
@@ -1870,11 +1870,17 @@ func (s *State) UpdatePolicy(pol []byte) (*types.Policy, []change.Change, error)
 		return nil, nil, fmt.Errorf("storing policy: %w", err)
 	}
 
-	// Reload even when content is unchanged: routes manually disabled before
-	// may now qualify for auto-approval, so they must be re-evaluated.
-	cs, err := s.reloadPolicyLocked()
+	changed, err := s.reloadPolicyLocked()
+	if err != nil {
+		return stored, nil, err
+	}
 
-	return stored, cs, err
+	// As on SaaS, a write that changes nothing sends clients nothing.
+	if !changed {
+		return stored, nil, nil
+	}
+
+	return stored, []change.Change{change.PolicyChange()}, nil
 }
 
 // GetNodePrimaryRoutes returns the primary routes for a node.

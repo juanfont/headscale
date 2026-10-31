@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -482,6 +483,74 @@ func TestAPIV2TaggedDeviceUserCompat(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestNoChangePolicyWrite: SaaS sent nothing for the accepted writes in
+// policy-api that changed nothing. An approval to skip an SSH check must also
+// outlive such a write, as any rewrite by a gitops tool would otherwise drop it.
+func TestNoChangePolicyWrite(t *testing.T) {
+	t.Parallel()
+
+	const (
+		policy = `{"tagOwners":{"tag:server":["odin@"]},"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`
+		other  = `{"tagOwners":{"tag:server":["odin@"]},"acls":[{"action":"accept","src":["*"],"dst":["tag:server:22"]}]}`
+	)
+
+	srv := servertest.NewServer(t)
+	odin := srv.CreateUser(t, "odin")
+	key := srv.CreateAPIKey(t, odin)
+
+	post := func(body string) {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v2/tailnet/-/acl", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/hujson")
+
+		rec := httptest.NewRecorder()
+		srv.App.HTTPHandler().ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	post(policy)
+
+	desk := servertest.NewClient(t, srv, "desk", servertest.WithUser(odin))
+	server := servertest.NewClient(t, srv, "server", servertest.WithUser(odin), servertest.WithTags("tag:server"))
+	desk.WaitForPeers(t, 1, 20*time.Second)
+	server.WaitForPeers(t, 1, 20*time.Second)
+
+	src := types.NodeID(desk.Netmap().SelfNode.ID())   //nolint:gosec // test node IDs are small
+	dst := types.NodeID(server.Netmap().SelfNode.ID()) //nolint:gosec // test node IDs are small
+	srv.State().SetLastSSHAuth(src, dst)
+
+	// Late frames from the joins settle first.
+	var frames, steady int
+
+	require.Eventually(t, func() bool {
+		if n := desk.Frames(); n != frames {
+			frames, steady = n, 0
+
+			return false
+		}
+
+		steady++
+
+		return steady >= 10
+	}, 20*time.Second, 200*time.Millisecond, "frames settle after the joins")
+
+	post(policy)
+
+	assert.Never(t, func() bool { return desk.Frames() != frames }, 2*time.Second, 100*time.Millisecond,
+		"frames after a write that changes nothing")
+
+	_, kept := srv.State().GetLastSSHAuth(src, dst)
+	assert.True(t, kept, "SSH check approval after a write that changes nothing")
+
+	post(other)
+
+	assert.Eventually(t, func() bool { return desk.Frames() > frames }, 10*time.Second, 100*time.Millisecond,
+		"a write that changes the policy still reaches clients")
+
+	_, kept = srv.State().GetLastSSHAuth(src, dst)
+	assert.False(t, kept, "a changed policy drops SSH check approvals")
 }
 
 // deviceListChecks compares, per device in the step's device list, its user,
