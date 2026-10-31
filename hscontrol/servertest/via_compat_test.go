@@ -76,6 +76,19 @@ var viaCompatTests = []struct {
 	{"via-grant-v63", "repeated and nested via destinations, and a second via grant on one port"},
 	{"via-grant-v66", "a user source steers a subnet via tag:router"},
 	{"via-grant-v67", "an empty group as the only via source"},
+	{"via-grant-v80", "narrow source, capability only, router also a source"},
+	{"via-grant-v81", "narrow source with a port, router also a source"},
+	{"via-grant-v82", "subnet source, capability only"},
+	{"via-grant-v83", "subnet source with a port"},
+	{"via-grant-v84", "capability only, no via"},
+	{"via-grant-v85", "capability-only via beside an unrelated grant"},
+	{"via-grant-v86", "port and capability to a subnet, no via"},
+	{"via-grant-v87", "port and capability to a subnet, via"},
+	{"via-grant-v88", "capability only, via a tag the primary lacks"},
+	{"via-grant-v89", "port via and capability via as two grants, non-via primary"},
+	{"via-grant-v90", "port via and capability without via as two grants, non-via primary"},
+	{"via-grant-v91", "port and capability via in one grant, non-via primary"},
+	{"via-grant-v92", "port via with an empty capability map"},
 }
 
 // routesMapCompatTests lists routes captures replayed through the mapper.
