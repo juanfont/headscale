@@ -353,6 +353,29 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 	compareViaMapCompat(t, c, clients)
 }
 
+// TestDisableIPv4PeersCompat: a disable-ipv4 holder sees its peers over IPv6
+// only, in both recordings of such a viewer.
+func TestDisableIPv4PeersCompat(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []string{"nodeattrs-attr-c15-disable-ipv4", "nodeattrs-attr-c16-disable-ipv4-router"} {
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+
+			c, err := testcapture.Read(filepath.Join("..", "policy", "v2", "testdata", "nodeattrs_results", id+".hujson"))
+			require.NoError(t, err)
+
+			_, clients := startViaMapCompat(t, c, true)
+
+			for viewer, want := range c.Captures {
+				assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+					comparePeers(collect, clients[viewer].Netmap(), want, clients, id+"/"+viewer, nil)
+				}, 20*time.Second, 200*time.Millisecond, "viewer %s", viewer)
+			}
+		})
+	}
+}
+
 // startViaMapCompat starts a server holding the capture's policy and a
 // client per captured node, approving routes as [startCaptureClients] does,
 // and waits for every client's first netmap and the peers SaaS gave it.

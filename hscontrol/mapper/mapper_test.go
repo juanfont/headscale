@@ -1812,6 +1812,14 @@ func (b *MapResponseBuilder) buildTailPeersCapMapsReference(peers views.Slice[ty
 		tn.CapMap = policyv2.PeerCapMap(peer, allCapMaps[peer.ID()])
 		tn.Hostinfo = types.PeerHostinfo(tn.Hostinfo)
 
+		if _, ipv4Disabled := allCapMaps[node.ID()][types.NodeAttrDisableIPv4]; ipv4Disabled {
+			ownIPv4 := func(p netip.Prefix) bool {
+				return p.Addr().Is4() && slices.Contains(tn.Addresses, p)
+			}
+			tn.AllowedIPs = slices.DeleteFunc(tn.AllowedIPs, ownIPv4)
+			tn.Addresses = slices.DeleteFunc(tn.Addresses, func(p netip.Prefix) bool { return p.Addr().Is4() })
+		}
+
 		if peer.IsExpired() {
 			if peer.ActiveSessions() > 0 {
 				tn.Online, tn.LastSeen = new(true), nil
