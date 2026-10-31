@@ -24,6 +24,24 @@ type ApiErrorData struct {
 	User   *string   `json:"user,omitempty"`
 }
 
+// ClientConnectivity defines model for ClientConnectivity.
+type ClientConnectivity struct {
+	ClientSupports        ClientSupports         `json:"clientSupports"`
+	Endpoints             []string               `json:"endpoints"`
+	Latency               map[string]interface{} `json:"latency"`
+	MappingVariesByDestIP bool                   `json:"mappingVariesByDestIP"`
+}
+
+// ClientSupports defines model for ClientSupports.
+type ClientSupports struct {
+	HairPinning *bool `json:"hairPinning"`
+	Ipv6        bool  `json:"ipv6"`
+	Pcp         bool  `json:"pcp"`
+	Pmp         bool  `json:"pmp"`
+	Udp         bool  `json:"udp"`
+	Upnp        bool  `json:"upnp"`
+}
+
 // CreateKeyRequest defines model for CreateKeyRequest.
 type CreateKeyRequest struct {
 	Capabilities *KeyCapabilities `json:"capabilities,omitempty"`
@@ -47,34 +65,45 @@ type DeleteKeyOutputBody = map[string]interface{}
 
 // Device defines model for Device.
 type Device struct {
-	Addresses          []string   `json:"addresses"`
-	AdvertisedRoutes   *[]string  `json:"advertisedRoutes,omitempty"`
-	Authorized         bool       `json:"authorized"`
-	ClientVersion      string     `json:"clientVersion"`
-	ConnectedToControl bool       `json:"connectedToControl"`
-	Created            time.Time  `json:"created"`
-	EnabledRoutes      *[]string  `json:"enabledRoutes,omitempty"`
-	Expires            *time.Time `json:"expires,omitempty"`
-	Hostname           string     `json:"hostname"`
-	Id                 string     `json:"id"`
-	IsEphemeral        bool       `json:"isEphemeral"`
-	KeyExpiryDisabled  bool       `json:"keyExpiryDisabled"`
-	LastSeen           *time.Time `json:"lastSeen,omitempty"`
-	MachineKey         string     `json:"machineKey"`
-	Name               string     `json:"name"`
-	NodeId             string     `json:"nodeId"`
-	NodeKey            string     `json:"nodeKey"`
-	OauthClientId      *string    `json:"oauthClientId,omitempty"`
-	Os                 string     `json:"os"`
-	Tags               []string   `json:"tags"`
-	UpdateAvailable    bool       `json:"updateAvailable"`
-	User               string     `json:"user"`
+	Addresses                 []string            `json:"addresses"`
+	AdvertisedRoutes          *[]string           `json:"advertisedRoutes,omitempty"`
+	Authorized                bool                `json:"authorized"`
+	BlocksIncomingConnections bool                `json:"blocksIncomingConnections"`
+	ClientConnectivity        *ClientConnectivity `json:"clientConnectivity,omitempty"`
+	ClientVersion             string              `json:"clientVersion"`
+	ConnectedToControl        bool                `json:"connectedToControl"`
+	Created                   time.Time           `json:"created"`
+	Distro                    *Distro             `json:"distro,omitempty"`
+	EnabledRoutes             *[]string           `json:"enabledRoutes,omitempty"`
+	Expires                   *time.Time          `json:"expires,omitempty"`
+	Hostname                  string              `json:"hostname"`
+	Id                        string              `json:"id"`
+	IsEphemeral               bool                `json:"isEphemeral"`
+	KeyExpiryDisabled         bool                `json:"keyExpiryDisabled"`
+	LastSeen                  *time.Time          `json:"lastSeen,omitempty"`
+	MachineKey                string              `json:"machineKey"`
+	Name                      string              `json:"name"`
+	NodeId                    string              `json:"nodeId"`
+	NodeKey                   string              `json:"nodeKey"`
+	OauthClientId             *string             `json:"oauthClientId,omitempty"`
+	Os                        string              `json:"os"`
+	SshEnabled                *bool               `json:"sshEnabled,omitempty"`
+	Tags                      []string            `json:"tags"`
+	UpdateAvailable           bool                `json:"updateAvailable"`
+	User                      string              `json:"user"`
 }
 
 // DeviceRoutes defines model for DeviceRoutes.
 type DeviceRoutes struct {
 	AdvertisedRoutes []string `json:"advertisedRoutes"`
 	EnabledRoutes    []string `json:"enabledRoutes"`
+}
+
+// Distro defines model for Distro.
+type Distro struct {
+	CodeName string `json:"codeName"`
+	Name     string `json:"name"`
+	Version  string `json:"version"`
 }
 
 // EmptyOutputBody defines model for EmptyOutputBody.
