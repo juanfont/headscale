@@ -91,6 +91,10 @@ func (h *Headscale) handleRegister(
 			log.Warn().
 				Str("node.key", req.NodeKey.ShortString()).
 				Msg("Logout attempt but node not found in NodeStore")
+
+			// A client sends its auth key with a logout. Going on would spend
+			// it to register the device an admin just deleted.
+			return &tailcfg.RegisterResponse{NodeKeyExpired: true}, nil
 		}
 	}
 

@@ -679,6 +679,47 @@ func TestNodeExpiryRouteFailover(t *testing.T) {
 	}
 }
 
+// TestLogoutOfDeletedDeviceRegistersNothing: a client sends its auth key with a
+// logout, and that must not bring back the device an admin just deleted.
+func TestLogoutOfDeletedDeviceRegistersNothing(t *testing.T) {
+	t.Parallel()
+
+	for name, key := range map[string]func(*servertest.TestServer, types.UserID) string{
+		"reusable": func(srv *servertest.TestServer, id types.UserID) string { return srv.CreatePreAuthKey(t, id) },
+		"ephemeral": func(srv *servertest.TestServer, id types.UserID) string {
+			return srv.CreateEphemeralPreAuthKey(t, id)
+		},
+		"tagged": func(srv *servertest.TestServer, id types.UserID) string {
+			return srv.CreateTaggedPreAuthKey(t, id, []string{"tag:server"})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := servertest.NewServer(t)
+			owner := srv.CreateUser(t, "owner")
+
+			_, err := srv.State().SetPolicy([]byte(`{"tagOwners":{"tag:server":["owner@"]}}`))
+			require.NoError(t, err)
+
+			client := servertest.NewClient(t, srv, "device", servertest.WithAuthKey(key(srv, types.UserID(owner.ID))))
+			client.WaitForCondition(t, "a first map", 20*time.Second, func(nm *netmap.NetworkMap) bool {
+				return nm != nil && nm.SelfNode.Valid()
+			})
+
+			nodes := srv.State().ListNodes()
+			require.Equal(t, 1, nodes.Len())
+
+			c, err := srv.State().DeleteNode(nodes.At(0))
+			require.NoError(t, err)
+			srv.App.Change(c...)
+
+			require.NoError(t, client.LogoutAndDisconnect(t.Context()))
+			assert.Equal(t, 0, srv.State().ListNodes().Len())
+		})
+	}
+}
+
 // TestLogoutReloginAllClientsConverge is an in-process reproduction of the
 // flaky integration tests TestAuthKeyLogoutAndReloginSameUser,
 // TestAuthWebFlowLogoutAndReloginSameUser and
