@@ -447,7 +447,7 @@ func resolveTestSource(src string, pol *Policy, users []types.User, nodes views.
 	case Asterix:
 		unknown = true
 	case *AutoGroup:
-		unknown = a.Is(AutoGroupTagged)
+		unknown = a.Is(AutoGroupTagged) || a.Is(AutoGroupMember)
 	}
 
 	if unknown {
