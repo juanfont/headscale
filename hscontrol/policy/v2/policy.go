@@ -1584,6 +1584,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	// grants are only needed once a via grant has matched, and
 	// destinations only for grants that match the viewer.
 	viewerIPs := viewer.IPs()
+	viewerRoutes := viewer.SubnetRoutes()
 	resolved := make([]bool, len(grants))
 	viewerMatchesGrant := make([]bool, len(grants))
 	resolvedDstPrefixes := make([][]netip.Prefix, len(grants))
@@ -1602,7 +1603,16 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				continue
 			}
 
-			if ips != nil && slices.ContainsFunc(viewerIPs, ips.Contains) {
+			if ips == nil {
+				continue
+			}
+
+			// A router acts for its subnets, as in [types.Node.CanAccessRoutes],
+			// so a source naming one of them matches the router.
+			if slices.ContainsFunc(viewerIPs, ips.Contains) ||
+				slices.ContainsFunc(viewerRoutes, func(route netip.Prefix) bool {
+					return slices.ContainsFunc(ips.Prefixes(), route.Overlaps)
+				}) {
 				viewerMatchesGrant[i] = true
 
 				break
