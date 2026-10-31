@@ -2578,7 +2578,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			node.DiscoKey = regData.DiscoKey
 		}
 
-		node.Hostname = params.Hostname
+		setHostname(node, params.Hostname)
 		node.Hostinfo = hostinfo
 
 		// Preserve the node's live endpoints when the register request carried
@@ -3699,7 +3699,7 @@ func (s *State) reregisterNodeWithPAK(
 			return
 		}
 
-		node.Hostname = hostname
+		setHostname(node, hostname)
 
 		// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
 		// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
@@ -4114,6 +4114,23 @@ func (s *State) PingDB(ctx context.Context) error {
 	return s.db.PingDB(ctx)
 }
 
+// setHostname stores a node's hostname, and its name follows, as on SaaS. An
+// admin-set name stays: the name only follows while it is still what the old
+// hostname gives (possibly with a "-N" collision bump). [NodeStore.UpdateNode]
+// bumps a name that collides.
+func setHostname(node *types.Node, hostname string) {
+	if hostname == node.Hostname {
+		return
+	}
+
+	autoDerived := isAutoDerivedGivenName(node.GivenName, node.Hostname)
+
+	node.Hostname = hostname
+	if autoDerived {
+		node.GivenName = dnsname.SanitizeHostname(hostname)
+	}
+}
+
 // isAutoDerivedGivenName reports whether given matches what
 // dnsname.SanitizeHostname(hostname) would produce, optionally with a
 // [NodeStore] collision-bump "-N" suffix ([bumpedLabel]). It is used to
@@ -4271,17 +4288,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		// Only a real hostname change may re-derive GivenName: it is peer
 		// visible, so the whole node is resent and peers learn the name.
 		if hasReportedHostnameChange(currentNode.Hostname, newHostinfo) {
-			// Preserve an admin-renamed GivenName: only auto-derive
-			// when the current GivenName is still what
-			// SanitizeHostname of the old Hostname would produce
-			// (possibly with a "-N" collision bump).
-			autoDerived := isAutoDerivedGivenName(currentNode.GivenName, currentNode.Hostname)
-
-			currentNode.Hostname = newHostinfo.Hostname
-			if autoDerived {
-				currentNode.GivenName = dnsname.SanitizeHostname(newHostinfo.Hostname)
-				// [NodeStore.UpdateNode] auto-bumps GivenName on collision.
-			}
+			setHostname(currentNode, newHostinfo.Hostname)
 		}
 
 		// Approval follows the announced set, only when it changes: any

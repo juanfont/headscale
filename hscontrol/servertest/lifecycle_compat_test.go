@@ -187,6 +187,14 @@ func runRouteLifecycleCompat(t *testing.T, id, observer string, skips map[string
 				{"filter-routes", filterRouteSources(step.Captures[observer].Netmap), func() string {
 					return filterRouteSources(r.clients[observer].Netmap())
 				}},
+				{"name", firstLabel(dev.Name), func() string {
+					nodes := r.machineNodes(router)
+					if len(nodes) != 1 {
+						return fmt.Sprintf("devices %d", len(nodes))
+					}
+
+					return nodes[0].GivenName()
+				}},
 				{"device", deviceState(
 					countDevicesOnMachine(t, step, dev.MachineKey),
 					dev.ID == join.saasID, sortedStrings(dev.Addresses) == join.saasAddrs,
@@ -388,6 +396,12 @@ func filterRouteSources(nm *netmap.NetworkMap) string {
 	}
 
 	return fmt.Sprint(slices.Sorted(maps.Keys(seen)))
+}
+
+func firstLabel(name string) string {
+	label, _, _ := strings.Cut(name, ".")
+
+	return label
 }
 
 // saasDevice is the part of a SaaS device-list entry the checks read.
