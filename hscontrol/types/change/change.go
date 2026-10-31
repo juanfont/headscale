@@ -625,9 +625,9 @@ func NodeKeyRotated(node types.NodeView) Change {
 	nk := node.NodeKey()
 	dk := node.DiscoKey()
 
-	// KeyExpiry is always set: the zero value clears any prior expiry
-	// timestamp on the peer, and a non-zero value carries the new expiry. It
-	// does not clear [tailcfg.Node.Expired]. It is sent in UTC, as
+	// KeyExpiry carries the new expiry. The zero value does not reach the wire
+	// ([tailcfg.PeerChange] omits it), so a removed expiry needs the whole node.
+	// It does not clear [tailcfg.Node.Expired]. It is sent in UTC, as
 	// [types.NodeView.TailNode] sends it: the stored zone depends on the
 	// database.
 	var expiry time.Time

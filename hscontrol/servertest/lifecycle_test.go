@@ -679,6 +679,47 @@ func TestNodeExpiryRouteFailover(t *testing.T) {
 	}
 }
 
+// TestReloginWithoutExpiryClearsPeerExpiry: a relogin can drop a node's expiry on
+// the default config, and peers must not keep the old one and cut the node off.
+func TestReloginWithoutExpiryClearsPeerExpiry(t *testing.T) {
+	t.Parallel()
+
+	h := servertest.NewHarness(t, 2)
+	client, observer := h.Client(0), h.Client(1)
+	id := findNodeID(t, h.Server, client.Name)
+
+	future := time.Now().Add(time.Hour).UTC()
+	_, c, err := h.Server.State().SetNodeExpiry(id, &future)
+	require.NoError(t, err)
+	h.Server.App.Change(c)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		p, ok := observer.PeerByName(client.Name)
+		if assert.True(c, ok) {
+			assert.True(c, p.KeyExpiry().Equal(future))
+		}
+	}, 10*time.Second, 50*time.Millisecond, "observer holds the expiry")
+
+	nv, ok := h.Server.State().GetNodeByID(id)
+	require.True(t, ok)
+
+	key := h.Server.CreatePreAuthKey(t, nv.TypedUserID())
+	hostinfo := &tailcfg.Hostinfo{BackendLogID: "servertest-" + client.Name, Hostname: client.Name}
+	require.NoError(t, client.Relogin(t.Context(), key, true, hostinfo))
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		cur, ok := h.Server.State().GetNodeByID(id)
+		if assert.True(c, ok) {
+			assert.False(c, cur.Expiry().Valid(), "the server holds no expiry")
+		}
+
+		p, ok := observer.PeerByName(client.Name)
+		if assert.True(c, ok) {
+			assert.True(c, p.KeyExpiry().IsZero(), "observer holds %v", p.KeyExpiry())
+		}
+	}, 10*time.Second, 50*time.Millisecond, "observer drops the expiry")
+}
+
 // TestReloginFollowsNewHostname: a node's name follows a new hostname at a login
 // as at a map request, and later hostname changes still rename it. An admin-set
 // name stays.
