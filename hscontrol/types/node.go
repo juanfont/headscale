@@ -1429,9 +1429,14 @@ func (nv NodeView) TailNode(
 	// cfg.DNSConfig.Certificates.Enabled gates HTTPS, without which
 	// `tailscale serve` refuses to serve HTTPS.
 	capMap := tailcfg.NodeCapMap{
-		nodecap.Admin:                   []tailcfg.RawMessage{},
 		nodecap.SSH:                     []tailcfg.RawMessage{},
 		nodecap.SSHEnvironmentVariables: []tailcfg.RawMessage{},
+	}
+
+	// Headscale has no user roles, so every user counts as an admin. A tagged
+	// node has no user to hold the role, and SaaS does not stamp it either.
+	if !nv.IsTagged() {
+		capMap[nodecap.Admin] = []tailcfg.RawMessage{}
 	}
 
 	if cfg.Taildrop.Enabled {
