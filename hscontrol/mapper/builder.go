@@ -109,10 +109,14 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 		func(p netip.Prefix) bool { return !b.mapper.cfg.ServesRoute(p) },
 	)
 
-	// As on Tailscale SaaS, an expired node's own entry stays authorised and
-	// unmarked; the client reads its expiry from the past KeyExpiry.
+	// As on Tailscale SaaS, only a node's own entry is authorised, and an
+	// expired node's stays so and unmarked; the client reads its expiry from
+	// the past KeyExpiry.
 	tailnode.MachineAuthorized = true
 	tailnode.Expired = false
+
+	// As on Tailscale SaaS. A client knows its own version and connection.
+	tailnode.Cap, tailnode.Online, tailnode.LastSeen = 0, nil, nil
 
 	tailnode.Hostinfo = types.SelfHostinfo(tailnode.Hostinfo)
 

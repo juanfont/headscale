@@ -1028,7 +1028,7 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 	// An ordinary node going offline only needs the lightweight offline
 	// patch. Subnet routers, relay targets, and via targets change what
 	// peers compute, so they additionally force a peer recompute.
-	cs := []change.Change{change.NodeOffline(node.ID())}
+	cs := []change.Change{change.NodeOffline(node.ID(), node.LastSeen().Get())}
 	if s.polMan.NodeNeedsPeerRecompute(node) {
 		cs = append(cs, change.PolicyChange())
 	}

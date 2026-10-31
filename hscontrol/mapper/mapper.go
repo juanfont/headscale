@@ -135,6 +135,16 @@ func generateDNSConfig(
 		dnsConfig.CertDomains = []string{domain}
 	}
 
+	// An exit node refuses to proxy these names. Without this, where its OS
+	// resolver reaches MagicDNS, a client allowed only to use the exit node can
+	// read its view of the tailnet through it. Two gaps are deliberate. Without
+	// MagicDNS, base_domain can be a public domain whose names clients ask the
+	// exit node for, so node names stay readable. Reverse lookups stay open, as
+	// on Tailscale SaaS.
+	if dnsConfig.Proxied && cfg.BaseDomain != "" {
+		dnsConfig.ExitNodeFilteredSet = []string{"." + strings.ToLower(cfg.BaseDomain)}
+	}
+
 	return dnsConfig
 }
 

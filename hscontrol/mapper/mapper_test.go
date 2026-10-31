@@ -42,6 +42,34 @@ var iap = func(ipStr string) *netip.Addr {
 	return &ip
 }
 
+func TestExitNodeFilteredSet(t *testing.T) {
+	tests := []struct {
+		name       string
+		magicDNS   bool
+		baseDomain string
+		want       []string
+	}{
+		{name: "magicdns", magicDNS: true, baseDomain: "Tail.Example.com", want: []string{".tail.example.com"}},
+		{name: "no magicdns", magicDNS: false, baseDomain: "tail.example.com"},
+		{name: "no base domain", magicDNS: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generateDNSConfig(
+				&types.Config{
+					BaseDomain:       tt.baseDomain,
+					TailcfgDNSConfig: &tailcfg.DNSConfig{Proxied: tt.magicDNS},
+				},
+				(&types.Node{}).View(),
+				nil,
+			)
+
+			assert.Equal(t, tt.want, got.ExitNodeFilteredSet)
+		})
+	}
+}
+
 func TestDNSConfigMapResponse(t *testing.T) {
 	tests := []struct {
 		magicDNS bool
@@ -921,7 +949,7 @@ func TestMapResponseNeverContainsSelfAsPeer(t *testing.T) {
 					"policy change": change.PolicyChange(),
 					"self added":    change.NodeAdded(recipient),
 					"self online":   change.NodeOnline(recipient),
-					"self offline":  change.NodeOffline(recipient),
+					"self offline":  change.NodeOffline(recipient, time.Time{}),
 					// A batch naming every node, the recipient included.
 					// change.PeersChanged carries no OriginNode, so the
 					// self-update short circuit in buildFromChange never fires

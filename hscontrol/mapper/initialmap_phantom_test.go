@@ -186,7 +186,7 @@ func TestHeldChangesKeepOrderWhenStreamTurnsReady(t *testing.T) {
 			name: "online_then_offline",
 			bundle: func(p, _ types.NodeID) []change.Change {
 				return []change.Change{
-					change.NodeOnline(p), change.DERPMap(), change.NodeOffline(p),
+					change.NodeOnline(p), change.DERPMap(), change.NodeOffline(p, time.Time{}),
 				}
 			},
 			want: func(p, _ types.NodeID) []string {

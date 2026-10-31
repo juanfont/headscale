@@ -287,7 +287,7 @@ func TestAddToBatchDifferential(t *testing.T) {
 			change.SelfUpdate(88), ping, change.NodeOnline(2),
 		}},
 		{"repeated_kinds", []change.Change{
-			change.NodeOnline(2), change.NodeOffline(2), change.NodeOnline(2),
+			change.NodeOnline(2), change.NodeOffline(2, time.Time{}), change.NodeOnline(2),
 			change.PeersChanged("several peers", 3, 1),
 		}},
 		{"deletion", []change.Change{
@@ -359,7 +359,7 @@ func TestAddToBatchRecipientStorage(t *testing.T) {
 			lb := setupLightweightBatcher(t, 2, 1)
 			t.Cleanup(lb.cleanup)
 
-			incoming := []change.Change{change.NodeOnline(1), change.NodeOffline(1)}
+			incoming := []change.Change{change.NodeOnline(1), change.NodeOffline(1, time.Time{})}
 			impl.add(lb.b, incoming...)
 			incoming[0] = change.FullUpdate()
 
@@ -370,7 +370,7 @@ func TestAddToBatchRecipientStorage(t *testing.T) {
 
 			assert.Equal(
 				t,
-				[]change.Change{change.NodeOnline(1), change.NodeOffline(1)},
+				[]change.Change{change.NodeOnline(1), change.NodeOffline(1, time.Time{})},
 				getPendingForNode(lb.b, 2),
 				"recipients must own their pending slices",
 			)

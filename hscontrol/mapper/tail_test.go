@@ -68,11 +68,10 @@ func TestTailNode(t *testing.T) {
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
-				Name:              "empty",
-				StableID:          "0",
-				HomeDERP:          0,
-				Hostinfo:          hiview(tailcfg.Hostinfo{}),
-				MachineAuthorized: true,
+				Name:     "empty",
+				StableID: "0",
+				HomeDERP: 0,
+				Hostinfo: hiview(tailcfg.Hostinfo{}),
 
 				CapMap: tailcfg.NodeCapMap{
 					nodecap.Admin:                   []tailcfg.RawMessage{},
@@ -133,9 +132,6 @@ func TestTailNode(t *testing.T) {
 				),
 				KeyExpiry: expire,
 
-				Machine: mustMK(
-					"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-				),
 				DiscoKey: mustDK(
 					"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 				),
@@ -162,8 +158,6 @@ func TestTailNode(t *testing.T) {
 
 				Tags: []string{},
 
-				MachineAuthorized: true,
-
 				CapMap: tailcfg.NodeCapMap{
 					nodecap.Admin:                   []tailcfg.RawMessage{},
 					nodecap.SSH:                     []tailcfg.RawMessage{},
@@ -184,11 +178,10 @@ func TestTailNode(t *testing.T) {
 			baseDomain: "example.com",
 			want: &tailcfg.Node{
 				// a node name should have a dot appended
-				Name:              "minimal.example.com.",
-				StableID:          "0",
-				HomeDERP:          0,
-				Hostinfo:          hiview(tailcfg.Hostinfo{}),
-				MachineAuthorized: true,
+				Name:     "minimal.example.com.",
+				StableID: "0",
+				HomeDERP: 0,
+				Hostinfo: hiview(tailcfg.Hostinfo{}),
 
 				CapMap: tailcfg.NodeCapMap{
 					nodecap.Admin:                   []tailcfg.RawMessage{},

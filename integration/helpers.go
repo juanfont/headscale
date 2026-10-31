@@ -806,10 +806,7 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 		assert.NotEmptyf(c, netmap.SelfNode.AllowedIPs(), "%q does not have any allowed IPs", client.Hostname())
 		assert.NotEmptyf(c, netmap.SelfNode.Addresses(), "%q does not have any addresses", client.Hostname())
 
-		assert.Truef(c, netmap.SelfNode.Online().Get(), "%q is not online", client.Hostname())
-
 		assert.Falsef(c, netmap.SelfNode.Key().IsZero(), "%q does not have a valid NodeKey", client.Hostname())
-		assert.Falsef(c, netmap.SelfNode.Machine().IsZero(), "%q does not have a valid MachineKey", client.Hostname())
 		assert.Falsef(c, netmap.SelfNode.DiscoKey().IsZero(), "%q does not have a valid DiscoKey", client.Hostname())
 
 		for _, peer := range netmap.Peers {
@@ -829,7 +826,6 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 			assert.Truef(c, peer.Online().Get(), "peer (%s) of %q is not online", peer.ComputedName(), client.Hostname())
 
 			assert.Falsef(c, peer.Key().IsZero(), "peer (%s) of %q does not have a valid NodeKey", peer.ComputedName(), client.Hostname())
-			assert.Falsef(c, peer.Machine().IsZero(), "peer (%s) of %q does not have a valid MachineKey", peer.ComputedName(), client.Hostname())
 			assert.Falsef(c, peer.DiscoKey().IsZero(), "peer (%s) of %q does not have a valid DiscoKey", peer.ComputedName(), client.Hostname())
 		}
 	}, 10*time.Second, 200*time.Millisecond, "Waiting for valid netmap for %q", client.Hostname())

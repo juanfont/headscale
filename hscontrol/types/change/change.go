@@ -525,14 +525,17 @@ func NodeOnline(nodeID types.NodeID) Change {
 	}
 }
 
-// NodeOffline creates a patch response for a node going offline.
-func NodeOffline(nodeID types.NodeID) Change {
+// NodeOffline creates a patch response for a node going offline. As on
+// Tailscale SaaS it says when, so peers need no full map to show it. SaaS
+// sends a coarser time; the exact one here is deliberate.
+func NodeOffline(nodeID types.NodeID, lastSeen time.Time) Change {
 	return Change{
 		Reason: "node offline",
 		PeerPatches: []*tailcfg.PeerChange{
 			{
-				NodeID: nodeID.NodeID(),
-				Online: new(false),
+				NodeID:   nodeID.NodeID(),
+				Online:   new(false),
+				LastSeen: &lastSeen,
 			},
 		},
 	}
