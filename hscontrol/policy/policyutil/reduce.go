@@ -123,7 +123,9 @@ func appendOwnDests(
 // [tailcfg.CapGrant] entries whose Dsts match the given node's IPs. When a
 // broad prefix (e.g. 100.64.0.0/10 from dst:*) contains a node's IP, it is
 // narrowed to the node's specific /32 or /128 prefix. Returns nil if
-// no [tailcfg.CapGrant] entries are relevant to this node.
+// no [tailcfg.CapGrant] entries are relevant to this node. A destination the
+// node only routes is not relevant: via-grant-v84 and v86 show SaaS sending a
+// router no capability for its subnet.
 func reduceCapGrantRule(
 	node types.NodeView,
 	rule tailcfg.FilterRule,
@@ -131,7 +133,6 @@ func reduceCapGrantRule(
 	var capGrants []tailcfg.CapGrant
 
 	nodeIPs := node.IPs()
-	subnetRoutes := node.SubnetRoutes()
 
 	for _, cg := range rule.CapGrant {
 		// Collect the node's IPs that fall within any of this
@@ -156,27 +157,9 @@ func reduceCapGrantRule(
 			}
 		}
 
-		// Asymmetric on purpose: the IP-match loop above narrows broad
-		// prefixes to node-specific /32 or /128 so peers receive only
-		// the minimum routing surface. The route-match loop below
-		// preserves the original prefix so the subnet-serving node
-		// receives the full CapGrant scope. [types.NodeView.SubnetRoutes]
-		// excludes both unapproved and exit routes, matching Tailscale
-		// SaaS behavior.
-		for _, dst := range cg.Dsts {
-			for _, subnetRoute := range subnetRoutes {
-				if dst.Overlaps(subnetRoute) {
-					// For route overlaps, keep the original prefix.
-					matchingDsts = append(matchingDsts, dst)
-				}
-			}
-		}
-
 		if len(matchingDsts) > 0 {
-			// A Dst can be appended twice when a broad prefix both
-			// contains a node IP and overlaps one of its approved
-			// subnet routes. Sort + Compact dedups; [netip.Prefix] is
-			// comparable so Compact works with ==.
+			// Several Dsts can narrow to the same node IP. Sort + Compact
+			// dedups; [netip.Prefix] is comparable so Compact works with ==.
 			slices.SortFunc(matchingDsts, netip.Prefix.Compare)
 			matchingDsts = slices.Compact(matchingDsts)
 
