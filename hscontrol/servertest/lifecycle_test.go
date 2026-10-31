@@ -679,6 +679,50 @@ func TestNodeExpiryRouteFailover(t *testing.T) {
 	}
 }
 
+// TestReloginFollowsNewHostname: a node's name follows a new hostname at a login
+// as at a map request, and later hostname changes still rename it. An admin-set
+// name stays.
+func TestReloginFollowsNewHostname(t *testing.T) {
+	t.Parallel()
+
+	hostinfo := func(name string) *tailcfg.Hostinfo {
+		return &tailcfg.Hostinfo{Hostname: name, BackendLogID: "servertest"}
+	}
+
+	srv := servertest.NewServer(t)
+	owner := srv.CreateUser(t, "owner")
+	id := types.UserID(owner.ID)
+	client := servertest.NewClient(t, srv, "first", servertest.WithUser(owner))
+
+	client.WaitForCondition(t, "a first map", 20*time.Second, func(nm *netmap.NetworkMap) bool {
+		return nm != nil && nm.SelfNode.Valid()
+	})
+
+	givenName := func() string {
+		nodes := srv.State().ListNodes()
+		require.Equal(t, 1, nodes.Len())
+
+		return nodes.At(0).GivenName()
+	}
+
+	require.NoError(t, client.LogoutAndDisconnect(t.Context()))
+	require.NoError(t, client.Relogin(t.Context(), srv.CreatePreAuthKey(t, id), false, hostinfo("second")))
+	assert.Equal(t, "second", givenName())
+
+	client.Direct().SetHostinfo(hostinfo("third"))
+	require.NoError(t, client.Direct().SendUpdate(t.Context()))
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, "third", givenName())
+	}, 10*time.Second, 100*time.Millisecond, "a later hostname change renames too")
+
+	_, _, err := srv.State().RenameNode(srv.State().ListNodes().At(0).ID(), "chosen")
+	require.NoError(t, err)
+
+	require.NoError(t, client.LogoutAndDisconnect(t.Context()))
+	require.NoError(t, client.Relogin(t.Context(), srv.CreatePreAuthKey(t, id), false, hostinfo("fourth")))
+	assert.Equal(t, "chosen", givenName(), "a login keeps an admin-set name")
+}
+
 // TestLogoutOfDeletedDeviceRegistersNothing: a client sends its auth key with a
 // logout, and that must not bring back the device an admin just deleted.
 func TestLogoutOfDeletedDeviceRegistersNothing(t *testing.T) {
