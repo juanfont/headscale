@@ -19,6 +19,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/libdns/cloudflare"
 	"github.com/rs/zerolog"
@@ -154,7 +155,7 @@ func TestReadConfig(t *testing.T) {
 			},
 			want: &tailcfg.DNSConfig{
 				Proxied: false,
-				Domains: []string{"example.com", "test.com", "bar.com"},
+				Domains: []string{"test.com", "bar.com"},
 				FallbackResolvers: []*dnstype.Resolver{
 					{Addr: "1.1.1.1"},
 					{Addr: "1.0.0.1"},
@@ -1824,6 +1825,27 @@ func TestLoadCLIConfigRejectsNonBoolean(t *testing.T) {
 			_, err = LoadCLIConfig()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), key)
+		})
+	}
+}
+
+// TestDNSDomainsCompat: SaaS sends the tailnet domain as a search domain with
+// MagicDNS on and leaves it out with MagicDNS off.
+func TestDNSDomainsCompat(t *testing.T) {
+	for id, magicDNS := range map[string]bool{
+		"nodeattrs-nextdns-d1-profile":  false,
+		"nodeattrs-tailnet-magicdns-on": true,
+	} {
+		t.Run(id, func(t *testing.T) {
+			c, err := testcapture.Read(filepath.Join("..", "policy", "v2", "testdata", "nodeattrs_results", id+".hujson"))
+			require.NoError(t, err)
+
+			got := dnsToTailcfgDNS(DNSConfig{MagicDNS: magicDNS, BaseDomain: "example.com"})
+
+			for node, capture := range c.Captures {
+				require.NotNil(t, capture.Netmap, node)
+				assert.Equal(t, len(capture.Netmap.DNS.Domains) > 0, len(got.Domains) > 0, node)
+			}
 		})
 	}
 }

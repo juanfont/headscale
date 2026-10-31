@@ -1427,7 +1427,10 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 	routes := dns.splitResolvers()
 
 	cfg.Routes = routes
-	if dns.BaseDomain != "" {
+	// Only MagicDNS answers for the base domain, and SaaS sends it only then. Sent
+	// alone, it left a client that writes resolv.conf itself with a search line
+	// and no nameserver.
+	if dns.MagicDNS && dns.BaseDomain != "" {
 		cfg.Domains = []string{dns.BaseDomain}
 	}
 
