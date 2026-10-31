@@ -1237,7 +1237,7 @@ func TestLongPollShutdownWaitsForCleanup(t *testing.T) {
 			})
 
 			require.Eventually(t, func() bool {
-				return writer.WriteCount() >= 2 && app.mapBatcher.IsConnected(node.ID())
+				return writer.WriteCount() >= 1 && app.mapBatcher.IsConnected(node.ID())
 			}, 2*time.Second, 10*time.Millisecond, "map session should connect")
 
 			if inGrace {
@@ -1322,17 +1322,19 @@ func TestDeletedNodeInterruptsBlockedWrite(t *testing.T) {
 	}()
 
 	require.Eventually(t, func() bool {
-		return writer.WriteCount() >= 2 && app.mapBatcher.IsConnected(nodeView.ID())
+		return writer.WriteCount() >= 1 && app.mapBatcher.IsConnected(nodeView.ID())
 	}, 2*time.Second, 10*time.Millisecond,
-		"expected the initial map and connect update to be delivered")
+		"expected the initial map to be delivered")
 
 	writer.BlockWrites()
-	app.Change(change.SelfUpdate(nodeView.ID()))
+
+	// A self update with nothing new would send no frame.
+	app.Change(change.FullUpdate())
 
 	select {
 	case <-writer.WriteStarted():
 	case <-time.After(2 * time.Second):
-		t.Fatal("expected the initial map write to block")
+		t.Fatal("expected the next write to block")
 	}
 
 	cs, err := app.state.DeleteNode(nodeView)

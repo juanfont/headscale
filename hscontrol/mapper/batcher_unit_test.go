@@ -1758,6 +1758,7 @@ func TestMultiChannelSend_SSHPolicyPerConnection(t *testing.T) {
 	mc.addConnection(b)
 
 	data := testMapResponse()
+	data.Domain = "example.com"
 	data.SSHPolicy = sshPolicyForUser("alice")
 
 	require.NoError(t, mc.send(data))
@@ -1808,6 +1809,26 @@ func TestPartialPeerAdditionThenRevocation(t *testing.T) {
 	b.processBatchedChanges()
 	require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
 	require.Equal(t, []tailcfg.NodeID{peer}, expectReceive(t, fast, "revocation must remove partially delivered peer").PeersRemoved)
+}
+
+// TestSendSkipsResponseLeftEmptyByStripping: a stream that holds this Node and
+// SSHPolicy already has nothing to read, so it gets no frame.
+func TestSendSkipsResponseLeftEmptyByStripping(t *testing.T) {
+	mc := newMultiChannelNodeConn(1, nil)
+	ch := make(chan *tailcfg.MapResponse, 2)
+	mc.addConnection(makeConnectionEntry("stream", ch))
+
+	now := time.Now()
+	self := &tailcfg.Node{ID: 1}
+	ssh := &tailcfg.SSHPolicy{}
+	frame := &tailcfg.MapResponse{ControlTime: &now, Node: self, SSHPolicy: ssh}
+
+	require.NoError(t, mc.send(frame))
+	require.Len(t, ch, 1)
+	<-ch
+
+	require.NoError(t, mc.send(frame))
+	require.Empty(t, ch, "nothing new for this stream")
 }
 
 func TestEmptyMapResponse(t *testing.T) {

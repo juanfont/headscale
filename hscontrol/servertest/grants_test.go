@@ -207,9 +207,6 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 		c2.WaitForPeers(t, 1, 10*time.Second)
 
 		// Phase 1: Set a grant policy allowing only TCP port 22.
-		countC1 := c1.UpdateCount()
-		countC2 := c2.UpdateCount()
-
 		changed, err := srv.State().SetPolicy([]byte(`{
 			"grants": [{
 				"src": ["propagation-user@"],
@@ -225,24 +222,21 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 			srv.App.Change(changes...)
 		}
 
-		c1.WaitForCondition(t, "first grant policy update",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				return c1.UpdateCount() > countC1
-			})
-		c2.WaitForCondition(t, "first grant policy update",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				return c2.UpdateCount() > countC2
-			})
+		// Wait for the filter itself: any other frame, such as a peer's
+		// endpoint update, would also count as an update.
+		for _, c := range []*servertest.TestClient{c1, c2} {
+			c.WaitForCondition(t, "first grant policy update",
+				10*time.Second,
+				func(nm *netmap.NetworkMap) bool {
+					return hasDstPort(nm.PacketFilter, 22)
+				})
+		}
 
-		// Capture the update count after first policy.
+		// Keep the first policy's netmap to compare against.
 		nm1Before := c1.Netmap()
 		require.NotNil(t, nm1Before)
 		require.NotEmpty(t, nm1Before.PacketFilter,
 			"PacketFilter should have rules from first grant policy")
-
-		updateCountPhase1 := c1.UpdateCount()
 
 		// Phase 2: Change to a grant policy with app capability
 		// (structurally different from IP-only grant).
@@ -271,16 +265,13 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 		}
 
 		// Wait for the second policy update to arrive.
-		c1.WaitForCondition(t, "second grant policy update",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				return c1.UpdateCount() > updateCountPhase1
-			})
-		c2.WaitForCondition(t, "second grant policy update",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				return c2.UpdateCount() > countC2
-			})
+		for _, c := range []*servertest.TestClient{c1, c2} {
+			c.WaitForCondition(t, "second grant policy update",
+				10*time.Second,
+				func(nm *netmap.NetworkMap) bool {
+					return hasCapMatches(nm.PacketFilter)
+				})
+		}
 
 		// Verify the second policy added cap grants that weren't
 		// in the first (IP-only) policy.
@@ -1099,6 +1090,19 @@ func hasCapMatches(matches []filtertype.Match) bool {
 	for _, m := range matches {
 		if len(m.Caps) > 0 {
 			return true
+		}
+	}
+
+	return false
+}
+
+// hasDstPort reports whether any destination in matches is exactly port.
+func hasDstPort(matches []filtertype.Match, port uint16) bool {
+	for _, m := range matches {
+		for _, d := range m.Dsts {
+			if d.Ports.First == port && d.Ports.Last == port {
+				return true
+			}
 		}
 	}
 
