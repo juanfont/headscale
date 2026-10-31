@@ -213,13 +213,14 @@ func (m *mapSession) serveLongPoll() {
 		node, nodeExists := m.h.state.GetNodeByID(m.node.ID())
 
 		if !stillConnected && nodeExists && !node.IsExpired() {
-			// Wait up to 10 seconds for the node to reconnect.
-			// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
+			// Wait up to 15 seconds for the node to reconnect. SaaS tells peers
+			// a node left after about that long, so an outage this short moves
+			// no HA primary there either.
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
 
 		waitForReconnect:
-			for range 10 {
+			for range 15 {
 				if m.h.mapBatcher.IsConnected(m.node.ID()) {
 					break
 				}

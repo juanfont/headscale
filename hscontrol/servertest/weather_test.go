@@ -35,7 +35,7 @@ func TestNetworkWeather(t *testing.T) {
 
 		h.Client(0).Disconnect(t)
 
-		// Reconnect quickly (well within the 10-second grace period).
+		// Reconnect quickly (well within the 15-second grace period).
 		h.Client(0).ReconnectAfter(t, 1*time.Second)
 		h.WaitForMeshComplete(t, 15*time.Second)
 

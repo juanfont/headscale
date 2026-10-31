@@ -239,7 +239,7 @@ func TestRoutes(t *testing.T) {
 			10*time.Second, 100*time.Millisecond,
 			"r1 should be primary initially")
 
-		// 1. Take r1 offline. After the 10s grace period, r2 should take over.
+		// 1. Take r1 offline. After the 15s grace period, r2 should take over.
 		r1.Disconnect(t)
 		assert.Eventually(t, func() bool { return hasRoute(r2ID) && !hasRoute(r1ID) },
 			20*time.Second, 200*time.Millisecond,

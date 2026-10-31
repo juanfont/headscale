@@ -223,7 +223,7 @@ func TestHAHealthProbe_SetApprovedRoutesEmptyClearsUnhealthy(t *testing.T) {
 // Disconnect resets a stale Unhealthy bit. An offline node is not an
 // HA candidate; carrying the bit forward leaks into DebugRoutes.
 //
-// The poll handler waits a 10s grace period before calling
+// The poll handler waits a 15s grace period before calling
 // [state.State.Disconnect], so the assertion is wrapped in Eventually with a
 // generous timeout.
 func TestHAHealthProbe_DisconnectClearsUnhealthy(t *testing.T) {
@@ -250,7 +250,7 @@ func TestHAHealthProbe_DisconnectClearsUnhealthy(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		return srv.State().IsNodeHealthy(nodeID1)
-	}, 15*time.Second, 200*time.Millisecond,
+	}, 25*time.Second, 200*time.Millisecond,
 		"disconnect should drop stale Unhealthy bit")
 }
 

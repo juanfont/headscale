@@ -22,7 +22,7 @@ func TestPollRace(t *testing.T) {
 	t.Parallel()
 
 	// The core race: when a node disconnects, poll.go starts a
-	// grace period goroutine (10s ticker loop). If the node
+	// grace period goroutine (15s ticker loop). If the node
 	// reconnects during this period, the new session calls
 	// [state.State.Connect] to mark the node online. But the old grace period
 	// goroutine is still running and may call [state.State.Disconnect] AFTER
@@ -98,7 +98,7 @@ func TestPollRace(t *testing.T) {
 			"server should STILL show node as online 2s after reconnect (grace period goroutine should not overwrite)")
 	})
 
-	// Wait the full grace period (10s) after reconnect. The old
+	// Wait the full grace period (15s) after reconnect. The old
 	// grace period goroutine should have checked IsConnected
 	// and found the node connected, so should NOT have called
 	// [state.State.Disconnect].
