@@ -208,15 +208,6 @@ func loadACLTestFile(t *testing.T, path string) *testcapture.Capture {
 // aclSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>[/<node>]/<check>.
 var aclSkipReasons = map[string]string{
-	"acl-n01/beedrill/filter":   allowAllForm,
-	"acl-n01/bulbasaur/filter":  allowAllForm,
-	"acl-n01/charmander/filter": allowAllForm,
-	"acl-n01/ivysaur/filter":    allowAllForm,
-	"acl-n01/kakuna/filter":     allowAllForm,
-	"acl-n01/squirtle/filter":   allowAllForm,
-	"acl-n01/venusaur/filter":   allowAllForm,
-	"acl-n01/weedle/filter":     allowAllForm,
-
 	"acl-au06/beedrill/filter":   srcAddressForm,
 	"acl-k03/beedrill/filter":    srcAddressForm,
 	"acl-k03/bulbasaur/filter":   srcAddressForm,
@@ -246,7 +237,6 @@ var aclSkipReasons = map[string]string{
 }
 
 const (
-	allowAllForm            = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
 	srcAddressForm          = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
 	srcAndSelfDstForm       = "FILTER_ADDRESS_FORM+SELF_DST_REPEAT: sources listed one by one, the autogroup:self destination written once per source alias"
 	aclDefaultRouteAccepted = "ACL_DEFAULT_ROUTE_ACCEPTED: headscale accepts literal 0.0.0.0/0 and ::/0 ACL destinations; SaaS rejects them and requires * or autogroup:internet"

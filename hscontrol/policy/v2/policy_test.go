@@ -74,8 +74,8 @@ func TestPolicyManager(t *testing.T) {
 			name:         "empty-policy",
 			pol:          "{}",
 			nodes:        types.Nodes{},
-			wantFilter:   tailcfg.FilterAllowAll,
-			wantMatchers: matcher.MatchesFromFilterRules(tailcfg.FilterAllowAll),
+			wantFilter:   noRulesFilter(users, types.Nodes{}.ViewSlice()),
+			wantMatchers: matcher.MatchesFromFilterRules(noRulesFilter(users, types.Nodes{}.ViewSlice())),
 		},
 		{
 			name:         "empty-acls-denies-all",

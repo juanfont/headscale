@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -132,10 +133,27 @@ func (pol *Policy) compileFilterRules(
 	nodes views.Slice[types.NodeView],
 ) []tailcfg.FilterRule {
 	if pol == nil || (pol.ACLs == nil && pol.Grants == nil) {
-		return tailcfg.FilterAllowAll
+		return noRulesFilter(users, nodes)
 	}
 
 	return globalFilterRules(pol.compileGrants(users, nodes))
+}
+
+// allowAllPolicy is the rule a policy without acls or grants stands for.
+var allowAllPolicy = sync.OnceValue(func() *Policy {
+	pol, err := unmarshalPolicy([]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
+	if err != nil {
+		panic(err)
+	}
+
+	return pol
+})
+
+// noRulesFilter is the filter of a policy without acls or grants. As on SaaS,
+// its sources are the tailnet's ranges and approved routes, not every address,
+// or a host on an exit node's network could open connections to its clients.
+func noRulesFilter(users types.Users, nodes views.Slice[types.NodeView]) []tailcfg.FilterRule {
+	return globalFilterRules(allowAllPolicy().compileGrants(users, nodes))
 }
 
 func (pol *Policy) destinationsToNetPortRange(
@@ -201,7 +219,7 @@ func (pol *Policy) compileFilterRulesForNode(
 	nodes views.Slice[types.NodeView],
 ) []tailcfg.FilterRule {
 	if pol == nil {
-		return tailcfg.FilterAllowAll
+		return noRulesFilter(users, nodes)
 	}
 
 	grants := pol.compileGrants(users, nodes)

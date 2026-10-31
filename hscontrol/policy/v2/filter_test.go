@@ -3687,7 +3687,7 @@ func TestFilterAllowAllFix(t *testing.T) {
 
 			rules := tt.pol.compileFilterRules(users, nodes)
 
-			isFilterAllowAll := cmp.Diff(tailcfg.FilterAllowAll, rules) == ""
+			isFilterAllowAll := cmp.Diff(noRulesFilter(users, nodes), rules) == ""
 			assert.Equal(t, tt.wantFilterAllow, isFilterAllowAll,
 				"FilterAllowAll mismatch: got rules=%v", rules)
 		})
