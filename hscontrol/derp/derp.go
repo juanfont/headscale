@@ -147,38 +147,45 @@ func shuffleDERPMap(dm *tailcfg.DERPMap) {
 
 	slices.Sort(ids)
 
+	// A new generator per call gives the same input the same order. Clients
+	// close their home relay when its node order changes, so a refresh that
+	// finds no change must not reorder anything.
+	rng := rand.New(rand.NewSource(derpShuffleSeed())) //nolint:gosec // weak random is fine for DERP scrambling
+
 	for _, id := range ids {
 		region := dm.Regions[id]
 		if len(region.Nodes) == 0 {
 			continue
 		}
 
-		derpRandom().Shuffle(len(region.Nodes), reflect.Swapper(region.Nodes))
+		rng.Shuffle(len(region.Nodes), reflect.Swapper(region.Nodes))
 	}
 }
 
 var crc64Table = crc64.MakeTable(crc64.ISO)
 
 var (
-	derpRandomInst *rand.Rand
-	derpRandomMu   sync.Mutex
+	derpSeed    int64
+	derpSeedSet bool
+	derpSeedMu  sync.Mutex
 )
 
-func derpRandom() *rand.Rand {
-	derpRandomMu.Lock()
-	defer derpRandomMu.Unlock()
+func derpShuffleSeed() int64 {
+	derpSeedMu.Lock()
+	defer derpSeedMu.Unlock()
 
-	if derpRandomInst == nil {
+	if !derpSeedSet {
 		seed := cmp.Or(viper.GetString("dns.base_domain"), time.Now().String())
-		derpRandomInst = rand.New(rand.NewSource(int64(crc64.Checksum([]byte(seed), crc64Table)))) //nolint:gosec // weak random is fine for DERP scrambling
+		derpSeed = int64(crc64.Checksum([]byte(seed), crc64Table)) //nolint:gosec // only a seed, overflow is harmless
+		derpSeedSet = true
 	}
 
-	return derpRandomInst
+	return derpSeed
 }
 
 func resetDerpRandomForTesting() {
-	derpRandomMu.Lock()
-	defer derpRandomMu.Unlock()
+	derpSeedMu.Lock()
+	defer derpSeedMu.Unlock()
 
-	derpRandomInst = nil
+	derpSeedSet = false
 }
