@@ -44,11 +44,11 @@ var (
 // [netip.Prefix] values representing the routes for that node.
 type RouteFunc func(id NodeID) []netip.Prefix
 
-// nodeAttrDisableIPv4 is the policy nodeAttr key that suppresses the
+// NodeAttrDisableIPv4 is the policy nodeAttr key that suppresses the
 // node's own IPv4 CGNAT prefix in [tailcfg.Node.Addresses] and
 // [tailcfg.Node.AllowedIPs]. Subnet routes the node advertises remain.
 // See https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts.
-const nodeAttrDisableIPv4 nodecap.Cap = "disable-ipv4"
+const NodeAttrDisableIPv4 nodecap.Cap = "disable-ipv4"
 
 // filterIPv4 returns ps with every IPv4 prefix dropped. Used by
 // [NodeView.TailNode] when the node carries the disable-ipv4 nodeAttr.
@@ -1402,7 +1402,7 @@ func (nv NodeView) TailNode(
 	// subnet routes -- even IPv4 ones -- survive: routes belong to
 	// the routing layer, not the node's identity. Mirrors the SaaS
 	// captures in testdata/nodeattrs_results/nodeattrs-attr-c1{5,6}-disable-ipv4*.
-	_, ipv4Disabled := selfPolicyCaps[nodeAttrDisableIPv4]
+	_, ipv4Disabled := selfPolicyCaps[NodeAttrDisableIPv4]
 
 	addresses := nv.Prefixes()
 	if ipv4Disabled {

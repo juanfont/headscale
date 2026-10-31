@@ -281,6 +281,8 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	// Snapshot these peers' policy caps under one policy-manager lock.
 	peerCapMaps := b.mapper.state.NodeCapMapsForPeers(peers)
 
+	_, ipv4Disabled := b.mapper.state.NodeCapMap(node.ID())[types.NodeAttrDisableIPv4]
+
 	// Build tail nodes with per-peer via-aware route function.
 	tailPeers := make([]*tailcfg.Node, 0, peers.Len())
 
@@ -326,6 +328,16 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		// peers. [policyv2.PeerCapMap] encodes those conditions.
 		tn.CapMap = policyv2.PeerCapMap(peer, peerCapMaps[peer.ID()])
 		tn.Hostinfo = types.PeerHostinfo(tn.Hostinfo)
+
+		// A disable-ipv4 holder sees its peers over IPv6 only, as on SaaS, so
+		// their 100.x addresses stay off its interface. Routes stay.
+		if ipv4Disabled {
+			ownIPv4 := func(p netip.Prefix) bool {
+				return p.Addr().Is4() && slices.Contains(tn.Addresses, p)
+			}
+			tn.AllowedIPs = slices.DeleteFunc(tn.AllowedIPs, ownIPv4)
+			tn.Addresses = slices.DeleteFunc(tn.Addresses, func(p netip.Prefix) bool { return p.Addr().Is4() })
+		}
 
 		// As on Tailscale SaaS, a connected expired peer shows online, but
 		// without the endpoints and home DERP region that would reach it.
