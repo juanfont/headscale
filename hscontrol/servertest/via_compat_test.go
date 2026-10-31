@@ -601,9 +601,11 @@ func selfRoutes(nm *netmap.NetworkMap) string {
 
 	var allowed, primary []string
 
-	for _, pfx := range self.AllowedIPs().All() {
+	for i, pfx := range self.AllowedIPs().All() {
 		if !views.SliceContains(self.Addresses(), pfx) {
 			allowed = append(allowed, pfx.String())
+		} else if i >= self.Addresses().Len() {
+			allowed = append(allowed, "own address after a route: "+pfx.String())
 		}
 	}
 
@@ -828,6 +830,10 @@ func comparePeers(
 			prefix := peer.AllowedIPs().At(i)
 			if isTailscaleIP(prefix) {
 				tsIPs = append(tsIPs, prefix)
+
+				// As SaaS: own addresses lead, and whois reads routes by position.
+				assert.Lessf(check["peer-addresses"], i, peer.Addresses().Len(),
+					"peer %s: own address %s comes after a route", name, prefix)
 			} else {
 				routePrefixes = append(routePrefixes, prefix.String())
 			}

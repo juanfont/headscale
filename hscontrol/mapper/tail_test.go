@@ -137,8 +137,8 @@ func TestTailNode(t *testing.T) {
 				),
 				Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 				AllowedIPs: []netip.Prefix{
-					tsaddr.AllIPv4(),
 					netip.MustParsePrefix("100.64.0.1/32"),
+					tsaddr.AllIPv4(),
 					netip.MustParsePrefix("192.168.0.0/24"),
 					tsaddr.AllIPv6(),
 				},
@@ -399,11 +399,9 @@ func TestTailNodeDisableIPv4(t *testing.T) {
 			name:     "cap_keeps_advertised_subnet_route",
 			hasCap:   true,
 			approved: []netip.Prefix{subnet},
-			// AllowedIPs is sorted by netip.Prefix.Compare so IPv4
-			// sorts before IPv6.
 			wantAllowed: []netip.Prefix{
-				subnet,
 				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+				subnet,
 			},
 			wantPrimary: []netip.Prefix{subnet},
 			wantAddrs:   []netip.Prefix{netip.MustParsePrefix("fd7a:115c:a1e0::1/128")},
