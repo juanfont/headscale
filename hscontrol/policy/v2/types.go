@@ -1918,9 +1918,22 @@ type Grant struct {
 	Via []Tag `json:"via,omitzero"`
 }
 
-// HasVia reports whether the grant routes through via-tagged nodes.
+// HasVia reports whether the grant steers traffic through via-tagged nodes.
+// Only its ip part does: via-grant-v80, v84 and v88 show that SaaS treats a
+// capability-only grant the same with or without via.
 func (g Grant) HasVia() bool {
-	return len(g.Via) > 0
+	return len(g.Via) > 0 && len(g.InternetProtocols) > 0
+}
+
+// appPart returns the capabilities of a grant with via as a grant of their own,
+// since via does not apply to them. via-grant-v89 and v91 show SaaS treating one
+// grant holding both parts like two. An empty map is no capability (v92).
+func (g Grant) appPart() (Grant, bool) {
+	if !g.HasVia() || len(g.App) == 0 {
+		return Grant{}, false
+	}
+
+	return Grant{Sources: g.Sources, Destinations: g.Destinations, App: g.App}, true
 }
 
 // NodeAttrGrant attaches Tailscale node capabilities (and/or an IP-pool

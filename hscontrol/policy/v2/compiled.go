@@ -260,16 +260,24 @@ func (pol *Policy) compileGrants(
 	compiled := make([]compiledGrant, 0, len(grants))
 	srcs := sourceCache{}
 
-	for _, grant := range grants {
+	compile := func(grant Grant) {
 		cg, err := pol.compileOneGrant(grant, users, nodes, srcs)
 		if err != nil {
 			log.Trace().Err(err).Msg("compiling grant")
 
-			continue
+			return
 		}
 
 		if cg != nil {
 			compiled = append(compiled, *cg)
+		}
+	}
+
+	for _, grant := range grants {
+		compile(grant)
+
+		if app, ok := grant.appPart(); ok {
+			compile(app)
 		}
 	}
 
@@ -289,7 +297,7 @@ func (pol *Policy) compileOneGrant(
 	srcs sourceCache,
 ) (*compiledGrant, error) {
 	// Via grants: resolve sources, store deferred data.
-	if len(grant.Via) > 0 {
+	if grant.HasVia() {
 		return pol.compileOneViaGrant(grant, users, nodes)
 	}
 
@@ -437,16 +445,12 @@ func (s *grantSources) strings(hasWildcard, hasDangerAll bool, nodes views.Slice
 
 // compileOneViaGrant resolves sources for a via grant and stores the
 // deferred per-node data. The actual via-node matching and route
-// intersection happens in [compileViaForNode].
+// intersection happens in [viaDstsForNode].
 func (pol *Policy) compileOneViaGrant(
 	grant Grant,
 	users types.Users,
 	nodes views.Slice[types.NodeView],
 ) (*compiledGrant, error) {
-	if len(grant.InternetProtocols) == 0 {
-		return nil, nil //nolint:nilnil
-	}
-
 	resolvedSrcs, _, err := resolveSources(
 		pol, grant.Sources, users, nodes,
 	)
@@ -783,6 +787,25 @@ func filterRulesForNode(
 	node types.NodeView,
 	userIdx userNodeIndex,
 ) []tailcfg.FilterRule {
+	return rulesForNode(grants, node, userIdx, compileViaForNode)
+}
+
+// peerRulesForNode returns the rules that decide a node's peers: its
+// unreduced filter rules, with [viaPeerRule] in place of each via rule.
+func peerRulesForNode(
+	grants []compiledGrant,
+	node types.NodeView,
+	userIdx userNodeIndex,
+) []tailcfg.FilterRule {
+	return rulesForNode(grants, node, userIdx, viaPeerRule)
+}
+
+func rulesForNode(
+	grants []compiledGrant,
+	node types.NodeView,
+	userIdx userNodeIndex,
+	viaRules func(*compiledGrant, types.NodeView) []tailcfg.FilterRule,
+) []tailcfg.FilterRule {
 	var rules []tailcfg.FilterRule
 
 	for i := range grants {
@@ -805,7 +828,7 @@ func filterRulesForNode(
 		case grantCategoryVia:
 			rules = append(
 				rules,
-				compileViaForNode(cg, node)...,
+				viaRules(cg, node)...,
 			)
 		}
 	}
@@ -980,13 +1003,13 @@ func filterSourcesToSameUser(
 	return srcResolved
 }
 
-// compileViaForNode produces via-grant filter rules for a specific
-// node. Only produces rules when the node matches one of the via
-// tags and advertises routes that match the grant destinations.
-func compileViaForNode(
+// viaDstsForNode returns the destinations node serves for a via grant: none
+// unless it matches a via tag and has approved routes that match them, or is an
+// exit node under autogroup:internet.
+func viaDstsForNode(
 	cg *compiledGrant,
 	node types.NodeView,
-) []tailcfg.FilterRule {
+) []netip.Prefix {
 	if cg.via == nil {
 		return nil
 	}
@@ -1041,6 +1064,17 @@ func compileViaForNode(
 		)
 	}
 
+	return viaDstPrefixes
+}
+
+// compileViaForNode produces via-grant filter rules for a specific
+// node. Only produces rules when the node matches one of the via
+// tags and advertises routes that match the grant destinations.
+func compileViaForNode(
+	cg *compiledGrant,
+	node types.NodeView,
+) []tailcfg.FilterRule {
+	viaDstPrefixes := viaDstsForNode(cg, node)
 	if len(viaDstPrefixes) == 0 {
 		return nil
 	}
@@ -1073,4 +1107,32 @@ func compileViaForNode(
 	}
 
 	return rules
+}
+
+// viaPeerRule returns a rule that links node, as a via router, to the grant's
+// sources. It names the router's own addresses: the filter rule names the route,
+// which would also link a router that is a source to everything else serving
+// that route, and via-grant-v81 shows SaaS does not.
+//
+// shortcut: a node with an approved route over the router's address also matches,
+// as for any rule naming a node. Bind the link to the router if that shape matters.
+func viaPeerRule(
+	cg *compiledGrant,
+	node types.NodeView,
+) []tailcfg.FilterRule {
+	if len(viaDstsForNode(cg, node)) == 0 {
+		return nil
+	}
+
+	ips := node.IPs()
+	destPorts := make([]tailcfg.NetPortRange, 0, len(ips))
+
+	for _, ip := range ips {
+		destPorts = append(destPorts, tailcfg.NetPortRange{
+			IP:    ip.String(),
+			Ports: tailcfg.PortRangeAny,
+		})
+	}
+
+	return []tailcfg.FilterRule{{SrcIPs: cg.via.srcIPStrings, DstPorts: destPorts}}
 }

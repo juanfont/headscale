@@ -927,7 +927,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	// but peer relationships require the full bidirectional access rules.
 	nodeMatchers := make(map[types.NodeID][]matcher.Match, nodes.Len())
 	for _, node := range nodes.All() {
-		unreduced := pm.filterRulesForNodeLocked(node)
+		unreduced := pm.peerRulesForNodeLocked(node)
 		nodeMatchers[node.ID()] = matcher.MatchesFromFilterRules(unreduced)
 	}
 
@@ -948,7 +948,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			riJ := routeInfo[nodeJ.ID()]
 
 			// Check all access directions for symmetric peer visibility.
-			// For via grants, filter rules exist on the via-designated node
+			// For via grants, rules exist on the via-designated node
 			// (e.g., router-a) with sources being the client (group-a).
 			// We need to check BOTH:
 			//   1. nodeI.CanAccess(matchersI, nodeJ) — can nodeI reach nodeJ?
@@ -980,6 +980,14 @@ func (pm *PolicyManager) filterRulesForNodeLocked(
 	return filterRulesForNode(
 		pm.compiledGrants, node, pm.userNodeIdx,
 	)
+}
+
+// peerRulesForNodeLocked returns the rules that decide a node's peers, see
+// [peerRulesForNode].
+func (pm *PolicyManager) peerRulesForNodeLocked(
+	node types.NodeView,
+) []tailcfg.FilterRule {
+	return peerRulesForNode(pm.compiledGrants, node, pm.userNodeIdx)
 }
 
 // filterForNodeLocked returns the filter rules for a specific node,
@@ -1040,16 +1048,16 @@ func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRul
 	return pm.filterForNodeLocked(node), nil
 }
 
-// MatchersForNode returns the matchers for peer relationship determination for a specific node.
+// MatchersForNode returns the matchers that filter the routes a node sees.
 // These are UNREDUCED matchers - they include all rules where the node could be either source or destination.
 // This is different from [PolicyManager.FilterForNode] which returns REDUCED rules for packet filtering.
+// Peers come from [PolicyManager.BuildPeerMap], which uses [viaPeerRule] where these matchers use the via rule.
 //
 // For global policies: returns the global matchers (same for all nodes)
 // For autogroup:self: returns node-specific matchers from unreduced compiled rules.
 //
 // Per-node results are cached and invalidated on policy/node updates
-// so [PolicyManager.BuildPeerMap]'s O(N²) slow path avoids recomputing
-// matchers for every pair.
+// so building a node's map does not recompile them.
 func (pm *PolicyManager) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
 	if pm == nil {
 		return nil, nil
@@ -1565,10 +1573,18 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		grants = append(grants, Grant{Sources: acl.Sources, Destinations: dsts})
 	}
 
+	// A grant's app part covers its routes as a regular grant does.
+	for _, grant := range pm.pol.Grants {
+		if app, ok := grant.appPart(); ok {
+			grants = append(grants, app)
+		}
+	}
+
 	// matchViewer resolves a grant lazily and at most once: non-via
 	// grants are only needed once a via grant has matched, and
 	// destinations only for grants that match the viewer.
 	viewerIPs := viewer.IPs()
+	viewerRoutes := viewer.SubnetRoutes()
 	resolved := make([]bool, len(grants))
 	viewerMatchesGrant := make([]bool, len(grants))
 	resolvedDstPrefixes := make([][]netip.Prefix, len(grants))
@@ -1587,7 +1603,16 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				continue
 			}
 
-			if ips != nil && slices.ContainsFunc(viewerIPs, ips.Contains) {
+			if ips == nil {
+				continue
+			}
+
+			// A router acts for its subnets, as in [types.Node.CanAccessRoutes],
+			// so a source naming one of them matches the router.
+			if slices.ContainsFunc(viewerIPs, ips.Contains) ||
+				slices.ContainsFunc(viewerRoutes, func(route netip.Prefix) bool {
+					return slices.ContainsFunc(ips.Prefixes(), route.Overlaps)
+				}) {
 				viewerMatchesGrant[i] = true
 
 				break

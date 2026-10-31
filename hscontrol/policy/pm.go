@@ -16,7 +16,7 @@ type PolicyManager interface {
 	Filter() ([]tailcfg.FilterRule, []matcher.Match)
 	// FilterForNode returns filter rules for a specific node, handling autogroup:self
 	FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error)
-	// MatchersForNode returns matchers for peer relationship determination (unreduced)
+	// MatchersForNode returns the unreduced matchers that filter the routes a node sees
 	MatchersForNode(node types.NodeView) ([]matcher.Match, error)
 	// BuildPeerMap constructs peer relationship maps for the given nodes
 	BuildPeerMap(nodes views.Slice[types.NodeView]) map[types.NodeID][]types.NodeID

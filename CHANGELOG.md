@@ -151,6 +151,9 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Add the v2 `acl/validate` endpoint, which Terraform provider 0.29.3 and newer call to check `tailscale_acl` at plan time; before it, those releases failed with `invalid character 'p' after top-level value`
 - Reject overlapping TCP listener bindings (e.g. `listen_addr` vs ACME HTTP-01 on port 80) at config load [#3236](https://github.com/juanfont/headscale/pull/3236)
 - Improve config and bind-failure errors: every violation reported in one pass, named YAML keys, actionable operator hints [#3236](https://github.com/juanfont/headscale/pull/3236)
+- Apply `via` only to the `ip` part of a grant, as on Tailscale SaaS: `app` peers its sources with every node serving the destination, and its routes follow the primary router, also beside an `ip` part with `via` [#3637](https://github.com/juanfont/headscale/pull/3637)
+- Stop sending a subnet router a capability for its subnet, as on Tailscale SaaS [#3637](https://github.com/juanfont/headscale/pull/3637)
+- Fix a `via` router that is also a source peering with others serving the route, and a router inside a subnet source missing `via` routes [#3637](https://github.com/juanfont/headscale/pull/3637)
 
 ## 0.29.7 (2026-10-30)
 

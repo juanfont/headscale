@@ -95,6 +95,10 @@ func TestBuildPeerMapMatchesPrefixReference(t *testing.T) {
 		{name: "global", policy: benchPolicies[0].policy},
 		{name: "self", policy: benchPolicies[1].policy},
 		{name: "via", policy: benchPolicies[2].policy},
+		{name: "via capability only", policy: `{
+		"tagOwners": {"tag:router": ["u1@"]},
+		"grants": [{"src": ["u2@"], "dst": ["10.0.0.0/8"], "via": ["tag:router"],
+		"app": {"example.com/cap/test": [{}]}}]}`},
 		{name: "subnet source", policy: `{
 		"acls": [{"action": "accept", "src": ["10.0.0.0/8", "2001:db8::/32"],
 		"dst": ["u2@:*"]}]}`},
@@ -177,7 +181,7 @@ func peerMapPrefixReference(
 	for _, n := range nodes {
 		if pm.needsPerNodeFilter {
 			nodeMatchers[n.ID] = matcher.MatchesFromFilterRules(
-				pm.filterRulesForNodeLocked(n.View()))
+				pm.peerRulesForNodeLocked(n.View()))
 		} else {
 			nodeMatchers[n.ID] = pm.matchers
 		}

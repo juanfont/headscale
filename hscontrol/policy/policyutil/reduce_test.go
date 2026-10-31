@@ -1072,25 +1072,9 @@ func TestReduceFilterRulesCapGrant(t *testing.T) {
 					},
 				},
 			},
-			want: []tailcfg.FilterRule{
-				{
-					SrcIPs: []string{"*"},
-					CapGrant: []tailcfg.CapGrant{
-						{
-							Dsts: []netip.Prefix{
-								// 10.0.0.0/8 doesn't contain node's
-								// CGNAT IP (100.64.0.1), so no IP
-								// narrowing. Only route overlap kept
-								// as original prefix.
-								netip.MustParsePrefix("10.0.0.0/8"),
-							},
-							CapMap: tailcfg.PeerCapMap{
-								"tailscale.com/cap/relay-target": nil,
-							},
-						},
-					},
-				},
-			},
+			// 10.0.0.0/8 doesn't contain the node's CGNAT IP (100.64.0.1),
+			// and routing part of it delivers no capability.
+			want: []tailcfg.FilterRule{},
 		},
 		{
 			name: "capgrant-exit-route-skipped",
@@ -1264,10 +1248,9 @@ func TestReduceFilterRulesCapGrant(t *testing.T) {
 			want: []tailcfg.FilterRule{},
 		},
 		{
-			// A broad prefix that both contains the node IP (/32 narrow)
-			// and overlaps one of its approved subnet routes (route
-			// preserved) would otherwise be emitted twice.
-			name: "capgrant-ip-and-route-overlap-dedup",
+			// Broad prefixes that contain the node IP narrow to the same
+			// /32, and routing them keeps nothing more.
+			name: "capgrant-broad-dsts-narrow-once",
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
@@ -1287,6 +1270,7 @@ func TestReduceFilterRulesCapGrant(t *testing.T) {
 						{
 							Dsts: []netip.Prefix{
 								netip.MustParsePrefix("100.64.0.0/24"),
+								netip.MustParsePrefix("100.64.0.0/16"),
 							},
 							CapMap: tailcfg.PeerCapMap{
 								"tailscale.com/cap/relay-target": nil,
@@ -1302,7 +1286,6 @@ func TestReduceFilterRulesCapGrant(t *testing.T) {
 						{
 							Dsts: []netip.Prefix{
 								netip.MustParsePrefix("100.64.0.1/32"),
-								netip.MustParsePrefix("100.64.0.0/24"),
 							},
 							CapMap: tailcfg.PeerCapMap{
 								"tailscale.com/cap/relay-target": nil,
