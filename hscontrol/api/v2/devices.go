@@ -24,24 +24,27 @@ func init() {
 // Headscale does not track are emitted as their zero value. The route slices
 // are only populated for the fields=all variant, matching Tailscale.
 type Device struct {
-	Addresses         []string   `json:"addresses"          nullable:"false"`
+	Addresses         []string   `json:"addresses"         nullable:"false"`
 	Name              string     `json:"name"`
 	ID                string     `json:"id"`
 	NodeID            string     `json:"nodeId"`
 	Authorized        bool       `json:"authorized"`
 	User              string     `json:"user"`
-	Tags              []string   `json:"tags"               nullable:"false"`
+	Tags              []string   `json:"tags"              nullable:"false"`
 	KeyExpiryDisabled bool       `json:"keyExpiryDisabled"`
 	Created           time.Time  `json:"created"`
 	Expires           *time.Time `json:"expires,omitempty"`
 	Hostname          string     `json:"hostname"`
 	IsEphemeral       bool       `json:"isEphemeral"`
-	LastSeen          *time.Time `json:"lastSeen,omitempty"`
-	MachineKey        string     `json:"machineKey"`
-	NodeKey           string     `json:"nodeKey"`
-	OS                string     `json:"os"`
-	ClientVersion     string     `json:"clientVersion"`
-	UpdateAvailable   bool       `json:"updateAvailable"`
+	// ConnectedToControl and LastSeen follow what Tailscale sends, not its SDK's
+	// comment: every connected device has both.
+	ConnectedToControl bool       `json:"connectedToControl"`
+	LastSeen           *time.Time `json:"lastSeen,omitempty"`
+	MachineKey         string     `json:"machineKey"`
+	NodeKey            string     `json:"nodeKey"`
+	OS                 string     `json:"os"`
+	ClientVersion      string     `json:"clientVersion"`
+	UpdateAvailable    bool       `json:"updateAvailable"`
 	// OAuthClientID names the auth key the device joined with. For a key a
 	// token made, Tailscale names the token's OAuth client, which headscale
 	// does not record, so it is left out.
@@ -455,21 +458,22 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 	}
 
 	d := Device{
-		Addresses:         emptyIfNil(view.IPsAsString()),
-		Name:              name,
-		ID:                id,
-		NodeID:            id,
-		Authorized:        true, // Headscale has no post-registration de-auth state.
-		User:              deviceUser(view),
-		Tags:              emptyIfNil(view.Tags().AsSlice()),
-		KeyExpiryDisabled: !view.Expiry().Valid(),
-		Created:           view.CreatedAt(),
-		Hostname:          view.Hostname(),
-		IsEphemeral:       view.IsEphemeral(),
-		MachineKey:        view.MachineKey().String(),
-		NodeKey:           view.NodeKey().String(),
-		OS:                hostinfoOS(view),
-		ClientVersion:     hostinfoVersion(view),
+		Addresses:          emptyIfNil(view.IPsAsString()),
+		Name:               name,
+		ID:                 id,
+		NodeID:             id,
+		Authorized:         true, // Headscale has no post-registration de-auth state.
+		User:               deviceUser(view),
+		Tags:               emptyIfNil(view.Tags().AsSlice()),
+		KeyExpiryDisabled:  !view.Expiry().Valid(),
+		Created:            view.CreatedAt(),
+		Hostname:           view.Hostname(),
+		IsEphemeral:        view.IsEphemeral(),
+		ConnectedToControl: view.IsOnline().Valid() && view.IsOnline().Get(),
+		MachineKey:         view.MachineKey().String(),
+		NodeKey:            view.NodeKey().String(),
+		OS:                 hostinfoOS(view),
+		ClientVersion:      hostinfoVersion(view),
 	}
 
 	if key := view.AuthKey(); key.Valid() && !key.CreatedByToken() {
@@ -481,9 +485,13 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 		d.Expires = &exp
 	}
 
-	// LastSeen is reported only when the device is offline, matching tailcfg.
-	hasOfflineLastSeen := view.LastSeen().Valid() && view.IsOnline().Valid() && !view.IsOnline().Get()
-	if hasOfflineLastSeen {
+	// The stored time does not move while a client idles. A connected device
+	// reads now, so a "not seen for a while" script cannot pick a live device.
+	switch {
+	case d.ConnectedToControl:
+		now := time.Now().UTC()
+		d.LastSeen = &now
+	case view.LastSeen().Valid():
 		ls := view.LastSeen().Get()
 		d.LastSeen = &ls
 	}

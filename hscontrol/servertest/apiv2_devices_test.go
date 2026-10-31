@@ -553,8 +553,64 @@ func TestNoChangePolicyWrite(t *testing.T) {
 	assert.False(t, kept, "a changed policy drops SSH check approvals")
 }
 
+// TestAPIV2DevicePresence: Tailscale's SDK says lastSeen is nil while connected,
+// but SaaS sends it on every device, so a tool reads it without a nil check.
+func TestAPIV2DevicePresence(t *testing.T) {
+	t.Parallel()
+
+	// Clients dial the in-memory network, so the SDK gets its own listener.
+	srv := servertest.NewServer(t)
+	api := httptest.NewServer(srv.App.HTTPHandler())
+	t.Cleanup(api.Close)
+
+	owner := srv.CreateUser(t, "apiv2")
+	apiKey := srv.CreateAPIKey(t, owner)
+	client := servertest.NewClient(t, srv, "presence", servertest.WithUser(owner))
+
+	read := func(c *assert.CollectT) *tsclient.Device {
+		devices, err := goClient(t, api.URL, apiKey).Devices().List(t.Context())
+		if err != nil {
+			assert.Fail(c, "listing devices", err.Error())
+
+			return nil
+		}
+
+		if !assert.Len(c, devices, 1) {
+			return nil
+		}
+
+		return &devices[0]
+	}
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		d := read(c)
+		if d == nil {
+			return
+		}
+
+		assert.True(c, d.ConnectedToControl)
+
+		if assert.NotNil(c, d.LastSeen) {
+			assert.WithinDuration(c, time.Now(), d.LastSeen.Time, time.Minute)
+		}
+	}, 20*time.Second, 200*time.Millisecond, "connected device")
+
+	client.Disconnect(t)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		d := read(c)
+		if d == nil {
+			return
+		}
+
+		assert.False(c, d.ConnectedToControl)
+		assert.NotNil(c, d.LastSeen)
+	}, 30*time.Second, 200*time.Millisecond, "device that left")
+}
+
 // deviceListChecks compares, per device in the step's device list, its user,
-// SaaS emails mapped to user names, and its tags.
+// SaaS emails mapped to user names, its tags, whether it is connected, and
+// whether it has a last seen time.
 func deviceListChecks(t *testing.T, r *stepReplay, step testcapture.Step) []stepCheck {
 	t.Helper()
 
@@ -584,7 +640,7 @@ func deviceListChecks(t *testing.T, r *stepReplay, step testcapture.Step) []step
 	}
 
 	devices := stepDevices(t, step)
-	checks := make([]stepCheck, 0, 2*len(devices))
+	checks := make([]stepCheck, 0, 4*len(devices))
 
 	for _, d := range devices {
 		x := deviceLabelAlias(d.ID)
@@ -601,6 +657,16 @@ func deviceListChecks(t *testing.T, r *stepReplay, step testcapture.Step) []step
 				got, missing := hsDevice(x)
 
 				return cmp.Or(missing, sortedStrings(got.Tags))
+			}},
+			stepCheck{x + "/device-connected", strconv.FormatBool(d.ConnectedToControl), func() string {
+				got, missing := hsDevice(x)
+
+				return cmp.Or(missing, strconv.FormatBool(got.ConnectedToControl))
+			}},
+			stepCheck{x + "/device-last-seen", strconv.FormatBool(d.LastSeen != nil), func() string {
+				got, missing := hsDevice(x)
+
+				return cmp.Or(missing, strconv.FormatBool(got.LastSeen != nil))
 			}},
 		)
 	}
