@@ -128,6 +128,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Peer `Hostinfo` contains hostname, OS, services except `peerapi-dns-proxy`, SSH host keys, and AppConnector. Self `Hostinfo` contains hostname, requested tags, advertised routes, and services. Other fields, including `ExitNodeID` and location, stay server-side. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Connected expired peers can appear online. They have no endpoints or DERP. Self entries stay authorized. Check `KeyExpiry`; `Expired` stays false. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Each node supports four map streams. A fifth stream closes the oldest. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- Map entries carry no machine keys. Peer entries leave `MachineAuthorized` unset. Self entries have no `Cap`, `Online` or `LastSeen`. [#3636](https://github.com/juanfont/headscale/pull/3636)
 
 #### API
 
@@ -209,6 +210,8 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Apply `via` only to the `ip` part of a grant, as on Tailscale SaaS: `app` peers its sources with every node serving the destination, and its routes follow the primary router, also beside an `ip` part with `via` [#3637](https://github.com/juanfont/headscale/pull/3637)
 - Stop sending a subnet router a capability for its subnet, as on Tailscale SaaS [#3637](https://github.com/juanfont/headscale/pull/3637)
 - Fix a `via` router that is also a source peering with others serving the route, and a router inside a subnet source missing `via` routes [#3637](https://github.com/juanfont/headscale/pull/3637)
+- With MagicDNS on, exit nodes refuse DNS queries for names under `dns.base_domain`, as on Tailscale SaaS. Clients cannot read the tailnet's names through an exit node. Reverse lookups still pass. [#3636](https://github.com/juanfont/headscale/pull/3636)
+- Peers get a node's last seen time when it goes offline, not at the next full map. [#3636](https://github.com/juanfont/headscale/pull/3636)
 
 ## 0.29.7 (2026-10-30)
 
