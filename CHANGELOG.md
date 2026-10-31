@@ -151,6 +151,9 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Add the v2 `acl/validate` endpoint, which Terraform provider 0.29.3 and newer call to check `tailscale_acl` at plan time; before it, those releases failed with `invalid character 'p' after top-level value`
 - Reject overlapping TCP listener bindings (e.g. `listen_addr` vs ACME HTTP-01 on port 80) at config load [#3236](https://github.com/juanfont/headscale/pull/3236)
 - Improve config and bind-failure errors: every violation reported in one pass, named YAML keys, actionable operator hints [#3236](https://github.com/juanfont/headscale/pull/3236)
+- Exit nodes refuse to proxy DNS queries for names under `dns.base_domain` when MagicDNS is on, as on Tailscale SaaS, so a client allowed only to use an exit node cannot look up the tailnet's names through it. Reverse lookups stay open, also as on SaaS [#3636](https://github.com/juanfont/headscale/pull/3636)
+- Peers see a node's last seen time as soon as it goes offline, not after the next full map [#3636](https://github.com/juanfont/headscale/pull/3636)
+- Map entries follow Tailscale SaaS: no machine keys, `MachineAuthorized` only on a node's own entry, and no `Cap`, `Online` or `LastSeen` on it [#3636](https://github.com/juanfont/headscale/pull/3636)
 
 ## 0.29.7 (2026-10-30)
 
