@@ -851,6 +851,16 @@ func (r *apiReplay) deviceListChecks(t *testing.T, a testcapture.Action, resp []
 	wantBy, gotBy := byLabel(want.Devices), byLabel(got.Devices)
 	checks := []apiCheck{{"listed", sortedStrings(slices.Collect(maps.Keys(wantBy))), sortedStrings(slices.Collect(maps.Keys(gotBy)))}}
 
+	order := func(devs []apiBody) string {
+		labels := make([]string, 0, len(devs))
+		for _, d := range devs {
+			labels = append(labels, r.label("device", d.ID))
+		}
+
+		return strings.Join(labels, ",")
+	}
+	checks = append(checks, apiCheck{"order", order(want.Devices), order(got.Devices)})
+
 	for _, l := range slices.Sorted(maps.Keys(wantBy)) {
 		g, ok := gotBy[l]
 		if !ok {
