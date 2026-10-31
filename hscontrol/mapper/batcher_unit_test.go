@@ -385,7 +385,7 @@ func TestBatcherRetryUsesCurrentPolicyAfterReconnect(t *testing.T) {
 }
 
 func TestBatcherUnreadyRetryRegeneratesRemovals(t *testing.T) {
-	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, 1)
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 2, 1, 1)
 	defer cleanup()
 
 	b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
@@ -1767,7 +1767,7 @@ func TestMultiChannelSend_SSHPolicyPerConnection(t *testing.T) {
 }
 
 func TestPartialPeerAdditionThenRevocation(t *testing.T) {
-	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, 1)
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 2, 1, 1)
 	defer cleanup()
 
 	_, err := td.State.SetPolicy([]byte(`{"acls":[]}`))

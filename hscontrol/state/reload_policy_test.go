@@ -25,7 +25,11 @@ func TestReloadPolicyRebuildsPeerMapOnChangeOnly(t *testing.T) {
 	database, err := db.NewHeadscaleDatabase(cfg)
 	require.NoError(t, err)
 
-	nodes := database.CreateRegisteredNodesForTest(database.CreateUserForTest("reload-user"), 2, "reload-node")
+	// Two users: a user's own devices stay peers under any policy.
+	nodes := append(
+		database.CreateRegisteredNodesForTest(database.CreateUserForTest("reload-user"), 1, "reload-node"),
+		database.CreateRegisteredNodesForTest(database.CreateUserForTest("reload-other"), 1, "reload-other")...,
+	)
 	require.NoError(t, database.Close())
 
 	s, err := NewState(cfg)

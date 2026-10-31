@@ -673,8 +673,8 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 	// wantFull pins the actual peer-visibility semantics so the cross-path
 	// check below cannot pass vacuously (e.g. if every path broke to zero
 	// identically).
-	// Note deny_all: an empty ACL set yields no peer adjacency, so nothing is
-	// visible on any path. user_isolation and autogroup_self remain the
+	// Note deny_all: an empty ACL set yields no peer adjacency beyond a user's
+	// own devices, on any path. user_isolation and autogroup_self remain the
 	// discriminating cases that prove filtering works.
 	tests := []struct {
 		name     string
@@ -690,7 +690,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 			]}`,
 			1,
 		},
-		{"deny_all", `{"acls":[]}`, 0},
+		{"deny_all", `{"acls":[]}`, 1},
 		{
 			"autogroup_self",
 			`{"acls":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:self:*"]}]}`,

@@ -143,18 +143,7 @@ var aclMapCompatTests = []string{
 // same way. A listed check that matches fails, so a fix must delete its entry.
 var viaCompatSkipReasons = map[string]string{
 	"tagged-self": "TAGGED_SELF_PROFILE: SaaS gives a tagged node a profile of its own, headscale the shared tagged-devices one",
-
-	"routes-m1-wildcard-src-multi-range/m-odin1/peers":     sameUserPeers,
-	"routes-m1-wildcard-src-multi-range/m-odin2/peers":     sameUserPeers,
-	"routes-m2-member-partial-subnet/m-odin1/peers":        sameUserPeers,
-	"routes-m2-member-partial-subnet/m-odin2/peers":        sameUserPeers,
-	"routes-m3-subnet-route-as-src/m-odin1/peers":          sameUserPeers,
-	"routes-m3-subnet-route-as-src/m-odin2/peers":          sameUserPeers,
-	"routes-m6-subnet-to-subnet-multi-route/m-odin1/peers": sameUserPeers,
-	"routes-m6-subnet-to-subnet-multi-route/m-odin2/peers": sameUserPeers,
 }
-
-const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
 
 // TestRoutesMapCompat replays routesMapCompatTests through
 // [runViaMapCompat].

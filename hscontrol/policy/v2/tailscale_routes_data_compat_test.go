@@ -189,15 +189,6 @@ var routesSkipReasons = map[string]string{
 	"routes-m4-member-self/m-odin1/filter":           filterAddressForm,
 	"routes-m4-member-self/m-odin2/filter":           filterAddressForm,
 	"routes-m4-member-self/r-exit/filter":            "FILTER_ADDRESS_FORM: same addresses, different wire form and rule order",
-
-	"routes-m1-wildcard-src-multi-range/m-odin1/peers":     sameUserPeers,
-	"routes-m1-wildcard-src-multi-range/m-odin2/peers":     sameUserPeers,
-	"routes-m2-member-partial-subnet/m-odin1/peers":        sameUserPeers,
-	"routes-m2-member-partial-subnet/m-odin2/peers":        sameUserPeers,
-	"routes-m3-subnet-route-as-src/m-odin1/peers":          sameUserPeers,
-	"routes-m3-subnet-route-as-src/m-odin2/peers":          sameUserPeers,
-	"routes-m6-subnet-to-subnet-multi-route/m-odin1/peers": sameUserPeers,
-	"routes-m6-subnet-to-subnet-multi-route/m-odin2/peers": sameUserPeers,
 }
 
 // routesNotCompared lists, by key prefix, checks left out: SaaS's answer
@@ -275,8 +266,6 @@ func notCompared(prefixes []string, key string) bool {
 }
 
 const filterAddressForm = "FILTER_ADDRESS_FORM: same addresses, different wire form"
-
-const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
 
 // routesSetByAPI reports whether the capture's routes were approved through
 // the routes API rather than by the policy.
