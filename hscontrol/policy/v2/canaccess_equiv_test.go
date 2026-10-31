@@ -177,7 +177,7 @@ func peerMapPrefixReference(
 	for _, n := range nodes {
 		if pm.needsPerNodeFilter {
 			nodeMatchers[n.ID] = matcher.MatchesFromFilterRules(
-				pm.filterRulesForNodeLocked(n.View()))
+				pm.peerRulesForNodeLocked(n.View()))
 		} else {
 			nodeMatchers[n.ID] = pm.matchers
 		}

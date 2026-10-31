@@ -3990,6 +3990,70 @@ func TestCompileViaGrant(t *testing.T) {
 	}
 }
 
+// TestViaGrantPeers pins who a via grant links, as via-grant-v81 records: with
+// ports, sources peer via routers only, also when a router is itself a source.
+func TestViaGrantPeers(t *testing.T) {
+	t.Parallel()
+
+	route := netip.MustParsePrefix("10.1.0.0/24")
+	tagged := func(id types.NodeID, advertised, approved bool, tags ...string) *types.Node {
+		nd := &types.Node{
+			ID:       id,
+			Hostname: fmt.Sprintf("n%d", id),
+			IPv4:     ap(fmt.Sprintf("100.64.0.%d", id)),
+			Tags:     tags,
+			Hostinfo: &tailcfg.Hostinfo{},
+		}
+
+		if advertised {
+			nd.Hostinfo.RoutableIPs = []netip.Prefix{route}
+		}
+
+		if approved {
+			nd.ApprovedRoutes = []netip.Prefix{route}
+		}
+
+		return nd
+	}
+
+	nodes := types.Nodes{
+		tagged(1, false, false, "tag:client"),
+		tagged(2, true, true, "tag:client", "tag:router"), // via router and a source
+		tagged(3, true, false, "tag:router"),              // route not approved
+		tagged(4, false, false, "tag:router"),
+		tagged(5, true, true, "tag:other"), // serves the route, no via tag
+		tagged(6, false, false, "tag:other"),
+	}
+
+	tests := []struct {
+		name  string
+		grant string
+		want  map[types.NodeID][]types.NodeID
+	}{
+		{
+			name:  "ports",
+			grant: `"ip": ["tcp:80"]`,
+			want:  map[types.NodeID][]types.NodeID{1: {2}, 2: {1}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			policy := fmt.Sprintf(`{
+				"tagOwners": {"tag:client": [], "tag:router": [], "tag:other": []},
+				"grants": [{"src": ["tag:client"], "dst": ["10.1.0.0/24"], "via": ["tag:router"], %s}]
+			}`, tt.grant)
+
+			pm, err := NewPolicyManager([]byte(policy), nil, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.want, pm.BuildPeerMap(nodes.ViewSlice()))
+		})
+	}
+}
+
 func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 	t.Parallel()
 

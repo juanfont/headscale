@@ -57,7 +57,7 @@ func buildPeerMapPairScan(pm *PolicyManager, nodes views.Slice[types.NodeView]) 
 
 	nodeMatchers := make(map[types.NodeID][]matcher.Match, nodes.Len())
 	for _, node := range nodes.All() {
-		nodeMatchers[node.ID()] = matcher.MatchesFromFilterRules(pm.filterRulesForNodeLocked(node))
+		nodeMatchers[node.ID()] = matcher.MatchesFromFilterRules(pm.peerRulesForNodeLocked(node))
 	}
 
 	for i := range nodes.Len() {
