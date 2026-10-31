@@ -689,6 +689,12 @@ type apiBody struct {
 	EnabledRoutes    json.RawMessage `json:"enabledRoutes"`
 	OAuthClientID    *string         `json:"oauthClientId"`
 
+	ConnectedToControl        json.RawMessage `json:"connectedToControl"`
+	BlocksIncomingConnections json.RawMessage `json:"blocksIncomingConnections"`
+	SSHEnabled                json.RawMessage `json:"sshEnabled"`
+	Distro                    json.RawMessage `json:"distro"`
+	ClientConnectivity        json.RawMessage `json:"clientConnectivity"`
+
 	Keys    json.RawMessage `json:"keys"`
 	Devices []apiBody       `json:"devices"`
 }
@@ -890,6 +896,7 @@ func (r *apiReplay) deviceChecks(prefix, alias string, all bool, want, got apiBo
 	checks := []apiCheck{
 		{prefix + "tags", sortedStrings(want.Tags), sortedStrings(got.Tags)},
 		{prefix + "owner", deviceOwner(want.Tags, r.userName(want.User)), deviceOwner(got.Tags, got.User)},
+		{prefix + "fields", deviceFields(want), deviceFields(got)},
 	}
 
 	if all {
@@ -909,6 +916,28 @@ func (r *apiReplay) userName(email string) string {
 	}
 
 	return email
+}
+
+// deviceFields names the fields a read shape must carry whatever their value.
+func deviceFields(b apiBody) string {
+	var out []string
+
+	for _, f := range []struct {
+		name string
+		raw  json.RawMessage
+	}{
+		{"connectedToControl", b.ConnectedToControl},
+		{"blocksIncomingConnections", b.BlocksIncomingConnections},
+		{"sshEnabled", b.SSHEnabled},
+		{"distro", b.Distro},
+		{"clientConnectivity", b.ClientConnectivity},
+	} {
+		if f.raw != nil {
+			out = append(out, f.name)
+		}
+	}
+
+	return strings.Join(out, ",")
 }
 
 func deviceOwner(tags []string, user string) string {

@@ -21,8 +21,9 @@ func init() {
 }
 
 // Device is the Tailscale device response. Headscale nodes map onto it; fields
-// Headscale does not track are emitted as their zero value. The route slices
-// are only populated for the fields=all variant, matching Tailscale.
+// Headscale does not track are left out, apart from UpdateAvailable. The route
+// slices and the host detail are only populated for the fields=all variant,
+// matching Tailscale.
 type Device struct {
 	Addresses         []string   `json:"addresses"         nullable:"false"`
 	Name              string     `json:"name"`
@@ -45,6 +46,9 @@ type Device struct {
 	OS                 string     `json:"os"`
 	ClientVersion      string     `json:"clientVersion"`
 	UpdateAvailable    bool       `json:"updateAvailable"`
+
+	BlocksIncomingConnections bool `json:"blocksIncomingConnections"`
+
 	// OAuthClientID names the auth key the device joined with. For a key a
 	// token made, Tailscale names the token's OAuth client, which headscale
 	// does not record, so it is left out.
@@ -53,6 +57,37 @@ type Device struct {
 	// Populated only when fields=all is requested, then as [] when empty.
 	AdvertisedRoutes []string `json:"advertisedRoutes,omitzero"`
 	EnabledRoutes    []string `json:"enabledRoutes,omitzero"`
+
+	SSHEnabled         *bool               `json:"sshEnabled,omitempty"`
+	Distro             *Distro             `json:"distro,omitempty"`
+	ClientConnectivity *ClientConnectivity `json:"clientConnectivity,omitempty"`
+}
+
+// Distro is the Linux distribution a device reports.
+type Distro struct {
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	CodeName string `json:"codeName"`
+}
+
+// ClientConnectivity is how a device reaches the network, from what it reports.
+// Latency stays empty: headscale drops a client's DERP latency on arrival.
+type ClientConnectivity struct {
+	Endpoints             []string       `json:"endpoints"             nullable:"false"`
+	MappingVariesByDestIP bool           `json:"mappingVariesByDestIP"`
+	Latency               map[string]any `json:"latency"               nullable:"false"`
+	ClientSupports        ClientSupports `json:"clientSupports"`
+}
+
+// ClientSupports is what a device's network allows. HairPinning stays null:
+// clients no longer report it.
+type ClientSupports struct {
+	HairPinning *bool `json:"hairPinning"`
+	IPv6        bool  `json:"ipv6"`
+	PCP         bool  `json:"pcp"`
+	PMP         bool  `json:"pmp"`
+	UDP         bool  `json:"udp"`
+	UPnP        bool  `json:"upnp"`
 }
 
 // DeviceRoutes is the GET /device/{id}/routes response: what the node announces
@@ -496,9 +531,39 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 		d.LastSeen = &ls
 	}
 
+	hi := view.Hostinfo()
+	d.BlocksIncomingConnections = hi.Valid() && hi.ShieldsUp()
+
 	if allFields {
 		d.AdvertisedRoutes = emptyIfNil(util.PrefixesToString(view.AnnouncedRoutes()))
 		d.EnabledRoutes = emptyIfNil(util.PrefixesToString(view.ApprovedRoutes().AsSlice()))
+
+		sshEnabled := hi.Valid() && hi.TailscaleSSHEnabled()
+		d.SSHEnabled = &sshEnabled
+		d.Distro = &Distro{}
+		d.ClientConnectivity = &ClientConnectivity{
+			Endpoints: make([]string, 0, view.Endpoints().Len()),
+			Latency:   map[string]any{},
+		}
+
+		for _, ep := range view.Endpoints().All() {
+			d.ClientConnectivity.Endpoints = append(d.ClientConnectivity.Endpoints, ep.String())
+		}
+
+		if hi.Valid() {
+			d.Distro = &Distro{Name: hi.Distro(), Version: hi.DistroVersion(), CodeName: hi.DistroCodeName()}
+
+			if ni := hi.NetInfo(); ni.Valid() {
+				d.ClientConnectivity.MappingVariesByDestIP = ni.MappingVariesByDestIP().EqualBool(true)
+				d.ClientConnectivity.ClientSupports = ClientSupports{
+					IPv6: ni.WorkingIPv6().EqualBool(true),
+					PCP:  ni.PCP().EqualBool(true),
+					PMP:  ni.PMP().EqualBool(true),
+					UDP:  ni.WorkingUDP().EqualBool(true),
+					UPnP: ni.UPnP().EqualBool(true),
+				}
+			}
+		}
 	}
 
 	return d
