@@ -3,8 +3,8 @@
 // grant steering with peer connectivity, cross-subnet forwarding and
 // exit nodes.
 //
-// Test data source: ../policy/v2/testdata/{grant,routes}_results/, see
-// viaCompatTests and routesMapCompatTests
+// Test data source: ../policy/v2/testdata/{acl,grant,routes}_results/, see
+// viaCompatTests, routesMapCompatTests and aclMapCompatTests
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 package servertest_test
 
@@ -101,6 +101,21 @@ var routesMapCompatTests = []struct {
 	{"routes-m6-subnet-to-subnet-multi-route", "subnet of a multi-route router to a subnet of an exit node"},
 }
 
+// aclMapCompatTests lists ACL captures replayed through the mapper, with only
+// the policy approving routes: a router advertises in each, so each holds
+// auto-approval to SaaS. They are shared with TestACLCompat in policy/v2, which
+// reads their filters; this replay reads the netmaps. In acl-ah01 and acl-h03
+// some nodes have peers only through the route the policy approves.
+var aclMapCompatTests = []string{
+	"acl-ah01", "acl-ah02", "acl-au01", "acl-au06", "acl-c09",
+	"acl-d03", "acl-d04", "acl-d08", "acl-e01", "acl-e03",
+	"acl-h02", "acl-h03", "acl-h06", "acl-k01", "acl-k03",
+	"acl-k05", "acl-m02", "acl-m03", "acl-m10", "acl-mr09",
+	"acl-mr20", "acl-mu02", "acl-mu07", "acl-o04", "acl-pf03",
+	"acl-r02", "acl-r08", "acl-rs01", "acl-rs02", "acl-rs03",
+	"acl-rs07", "acl-t10", "acl-u11", "acl-w02",
+}
+
 // viaCompatSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>/<node>/<check>, or by check alone where every capture differs the
 // same way. A listed check that matches fails, so a fix must delete its entry.
@@ -136,6 +151,25 @@ func TestRoutesMapCompat(t *testing.T) {
 			require.NoError(t, err, "failed to read %s", path)
 
 			runViaMapCompat(t, c)
+		})
+	}
+}
+
+// TestACLMapCompat replays aclMapCompatTests through [runViaMapCompat].
+func TestACLMapCompat(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range aclMapCompatTests {
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join("..", "policy", "v2", "testdata", "acl_results", id+".hujson")
+
+			c, err := testcapture.Read(path)
+			require.NoError(t, err, "failed to read %s", path)
+
+			_, clients := startViaMapCompat(t, c, false)
+			compareViaMapCompat(t, c, clients)
 		})
 	}
 }
@@ -208,7 +242,7 @@ func TestViaGrantSourceLossCompat(t *testing.T) {
 
 	before, after := read("via-grant-v66"), read("via-grant-v67")
 
-	srv, clients := startViaMapCompat(t, before)
+	srv, clients := startViaMapCompat(t, before, true)
 	compareViaMapCompat(t, before, clients)
 
 	user, err := srv.State().GetUserByName("thor")
@@ -293,20 +327,21 @@ func passesOnce(check func(require.TestingT)) bool {
 func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 	t.Helper()
 
-	_, clients := startViaMapCompat(t, c)
+	_, clients := startViaMapCompat(t, c, true)
 	compareViaMapCompat(t, c, clients)
 }
 
 // startViaMapCompat starts a server holding the capture's policy and a
-// client per captured node, with the capture's routes approved, and waits
-// for every client's first netmap and the peers SaaS gave it.
+// client per captured node, approving routes as [startCaptureClients] does,
+// and waits for every client's first netmap and the peers SaaS gave it.
 func startViaMapCompat(
 	t *testing.T,
 	c *testcapture.Capture,
+	approve bool,
 ) (*servertest.TestServer, map[string]*servertest.TestClient) {
 	t.Helper()
 
-	srv, clients := startCaptureClients(t, c, true)
+	srv, clients := startCaptureClients(t, c, approve)
 
 	// Wait for peers based on golden [netmap.NetworkMap] expected counts.
 	// A viewer whose peers are a listed difference never reaches them.
