@@ -694,9 +694,10 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
-		// With tags-as-identity model, tagged nodes show as [types.TaggedDevices] user (2147455555)
-		// The PreAuthKey was created with tags, so the node is tagged
-		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
+		// The PreAuthKey was created with tags, so the node is tagged, and a
+		// tagged node sees itself as a user of its own, named after it, as on SaaS.
+		assert.Equal(ct, strings.TrimSuffix(status.Self.DNSName, "."), status.User[status.Self.UserID].LoginName,
+			"Expected the tagged node to be a user of its own")
 	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -810,8 +811,9 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
-		// With tags-as-identity model, tagged nodes show as [types.TaggedDevices] user (2147455555)
-		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
+		// A tagged node sees itself as a user of its own, named after it, as on SaaS.
+		assert.Equal(ct, strings.TrimSuffix(status.Self.DNSName, "."), status.User[status.Self.UserID].LoginName,
+			"Expected the tagged node to be a user of its own")
 	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
 	// A tagged key converts the machine's user-owned node in place.
@@ -826,19 +828,16 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
-	// Test: tailscale status output should show "tagged-devices" not "userid:2147455555"
-	// This is the fix for issue #2970 - the Tailscale client should display user-friendly names
+	// Test: tailscale status names a tagged node, not "userid:<n>". This is the
+	// fix for issue #2970; the node is its own user, named after it, as on SaaS.
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		stdout, stderr, err := client.Execute([]string{"tailscale", "status"})
 		assert.NoError(ct, err, "tailscale status command should succeed, stderr: %s", stderr)
 
 		t.Logf("Tailscale status output:\n%s", stdout)
 
-		// The output should contain "tagged-devices" for tagged nodes
-		assert.Contains(ct, stdout, "tagged-devices", "Tailscale status should show 'tagged-devices' for tagged nodes")
-
-		// The output should NOT show the raw numeric userid to the user
-		assert.NotContains(ct, stdout, "userid:2147455555", "Tailscale status should not show numeric userid for tagged nodes")
+		// The output should NOT show a raw numeric userid to the user
+		assert.NotContains(ct, stdout, "userid:", "Tailscale status should not show numeric userid for tagged nodes")
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 }
 
