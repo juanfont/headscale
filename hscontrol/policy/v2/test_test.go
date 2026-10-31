@@ -143,7 +143,8 @@ func TestRunTests(t *testing.T) {
 				"tests": [
 					{ "src": "*", "deny": ["tag:server:80"] },
 					{ "src": "100.64.0.0/30", "deny": ["tag:server:80"] },
-					{ "src": "autogroup:tagged", "deny": ["tag:server:80"] }
+					{ "src": "autogroup:tagged", "deny": ["tag:server:80"] },
+					{ "src": "autogroup:member", "deny": ["tag:server:80"] }
 				]
 			}`,
 			wantPass: false,
@@ -151,6 +152,7 @@ func TestRunTests(t *testing.T) {
 				`unknown user or host: "*"`,
 				`unknown user or host: "100.64.0.0/30"`,
 				`unknown user or host: "autogroup:tagged"`,
+				`unknown user or host: "autogroup:member"`,
 			},
 			wantNoErrIs: errPolicyTestsFailed,
 		},
