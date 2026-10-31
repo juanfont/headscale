@@ -1038,10 +1038,9 @@ func (r *stepReplay) setPolicy(t *testing.T, stepName, policy string) {
 	}
 }
 
-// api replays one admin exchange, the i-th action of its step. Device and
-// key deletes go to the v2 API; key mints and expiry, which the v2 API lacks
-// or would answer with secrets, go to State. Reads are replayed only with
-// readAPI.
+// api replays one admin exchange, the i-th action of its step. Device calls
+// and key deletes go to the v2 API; key mints, which it would answer with
+// secrets, go to State. Reads are replayed only with readAPI.
 func (r *stepReplay) api(t *testing.T, stepName string, i int, a testcapture.Action) {
 	t.Helper()
 
@@ -1120,13 +1119,6 @@ func (r *stepReplay) api(t *testing.T, stepName string, i int, a testcapture.Act
 	case a.Method == http.MethodPost && strings.HasSuffix(a.Path, "/role"):
 		// Headscale has no user roles; a role decides only what the user's
 		// own API key may call, and the replay mints for him directly.
-
-	case a.Method == http.MethodPost && strings.HasSuffix(a.Path, "/expire"):
-		now := time.Now()
-
-		_, c, err := r.srv.State().SetNodeExpiry(r.node(t, deviceAlias(t, a.Path)).ID(), &now)
-		require.NoError(t, err, "%s: expire", stepName)
-		r.srv.App.Change(c)
 
 	case strings.HasPrefix(a.Path, "/device/"):
 		path, ok := r.v2Path(a.Path)
