@@ -1411,8 +1411,10 @@ func (nv NodeView) TailNode(
 
 	// routeFunc returns ALL routes (subnet + exit) for this node.
 	allRoutes := primaryRouteFunc(nv.ID())
-	allowedIPs := slices.Concat(addresses, allRoutes)
-	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
+
+	// Own addresses lead, as on SaaS: `tailscale whois` prints AllowedIPs[2:]
+	// as the peer's routes.
+	allowedIPs := slices.Concat(addresses, slices.SortedFunc(slices.Values(allRoutes), netip.Prefix.Compare))
 
 	// PrimaryRoutes only includes non-exit subnet routes for HA tracking.
 	var primaryRoutes []netip.Prefix
