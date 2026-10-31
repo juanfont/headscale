@@ -1,6 +1,7 @@
 package apiv2
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"net/netip"
@@ -174,6 +175,11 @@ func registerDevices(api huma.API, b Backend) {
 		for _, node := range nodes.All() {
 			out.Body.Devices = append(out.Body.Devices, deviceFromView(node, allFields, b.Cfg.BaseDomain))
 		}
+
+		// The NodeStore holds no order, and Tailscale lists devices by name.
+		slices.SortFunc(out.Body.Devices, func(a, b Device) int {
+			return cmp.Compare(a.Name, b.Name)
+		})
 
 		return out, nil
 	})
