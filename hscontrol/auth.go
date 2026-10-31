@@ -495,6 +495,11 @@ func (h *Headscale) handleRegisterWithAuthKey(
 			return nil, NewHTTPError(http.StatusUnauthorized, perr.Error(), nil)
 		}
 
+		// The client shows this text to the user as it is.
+		if errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted) {
+			return nil, NewHTTPError(http.StatusBadRequest, err.Error(), nil)
+		}
+
 		return nil, err
 	}
 
