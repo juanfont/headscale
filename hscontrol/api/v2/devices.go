@@ -408,7 +408,7 @@ func lookupNode(b Backend, rawID string) (types.NodeView, error) {
 
 	node, ok := b.State.GetNodeByID(nodeID)
 	if !ok {
-		return types.NodeView{}, huma.Error404NotFound("device not found")
+		return types.NodeView{}, huma.Error404NotFound("no manageable device matching this ID found")
 	}
 
 	return node, nil

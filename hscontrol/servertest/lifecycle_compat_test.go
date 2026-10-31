@@ -1152,7 +1152,8 @@ func registerFlags(attempts []testcapture.RegisterAttempt) string {
 }
 
 // answerChecks compares the status of each admin exchange headscale
-// answered in the step, keyed by the action's index.
+// answered in the step, and the text of a not found, keyed by the action's
+// index.
 func (r *stepReplay) answerChecks(step testcapture.Step) []stepCheck {
 	checks := make([]stepCheck, 0, len(r.answers))
 
@@ -1161,6 +1162,13 @@ func (r *stepReplay) answerChecks(step testcapture.Step) []stepCheck {
 		checks = append(checks, stepCheck{strconv.Itoa(i) + "/status", strconv.Itoa(step.Actions[i].Status), func() string {
 			return got
 		}})
+
+		if step.Actions[i].Status == http.StatusNotFound {
+			text := errorMessage(r.answers[i].body)
+			checks = append(checks, stepCheck{strconv.Itoa(i) + "/not-found-text", errorMessage(step.Actions[i].Response), func() string {
+				return text
+			}})
+		}
 	}
 
 	return checks
