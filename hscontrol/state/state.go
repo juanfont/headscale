@@ -1045,15 +1045,15 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 		log.Error().Err(err).EmbedObject(node).Msg("failed to update last seen in database")
 	}
 
-	// An ordinary node going offline only needs the lightweight offline
-	// patch. Subnet routers, relay targets, and via targets change what
-	// peers compute, so they additionally force a peer recompute.
-	cs := []change.Change{change.NodeOffline(node.ID(), node.LastSeen().Get())}
+	// Subnet routers, relay targets, and via targets change what peers compute.
+	// The recompute also carries the node's offline state, so one frame moves
+	// its routes, as on SaaS.
 	if s.polMan.NodeNeedsPeerRecompute(node) {
-		cs = append(cs, change.PolicyChange())
+		return []change.Change{change.PolicyChange()}, nil
 	}
 
-	return cs, nil
+	// An ordinary node going offline only needs the lightweight offline patch.
+	return []change.Change{change.NodeOffline(node.ID(), node.LastSeen().Get())}, nil
 }
 
 // GetNodeByID retrieves a node by ID.

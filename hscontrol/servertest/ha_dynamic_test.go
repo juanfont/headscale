@@ -89,6 +89,51 @@ func TestHAFailover_ViewerSeesPrimaryFlip(t *testing.T) {
 		})
 }
 
+// TestHAFailover_OfflineMovesRouteInOneFrame: SaaS moved a route off a killed
+// router in one frame, so a viewer never holds an offline primary.
+func TestHAFailover_OfflineMovesRouteInOneFrame(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ha-dyn-offline")
+
+	route := netip.MustParsePrefix("10.100.0.0/24")
+
+	r1 := servertest.NewClient(t, srv, "dyn-offline-r1", servertest.WithUser(user))
+	r2 := servertest.NewClient(t, srv, "dyn-offline-r2", servertest.WithUser(user))
+	viewer := servertest.NewClient(t, srv, "dyn-offline-view", servertest.WithUser(user))
+
+	r1.WaitForPeers(t, 2, 10*time.Second)
+	r2.WaitForPeers(t, 2, 10*time.Second)
+	viewer.WaitForPeers(t, 2, 10*time.Second)
+
+	advertiseAndApproveRoute(t, srv, r1, route)
+	advertiseAndApproveRoute(t, srv, r2, route)
+
+	viewer.WaitForCondition(t, "viewer sees route via r1", 10*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			return hasPeerPrimaryRoute(nm, "dyn-offline-r1", route)
+		})
+
+	r1.Disconnect(t)
+
+	viewer.WaitForCondition(t, "viewer sees route via r2", 30*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			return hasPeerPrimaryRoute(nm, "dyn-offline-r2", route)
+		})
+
+	for _, nm := range viewer.History() {
+		for _, p := range nm.Peers {
+			online, known := p.Online().GetOk()
+			offline := known && !online
+
+			if p.Hostinfo().Hostname() == "dyn-offline-r1" && offline {
+				assert.False(t, hasPeerPrimaryRoute(nm, "dyn-offline-r1", route), "a netmap holds an offline primary")
+			}
+		}
+	}
+}
+
 // TestHAFailover_ViewerSeesRouteRevoke verifies that when the primary
 // revokes its approved route, the viewer's [netmap.NetworkMap] re-elects the
 // standby and the old primary no longer advertises the route.
