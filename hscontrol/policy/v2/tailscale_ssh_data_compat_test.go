@@ -124,10 +124,7 @@ func TestSSHForwardingDataCompat(t *testing.T) {
 // sshSkipReasons documents captures the upstream control plane accepts
 // but headscale cannot yet represent, keyed <test_id> for the whole capture
 // or <test_id>/<node>/<check>. Each entry names the feature gap.
-var sshSkipReasons = map[string]string{
-	"ssh-b5":  "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
-	"ssh-d10": "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
-}
+var sshSkipReasons = map[string]string{}
 
 // sshRejectSkipReasons documents captures the upstream control plane
 // rejects for reasons headscale cannot apply, keyed <test_id> for the whole

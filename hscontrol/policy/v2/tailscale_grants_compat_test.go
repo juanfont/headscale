@@ -141,19 +141,7 @@ func loadGrantTestFile(t *testing.T, path string) *testcapture.Capture {
 
 // Skip categories document WHY tests are expected to differ from Tailscale SaaS.
 // Tests are grouped by root cause.
-//
-//	USER_PASSKEY_WILDCARD - 2 tests: user:*@passkey wildcard pattern not supported
-//
-// Total: 2 tests skipped, ~246 tests expected to pass.
 var grantSkipReasons = map[string]string{
-	// USER_PASSKEY_WILDCARD (2 tests)
-	//
-	// Tailscale SaaS policies can use user:*@passkey as a wildcard matching
-	// all passkey-authenticated users. headscale does not support passkey
-	// authentication and has no equivalent for this wildcard pattern.
-	"grant-k20": "USER_PASSKEY_WILDCARD: src=user:*@passkey not supported in headscale",
-	"grant-k21": "USER_PASSKEY_WILDCARD: dst=user:*@passkey not supported in headscale",
-
 	// SaaS lists contiguous source addresses one by one and writes
 	// autogroup:internet as address ranges; headscale merges sources into
 	// ranges and writes the internet as prefixes. The address sets match;
