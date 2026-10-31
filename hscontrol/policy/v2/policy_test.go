@@ -44,6 +44,11 @@ func TestApprovedSubnetRoutesIgnoreNodeOrder(t *testing.T) {
 	want := []string{"10.1.0.0/16", "10.2.0.0/16"}
 	assert.Equal(t, want, approvedSubnetRoutes(types.Nodes{a, b}.ViewSlice()))
 	assert.Equal(t, want, approvedSubnetRoutes(types.Nodes{b, a}.ViewSlice()))
+
+	// A route stays after its node withdraws it, as on SaaS. An exit route stays out.
+	b.Hostinfo = &tailcfg.Hostinfo{}
+	b.ApprovedRoutes = append(b.ApprovedRoutes, netip.MustParsePrefix("0.0.0.0/0"))
+	assert.Equal(t, want, approvedSubnetRoutes(types.Nodes{a, b}.ViewSlice()))
 }
 
 func node(name, ipv4, ipv6 string, user types.User) *types.Node {
