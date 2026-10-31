@@ -560,6 +560,10 @@ func (r *apiReplay) api(t *testing.T, step testcapture.Step, i int, a testcaptur
 		checks = append(checks, r.etagCheck(step, i, label, respHeader.Get("ETag")))
 	}
 
+	if a.Status == status {
+		checks = append(checks, contentTypeChecks(a.RespHeader["Content-Type"], respHeader.Get("Content-Type"))...)
+	}
+
 	if a.Kind == "api" && saasRefused && (isWrite || isValidate) {
 		checks = append(checks, r.refusalChecks(t, a, endpoint, body, resp)...)
 	}
@@ -571,6 +575,21 @@ func (r *apiReplay) api(t *testing.T, step testcapture.Step, i int, a testcaptur
 	}
 
 	return checks
+}
+
+// contentTypeChecks compares the media types, when SaaS recorded one.
+func contentTypeChecks(want, got string) []apiCheck {
+	if want == "" {
+		return nil
+	}
+
+	return []apiCheck{{"content-type", mediaType(want), mediaType(got)}}
+}
+
+func mediaType(contentType string) string {
+	media, _, _ := strings.Cut(contentType, ";")
+
+	return media
 }
 
 // request is the call a sent, with SaaS's labels, emails and addresses

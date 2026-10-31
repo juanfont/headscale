@@ -40,11 +40,14 @@ const maxErrorDetails = 20
 // Tailscale error shape. It is registered on the v2 API config only, so the
 // headscale-native v1 API keeps emitting problem+json. Non-error bodies pass
 // through untouched.
-func tailscaleErrorTransformer(_ huma.Context, _ string, v any) (any, error) {
+func tailscaleErrorTransformer(ctx huma.Context, _ string, v any) (any, error) {
 	em, ok := v.(*huma.ErrorModel)
 	if !ok {
 		return v, nil
 	}
+
+	// As SaaS, whatever the caller accepts. Huma chose this for its own model.
+	ctx.SetHeader("Content-Type", contentTypeJSON)
 
 	message := em.Detail
 	if message == "" {
