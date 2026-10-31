@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"strings"
 	"time"
 
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
@@ -100,6 +101,10 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 	if err != nil {
 		b.addError(err)
 		return b
+	}
+
+	if nv.IsTagged() {
+		tailnode.User = taggedSelfUserID(nv.ID())
 	}
 
 	// PrimaryRoutes is what the router serves: the routes it is primary
@@ -204,7 +209,29 @@ func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView])
 
 	b.resp.UserProfiles = generateUserProfiles(node, peers)
 
+	if node.IsTagged() {
+		fqdn, err := node.GetFQDN(b.mapper.cfg.BaseDomain)
+		if err != nil {
+			b.addError(err)
+			return b
+		}
+
+		b.resp.UserProfiles = append(b.resp.UserProfiles, tailcfg.UserProfile{
+			ID:          taggedSelfUserID(node.ID()),
+			LoginName:   strings.TrimSuffix(fqdn, "."),
+			DisplayName: node.GivenName(),
+		})
+	}
+
 	return b
+}
+
+// taggedSelfUserID is the user a tagged node sees itself as: its own, as on
+// SaaS, past every real user ID. Clients take a peer with their own user ID for
+// a device of the same owner, so with the shared tagged-devices ID every tagged
+// peer looked like one: a file target, and a reader of its debug endpoints.
+func taggedSelfUserID(id types.NodeID) tailcfg.UserID {
+	return tailcfg.UserID(types.TaggedDevicesUserID) + 1 + tailcfg.UserID(id) //nolint:gosec // node IDs fit in int64
 }
 
 // WithPacketFilters adds packet filter rules based on policy.

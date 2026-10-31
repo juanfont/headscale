@@ -141,9 +141,7 @@ var aclMapCompatTests = []string{
 // viaCompatSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>/<node>/<check>, or by check alone where every capture differs the
 // same way. A listed check that matches fails, so a fix must delete its entry.
-var viaCompatSkipReasons = map[string]string{
-	"tagged-self": "TAGGED_SELF_PROFILE: SaaS gives a tagged node a profile of its own, headscale the shared tagged-devices one",
-}
+var viaCompatSkipReasons = map[string]string{}
 
 // TestRoutesMapCompat replays routesMapCompatTests through
 // [runViaMapCompat].
@@ -953,21 +951,30 @@ func compareUserProfiles(
 		check := "peer"
 		if name == "" {
 			check = "self"
-			if want.SelfNode.Tags().Len() > 0 {
-				check = "tagged-self"
-			}
-		}
-
-		if reason, listed := viaCompatSkipReasons[check]; listed {
-			if gotProfiles[name] == wantProfile {
-				t.Errorf("node %q: %s profile matches SaaS; delete viaCompatSkipReasons[%q] (%s)",
-					name, check, check, reason)
-			}
-
-			continue
 		}
 
 		assert.Equalf(t, wantProfile, gotProfiles[name], "node %q: %s profile mismatch", name, check)
+	}
+
+	// Clients take a peer with their own user ID for a device of the same owner.
+	sameOwner := func(nm *netmap.NetworkMap) map[string]bool {
+		out := map[string]bool{}
+
+		for _, peer := range nm.Peers {
+			name := extractHostname(peer.Name())
+			if _, isOurs := clients[name]; isOurs {
+				out[name] = peer.User() == nm.SelfNode.User()
+			}
+		}
+
+		return out
+	}
+
+	gotSame := sameOwner(got)
+	for name, wantSame := range sameOwner(want) {
+		if same, ok := gotSame[name]; ok {
+			assert.Equalf(t, wantSame, same, "peer %q: same owner as the viewer", name)
+		}
 	}
 }
 
@@ -986,6 +993,9 @@ func nodeProfiles(
 		if name, ok := captureUserNames[login]; ok {
 			login = name
 		}
+
+		// A tagged node's login is its name, under each side's own domain.
+		login, _, _ = strings.Cut(login, ".")
 
 		return login + " / " + p.DisplayName()
 	}
