@@ -1661,7 +1661,7 @@ func (s *State) FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error)
 	return s.polMan.FilterForNode(node)
 }
 
-// MatchersForNode returns matchers for peer relationship determination (unreduced).
+// MatchersForNode returns the unreduced matchers that filter the routes a node sees.
 func (s *State) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
 	return s.polMan.MatchersForNode(node)
 }

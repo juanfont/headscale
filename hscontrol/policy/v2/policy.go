@@ -1040,7 +1040,7 @@ func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRul
 	return pm.filterForNodeLocked(node), nil
 }
 
-// MatchersForNode returns the matchers for peer relationship determination for a specific node.
+// MatchersForNode returns the matchers that filter the routes a node sees.
 // These are UNREDUCED matchers - they include all rules where the node could be either source or destination.
 // This is different from [PolicyManager.FilterForNode] which returns REDUCED rules for packet filtering.
 //
@@ -1048,8 +1048,7 @@ func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRul
 // For autogroup:self: returns node-specific matchers from unreduced compiled rules.
 //
 // Per-node results are cached and invalidated on policy/node updates
-// so [PolicyManager.BuildPeerMap]'s O(N²) slow path avoids recomputing
-// matchers for every pair.
+// so building a node's map does not recompile them.
 func (pm *PolicyManager) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
 	if pm == nil {
 		return nil, nil
