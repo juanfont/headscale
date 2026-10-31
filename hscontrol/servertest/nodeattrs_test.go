@@ -226,6 +226,36 @@ func TestTaildropDisabledWithholdsFileSharingCap(t *testing.T) {
 		})
 }
 
+// TestSSHBehaviorIsAnAdminChoice pins a deliberate difference from SaaS, which
+// stamps ssh-behavior-v1 on every node: headscale sends it only through a
+// nodeAttr, so sessions keep their login environment and PAM by default.
+func TestSSHBehaviorIsAnAdminChoice(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ssh-behavior-user")
+
+	c := servertest.NewClient(t, srv, "ssh-behavior-node", servertest.WithUser(user))
+	c.WaitForCondition(t, "baseline without ssh-behavior-v1", 10*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			if nm == nil || !nm.SelfNode.Valid() {
+				return false
+			}
+
+			return hasCap(nm, nodecap.SSH) && !hasCap(nm, nodecap.SSHBehaviorV1)
+		})
+
+	reloadPolicy(t, srv, `{
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+		"nodeAttrs": [{"target": ["*"], "attr": ["ssh-behavior-v1"]}]
+	}`)
+
+	c.WaitForCondition(t, "ssh-behavior-v1 through a nodeAttr", 10*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			return hasCap(nm, nodecap.SSHBehaviorV1)
+		})
+}
+
 // TestNodeAttrsAddsToBaseline verifies that policy nodeAttrs caps land on
 // nodes alongside the always-on baseline. The baseline caps remain
 // regardless of policy contents.
