@@ -238,6 +238,7 @@ type TailnetSettings struct {
 	NetworkFlowLoggingOn                   bool   `json:"networkFlowLoggingOn"`
 	PostureIdentityCollectionOn            bool   `json:"postureIdentityCollectionOn"`
 	RegionalRoutingOn                      bool   `json:"regionalRoutingOn"`
+	RouteSelection                         string `json:"routeSelection"`
 	UsersApprovalOn                        bool   `json:"usersApprovalOn"`
 	UsersRoleAllowedToJoinExternalTailnets string `json:"usersRoleAllowedToJoinExternalTailnets"`
 }
