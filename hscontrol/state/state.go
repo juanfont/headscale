@@ -3957,7 +3957,9 @@ func reauthChange(node types.NodeView, r relogin, policyChanged bool) change.Cha
 // reloginChanged compares what peers read before and after a relogin.
 // [tailcfg.PeerChange] carries neither [tailcfg.Node.Expired] nor Hostinfo:
 // peers left holding an expired node drop its WireGuard handshakes, and the
-// relogin stored the Hostinfo, so no later MapRequest shows the change.
+// relogin stored the Hostinfo, so no later MapRequest shows the change. It
+// cannot remove a key expiry either, as it omits a zero one, and peers would
+// cut the node off when the old one passes.
 func reloginChanged(before, after types.NodeView, now time.Time) relogin {
 	expiry := func(n types.NodeView) time.Time {
 		e, _ := n.Expiry().GetOk()
@@ -3965,13 +3967,20 @@ func reloginChanged(before, after types.NodeView, now time.Time) relogin {
 		return e
 	}
 
+	// What a peer patch cannot carry.
+	expiredChanged := before.IsExpiredAt(now) != after.IsExpiredAt(now)
+	hostinfoChanged := !peerHostinfoEqual(before.Hostinfo(), after.Hostinfo())
+	expiryRemoved := before.Expiry().Valid() && !after.Expiry().Valid()
+
+	// What a peer patch carries.
+	keysSame := before.NodeKey() == after.NodeKey() && before.DiscoKey() == after.DiscoKey()
+	expirySame := expiry(before).Equal(expiry(after))
+	endpointsSame := views.SliceEqual(before.Endpoints(), after.Endpoints())
+
 	switch {
-	case before.IsExpiredAt(now) != after.IsExpiredAt(now) ||
-		!peerHostinfoEqual(before.Hostinfo(), after.Hostinfo()):
+	case expiredChanged || hostinfoChanged || expiryRemoved:
 		return reloginWhole
-	case before.NodeKey() == after.NodeKey() && before.DiscoKey() == after.DiscoKey() &&
-		expiry(before).Equal(expiry(after)) &&
-		views.SliceEqual(before.Endpoints(), after.Endpoints()):
+	case keysSame && expirySame && endpointsSame:
 		return reloginNone
 	default:
 		return reloginKeys
