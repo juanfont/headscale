@@ -779,7 +779,7 @@ func TestEphemeralGCArmedWhenPolicyRefreshFails(t *testing.T) {
 }
 
 // TestEphemeralGCKeepsNodeReKeyedToPermanent pins that a timer armed while a
-// node was ephemeral does not delete it once a permanent key took over.
+// node was ephemeral does not delete it once a user claims the tagged node.
 func TestEphemeralGCKeepsNodeReKeyedToPermanent(t *testing.T) {
 	t.Parallel()
 
@@ -790,7 +790,10 @@ func TestEphemeralGCKeepsNodeReKeyedToPermanent(t *testing.T) {
 	app.StartEphemeralGCForTest(t)
 
 	user := app.state.CreateUserForTest("eph-gc-rekey-user")
-	ephemeralKey, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+	_, err := app.state.SetPolicy([]byte(`{"tagOwners":{"tag:server":["eph-gc-rekey-user@"]}}`))
+	require.NoError(t, err)
+	ephemeralKey, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, []string{"tag:server"})
 	require.NoError(t, err)
 	permanentKey, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
@@ -799,6 +802,7 @@ func TestEphemeralGCKeepsNodeReKeyedToPermanent(t *testing.T) {
 	machineKey := key.NewMachine()
 
 	for _, authKey := range []string{ephemeralKey.Key, permanentKey.Key} {
+		nodeKey = key.NewNode()
 		_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
 			Auth: &tailcfg.RegisterResponseAuth{
 				AuthKey: authKey,
