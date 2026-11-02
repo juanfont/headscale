@@ -40,6 +40,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
@@ -372,12 +373,86 @@ func TestRoutesCompat(t *testing.T) {
 					)
 
 					compatCheck(t, routesSkipReasons, tf.TestID+"/"+nodeName+"/filter", func() string {
-						return cmp.Diff(wantRules, gotRules, opts...)
+						return cmp.Diff(
+							expandFilterDestinationRanges(t, wantRules),
+							expandFilterDestinationRanges(t, gotRules),
+							opts...,
+						)
 					})
 				})
 			}
 		})
 	}
+}
+
+// Expand ranges per destination so ports, protocols, rule boundaries and duplicates stay intact.
+func expandFilterDestinationRanges(t *testing.T, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+	t.Helper()
+
+	expanded := slices.Clone(rules)
+
+	for i, rule := range rules {
+		if !slices.ContainsFunc(rule.DstPorts, func(dst tailcfg.NetPortRange) bool {
+			return strings.Contains(dst.IP, "-")
+		}) {
+			continue
+		}
+
+		var dests []tailcfg.NetPortRange
+
+		for _, dst := range rule.DstPorts {
+			if !strings.Contains(dst.IP, "-") {
+				dests = append(dests, dst)
+
+				continue
+			}
+
+			set, err := util.ParseIPSet(dst.IP, nil)
+			require.NoErrorf(t, err, "golden DstPorts.IP %q unparseable", dst.IP)
+
+			for _, prefix := range set.Prefixes() {
+				dest := dst
+				dest.IP = filterIP(prefix)
+				dests = append(dests, dest)
+			}
+		}
+
+		expanded[i].DstPorts = dests
+	}
+
+	return expanded
+}
+
+func TestExpandFilterDestinationRanges(t *testing.T) {
+	rules := []tailcfg.FilterRule{{
+		SrcIPs:  []string{"100.64.0.1"},
+		IPProto: []int{6, 17},
+		DstPorts: []tailcfg.NetPortRange{
+			{IP: "192.0.2.1-192.0.2.2", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+			{IP: "192.0.2.1-192.0.2.2", Ports: tailcfg.PortRange{First: 443, Last: 443}},
+			{IP: "192.0.2.1-192.0.2.2", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+			{IP: "203.0.113.4", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+		},
+	}, {
+		SrcIPs: []string{"100.64.0.2"},
+		DstPorts: []tailcfg.NetPortRange{
+			{IP: "192.0.2.1", Ports: tailcfg.PortRangeAny},
+		},
+	}}
+	before := slices.Clone(rules[0].DstPorts)
+	want := slices.Clone(rules)
+	want[0].DstPorts = []tailcfg.NetPortRange{
+		{IP: "192.0.2.1", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+		{IP: "192.0.2.2", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+		{IP: "192.0.2.1", Ports: tailcfg.PortRange{First: 443, Last: 443}},
+		{IP: "192.0.2.2", Ports: tailcfg.PortRange{First: 443, Last: 443}},
+		{IP: "192.0.2.1", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+		{IP: "192.0.2.2", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+		{IP: "203.0.113.4", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+	}
+
+	require.Equal(t, want, expandFilterDestinationRanges(t, rules))
+	require.Equal(t, before, rules[0].DstPorts)
 }
 
 // derivePeerPairsFromCaptures builds the set of expected peer pairs from
@@ -982,17 +1057,13 @@ func TestRoutesCompatReduceRoutes(t *testing.T) {
 							continue
 						}
 
-						prefix, parseErr := netip.ParsePrefix(dp.IP)
-						if parseErr != nil {
-							addr, addrErr := netip.ParseAddr(dp.IP)
-							require.NoErrorf(t, addrErr,
-								"golden DstPorts.IP %q unparseable", dp.IP)
+						set, err := util.ParseIPSet(dp.IP, nil)
+						require.NoErrorf(t, err, "golden DstPorts.IP %q unparseable", dp.IP)
 
-							prefix = netip.PrefixFrom(addr, addr.BitLen())
-						}
-
-						if !slices.Contains(dstPrefixes, prefix) {
-							dstPrefixes = append(dstPrefixes, prefix)
+						for _, prefix := range set.Prefixes() {
+							if !slices.Contains(dstPrefixes, prefix) {
+								dstPrefixes = append(dstPrefixes, prefix)
+							}
 						}
 					}
 

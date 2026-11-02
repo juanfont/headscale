@@ -216,11 +216,15 @@ var aclSkipReasons = map[string]string{
 	"acl-self-plus-dsts/kakuna/filter":    srcAddressForm,
 	"acl-self-plus-dsts/beedrill/filter":  srcAddressForm,
 	"acl-self-plus-dsts/bulbasaur/filter": "FILTER_ADDRESS_FORM+SELF_DST_REPEAT: sources listed one by one, the autogroup:self destination written once per source alias",
+
+	"routes-exit-family-ipv4/refused": aclDefaultRouteAccepted,
+	"routes-exit-family-ipv6/refused": aclDefaultRouteAccepted,
 }
 
 const (
-	allowAllForm   = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
-	srcAddressForm = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
+	allowAllForm            = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
+	srcAddressForm          = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
+	aclDefaultRouteAccepted = "ACL_DEFAULT_ROUTE_ACCEPTED: headscale accepts literal 0.0.0.0/0 and ::/0 ACL destinations; SaaS rejects them and requires * or autogroup:internet"
 )
 
 // TestACLCompat is a data-driven test that loads all ACL-*.json test files

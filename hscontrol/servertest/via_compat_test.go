@@ -99,6 +99,12 @@ var routesMapCompatTests = []struct {
 	{"routes-m4-member-self", "members to autogroup:self beside a multi-route router"},
 	{"routes-m5-wildcard-all", "allow-all with a multi-route router and an exit node"},
 	{"routes-m6-subnet-to-subnet-multi-route", "subnet of a multi-route router to a subnet of an exit node"},
+	{"routes-exit-family-internet", "internet destinations offer both exit route families"},
+	{"routes-exit-family-ipv4-split", "IPv4 destinations offer both exit route families"},
+	{"routes-exit-family-ipv6-split", "IPv6 destinations offer both exit route families"},
+	{"routes-exit-family-private", "private destinations keep the subnet without exit routes"},
+	{"routes-exit-family-public-ip", "one public destination offers both exit route families"},
+	{"routes-exit-family-wildcard", "wildcard destinations offer both exit route families"},
 }
 
 // viaCompatSkipReasons lists checks where headscale differs from SaaS, keyed

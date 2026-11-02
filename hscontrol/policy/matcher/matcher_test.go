@@ -523,8 +523,23 @@ func TestDestsIsTheInternet(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "single public IP is not the internet",
+			name: "single public IPv4 destination needs exit routes",
 			dsts: []string{"8.8.8.8"},
+			want: true,
+		},
+		{
+			name: "single public IPv6 destination needs exit routes",
+			dsts: []string{"2001:db8::1"},
+			want: true,
+		},
+		{
+			name: "private IPv6 destination does not need exit routes",
+			dsts: []string{"fd00::1"},
+			want: false,
+		},
+		{
+			name: "link-local IPv4 destination does not need exit routes",
+			dsts: []string{"169.254.1.1"},
 			want: false,
 		},
 		{

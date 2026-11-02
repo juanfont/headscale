@@ -316,9 +316,15 @@ var rejectedPolicySkipReasons = map[string]string{
 	"ssh-e1/refused": noTailnetDomains,
 	"ssh-e2/refused": noTailnetDomains,
 	"ssh-malformed-user-localpart-multi-glob/refused": noTailnetDomains,
+
+	"routes-exit-family-ipv4/refused": aclDefaultRouteAccepted,
+	"routes-exit-family-ipv6/refused": aclDefaultRouteAccepted,
 }
 
-const noTailnetDomains = "NO_TAILNET_DOMAINS: headscale does not check user:*@domain or localpart:*@domain against the tailnet's domains"
+const (
+	noTailnetDomains        = "NO_TAILNET_DOMAINS: headscale does not check user:*@domain or localpart:*@domain against the tailnet's domains"
+	aclDefaultRouteAccepted = "ACL_DEFAULT_ROUTE_ACCEPTED: headscale accepts literal 0.0.0.0/0 and ::/0 ACL destinations; SaaS rejects them and requires * or autogroup:internet"
+)
 
 // TestRejectedPolicyLeavesLivePolicyCompat posts every policy SaaS refused to
 // the v2 API over the baseline tscap's reset leaves: tagOwners only.

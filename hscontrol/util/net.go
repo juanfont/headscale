@@ -63,13 +63,10 @@ var TheInternet = sync.OnceValue(func() *netipx.IPSet {
 	return theInternetSet
 })
 
-// CoversTheInternet reports whether set covers [TheInternet]. Either
-// family's /0 counts alone, because operators write it directly and it
-// still denotes the whole internet for that family.
-func CoversTheInternet(set *netipx.IPSet) bool {
-	return set.ContainsPrefix(tsaddr.AllIPv4()) ||
-		set.ContainsPrefix(tsaddr.AllIPv6()) ||
-		IPSetSubsetOf(TheInternet(), set)
+// HasInternetDestination reports whether set contains any address in [TheInternet].
+// Exit routes provide a path; packet filters still restrict the permitted traffic.
+func HasInternetDestination(set *netipx.IPSet) bool {
+	return set.Overlaps(TheInternet())
 }
 
 // IPSetSubsetOf reports whether every prefix of candidate is contained in
