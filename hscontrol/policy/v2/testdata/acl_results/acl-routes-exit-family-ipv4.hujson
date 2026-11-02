@@ -1,0 +1,75 @@
+// routes-exit-family-ipv4
+//
+// Exit route families offered for 0.0.0.0/0 destination access
+//
+// Steps: 1
+// Captured at:    2026-11-02T17:02:37Z
+// tool version:   tscap/5f80ee6150559e777612549d896d444b50768737
+// schema version: 1
+{
+	"schema_version": 1,
+	"test_id":        "routes-exit-family-ipv4",
+	"description":    "Exit route families offered for 0.0.0.0/0 destination access",
+	"category":       "routes",
+	"captured_at":    "2026-11-02T17:02:37.394824548Z",
+	"tool_version":   "tscap/5f80ee6150559e777612549d896d444b50768737",
+	"tailnet":        "odin@example.com",
+	"error":          true,
+	"input": {
+		"api_response_code": 400,
+		"api_response_body": {
+			"message": "dst=\"0.0.0.0/0:*\": to allow all IP addresses, use *:port, not 0.0.0.0/0:port"
+		},
+		"tailnet": {
+			"dns":      {"magic_dns": false, "nameservers": [], "search_paths": [], "split_dns": {}},
+			"settings": {}
+		},
+		"scenario_hujson": "{\n  \"id\": \"routes-exit-family-ipv4\",\n  \"category\": \"routes\",\n  \"description\": \"Exit route families offered for 0.0.0.0/0 destination access\",\n  \"topology\": {\n    \"users\": [\n      {\n        \"id\": 1,\n        \"name\": \"odin\",\n        \"email\": \"odin@example.com\"\n      }\n    ],\n    \"nodes\": {\n      \"viewer\": {\n        \"hostname\": \"viewer\",\n        \"tags\": [\n          \"tag:client\"\n        ],\n        \"ipv4\": \"100.64.0.1\",\n        \"ipv6\": \"fd7a:115c:a1e0::1\",\n        \"routable_ips\": [],\n        \"approved_routes\": []\n      },\n      \"exit\": {\n        \"hostname\": \"exit\",\n        \"tags\": [\n          \"tag:exit\"\n        ],\n        \"ipv4\": \"100.64.0.2\",\n        \"ipv6\": \"fd7a:115c:a1e0::2\",\n        \"routable_ips\": [\n          \"0.0.0.0/0\",\n          \"::/0\",\n          \"10.40.7.0/24\"\n        ],\n        \"approved_routes\": []\n      }\n    }\n  },\n  \"tailnet\": {\n    \"dns\": {\n      \"magic_dns\": false,\n      \"nameservers\": [],\n      \"search_paths\": [],\n      \"split_dns\": {}\n    },\n    \"settings\": {}\n  },\n  \"policy\": {\n    \"tagOwners\": {\n      \"tag:client\": [\n        \"odin@example.com\"\n      ],\n      \"tag:exit\": [\n        \"odin@example.com\"\n      ]\n    },\n    \"autoApprovers\": {\n      \"exitNode\": [\n        \"tag:exit\"\n      ],\n      \"routes\": {\n        \"10.40.7.0/24\": [\n          \"tag:exit\"\n        ]\n      }\n    },\n    \"acls\": [\n      {\n        \"action\": \"accept\",\n        \"src\": [\n          \"tag:client\"\n        ],\n        \"dst\": [\n          \"0.0.0.0/0:*\"\n        ]\n      }\n    ]\n  },\n  \"options\": {\n    \"max_wait_seconds\": 120,\n    \"stable_window_seconds\": 5,\n    \"capture_whois\": false,\n    \"expect_api_error\": true\n  }\n}\n",
+		"scenario_path":   "/home/kradalby/.cache/tscap-pr3619/scenarios/routes-exit-family-ipv4.hujson",
+		"full_policy": {
+			"acls":          [{"action": "accept", "dst": ["0.0.0.0/0:*"], "src": ["tag:client"]}],
+			"autoApprovers": {"exitNode": ["tag:exit"], "routes": {"10.40.7.0/24": ["tag:exit"]}},
+			"tagOwners":     {"tag:client": ["odin@example.com"], "tag:exit": ["odin@example.com"]}
+		}
+	},
+	"topology": {
+		"users": [{"id": 1, "name": "odin", "email": "odin@example.com"}],
+		"nodes": {"exit": {
+			"hostname":        "exit",
+			"tags":            ["tag:exit"],
+			"ipv4":            "100.64.0.2",
+			"ipv6":            "fd7a:115c:a1e0::2",
+			"routable_ips":    ["0.0.0.0/0", "::/0", "10.40.7.0/24"],
+			"approved_routes": []
+		}, "viewer": {
+			"hostname":        "viewer",
+			"tags":            ["tag:client"],
+			"ipv4":            "100.64.0.1",
+			"ipv6":            "fd7a:115c:a1e0::1",
+			"routable_ips":    [],
+			"approved_routes": []
+		}}
+	},
+	"captures": {},
+	"steps": [{
+		"name":   "validate",
+		"at":     "2026-11-02T17:02:40.6764004Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/acl/validate",
+			"header":    {"Content-Type": "application/hujson"},
+			"body": {
+				"acls":          [{"action": "accept", "dst": ["0.0.0.0/0:*"], "src": ["tag:client"]}],
+				"autoApprovers": {"exitNode": ["tag:exit"], "routes": {"10.40.7.0/24": ["tag:exit"]}},
+				"tagOwners":     {"tag:client": ["odin@example.com"], "tag:exit": ["odin@example.com"]}
+			},
+			"status": 200,
+			"response": {
+				"message": "dst=\"0.0.0.0/0:*\": to allow all IP addresses, use *:port, not 0.0.0.0/0:port"
+			}
+		}]
+	}]
+}

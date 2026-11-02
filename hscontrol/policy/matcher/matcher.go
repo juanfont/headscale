@@ -151,9 +151,8 @@ func overlaps(ranges []netipx.IPRange, r netipx.IPRange) bool {
 	return i < len(ranges) && ranges[i].Overlaps(r)
 }
 
-// DestsIsTheInternet reports whether the destination covers "the
-// internet" — the set represented by autogroup:internet, special-cased
-// for exit nodes. See [util.CoversTheInternet].
+// DestsIsTheInternet reports whether any destination is in [util.TheInternet].
+// It lets clients select exit nodes for that traffic.
 func (m *Match) DestsIsTheInternet() bool {
-	return util.CoversTheInternet(m.dests)
+	return util.HasInternetDestination(m.dests)
 }

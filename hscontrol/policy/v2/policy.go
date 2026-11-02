@@ -1865,7 +1865,7 @@ func grantReachesInternet(grant Grant, dsts []netip.Prefix) bool {
 	// Resolved prefixes are valid, so the builder cannot fail.
 	set, _ := b.IPSet()
 
-	return util.CoversTheInternet(set)
+	return util.HasInternetDestination(set)
 }
 
 func (pm *PolicyManager) Version() int {

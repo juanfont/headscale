@@ -1252,6 +1252,7 @@ func TestCanAccessRoutesExitNeedsInternet(t *testing.T) {
 		"from anywhere":     {rule("*", "100.64.0.1"), routes[2:]},
 		"to everything":     {rule("100.64.0.1", "*"), routes},
 		"to the internet":   {rule("100.64.0.1", internet...), routes[:2]},
+		"to a public IP":    {rule("100.64.0.1", "8.8.8.8"), routes[:2]},
 		"to another viewer": {rule("100.64.0.1", "100.64.0.2"), nil},
 	} {
 		assert.Equalf(t, tt.want, viewer.CanAccessRoutes(tt.matchers, routes), "%s", name)
