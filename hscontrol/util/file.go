@@ -35,9 +35,10 @@ var ErrInvalidFileMode = errors.New("not an octal file mode between 0 and 0777")
 var ErrUnknownFileFormat = errors.New("unknown file format, want .json, .hujson, .yaml or .yml")
 
 // UnmarshalByExt decodes data into a T in the format name's extension picks:
-// .json, .hujson (JSON with comments and trailing commas), or .yaml/.yml.
-// The extension decides, not the content: YAML parses JSON syntax, so sniffing
-// cannot tell the two apart. YAML keys are the lowercased Go field names.
+// .json or .hujson, both read as HuJSON (JSON with comments and trailing
+// commas), or .yaml/.yml. The extension decides, not the content: YAML parses
+// JSON syntax, so sniffing cannot tell the two apart. YAML keys are the
+// lowercased Go field names.
 func UnmarshalByExt[T any](name string, data []byte) (T, error) {
 	var (
 		v   T
@@ -45,9 +46,7 @@ func UnmarshalByExt[T any](name string, data []byte) (T, error) {
 	)
 
 	switch ext := strings.ToLower(filepath.Ext(name)); ext {
-	case ".json":
-		err = json.Unmarshal(data, &v)
-	case ".hujson":
+	case ".json", ".hujson":
 		data, err = hujson.Standardize(data)
 		if err == nil {
 			err = json.Unmarshal(data, &v)
