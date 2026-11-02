@@ -6,6 +6,7 @@
         "createdAt": "\u003ctimestamp\u003e",
         "displayName": "",
         "email": "",
+        "groups": [],
         "id": "2",
         "name": "bob",
         "profilePicUrl": "",

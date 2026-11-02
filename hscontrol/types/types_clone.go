@@ -23,6 +23,7 @@ func (src *User) Clone() *User {
 	}
 	dst := new(User)
 	*dst = *src
+	dst.Memberships = append(src.Memberships[:0:0], src.Memberships...)
 	return dst
 }
 
@@ -35,6 +36,7 @@ var _UserCloneNeedsRegeneration = User(struct {
 	ProviderIdentifier sql.NullString
 	Provider           string
 	ProfilePicURL      string
+	Memberships        []UserGroup
 }{})
 
 // Clone makes a deep copy of Node.
@@ -56,9 +58,7 @@ func (src *Node) Clone() *Node {
 	if dst.UserID != nil {
 		dst.UserID = new(*src.UserID)
 	}
-	if dst.User != nil {
-		dst.User = new(*src.User)
-	}
+	dst.User = src.User.Clone()
 	dst.Tags = append(src.Tags[:0:0], src.Tags...)
 	if dst.AuthKeyID != nil {
 		dst.AuthKeyID = new(*src.AuthKeyID)
@@ -122,9 +122,7 @@ func (src *PreAuthKey) Clone() *PreAuthKey {
 	if dst.UserID != nil {
 		dst.UserID = new(*src.UserID)
 	}
-	if dst.User != nil {
-		dst.User = new(*src.User)
-	}
+	dst.User = src.User.Clone()
 	dst.Tags = append(src.Tags[:0:0], src.Tags...)
 	if dst.CreatedAt != nil {
 		dst.CreatedAt = new(*src.CreatedAt)
@@ -167,9 +165,7 @@ func (src *Credential) Clone() *Credential {
 	if dst.UserID != nil {
 		dst.UserID = new(*src.UserID)
 	}
-	if dst.User != nil {
-		dst.User = new(*src.User)
-	}
+	dst.User = src.User.Clone()
 	dst.Scopes = append(src.Scopes[:0:0], src.Scopes...)
 	dst.Tags = append(src.Tags[:0:0], src.Tags...)
 	if dst.LastSeen != nil {

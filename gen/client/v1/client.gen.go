@@ -310,6 +310,7 @@ type User struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	DisplayName   string    `json:"displayName"`
 	Email         string    `json:"email"`
+	Groups        []string  `json:"groups"`
 	Id            string    `json:"id"`
 	Name          string    `json:"name"`
 	ProfilePicUrl string    `json:"profilePicUrl"`

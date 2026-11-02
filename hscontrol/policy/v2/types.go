@@ -124,6 +124,8 @@ var (
 	ErrInvalidAutoApprover         = errors.New("invalid auto approver format")
 	ErrInvalidOwner                = errors.New("invalid owner format")
 	ErrGroupNotDefined             = errors.New("group not defined in policy")
+	ErrInvalidIdPGroup             = errors.New("invalid identity-provider group, want group:<name>@<domain>")
+	ErrGroupCaseMismatch           = errors.New("group reference differs from a policy group only in case")
 	ErrInvalidGroupMember          = errors.New("invalid group member type")
 	ErrGroupValueNotArray          = errors.New("group value must be an array of users")
 	ErrInvalidHostIP               = errors.New("hostname contains invalid IP address")
@@ -519,6 +521,22 @@ func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 		errs []error
 	)
 
+	if name, ok := g.idpGroup(p); ok {
+		members := idpGroupMembers(name, users)
+
+		for _, node := range nodes.All() {
+			if node.IsTagged() || !node.User().Valid() {
+				continue
+			}
+
+			if _, ok := members[node.User().ID()]; ok {
+				node.AppendToIPSet(&ips)
+			}
+		}
+
+		return ips.IPSet()
+	}
+
 	for _, user := range p.Groups[*g] {
 		uips, err := user.resolve(nil, users, nodes)
 		if err != nil {
@@ -529,6 +547,52 @@ func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 	}
 
 	return buildIPSetMultiErr(&ips, errs)
+}
+
+// idpGroup reports whether g refers to a group asserted by an identity
+// provider rather than one defined in the policy, and returns its qualified,
+// lowercased name. Such a group is written group:<name>@<domain>, matching
+// Tailscale's syntax for synced groups. A group the policy defines is always a
+// policy group, even if its name contains '@': an identity provider can never
+// add members to it.
+func (g *Group) idpGroup(p *Policy) (string, bool) {
+	if p != nil {
+		if _, ok := p.Groups.definedFolded(*g); ok {
+			return "", false
+		}
+	}
+
+	name := strings.TrimPrefix(string(*g), "group:")
+	if !strings.Contains(name, "@") {
+		return "", false
+	}
+
+	return types.FoldGroupName(name), true
+}
+
+// validateIdPGroup checks that an identity-provider group reference has a
+// non-empty name and domain separated by exactly one '@'.
+func validateIdPGroup(g *Group) error {
+	local, domain, _ := strings.Cut(strings.TrimPrefix(string(*g), "group:"), "@")
+	if local == "" || domain == "" || strings.Contains(domain, "@") {
+		return fmt.Errorf("%w, got: %q", ErrInvalidIdPGroup, *g)
+	}
+
+	return nil
+}
+
+// idpGroupMembers returns the ids of the users who are members of the
+// identity-provider group name.
+func idpGroupMembers(name string, users types.Users) map[uint]struct{} {
+	members := make(map[uint]struct{})
+
+	for i := range users {
+		if users[i].InGroup(name) {
+			members[users[i].ID] = struct{}{}
+		}
+	}
+
+	return members
 }
 
 // Tag is a special string which is always prefixed with `tag:`.
@@ -1060,10 +1124,12 @@ func parseAlias(vs string) (Alias, error) {
 	switch {
 	case isWildcard(vs):
 		return Wildcard, nil
-	case isUser(vs):
-		return new(Username(vs)), nil
+	// group: is matched before the username '@' heuristic so that
+	// group:<name>@<domain> parses as a group.
 	case isGroup(vs):
 		return new(Group(vs)), nil
+	case isUser(vs):
+		return new(Username(vs)), nil
 	case isTag(vs):
 		return new(Tag(vs)), nil
 	case isAutoGroup(vs):
@@ -1212,10 +1278,10 @@ func (aa AutoApprovers) MarshalJSON() ([]byte, error) {
 
 func parseAutoApprover(s string) (AutoApprover, error) {
 	switch {
-	case isUser(s):
-		return new(Username(s)), nil
 	case isGroup(s):
 		return new(Group(s)), nil
+	case isUser(s):
+		return new(Username(s)), nil
 	case isTag(s):
 		return new(Tag(s)), nil
 	}
@@ -1297,10 +1363,10 @@ func (o Owners) MarshalJSON() ([]byte, error) {
 
 func parseOwner(s string) (Owner, error) {
 	switch {
-	case isUser(s):
-		return new(Username(s)), nil
 	case isGroup(s):
 		return new(Group(s)), nil
+	case isUser(s):
+		return new(Username(s)), nil
 	case isTag(s):
 		return new(Tag(s)), nil
 	}
@@ -1322,7 +1388,38 @@ func (g *Groups) Contains(group *Group) error {
 		return nil
 	}
 
+	// Identity-provider group names are case-insensitive, so a reference that
+	// differs from a policy group only in case would otherwise resolve as an
+	// identity-provider group the provider can add members to.
+	if defined, ok := g.definedFolded(*group); ok {
+		return fmt.Errorf("%w: %q, the policy defines %q", ErrGroupCaseMismatch, *group, defined)
+	}
+
+	// A group:<name>@<domain> the policy does not define refers to an
+	// identity-provider group. It needs no definition and resolves to no one
+	// until a user is a member, failing closed like Tailscale.
+	if _, ok := group.idpGroup(nil); ok {
+		return validateIdPGroup(group)
+	}
+
 	return fmt.Errorf("%w: %q", ErrGroupNotDefined, group)
+}
+
+// definedFolded returns the policy group whose name equals group's ignoring
+// ASCII case, the way identity-provider group names are compared.
+func (g *Groups) definedFolded(group Group) (Group, bool) {
+	if _, ok := (*g)[group]; ok {
+		return group, true
+	}
+
+	folded := types.FoldGroupName(string(group))
+	for defined := range *g {
+		if types.FoldGroupName(string(defined)) == folded {
+			return defined, true
+		}
+	}
+
+	return "", false
 }
 
 // UnmarshalJSON overrides the default JSON unmarshalling for [Groups] to ensure

@@ -288,11 +288,12 @@ var listUsersCmd = &cobra.Command{
 						user.Name,
 						user.Email,
 						user.CreatedAt.Format(HeadscaleDateTimeFormat),
+						strings.Join(user.Groups, ", "),
 					},
 				)
 			}
 
-			return renderTable([]string{"ID", "Name", "Username", "Email", colCreated}, rows)
+			return renderTable([]string{"ID", "Name", "Username", "Email", colCreated, "Groups"}, rows)
 		})
 	}),
 }

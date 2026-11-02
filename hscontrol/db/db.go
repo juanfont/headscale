@@ -282,6 +282,15 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Store identity-provider group memberships (see
+				// [types.Group] and [types.UserGroup]) so policies can
+				// reference them as group:<name>@<domain>. Explicit DDL for
+				// both dialects (no AutoMigrate).
+				ID:       "202609281200-create-groups",
+				Migrate:  ensureGroupsTables,
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -300,6 +309,11 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 		}
 
 		err = tx.AutoMigrate(&types.Node{}, &types.Policy{})
+		if err != nil {
+			return err
+		}
+
+		err = ensureGroupsTables(tx)
 		if err != nil {
 			return err
 		}
