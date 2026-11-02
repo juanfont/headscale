@@ -135,6 +135,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - API errors are now RFC 7807 `application/problem+json`, including authentication failures, instead of the previous gRPC-status JSON shape [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Errors that previously returned HTTP 500 — unknown users or nodes, malformed input, duplicate names — now return the correct 404, 400 or 409 [#3324](https://github.com/juanfont/headscale/pull/3324)
 - The OpenAPI document is OpenAPI 3.1 at `/api/v1/openapi.yaml` (docs at `/api/v1/docs`), replacing Swagger 2.0 at `/swagger` [#3324](https://github.com/juanfont/headscale/pull/3324)
+- Renaming a user (`headscale users rename`, `POST /api/v1/user/{id}/rename/{name}`) now returns 400 for an OIDC user, whose name comes from the identity provider, and for an invalid user name; both were previously accepted
 
 - V2 hides spent, expired, and revoked auth keys. OAuth key lists need `all=true` for keys created without tokens. Tags do not limit lists. V1 and `headscale preauthkeys list` hide revoked keys. Deleting referenced ephemeral keys revokes them. Referenced rows stay. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Tagged OAuth clients with `all` cannot issue tokens outside their tags. OAuth retagging requires permission for all current and requested tags. It replaces the set. Disallowed tags return HTTP 400. [#3619](https://github.com/juanfont/headscale/pull/3619)

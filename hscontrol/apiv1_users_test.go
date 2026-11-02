@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,6 +70,34 @@ func TestAPIV1RenameUser(t *testing.T) {
 		res := h.assertParity(t, http.MethodPost, "/api/v1/user/abc/rename/bob", nil)
 		assertStatus(t, res, http.StatusBadRequest)
 	})
+
+	t.Run("oidc user refused", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		user := h.app.state.CreateUserForTest("alice")
+		require.NoError(t, h.app.state.DB().DB.Model(user).
+			Update("provider", util.RegisterMethodOIDC).Error)
+
+		res := h.callHuma(http.MethodPost, "/api/v1/user/1/rename/bob", nil)
+		assertStatus(t, res, http.StatusBadRequest)
+
+		got, err := h.app.state.GetUserByID(types.UserID(user.ID))
+		require.NoError(t, err)
+		assert.Equal(t, "alice", got.Name)
+	})
+
+	for _, name := range []string{"b", "1bob", "bob!", "bob@@example.com"} {
+		t.Run("invalid name "+name+" refused", func(t *testing.T) {
+			h := newAPIV1Harness(t)
+			seedUsers("alice")(t, h.app)
+
+			res := h.callHuma(http.MethodPost, "/api/v1/user/1/rename/"+name, nil)
+			assertStatus(t, res, http.StatusBadRequest)
+
+			got, err := h.app.state.GetUserByID(1)
+			require.NoError(t, err)
+			assert.Equal(t, "alice", got.Name)
+		})
+	}
 }
 
 func TestAPIV1DeleteUser(t *testing.T) {
