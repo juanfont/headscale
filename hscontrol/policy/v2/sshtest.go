@@ -575,7 +575,7 @@ func sshTestDstNodes(
 		}
 
 		for _, n := range nodes.All() {
-			if !n.IsTagged() && n.User().Valid() && n.User().ID() == srcUserID {
+			if nodeHasUserIdentity(n) && n.User().ID() == srcUserID {
 				out = append(out, n)
 			}
 		}

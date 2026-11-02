@@ -476,7 +476,8 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 	}
 
 	// LastSeen is reported only when the device is offline, matching tailcfg.
-	if view.LastSeen().Valid() && view.IsOnline().Valid() && !view.IsOnline().Get() {
+	hasOfflineLastSeen := view.LastSeen().Valid() && view.IsOnline().Valid() && !view.IsOnline().Get()
+	if hasOfflineLastSeen {
 		ls := view.LastSeen().Get()
 		d.LastSeen = &ls
 	}

@@ -131,8 +131,7 @@ func (r Change) Merge(other Change) Change {
 }
 
 func (r Change) IsEmpty() bool {
-	if r.IncludeSelf || r.IncludeDERPMap || r.IncludeDNS ||
-		r.IncludeDomain || r.IncludePolicy || r.SendAllPeers {
+	if r.IncludeSelf || r.hasConfigUpdate() || r.SendAllPeers {
 		return false
 	}
 
@@ -144,10 +143,7 @@ func (r Change) IsEmpty() bool {
 		return false
 	}
 
-	return len(r.PeersChanged) == 0 &&
-		len(r.PeersRemoved) == 0 &&
-		len(r.DeletedNodes) == 0 &&
-		len(r.PeerPatches) == 0
+	return !r.hasPeerChanges() && len(r.PeerPatches) == 0
 }
 
 func (r Change) IsSelfOnly() bool {
@@ -155,8 +151,7 @@ func (r Change) IsSelfOnly() bool {
 		return false
 	}
 
-	if r.SendAllPeers || len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 ||
-		len(r.DeletedNodes) > 0 || len(r.PeerPatches) > 0 {
+	if r.SendAllPeers || r.hasPeerChanges() || len(r.PeerPatches) > 0 {
 		return false
 	}
 
@@ -195,16 +190,15 @@ func (r Change) Type() string {
 		return "policy"
 	}
 
-	if len(r.PeerPatches) > 0 && len(r.PeersChanged) == 0 && len(r.PeersRemoved) == 0 && !r.SendAllPeers {
+	if len(r.PeerPatches) > 0 && !r.hasPeerRefresh() {
 		return "patch"
 	}
 
-	if len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 ||
-		len(r.DeletedNodes) > 0 || r.SendAllPeers {
+	if r.hasPeerChanges() || r.SendAllPeers {
 		return "peers"
 	}
 
-	if r.IncludeDERPMap || r.IncludeDNS || r.IncludeDomain || r.IncludePolicy {
+	if r.hasConfigUpdate() {
 		return "config"
 	}
 
@@ -213,6 +207,18 @@ func (r Change) Type() string {
 	}
 
 	return "unknown"
+}
+
+func (r Change) hasConfigUpdate() bool {
+	return r.IncludeDERPMap || r.IncludeDNS || r.IncludeDomain || r.IncludePolicy
+}
+
+func (r Change) hasPeerChanges() bool {
+	return len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 || len(r.DeletedNodes) > 0
+}
+
+func (r Change) hasPeerRefresh() bool {
+	return len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 || r.SendAllPeers
 }
 
 // ShouldSendToNode determines if this response should be sent to nodeID.
@@ -315,8 +321,7 @@ func DedupePolicyChanges(changes []Change) []Change {
 // isPeerDelta reports whether r only adds, refreshes or patches peers other
 // than nodeID: [CoalescePeerDeltas] can fold such changes together.
 func (r Change) isPeerDelta(nodeID types.NodeID) bool {
-	if r.IncludeSelf || r.IncludeDERPMap || r.IncludeDNS || r.IncludeDomain ||
-		r.IncludePolicy || r.SendAllPeers || r.RequiresRuntimePeerComputation {
+	if r.IncludeSelf || r.hasConfigUpdate() || r.SendAllPeers || r.RequiresRuntimePeerComputation {
 		return false
 	}
 

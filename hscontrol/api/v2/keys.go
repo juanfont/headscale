@@ -3,7 +3,6 @@ package apiv2
 import (
 	"context"
 	"net/http"
-	"slices"
 	"strconv"
 	"time"
 
@@ -204,7 +203,7 @@ func registerKeys(api huma.API, b Backend) {
 			// As Tailscale lists them: never an invalid key, and to a token
 			// without all=true only the keys tokens made.
 			for i := range keys {
-				if keys[i].ValidAt(now) != nil || isOAuth && !in.All && !keys[i].CreatedByToken {
+				if !keyVisibleInList(&keys[i], now, isOAuth, in.All) {
 					continue
 				}
 
@@ -324,6 +323,14 @@ func registerKeys(api huma.API, b Backend) {
 
 		return &deleteKeyOutput{}, nil
 	})
+}
+
+func keyVisibleInList(key *types.PreAuthKey, now time.Time, isOAuth, all bool) bool {
+	if key.ValidAt(now) != nil {
+		return false
+	}
+
+	return !isOAuth || all || key.CreatedByToken
 }
 
 // requireKeyScope authorizes a keys operation for an OAuth access token. An admin
@@ -483,8 +490,7 @@ func createOAuthClient(ctx context.Context, b Backend, body CreateKeyRequest) (*
 
 		// An untagged "all" client may mint tokens for any tag (narrowTags), so a
 		// tag-limited token would escape its tags one client away.
-		if len(tokenTags) > 0 && len(body.Tags) == 0 &&
-			slices.Contains(body.Scopes, string(scope.All)) {
+		if len(tokenTags) > 0 && canAssignAnyTag(body.Tags, body.Scopes) {
 			return nil, huma.Error403Forbidden(
 				"client may not be granted scope all without tags by a tagged token",
 			)

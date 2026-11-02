@@ -742,10 +742,15 @@ func resolveGivenName(
 		taken[strings.ToLower(n.GivenName)] = struct{}{}
 	}
 
+	labelAvailable := func(candidate string) bool {
+		_, busy := taken[strings.ToLower(candidate)]
+
+		return !busy && (reservedLabel == nil || !reservedLabel(candidate))
+	}
+
 	candidate := base
 	for i := 1; ; i++ {
-		_, busy := taken[strings.ToLower(candidate)]
-		if !busy && (reservedLabel == nil || !reservedLabel(candidate)) {
+		if labelAvailable(candidate) {
 			return candidate
 		}
 
@@ -907,6 +912,10 @@ func electPrimaryRoutes(
 		return servesRoutes(&n) && !n.Unhealthy
 	}
 	healthy := func(id types.NodeID) bool { return !nodes[id].Unhealthy }
+	hasOlderAvailableSession := func(id, oldest types.NodeID) bool {
+		return available(id) && (oldest == 0 ||
+			nodes[id].SessionStart.Before(nodes[oldest].SessionStart))
+	}
 
 	routes := make(map[netip.Prefix]types.NodeID, len(approvers))
 	for prefix, ids := range approvers {
@@ -914,8 +923,7 @@ func electPrimaryRoutes(
 
 		// ids ascend, so a tie keeps the lower ID.
 		for _, id := range ids {
-			if available(id) && (oldest == 0 ||
-				nodes[id].SessionStart.Before(nodes[oldest].SessionStart)) {
+			if hasOlderAvailableSession(id, oldest) {
 				oldest = id
 			}
 		}

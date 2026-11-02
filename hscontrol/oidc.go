@@ -349,17 +349,16 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// The [oidc.UserInfo] type only decodes some fields (Subject, Profile, Email, EmailVerified).
 	// We are interested in other fields too (e.g. groups are required for allowedGroups) so we
 	// decode into our own [types.OIDCUserInfo] type using the underlying claims struct.
-	var userinfo2 types.OIDCUserInfo
-	if userinfo != nil && userinfo.Claims(&userinfo2) == nil && userinfo2.Sub == claims.Sub {
+	if userinfoClaims, ok := userInfoForSubject(userinfo, claims.Sub); ok {
 		// Update the user with the userinfo claims (with id token claims as fallback).
 		// TODO(kradalby): there might be more interesting fields here that we have not found yet.
-		claims.Email, claims.EmailVerified = mergeEmailClaims(&claims, &userinfo2)
-		claims.Username = cmp.Or(userinfo2.PreferredUsername, claims.Username)
-		claims.Name = cmp.Or(userinfo2.Name, claims.Name)
+		claims.Email, claims.EmailVerified = mergeEmailClaims(&claims, &userinfoClaims)
+		claims.Username = cmp.Or(userinfoClaims.PreferredUsername, claims.Username)
+		claims.Name = cmp.Or(userinfoClaims.Name, claims.Name)
 
-		claims.ProfilePictureURL = cmp.Or(userinfo2.Picture, claims.ProfilePictureURL)
-		if userinfo2.Groups != nil {
-			claims.Groups = userinfo2.Groups
+		claims.ProfilePictureURL = cmp.Or(userinfoClaims.Picture, claims.ProfilePictureURL)
+		if userinfoClaims.Groups != nil {
+			claims.Groups = userinfoClaims.Groups
 		}
 	}
 
@@ -394,6 +393,15 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	a.beginConfirmation(writer, req, authInfo.AuthID, authInfo.Registration, user, nodeExpiry)
 }
 
+func userInfoForSubject(userinfo *oidc.UserInfo, subject string) (types.OIDCUserInfo, bool) {
+	var claims types.OIDCUserInfo
+	if userinfo == nil || userinfo.Claims(&claims) != nil {
+		return claims, false
+	}
+
+	return claims, claims.Sub == subject
+}
+
 // mergeEmailClaims keeps each verification flag with the address it describes.
 func mergeEmailClaims(
 	claims *types.OIDCClaims,
@@ -425,7 +433,8 @@ func extractCodeAndStateParamFromRequest(
 	code := query.Get("code")
 	state := query.Get("state")
 
-	if (code == "" && query.Get("error") == "") || state == "" {
+	hasAuthenticationResult := code != "" || query.Get("error") != ""
+	if !hasAuthenticationResult || state == "" {
 		return "", "", NewHTTPError(http.StatusBadRequest, "missing code or state parameter", errEmptyOIDCCallbackParams)
 	}
 

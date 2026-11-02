@@ -340,6 +340,10 @@ func (mc *multiChannelNodeConn) isConnected() bool {
 	return mc.disconnectedAt.Load() == nil
 }
 
+func (mc *multiChannelNodeConn) isOffline() bool {
+	return mc != nil && !mc.hasActiveConnections()
+}
+
 // offlineDuration returns how long the node has been disconnected.
 // Returns 0 if the node is connected or has never been marked as disconnected.
 func (mc *multiChannelNodeConn) offlineDuration() time.Duration {
@@ -358,7 +362,7 @@ func (mc *multiChannelNodeConn) appendPending(changes ...change.Change) {
 
 	mc.pending = append(mc.pending, changes...)
 	mc.pendingSize += changesSize(changes)
-	fullAtHead := len(mc.pending) > 0 && mc.pending[0].IsFull()
+	fullAtHead := startsWithFullUpdate(mc.pending)
 
 	// Pending drains only once the bundle in flight is delivered, so behind
 	// workers it grew by every change; it renders folded anyway, and
@@ -382,8 +386,7 @@ func (mc *multiChannelNodeConn) appendPending(changes ...change.Change) {
 // online/offline.
 func (mc *multiChannelNodeConn) prependPending(changes ...change.Change) {
 	mc.pendingMu.Lock()
-	full := (len(mc.pending) > 0 && mc.pending[0].IsFull()) ||
-		(len(changes) > 0 && changes[0].IsFull())
+	full := startsWithFullUpdate(mc.pending) || startsWithFullUpdate(changes)
 
 	mc.pending = append(changes, mc.pending...)
 	mc.pendingSize += changesSize(changes)
@@ -392,6 +395,10 @@ func (mc *multiChannelNodeConn) prependPending(changes ...change.Change) {
 		mc.setPendingLocked(change.CollapseToFull(mc.id, mc.pending))
 	}
 	mc.pendingMu.Unlock()
+}
+
+func startsWithFullUpdate(changes []change.Change) bool {
+	return len(changes) > 0 && changes[0].IsFull()
 }
 
 // collapsePendingToFull replaces pending, together with incoming, by a

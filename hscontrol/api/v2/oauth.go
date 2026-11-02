@@ -121,13 +121,22 @@ func oauthTokenHandler(b Backend) http.HandlerFunc {
 		}
 
 		granted := scope.Parse(token.Scopes)
-		if scope.Grants(granted, scope.AuthKeys) || scope.Grants(granted, scope.DevicesCore) ||
-			scope.Grants(granted, scope.OAuthKeys) {
+		if tokenCanAssignTags(granted) {
 			resp.Tags = strings.Join(token.Tags, " ")
 		}
 
 		writeJSON(w, http.StatusOK, resp)
 	}
+}
+
+func tokenCanAssignTags(granted []scope.Scope) bool {
+	return scope.Grants(granted, scope.AuthKeys) ||
+		scope.Grants(granted, scope.DevicesCore) ||
+		scope.Grants(granted, scope.OAuthKeys)
+}
+
+func canAssignAnyTag(tags, scopes []string) bool {
+	return len(tags) == 0 && slices.Contains(scopes, string(scope.All))
 }
 
 // narrowScopes returns the requested scopes if each is granted by the client (an
@@ -157,7 +166,7 @@ func narrowTags(client *types.OAuthClient, requested []string) ([]string, string
 		return client.Tags, "", true
 	}
 
-	anyTag := len(client.Tags) == 0 && slices.Contains(client.Scopes, string(scope.All))
+	anyTag := canAssignAnyTag(client.Tags, client.Scopes)
 
 	for _, req := range requested {
 		// Reject malformed tags at the trust boundary. A client's own tags are

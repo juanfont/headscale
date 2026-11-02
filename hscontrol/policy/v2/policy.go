@@ -695,7 +695,7 @@ func (pm *PolicyManager) sshRuleAllowsUser(rule SSH, srcNode types.NodeView, loc
 		return true
 	}
 
-	if srcNode.IsTagged() || !srcNode.User().Valid() || !rule.Users.ContainsLocalpart() {
+	if !nodeHasUserIdentity(srcNode) || !rule.Users.ContainsLocalpart() {
 		return false
 	}
 
@@ -863,12 +863,11 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			}
 
 			ips, ri := n.IPs(), routeInfo[n.ID()]
-			routed := len(ri.subnet) > 0
 
 			for k := range pm.matchers {
 				m := &pm.matchers[k]
 
-				if m.SrcsContainsIPs(ips...) || (routed && m.SrcsOverlapsRanges(ri.subnet)) {
+				if matcherReachesSource(m, ips, ri.subnet) {
 					if srcOf[i] == nil {
 						srcOf[i] = make([]uint64, words)
 					}
@@ -876,8 +875,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 					srcOf[i][k/64] |= 1 << (k % 64) //nolint:mnd
 				}
 
-				if m.DestsContainsIP(ips...) || (routed && m.DestsOverlapsRanges(ri.subnet)) ||
-					(ri.isExit && m.DestsIsTheInternet()) {
+				if matcherReachesDestination(m, ips, ri.subnet, ri.isExit) {
 					if dstOf[i] == nil {
 						dstOf[i] = make([]uint64, words)
 					}
@@ -969,6 +967,20 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	}
 
 	return ret
+}
+
+func matcherReachesSource(m *matcher.Match, ips []netip.Addr, routes []netipx.IPRange) bool {
+	return m.SrcsContainsIPs(ips...) || (len(routes) > 0 && m.SrcsOverlapsRanges(routes))
+}
+
+func matcherReachesDestination(
+	m *matcher.Match,
+	ips []netip.Addr,
+	routes []netipx.IPRange,
+	isExit bool,
+) bool {
+	return m.DestsContainsIP(ips...) || (len(routes) > 0 && m.DestsOverlapsRanges(routes)) ||
+		(isExit && m.DestsIsTheInternet())
 }
 
 // filterRulesForNodeLocked returns the unreduced compiled filter rules
@@ -1128,12 +1140,16 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 
 	// SSH rules and per-node filters embed user identity outside the filter
 	// hash, so a user change needs a client refresh even when it did not move.
-	if hadPerNodeFilter || pm.needsPerNodeFilter ||
-		(pm.pol != nil && len(pm.pol.SSHs) > 0) {
+	if pm.userChangeNeedsPolicyRefreshLocked(hadPerNodeFilter) {
 		policyChanged = true
 	}
 
 	return policyChanged, true, nil
+}
+
+func (pm *PolicyManager) userChangeNeedsPolicyRefreshLocked(hadPerNodeFilter bool) bool {
+	return hadPerNodeFilter || pm.needsPerNodeFilter ||
+		(pm.pol != nil && len(pm.pol.SSHs) > 0)
 }
 
 // equalUsers compares user lists ignoring order and every field the policy
@@ -1736,8 +1752,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 								}
 							}
 
-							if viaPrimaryID == 0 || since.Before(viaPrimarySince) ||
-								(since.Equal(viaPrimarySince) && node.ID() < viaPrimaryID) {
+							if isPreferredViaPrimary(node, since, viaPrimaryID, viaPrimarySince) {
 								viaPrimaryID, viaPrimarySince = node.ID(), since
 							}
 						}
@@ -1784,11 +1799,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			// routes the via grant added to Include.
 			for _, dstPrefix := range resolvedDstPrefixes[i] {
 				for _, p := range result.Include {
-					// Only a grant to the internet covers an exit route,
-					// as [types.Node.CanAccessRoutes] decides.
-					covers := dstPrefix.Overlaps(p) &&
-						(reachesInternet || !tsaddr.IsExitRoute(p))
-					if covers && !slices.Contains(result.UsePrimary, p) {
+					if grantCoversRoute(dstPrefix, p, reachesInternet) && !slices.Contains(result.UsePrimary, p) {
 						result.UsePrimary = append(result.UsePrimary, p)
 					}
 				}
@@ -1809,6 +1820,22 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	}
 
 	return result
+}
+
+func isPreferredViaPrimary(
+	node types.NodeView,
+	since time.Time,
+	primaryID types.NodeID,
+	primarySince time.Time,
+) bool {
+	return primaryID == 0 || since.Before(primarySince) ||
+		(since.Equal(primarySince) && node.ID() < primaryID)
+}
+
+// Only a grant to the internet covers an exit route,
+// as [types.Node.CanAccessRoutes] decides.
+func grantCoversRoute(dst, route netip.Prefix, reachesInternet bool) bool {
+	return dst.Overlaps(route) && (reachesInternet || !tsaddr.IsExitRoute(route))
 }
 
 // grantReachesInternet reports whether a grant's destinations, resolved

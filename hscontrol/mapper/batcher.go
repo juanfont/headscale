@@ -848,7 +848,7 @@ func (b *Batcher) cleanupOfflineNodes() {
 	// Find nodes that have been offline for too long by scanning b.nodes
 	// and checking each node's disconnectedAt timestamp.
 	b.nodes.Range(func(nodeID types.NodeID, nc *multiChannelNodeConn) bool {
-		if nc != nil && !nc.hasActiveConnections() && nc.offlineDuration() > offlineNodeCleanupThreshold {
+		if nc.isOffline() && nc.offlineDuration() > offlineNodeCleanupThreshold {
 			nodesToCleanup = append(nodesToCleanup, nodeID)
 		}
 
@@ -864,7 +864,7 @@ func (b *Batcher) cleanupOfflineNodes() {
 		b.nodes.Compute(
 			nodeID,
 			func(conn *multiChannelNodeConn, loaded bool) (*multiChannelNodeConn, xsync.ComputeOp) {
-				if !loaded || conn == nil || conn.hasActiveConnections() {
+				if !loaded || !conn.isOffline() {
 					return conn, xsync.CancelOp
 				}
 

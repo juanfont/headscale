@@ -632,8 +632,7 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 			owner := node.User()
 			credential := node.AuthKey()
 			owns := owner.Valid() && owner.ID() == user.ID
-			createdKey := credential.Valid() && credential.User().Valid() &&
-				credential.User().ID() == user.ID
+			createdKey := credentialCreatedByUser(credential, user.ID)
 
 			if !owns && !createdKey {
 				continue
@@ -647,7 +646,7 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 					ownerRefreshed = ownerRefreshed || !n.IsTagged()
 				}
 
-				if n.AuthKey != nil && n.AuthKey.User != nil && n.AuthKey.User.ID == user.ID {
+				if credentialCreatedByUser(n.AuthKey.View(), user.ID) {
 					n.AuthKey = n.AuthKey.Clone()
 					n.AuthKey.User = user.Clone()
 				}
@@ -675,6 +674,15 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 	return user, c, nil
 }
 
+func credentialCreatedByUser(credential types.CredentialView, userID uint) bool {
+	return credential.Valid() && credential.User().Valid() && credential.User().ID() == userID
+}
+
+func taggedCredentialCreatedByUser(credential types.CredentialView, userID types.UserID) bool {
+	return credential.Valid() && credential.Tags().Len() > 0 && credential.UserID().Valid() &&
+		types.UserID(credential.UserID().Get()) == userID
+}
+
 // DeleteUser permanently removes a user and all associated data (nodes, API keys, etc).
 // This operation is irreversible.
 // It also updates the policy manager to ensure ACL policies referencing the deleted
@@ -689,7 +697,7 @@ func (s *State) DeleteUser(userID types.UserID) (change.Change, error) {
 	// must stop naming it, as the database already does.
 	dropCreator := func(n *types.Node) {
 		k := n.AuthKey
-		if k == nil || !k.IsTagged() || k.UserID == nil || types.UserID(*k.UserID) != userID {
+		if !taggedCredentialCreatedByUser(k.View(), userID) {
 			return
 		}
 
@@ -701,8 +709,7 @@ func (s *State) DeleteUser(userID types.UserID) (change.Change, error) {
 	updates := make(map[types.NodeID]UpdateNodeFunc)
 
 	for _, n := range s.nodeStore.ListNodes().All() {
-		if k := n.AuthKey(); k.Valid() && k.Tags().Len() > 0 && k.UserID().Valid() &&
-			types.UserID(k.UserID().Get()) == userID {
+		if taggedCredentialCreatedByUser(n.AuthKey(), userID) {
 			updates[n.ID()] = dropCreator
 		}
 	}
@@ -1206,9 +1213,13 @@ func (s *State) BringNodeExpiryForward(
 	expiry time.Time,
 ) (types.NodeView, change.Change, error) {
 	return s.setNodeExpiry(nodeID, &expiry, func(node *types.Node) bool {
-		return node.NodeKey == nodeKey &&
-			(node.Expiry == nil || node.Expiry.IsZero() || expiry.Before(*node.Expiry))
+		return canBringExpiryForward(node, nodeKey, expiry)
 	})
+}
+
+func canBringExpiryForward(node *types.Node, nodeKey key.NodePublic, expiry time.Time) bool {
+	return node.NodeKey == nodeKey &&
+		(node.Expiry == nil || node.Expiry.IsZero() || expiry.Before(*node.Expiry))
 }
 
 // setNodeExpiry sets the node's expiry. A non-nil allow decides on the node
@@ -2010,12 +2021,16 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 
 	for id := range fns {
 		nv, ok := s.nodeStore.GetNode(id)
-		if ok && nv.Unhealthy() == !updates[id] && s.polMan.NodeIsViaTarget(nv) {
+		if ok && s.viaNodeHasHealth(nv, updates[id]) {
 			return true
 		}
 	}
 
 	return false
+}
+
+func (s *State) viaNodeHasHealth(node types.NodeView, healthy bool) bool {
+	return node.Unhealthy() == !healthy && s.polMan.NodeIsViaTarget(node)
 }
 
 // healthSetter returns an UpdateNodeFunc that flips n.Unhealthy to
@@ -2319,8 +2334,7 @@ func (s *State) SetAuthCacheEntry(id types.AuthID, entry *types.AuthRequest) err
 		s.authCache.Remove(oldest)
 	}
 
-	if (!entry.IsSSHCheck() && s.authCacheRegularEntries.Load() >= int64(s.authCacheMaxEntries)) ||
-		s.authCache.Len() >= s.authCacheMaxEntries+authCacheSSHReserve {
+	if s.authCacheFullFor(entry) {
 		return ErrAuthCacheFull
 	}
 
@@ -2336,6 +2350,12 @@ func (s *State) SetAuthCacheEntry(id types.AuthID, entry *types.AuthRequest) err
 	s.authCache.Add(id, entry)
 
 	return nil
+}
+
+// authCacheFullFor is called with authCacheMu held.
+func (s *State) authCacheFullFor(entry *types.AuthRequest) bool {
+	return (!entry.IsSSHCheck() && s.authCacheRegularEntries.Load() >= int64(s.authCacheMaxEntries)) ||
+		s.authCache.Len() >= s.authCacheMaxEntries+authCacheSSHReserve
 }
 
 // DeleteAuthCacheEntry releases a consumed authentication transaction.
@@ -2588,10 +2608,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		// Apply default node expiry for non-tagged nodes when the
 		// resolved expiry is still nil or zero (e.g., CLI registration
 		// where the client did not request a specific expiry).
-		needsDefaultExpiry := !node.IsTagged() &&
-			(node.Expiry == nil || node.Expiry.IsZero()) &&
-			s.cfg.Node.Expiry > 0
-		if needsDefaultExpiry {
+		if s.needsDefaultNodeExpiry(node) {
 			exp := time.Now().Add(s.cfg.Node.Expiry)
 			node.Expiry = &exp
 		}
@@ -2747,10 +2764,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	// Apply default node expiry for non-tagged nodes when the client
 	// did not request a specific expiry.
 	// Tagged nodes are exempt — they never expire.
-	needsDefaultExpiry := !nodeToRegister.IsTagged() &&
-		(nodeToRegister.Expiry == nil || nodeToRegister.Expiry.IsZero()) &&
-		s.cfg.Node.Expiry > 0
-	if needsDefaultExpiry {
+	if s.needsDefaultNodeExpiry(&nodeToRegister) {
 		exp := time.Now().Add(s.cfg.Node.Expiry)
 		nodeToRegister.Expiry = &exp
 	}
@@ -2839,6 +2853,15 @@ func (s *State) validateRequestTags(node types.NodeView, requestTags []string) [
 	return rejectedTags
 }
 
+func (s *State) needsDefaultNodeExpiry(node *types.Node) bool {
+	return !node.IsTagged() && (node.Expiry == nil || node.Expiry.IsZero()) && s.cfg.Node.Expiry > 0
+}
+
+func (s *State) canApplyReauthTag(node types.NodeView, authUser types.UserView, tag string) bool {
+	return s.polMan.NodeCanHaveTag(node, tag) ||
+		(authUser.Valid() && s.polMan.UserCanHaveTag(authUser, tag))
+}
+
 // validateRequestTagsForReauth authorises re-auth request tags against the
 // existing node OR the authenticating user. A tag-owned node (#3374) has no
 // user and its IP is in no owner set, so NodeCanHaveTag alone rejects every
@@ -2853,11 +2876,7 @@ func (s *State) validateRequestTagsForReauth(node types.NodeView, authUser types
 	var rejectedTags []string
 
 	for _, tag := range requestTags {
-		if s.polMan.NodeCanHaveTag(node, tag) {
-			continue
-		}
-
-		if authUser.Valid() && s.polMan.UserCanHaveTag(authUser, tag) {
+		if s.canApplyReauthTag(node, authUser, tag) {
 			continue
 		}
 
@@ -2926,8 +2945,7 @@ func (s *State) processReauthTags(
 	var approvedTags, rejectedTags []string
 
 	for _, tag := range requestTags {
-		if s.polMan.NodeCanHaveTag(node.View(), tag) ||
-			(authUser.Valid() && s.polMan.UserCanHaveTag(authUser, tag)) {
+		if s.canApplyReauthTag(node.View(), authUser, tag) {
 			approvedTags = append(approvedTags, tag)
 		} else {
 			rejectedTags = append(rejectedTags, tag)
@@ -3038,7 +3056,7 @@ func (s *State) HandleNodeFromAuthPath(
 	existingNodeOwnedByOtherUser := false
 
 	for uid, n := range all {
-		if uid != 0 && uid != types.UserID(user.ID) && !n.IsTagged() {
+		if isOtherUserOwnedNode(n, uid, types.UserID(user.ID)) {
 			existingNodeOtherUser = n
 			existingNodeOwnedByOtherUser = true
 		}
@@ -3226,7 +3244,7 @@ func (s *State) findExistingNodeForPAK(
 			// key under its own node key is the device restarting (#3312);
 			// pakReregister lets that key only wake it.
 			node, ok = all[0]
-			ok = ok && node.IsTagged() && (pak.CanReauthenticate(node) || node.NodeKey() == nodeKey)
+			ok = ok && canReuseTaggedNodeWithKey(node, pak, nodeKey)
 		}
 
 		return node, ok, nil
@@ -3252,12 +3270,23 @@ func loginNode(all map[types.UserID]types.NodeView, userID types.UserID) (types.
 		return node, true
 	}
 
-	if node, ok := all[0]; ok && node.IsTagged() &&
-		(node.ClaimableBy(userID) || node.RegisterMethod() != util.RegisterMethodAuthKey) {
+	if node, ok := all[0]; ok && canClaimTaggedNode(node, userID) {
 		return node, true
 	}
 
 	return types.NodeView{}, false
+}
+
+func isOtherUserOwnedNode(node types.NodeView, ownerID, userID types.UserID) bool {
+	return ownerID != 0 && ownerID != userID && !node.IsTagged()
+}
+
+func canReuseTaggedNodeWithKey(node types.NodeView, pak *types.PreAuthKey, nodeKey key.NodePublic) bool {
+	return node.IsTagged() && (pak.CanReauthenticate(node) || node.NodeKey() == nodeKey)
+}
+
+func canClaimTaggedNode(node types.NodeView, userID types.UserID) bool {
+	return node.IsTagged() && (node.ClaimableBy(userID) || node.RegisterMethod() != util.RegisterMethodAuthKey)
 }
 
 // pakSkipsValidation reports whether re-registering n with pak may skip key
@@ -3315,6 +3344,50 @@ func pakReregister(n types.NodeView, pak *types.PreAuthKey, nodeKey key.NodePubl
 	return false, err
 }
 
+// requestedTagsForPreAuthKey returns an authorised replacement set, or nil
+// when the key's tags should be kept.
+// Advertising a subset of the key's tags is redundant, not an escalation,
+// and the tailscale client's OAuth authkey flow always does it. Other
+// requested tags replace the key's when a tagged key's tags own each one,
+// or a user's key's user owns it directly, as on Tailscale SaaS; otherwise
+// they are refused, ahead of the key's own error, so new nodes and
+// re-registrations are held to the same rule.
+func (s *State) requestedTagsForPreAuthKey(hostinfo *tailcfg.Hostinfo, pak *types.PreAuthKey) ([]string, error) {
+	if !requestsTagsOutsideKey(hostinfo, pak.Tags) {
+		return nil, nil
+	}
+
+	var refused []string
+
+	for _, tag := range hostinfo.RequestTags {
+		if !s.preAuthKeyCanOwnTag(pak, tag) {
+			refused = append(refused, tag)
+		}
+	}
+
+	if len(refused) > 0 {
+		return nil, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, refused)
+	}
+
+	// Sort a copy: RequestTags is the node's reported Hostinfo.
+	return slices.Compact(slices.Sorted(slices.Values(hostinfo.RequestTags))), nil
+}
+
+func requestsTagsOutsideKey(hostinfo *tailcfg.Hostinfo, keyTags []string) bool {
+	return hostinfo != nil && slices.ContainsFunc(hostinfo.RequestTags, func(tag string) bool {
+		return !slices.Contains(keyTags, tag)
+	})
+}
+
+func (s *State) preAuthKeyCanOwnTag(pak *types.PreAuthKey, tag string) bool {
+	return s.polMan.TagOwnedByTags(tag, pak.Tags) ||
+		(!pak.IsTagged() && pak.User != nil && s.polMan.UserCanHaveTag(pak.User.View(), tag))
+}
+
+func requestedTagsErrorTakesPrecedence(tagsErr, keyErr error, reauth bool) bool {
+	return tagsErr != nil && !errors.Is(keyErr, ErrNodeKeyExpired) && (reauth || keyErr != nil)
+}
+
 //nolint:gocyclo // sequential validation/update/create paths with security-sensitive ordering
 func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
@@ -3332,7 +3405,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.NodeView{}, s.policyChangeSince(genBefore), err
 	}
 
-	if !pak.Reusable && !pak.Used {
+	if shouldConsumePreAuthKey(pak) {
 		mu := &s.singleUseKeyLocks[pak.ID%uint64(len(s.singleUseKeyLocks))]
 		mu.Lock()
 		defer mu.Unlock()
@@ -3344,37 +3417,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		}
 	}
 
-	// Advertising a subset of the key's tags is redundant, not an escalation,
-	// and the tailscale client's OAuth authkey flow always does it. Other
-	// requested tags replace the key's when a tagged key's tags own each one,
-	// or a user's key's user owns it directly, as on Tailscale SaaS; otherwise
-	// they are refused, ahead of the key's own error, so new nodes and
-	// re-registrations are held to the same rule.
-	var (
-		requestedTags []string
-		tagsErr       error
-	)
-
-	if regReq.Hostinfo != nil && slices.ContainsFunc(regReq.Hostinfo.RequestTags, func(tag string) bool {
-		return !slices.Contains(pak.Tags, tag)
-	}) {
-		var refused []string
-
-		for _, tag := range regReq.Hostinfo.RequestTags {
-			owned := s.polMan.TagOwnedByTags(tag, pak.Tags) ||
-				(!pak.IsTagged() && pak.User != nil && s.polMan.UserCanHaveTag(pak.User.View(), tag))
-			if !owned {
-				refused = append(refused, tag)
-			}
-		}
-
-		if len(refused) > 0 {
-			tagsErr = fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, refused)
-		} else {
-			// Sort a copy: RequestTags is the node's reported Hostinfo.
-			requestedTags = slices.Compact(slices.Sorted(slices.Values(regReq.Hostinfo.RequestTags)))
-		}
-	}
+	requestedTags, tagsErr := s.requestedTagsForPreAuthKey(regReq.Hostinfo, pak)
 
 	existingNodeSameUser, existsSameUser, err := s.findExistingNodeForPAK(machineKey, pak, regReq.NodeKey)
 	if err != nil {
@@ -3392,7 +3435,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 	}
 
 	// A wake-up writes no tags, so the tags it asks for are not refused.
-	if tagsErr != nil && !errors.Is(err, ErrNodeKeyExpired) && (reauth || err != nil) {
+	if requestedTagsErrorTakesPrecedence(tagsErr, err, reauth) {
 		return types.NodeView{}, s.policyChangeSince(genBefore), tagsErr
 	}
 
@@ -3450,7 +3493,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 		if pak.User != nil {
 			for uid, node := range s.nodeStore.GetNodesByMachineKeyAllUsers(machineKey) {
-				if uid != 0 && !node.IsTagged() && uid != types.UserID(pak.User.ID) {
+				if isOtherUserOwnedNode(node, uid, types.UserID(pak.User.ID)) {
 					differentUserNode = node
 					belongsToDifferentUser = true
 				}
@@ -3551,8 +3594,7 @@ func (s *State) approveRoutesAfterRegistration(
 	before, node types.NodeView,
 	c change.Change,
 ) (types.NodeView, change.Change, error) {
-	if before.Valid() && before.NodeKey() == node.NodeKey() &&
-		slices.Equal(sortedPrefixes(before.AnnouncedRoutes()), sortedPrefixes(node.AnnouncedRoutes())) {
+	if registrationPreservesRouteInputs(before, node) {
 		return node, c, nil
 	}
 
@@ -3564,6 +3606,19 @@ func (s *State) approveRoutesAfterRegistration(
 	}
 
 	return node, c, nil
+}
+
+func registrationPreservesRouteInputs(before, node types.NodeView) bool {
+	return before.Valid() && before.NodeKey() == node.NodeKey() &&
+		slices.Equal(sortedPrefixes(before.AnnouncedRoutes()), sortedPrefixes(node.AnnouncedRoutes()))
+}
+
+func preAuthKeyClaimsTaggedNode(node *types.Node, pak *types.PreAuthKey, requestedTags []string, previousNodeKey key.NodePublic) bool {
+	return requestedTags == nil && node.IsTagged() && !pak.IsTagged() && previousNodeKey != node.NodeKey
+}
+
+func shouldConsumePreAuthKey(pak *types.PreAuthKey) bool {
+	return !pak.Reusable && !pak.Used
 }
 
 // reregisterNodeWithPAK updates an existing node in place for a pre-auth key
@@ -3686,8 +3741,7 @@ func (s *State) reregisterNodeWithPAK(
 			if wasUserOwned || node.IsExpiredAt(now) {
 				node.Expiry = nil
 			}
-		} else if requestedTags == nil && node.IsTagged() && !pak.IsTagged() &&
-			prior.NodeKey != regReq.NodeKey {
+		} else if preAuthKeyClaimsTaggedNode(node, pak, requestedTags, prior.NodeKey) {
 			// A user key that speaks for a tagged node, with a new node key,
 			// takes it back as that user's device, as on Tailscale SaaS. A
 			// relogin under the same node key keeps it tagged. As at a login
@@ -3703,7 +3757,7 @@ func (s *State) reregisterNodeWithPAK(
 		// If this registration will consume a single-use key (the tx below
 		// calls UsePreAuthKey under the same condition), reflect that in the
 		// cached AuthKey so the NodeStore copy matches the database.
-		if !pak.Reusable && !pak.Used {
+		if shouldConsumePreAuthKey(pak) {
 			node.AuthKey.Used = true
 		}
 
@@ -3766,7 +3820,7 @@ func (s *State) reregisterNodeWithPAK(
 		// atomic compare-and-set in [hsdb.UsePreAuthKey] would otherwise
 		// reject it as "authkey already used", locking out containers
 		// that restart with the same one-shot key.
-		if reauth && !pak.Reusable && !pak.Used {
+		if reauth && shouldConsumePreAuthKey(pak) {
 			err := hsdb.UsePreAuthKey(tx, pak)
 			if err != nil {
 				return fmt.Errorf("using pre auth key: %w", err)
@@ -3793,6 +3847,11 @@ func (s *State) reregisterNodeWithPAK(
 	return updatedNodeView, before, nil
 }
 
+func registrationOwnershipStillMatches(node, written *types.Node) bool {
+	return slices.Equal(node.Tags, written.Tags) &&
+		reflect.DeepEqual(node.UserID, written.UserID) && reflect.DeepEqual(node.User, written.User)
+}
+
 // undoReregistration puts back the fields of a failed re-registration that
 // still hold what it wrote, so later admin and map writes survive, and saves
 // the result. LastSeen stays because the node did contact us; sessions,
@@ -3815,9 +3874,7 @@ func (s *State) undoReregistration(prior, written *types.Node) {
 			n.RegisterMethod = prior.RegisterMethod
 		}
 
-		if slices.Equal(n.Tags, written.Tags) &&
-			reflect.DeepEqual(n.UserID, written.UserID) &&
-			reflect.DeepEqual(n.User, written.User) {
+		if registrationOwnershipStillMatches(n, written) {
 			n.Tags = prior.Tags
 			n.UserID = prior.UserID
 			n.User = prior.User
@@ -4061,6 +4118,14 @@ func isAutoDerivedGivenName(given, hostname string) bool {
 	return err == nil && given == bumpedLabel(base, n)
 }
 
+func dnsMetadataChanged(previous, reported *tailcfg.Hostinfo) bool {
+	return reported != nil && (previous == nil || previous.Hostname != reported.Hostname || previous.OS != reported.OS)
+}
+
+func hasReportedHostnameChange(hostname string, reported *tailcfg.Hostinfo) bool {
+	return reported != nil && reported.Hostname != "" && reported.Hostname != hostname
+}
+
 // UpdateNodeFromMapRequest is the sync point where Hostinfo changes,
 // endpoint updates, and route advertisements from a [tailcfg.MapRequest]
 // land in the [NodeStore]. It produces a [change.Change] summarising
@@ -4154,10 +4219,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			!hostinfoEqual(currentNode.Hostinfo, newHostinfo)
 		delta.peerHostinfoChanged = newHostinfo != nil &&
 			!peerHostinfoEqual(currentNode.Hostinfo.View(), newHostinfo.View())
-		delta.dnsMetadataChanged = newHostinfo != nil &&
-			(currentNode.Hostinfo == nil ||
-				currentNode.Hostinfo.Hostname != newHostinfo.Hostname ||
-				currentNode.Hostinfo.OS != newHostinfo.OS)
+		delta.dnsMetadataChanged = dnsMetadataChanged(currentNode.Hostinfo, newHostinfo)
 
 		// A change carrying only an updated LastSeen is not worth a
 		// full-row database UPDATE plus the O(n) policy rescan
@@ -4181,8 +4243,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 
 		// Only a real hostname change may re-derive GivenName: it is peer
 		// visible, so the whole node is resent and peers learn the name.
-		if newHostinfo != nil && newHostinfo.Hostname != "" &&
-			newHostinfo.Hostname != currentNode.Hostname {
+		if hasReportedHostnameChange(currentNode.Hostname, newHostinfo) {
 			// Preserve an admin-renamed GivenName: only auto-derive
 			// when the current GivenName is still what
 			// SanitizeHostname of the old Hostname would produce
