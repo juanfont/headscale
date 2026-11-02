@@ -2635,12 +2635,7 @@ func (p *Policy) validate() error {
 
 		// A check asks the source's user to log in again, and a tagged
 		// node has none; Tailscale SaaS refuses this too.
-		if ssh.Action == SSHActionCheck && slices.ContainsFunc(ssh.Sources, func(a Alias) bool {
-			_, isTag := a.(*Tag)
-			ag, _ := a.(*AutoGroup)
-
-			return isTag || ag.Is(AutoGroupTagged)
-		}) {
+		if sshCheckHasTaggedSource(ssh) {
 			errs = append(errs, ErrSSHCheckTagSource)
 		}
 
@@ -3053,6 +3048,15 @@ type SSH struct {
 	Users        SSHUsers        `json:"users"`
 	CheckPeriod  *SSHCheckPeriod `json:"checkPeriod,omitempty"`
 	AcceptEnv    []string        `json:"acceptEnv,omitempty"`
+}
+
+func sshCheckHasTaggedSource(ssh SSH) bool {
+	return ssh.Action == SSHActionCheck && slices.ContainsFunc(ssh.Sources, func(a Alias) bool {
+		_, isTag := a.(*Tag)
+		ag, _ := a.(*AutoGroup)
+
+		return isTag || ag.Is(AutoGroupTagged)
+	})
 }
 
 // SSHSrcAliases is a list of aliases that can be used as sources in an [SSH] rule.

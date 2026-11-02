@@ -512,7 +512,7 @@ func sshPolicyForNode(
 
 		// Handle autogroup:self destinations.
 		// Tagged nodes can't match autogroup:self.
-		if cr.hasSelfDest && !node.IsTagged() && node.User().Valid() {
+		if cr.hasSelfDest && nodeHasUserIdentity(node) {
 			rules = append(rules, cr.userRules[node.User().ID()]...)
 		}
 

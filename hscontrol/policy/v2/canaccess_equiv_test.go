@@ -188,10 +188,12 @@ func peerMapPrefixReference(
 	for i, a := range nodes {
 		for _, b := range nodes[i+1:] {
 			mi, mj := nodeMatchers[a.ID], nodeMatchers[b.ID]
-			if canAccessPrefixReference(a, b, mi) ||
+
+			linkedByEitherPolicy := canAccessPrefixReference(a, b, mi) ||
 				canAccessPrefixReference(b, a, mi) ||
 				canAccessPrefixReference(a, b, mj) ||
-				canAccessPrefixReference(b, a, mj) {
+				canAccessPrefixReference(b, a, mj)
+			if linkedByEitherPolicy {
 				peers[a.ID] = append(peers[a.ID], b.ID)
 				peers[b.ID] = append(peers[b.ID], a.ID)
 			}

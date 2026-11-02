@@ -102,9 +102,7 @@ func appendOwnDests(
 	nodeAddrs *netipx.IPSet,
 ) []tailcfg.NetPortRange {
 	pfx, err := netip.ParsePrefix(dest.IP)
-	if err != nil || pfx.IsSingleIP() || nodeAddrs == nil || !nodeAddrs.ContainsPrefix(pfx) ||
-		slices.ContainsFunc(subnetRoutes, pfx.Overlaps) ||
-		slices.ContainsFunc(exitRoutes, pfx.Overlaps) {
+	if err != nil || !destinationNeedsOwnAddressExpansion(pfx, subnetRoutes, exitRoutes, nodeAddrs) {
 		return append(dests, dest)
 	}
 
@@ -117,6 +115,16 @@ func appendOwnDests(
 	}
 
 	return dests
+}
+
+func destinationNeedsOwnAddressExpansion(
+	pfx netip.Prefix,
+	subnetRoutes, exitRoutes []netip.Prefix,
+	nodeAddrs *netipx.IPSet,
+) bool {
+	return !pfx.IsSingleIP() && nodeAddrs != nil && nodeAddrs.ContainsPrefix(pfx) &&
+		!slices.ContainsFunc(subnetRoutes, pfx.Overlaps) &&
+		!slices.ContainsFunc(exitRoutes, pfx.Overlaps)
 }
 
 // reduceCapGrantRule filters a [tailcfg.CapGrant] rule to only include

@@ -130,13 +130,18 @@ func buildUserNodeIndex(
 	idx := make(userNodeIndex)
 
 	for _, n := range nodes.All() {
-		if !n.IsTagged() && n.User().Valid() {
+		if nodeHasUserIdentity(n) {
 			uid := n.User().ID()
 			idx[uid] = append(idx[uid], n)
 		}
 	}
 
 	return idx
+}
+
+// A user association alone does not establish ownership: tagged nodes may retain their creator.
+func nodeHasUserIdentity(node types.NodeView) bool {
+	return !node.IsTagged() && node.User().Valid()
 }
 
 // nodeAddrSet is the addresses of every node.
@@ -852,7 +857,7 @@ func exitNodeSelfRules(
 
 		for _, uid := range slices.Sorted(maps.Keys(userIdx)) {
 			// compileAutogroupSelf already covers an untagged node's own user.
-			if !node.IsTagged() && node.User().Valid() && node.User().ID() == uid {
+			if nodeHasUserIdentity(node) && node.User().ID() == uid {
 				continue
 			}
 

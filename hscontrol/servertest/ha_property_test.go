@@ -296,8 +296,8 @@ func checkHAInvariants(
 			)
 		}
 
-		if !prevStillApproves && hasPrimary && owner != prevOwner &&
-			!st.IsNodeHealthy(owner) {
+		selectedReplacement := !prevStillApproves && hasPrimary && owner != prevOwner
+		if selectedReplacement && !st.IsNodeHealthy(owner) {
 			rt.Fatalf(
 				"prefix %s with no router available moved to %d, "+
 					"which the prober declared unreachable",

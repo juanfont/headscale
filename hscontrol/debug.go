@@ -104,8 +104,7 @@ func (h *Headscale) debugHostGuard(next http.Handler) http.Handler {
 
 		host := normalize(r.Host)
 
-		_, err := netip.ParseAddr(host)
-		if host != "" && (err == nil || slices.Contains(allowed, host)) {
+		if isAllowedDebugHost(host, allowed) {
 			next.ServeHTTP(w, r)
 
 			return
@@ -118,6 +117,15 @@ func (h *Headscale) debugHostGuard(next http.Handler) http.Handler {
 			http.StatusForbidden,
 		)
 	})
+}
+
+func isAllowedDebugHost(host string, allowed []string) bool {
+	_, err := netip.ParseAddr(host)
+	if host == "" {
+		return false
+	}
+
+	return err == nil || slices.Contains(allowed, host)
 }
 
 func (h *Headscale) debugHTTPServer() *http.Server {
