@@ -1,0 +1,162 @@
+// update-client-console
+//
+// Admin console Start update on one device that can update itself, imported from a browser HAR: POST update-client, then update-status polls until the device runs the new version. Paths are the console's /admin/api; its /public routes answer as /api/v2 does, inside {status, data}.
+//
+// Steps: 2
+// Captured at:    2026-11-03T14:41:51Z
+// tool version:   saasprobe 1b73ebf30fc12d1e0d0db12a8218cadcf2227c87
+// schema version: 1
+{
+	"schema_version": 1,
+	"test_id":        "update-client-console",
+	"description":    "Admin console Start update on one device that can update itself, imported from a browser HAR: POST update-client, then update-status polls until the device runs the new version. Paths are the console's /admin/api; its /public routes answer as /api/v2 does, inside {status, data}.",
+	"captured_at":    "2026-11-03T14:41:51.783Z",
+	"tool_version":   "saasprobe 1b73ebf30fc12d1e0d0db12a8218cadcf2227c87",
+	"client_version": "1.104.4",
+	"tailnet":        "example.com",
+	"input": {"api_response_code": 0, "tailnet": {"dns": {
+		"magic_dns":    false,
+		"nameservers":  null,
+		"search_paths": null,
+		"split_dns":    null
+	}, "settings": {}}, "scenario_hujson": "", "full_policy": null},
+	"topology": {"users": null, "nodes": null},
+	"captures": null,
+	"steps": [{
+		"name":   "before",
+		"at":     "2026-11-03T14:41:51.783Z",
+		"result": "observed",
+		"actions": [{
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "GET",
+			"path":        "/admin/api/machines",
+			"header":      {"If-None-Match": "{etag:1}"},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json", "ETag": "{etag:2}"},
+			"response": {"data": {"machines": [{
+				"autoUpdatesEnabled":     true,
+				"availableUpdateVersion": "1.104.5",
+				"connectedToControl":     true,
+				"id":                     "{device:updater}",
+				"ipnVersion":             "1.104.4-t938213198-gd38c96d6a",
+				"os":                     "linux"
+			}]}, "status": "success"}
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "GET",
+			"path":        "/admin/api/machines",
+			"header":      {"If-None-Match": "{etag:2}"},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json", "ETag": "{etag:3}"},
+			"response": {"data": {"machines": [{
+				"autoUpdatesEnabled":     true,
+				"availableUpdateVersion": "1.104.5",
+				"connectedToControl":     true,
+				"id":                     "{device:updater}",
+				"ipnVersion":             "1.104.4-t938213198-gd38c96d6a",
+				"os":                     "linux"
+			}]}, "status": "success"},
+			"offset_ms": 10934
+		}]
+	}, {
+		"name":   "update",
+		"at":     "2026-11-03T14:42:07.343Z",
+		"result": "observed",
+		"actions": [{
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "POST",
+			"path":        "/admin/api/public/device/{device:updater}/update-client",
+			"body":        "",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json", "ETag": "{etag:4}"},
+			"response":    {"status": "success"}
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "GET",
+			"path":        "/admin/api/public/device/{device:updater}/update-status",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json", "ETag": "{etag:5}"},
+			"response":    {"data": {"status": "updating"}, "status": "success"},
+			"offset_ms":   8
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "GET",
+			"path":        "/admin/api/machines/{device:updater}",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json", "ETag": "{etag:6}"},
+			"response": {"data": {
+				"autoUpdatesEnabled":     true,
+				"availableUpdateVersion": "1.104.5",
+				"connectedToControl":     true,
+				"id":                     "{device:updater}",
+				"ipnVersion":             "1.104.4-t938213198-gd38c96d6a",
+				"os":                     "linux"
+			}, "status": "success"},
+			"offset_ms": 295
+		}, {
+			"kind":      "api",
+			"principal": "admin",
+			"method":    "GET",
+			"path":      "/admin/api/public/device/{device:updater}/update-status",
+			"header":    {"If-None-Match": "{etag:5}"},
+			"status":    304,
+			"offset_ms": 3012
+		}, {
+			"kind":      "api",
+			"principal": "admin",
+			"method":    "GET",
+			"path":      "/admin/api/public/device/{device:updater}/update-status",
+			"header":    {"If-None-Match": "{etag:5}"},
+			"status":    304,
+			"offset_ms": 5044
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "GET",
+			"path":        "/admin/api/public/device/{device:updater}/update-status",
+			"header":      {"If-None-Match": "{etag:5}"},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json", "ETag": "{etag:7}"},
+			"response":    {"data": {"status": "not-updating"}, "status": "success"},
+			"offset_ms":   7075
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "GET",
+			"path":        "/admin/api/machines",
+			"header":      {"If-None-Match": "{etag:3}"},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json", "ETag": "{etag:8}"},
+			"response": {"data": {"machines": [{
+				"autoUpdatesEnabled":     true,
+				"availableUpdateVersion": "1.104.5",
+				"connectedToControl":     true,
+				"id":                     "{device:updater}",
+				"ipnVersion":             "1.104.4-t938213198-gd38c96d6a",
+				"os":                     "linux"
+			}]}, "status": "success"},
+			"offset_ms": 7261
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "GET",
+			"path":        "/admin/api/machines",
+			"header":      {"If-None-Match": "{etag:8}"},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json", "ETag": "{etag:9}"},
+			"response": {"data": {"machines": [{
+				"autoUpdatesEnabled": true,
+				"connectedToControl": true,
+				"id":                 "{device:updater}",
+				"ipnVersion":         "1.104.5-t788384763-gd9218e278",
+				"os":                 "linux"
+			}]}, "status": "success"},
+			"offset_ms": 14442
+		}]
+	}]
+}
