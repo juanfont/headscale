@@ -523,6 +523,7 @@ func registerDevices(api huma.API, b Backend) {
 		Tags:          []string{"Devices"},
 		Security:      security,
 		DefaultStatus: http.StatusOK,
+		MaxBodyBytes:  maxBodyBytes,
 		Errors: []int{
 			http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound,
 			http.StatusConflict, http.StatusBadGateway, http.StatusGatewayTimeout,
