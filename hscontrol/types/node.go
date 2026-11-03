@@ -1525,8 +1525,9 @@ func PeerHostinfo(hi tailcfg.HostinfoView) tailcfg.HostinfoView {
 	}
 
 	out := &tailcfg.Hostinfo{
-		Hostname: hi.Hostname(),
-		OS:       hi.OS(),
+		Hostname:   hi.Hostname(),
+		OS:         hi.OS(),
+		ExitNodeID: hi.ExitNodeID(),
 	}
 
 	for _, s := range hi.Services().All() {

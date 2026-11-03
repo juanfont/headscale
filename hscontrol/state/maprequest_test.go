@@ -885,6 +885,7 @@ func TestPeerHostinfoEqual(t *testing.T) {
 			want:   false,
 		},
 		{name: "ssh host keys", mutate: func(hi *tailcfg.Hostinfo) { hi.SSH_HostKeys = []string{"ssh-ed25519 AAAA"} }, want: false},
+		{name: "exit node", mutate: func(hi *tailcfg.Hostinfo) { hi.ExitNodeID = "n123" }, want: false},
 		{name: "location", mutate: func(hi *tailcfg.Hostinfo) { hi.Location = &tailcfg.Location{Priority: 5} }, want: true},
 		{
 			name:   "dns proxy service",
@@ -910,6 +911,10 @@ func TestPeerHostinfoEqual(t *testing.T) {
 
 	require.True(t, peerHostinfoEqual(tailcfg.HostinfoView{}, tailcfg.HostinfoView{}))
 	require.False(t, peerHostinfoEqual(tailcfg.HostinfoView{}, base().View()))
+
+	withExit := base()
+	withExit.ExitNodeID = "n123"
+	require.False(t, peerHostinfoEqual(withExit.View(), base().View()))
 }
 
 func TestNetInfoEqualIgnoringDERP(t *testing.T) {
