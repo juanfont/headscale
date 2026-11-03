@@ -188,6 +188,16 @@ func isDev(version string) bool {
 // which only exists since 0.29.0 and is skipped for dev builds.
 func checkMinimumMigration(db *gorm.DB) error {
 	if !db.Migrator().HasTable("migrations") {
+		// Databases created before gormigrate was introduced (0.23) have no
+		// migrations table either. Only treat the database as fresh when no
+		// legacy or current core table exists; otherwise InitSchema would
+		// stamp the schema as initialised instead of running migrations.
+		for _, table := range []string{"users", "machines", "nodes"} {
+			if db.Migrator().HasTable(table) {
+				return tooOldUpgradeError()
+			}
+		}
+
 		return nil
 	}
 
@@ -212,14 +222,18 @@ func checkMinimumMigration(db *gorm.DB) error {
 	}
 
 	if found == 0 {
-		return fmt.Errorf(
-			"upgrade to the latest v0.29.x release first, "+
-				"release page: https://github.com/juanfont/headscale/releases: %w",
-			errDatabaseTooOld,
-		)
+		return tooOldUpgradeError()
 	}
 
 	return nil
+}
+
+func tooOldUpgradeError() error {
+	return fmt.Errorf(
+		"upgrade to the latest v0.29.x release first, "+
+			"release page: https://github.com/juanfont/headscale/releases: %w",
+		errDatabaseTooOld,
+	)
 }
 
 // checkVersionUpgradePath verifies that the running headscale version
