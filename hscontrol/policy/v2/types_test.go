@@ -725,7 +725,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `ssh: user "*" is not valid`,
+			wantErr: `user "*" is not valid`,
 		},
 		{
 			name: "ssh-with-check-period",
@@ -4758,6 +4758,84 @@ func TestSSHRuleSaaSValidation(t *testing.T) {
 	}
 }
 
+// TestSSHRuleErrorsLabelled verifies every error raised for an SSH rule
+// carries the [ssh] label, including errors from checks shared with ACLs
+// and grants (#3335).
+func TestSSHRuleErrorsLabelled(t *testing.T) {
+	tests := []struct {
+		name    string
+		rules   string
+		wantErr string
+	}{
+		{
+			name:    "users missing",
+			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["autogroup:self"]}`,
+			wantErr: `[ssh] users must be specified`,
+		},
+		{
+			name:    "action missing",
+			rules:   `{"src": ["odin@"], "dst": ["autogroup:self"], "users": ["root"]}`,
+			wantErr: `[ssh] action must be specified`,
+		},
+		{
+			name:    "wildcard user",
+			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["autogroup:self"], "users": ["*"]}`,
+			wantErr: `[ssh] user "*" is not valid`,
+		},
+		{
+			name:    "empty acceptEnv",
+			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["autogroup:self"], "users": ["root"], "acceptEnv": [""]}`,
+			wantErr: `[ssh] acceptEnv values cannot be empty`,
+		},
+		{
+			name:    "checkPeriod on accept",
+			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["autogroup:self"], "users": ["root"], "checkPeriod": "1h"}`,
+			wantErr: `[ssh] checkPeriod is only valid with action "check"`,
+		},
+		{
+			name:    "checkPeriod above max",
+			rules:   `{"action": "check", "src": ["odin@"], "dst": ["autogroup:self"], "users": ["root"], "checkPeriod": "200h"}`,
+			wantErr: `[ssh] checkPeriod 200h0m0s is above the max (168h)`,
+		},
+		{
+			name:    "unknown tag in src",
+			rules:   `{"action": "accept", "src": ["tag:nope"], "dst": ["tag:server"], "users": ["root"]}`,
+			wantErr: `[ssh] tag not found: "tag:nope"`,
+		},
+		{
+			name:    "unknown tag in dst",
+			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["tag:nope"], "users": ["root"]}`,
+			wantErr: `[ssh] tag not found: "tag:nope"`,
+		},
+		{
+			name:    "unknown group in src",
+			rules:   `{"action": "accept", "src": ["group:nope"], "dst": ["tag:server"], "users": ["root"]}`,
+			wantErr: `[ssh] group not defined in policy: "group:nope"`,
+		},
+		{
+			name:    "check with tag src",
+			rules:   `{"action": "check", "src": ["tag:server"], "dst": ["tag:server"], "users": ["root"]}`,
+			wantErr: `[ssh] "check" action does not support tags in src`,
+		},
+		{
+			name: "error in second rule",
+			rules: `{"action": "accept", "src": ["odin@"], "dst": ["autogroup:self"], "users": ["root"]},
+				{"action": "accept", "src": ["odin@"], "dst": ["autogroup:self"]}`,
+			wantErr: `[ssh] users must be specified`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := unmarshalPolicy([]byte(`{
+				"tagOwners": {"tag:server": ["odin@"]},
+				"ssh": [` + tt.rules + `]
+			}`))
+			require.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
 // TestSSHActionInvalidUnmarshal verifies the SaaS-aligned wording for
 // non-empty unknown actions surfaces at JSON parse time.
 func TestSSHActionInvalidUnmarshal(t *testing.T) {
@@ -4787,25 +4865,25 @@ func TestSSHActionInvalidUnmarshal(t *testing.T) {
 			name:    "uppercase rejected",
 			input:   `"ACCEPT"`,
 			wantErr: ErrSSHActionInvalid,
-			wantMsg: `ssh: "ACCEPT" is not a valid action`,
+			wantMsg: `"ACCEPT" is not a valid action`,
 		},
 		{
 			name:    "mixedcase rejected",
 			input:   `"Accept"`,
 			wantErr: ErrSSHActionInvalid,
-			wantMsg: `ssh: "Accept" is not a valid action`,
+			wantMsg: `"Accept" is not a valid action`,
 		},
 		{
 			name:    "whitespace trimmed then mixedcase rejected",
 			input:   `" Accept"`,
 			wantErr: ErrSSHActionInvalid,
-			wantMsg: `ssh: "Accept" is not a valid action`,
+			wantMsg: `"Accept" is not a valid action`,
 		},
 		{
 			name:    "unknown action rejected",
 			input:   `"deny"`,
 			wantErr: ErrSSHActionInvalid,
-			wantMsg: `ssh: "deny" is not a valid action`,
+			wantMsg: `"deny" is not a valid action`,
 		},
 	}
 
@@ -4906,7 +4984,7 @@ func TestSSHUserTrimEndToEnd(t *testing.T) {
 		_, err := unmarshalPolicy([]byte(policy))
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrSSHUserInvalid)
-		require.Contains(t, err.Error(), `ssh: user "" is not valid`)
+		require.Contains(t, err.Error(), `user "" is not valid`)
 	})
 }
 
@@ -5046,14 +5124,14 @@ func TestSSHCheckPeriodInvalidDuration(t *testing.T) {
 }
 
 // TestSSHCheckPeriodNegativeMessage verifies the SaaS body for the
-// negative-duration case (`ssh: checkPeriod -1m0s must be a positive duration`).
+// negative-duration case (`checkPeriod -1m0s must be a positive duration`).
 func TestSSHCheckPeriodNegativeMessage(t *testing.T) {
 	p := SSHCheckPeriod{Duration: -time.Minute}
 
 	err := p.Validate()
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrSSHCheckPeriodNegative)
-	require.Contains(t, err.Error(), "ssh: checkPeriod -1m0s must be a positive duration")
+	require.Contains(t, err.Error(), "checkPeriod -1m0s must be a positive duration")
 }
 
 func TestUnmarshalGrants(t *testing.T) {
