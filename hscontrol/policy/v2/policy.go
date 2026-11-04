@@ -44,9 +44,6 @@ type PolicyManager struct {
 	nodes views.Slice[types.NodeView]
 	// nodesByID indexes nodes; see [PolicyManager.cacheableLocked].
 	nodesByID map[types.NodeID]types.NodeView
-	// nodeAddrs is every node's addresses, for
-	// [policyutil.ReduceFilterRules].
-	nodeAddrs *netipx.IPSet
 
 	// resolvedPol is pol with its tags indexed and its groups resolved
 	// against users and nodes, see [Policy.withNodesByTag] and
@@ -335,7 +332,6 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.resolvedPol = pol
 	pm.compiledGrants = grants
 	pm.userNodeIdx = buildUserNodeIndex(pm.nodes)
-	pm.nodeAddrs = nodeAddrSet(pm.nodes)
 	pm.needsPerNodeFilter = hasPerNodeGrants(pm.compiledGrants)
 	pm.viaTargetTags = collectViaTargetTags(pm.compiledGrants)
 	pm.relayTargetIPs = relayTargetIPs
@@ -1056,13 +1052,10 @@ func (pm *PolicyManager) filterForNodeLocked(
 	if !pm.needsPerNodeFilter {
 		unreduced = pm.filter
 	} else {
-		unreduced = append(
-			pm.filterRulesForNodeLocked(node),
-			exitNodeSelfRules(pm.compiledGrants, node, pm.userNodeIdx)...,
-		)
+		unreduced = pm.filterRulesForNodeLocked(node)
 	}
 
-	reduced := policyutil.ReduceFilterRules(node, unreduced, pm.nodeAddrs)
+	reduced := policyutil.ReduceFilterRules(node, unreduced)
 	if pm.cacheableLocked(node) {
 		pm.filterRulesMap.Store(node.ID(), reduced)
 	}

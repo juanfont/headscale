@@ -33,17 +33,7 @@ import (
 // policySequenceSkipReasons lists checks where headscale differs from SaaS,
 // keyed <test_id>/<step>/<node>/<check>. A listed check that matches fails,
 // so a fix must delete its entry.
-var policySequenceSkipReasons = map[string]string{
-	"policy-generation/G0/rt/filter":   viaRuleMerged,
-	"policy-generation/G1/rt/filter":   viaRuleMerged,
-	"policy-generation/G2/rt/filter":   viaRuleMerged,
-	"policy-generation/G3/rt/filter":   viaRuleMerged,
-	"policy-generation/G3/rt-b/filter": viaRuleMerged,
-	"policy-generation/G4/rt-b/filter": viaRuleMerged,
-	"policy-generation/G5/rt-b/filter": viaRuleMerged,
-}
-
-const viaRuleMerged = "VIA_RULE_MERGED: on a via router headscale merges the via grant's filter rule with an ACL rule of the same sources; SaaS sends the two apart"
+var policySequenceSkipReasons = map[string]string{}
 
 // policySequenceNotCompared lists, by key prefix, checks left out: SaaS's
 // answer there is in doubt, so it is no reference.

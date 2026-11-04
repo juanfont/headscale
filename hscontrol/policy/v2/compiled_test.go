@@ -205,10 +205,10 @@ func assertCompileOtherDestsReference(
 ) {
 	t.Helper()
 
-	srcs, nonWild, err := resolveSources(pol, grant.Sources, users, nodes.ViewSlice())
+	srcs, err := resolveSources(pol, grant.Sources, users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	srcStrings := buildSrcIPStrings(srcs, nonWild,
+	srcStrings := buildSrcIPStrings(srcs,
 		sourcesHaveWildcard(grant.Sources), sourcesHaveDangerAll(grant.Sources),
 		nodes.ViewSlice())
 	if grant.Sources != nil && len(grant.Sources) == 0 {
@@ -446,10 +446,10 @@ func (dst *countedDestination) Resolve(
 func TestCompileOtherDestsResolvesOnce(t *testing.T) {
 	pol, users, nodes := compileOtherDestsFixture(t, 4, 24)
 	grant := pol.Grants[0]
-	srcs, nonWild, err := resolveSources(pol, grant.Sources, users, nodes.ViewSlice())
+	srcs, err := resolveSources(pol, grant.Sources, users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	srcStrings := buildSrcIPStrings(srcs, nonWild, true, false, nodes.ViewSlice())
+	srcStrings := buildSrcIPStrings(srcs, true, false, nodes.ViewSlice())
 	dst := &countedDestination{Alias: gp("group:all")}
 	grant.Destinations = Aliases{dst}
 
@@ -501,7 +501,7 @@ func BenchmarkCompileOtherDests(b *testing.B) {
 				grant.InternetProtocols, grant.App = grant.InternetProtocols[:1], nil
 			}
 
-			srcs, nonWild, err := resolveSources(
+			srcs, err := resolveSources(
 				pol,
 				grant.Sources,
 				users,
@@ -511,7 +511,6 @@ func BenchmarkCompileOtherDests(b *testing.B) {
 
 			srcStrings := buildSrcIPStrings(
 				srcs,
-				nonWild,
 				true,
 				false,
 				nodes.ViewSlice(),

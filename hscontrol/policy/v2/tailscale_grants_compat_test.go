@@ -139,47 +139,10 @@ func loadGrantTestFile(t *testing.T, path string) *testcapture.Capture {
 	return c
 }
 
-// Skip categories document WHY tests are expected to differ from Tailscale SaaS.
-// Tests are grouped by root cause.
-var grantSkipReasons = map[string]string{
-	// SaaS lists contiguous source addresses one by one and writes
-	// autogroup:internet as address ranges; headscale merges sources into
-	// ranges and writes the internet as prefixes. The address sets match;
-	// TestViaGrantMapCompat compares these captures' filters by address.
-	"via-grant-v52": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v53": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v54": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v55": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v56": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v57": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v58": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v59": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v60": "FILTER_ADDRESS_FORM: same addresses, different wire form and rule order",
-	"via-grant-v61": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v62": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v93": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v94": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v95": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v96": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v97": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v98": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-
-	// Checks keyed <test_id>/<node>/filter: a listed check that matches
-	// fails, so a fix must delete its entry. Contiguous pinned addresses;
-	// TestViaGrantHACompat compares these filters by address.
-	"via-grant-v64/client-a/filter":  srcAddressForm,
-	"via-grant-v64/client-b/filter":  srcAddressForm,
-	"via-grant-v64/plain/filter":     srcAddressForm,
-	"via-grant-v64/srv/filter":       srcAddressForm,
-	"via-grant-v64/via-empty/filter": srcAddressForm,
-	"via-grant-v64/via-r/filter":     srcAddressForm,
-	"via-grant-v65/client-a/filter":  srcAddressForm,
-	"via-grant-v65/client-b/filter":  srcAddressForm,
-	"via-grant-v65/plain/filter":     srcAddressForm,
-	"via-grant-v65/srv/filter":       srcAddressForm,
-	"via-grant-v65/via-empty/filter": srcAddressForm,
-	"via-grant-v65/via-r/filter":     srcAddressForm,
-}
+// grantSkipReasons lists checks where headscale differs from SaaS, keyed
+// <test_id>[/<node>/<check>]. A listed check that matches fails, so a fix
+// must delete its entry.
+var grantSkipReasons = map[string]string{}
 
 // TestGrantsCompat is a data-driven test that loads all GRANT-*.json
 // test files captured from Tailscale SaaS and compares headscale's grants
@@ -275,7 +238,6 @@ func testGrantSuccess(
 				gotRules := policyutil.ReduceFilterRules(
 					node.View(),
 					pol.compileFilterRulesForNode(users, node.View(), nodes.ViewSlice()),
-					nodeAddrSet(nodes.ViewSlice()),
 				)
 
 				pmRules, err := pm.FilterForNode(node.View())

@@ -6550,9 +6550,9 @@ func TestUnmarshalPolicyMaxDstPorts(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "autogroup:internet counts as its prefixes",
+			name: "autogroup:internet counts as its address ranges",
 			policy: `{"grants": [` +
-				grant("", "autogroup:internet", 100, ports(100)) + `]}`,
+				grant("", "autogroup:internet", 150, ports(100)) + `]}`,
 			wantErr: true,
 		},
 		{

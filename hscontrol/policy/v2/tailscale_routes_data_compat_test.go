@@ -184,11 +184,6 @@ func buildRoutesUsersAndNodes(
 var routesSkipReasons = map[string]string{
 	// SaaS lists contiguous source addresses one by one; headscale merges
 	// them into ranges.
-	"routes-m2-member-partial-subnet/r-exit/filter":  filterAddressForm,
-	"routes-m2-member-partial-subnet/r-multi/filter": filterAddressForm,
-	"routes-m4-member-self/m-odin1/filter":           filterAddressForm,
-	"routes-m4-member-self/m-odin2/filter":           filterAddressForm,
-	"routes-m4-member-self/r-exit/filter":            "FILTER_ADDRESS_FORM: same addresses, different wire form and rule order",
 }
 
 // routesNotCompared lists, by key prefix, checks left out: SaaS's answer
@@ -264,8 +259,6 @@ func notCompared(prefixes []string, key string) bool {
 		return strings.HasPrefix(key, p)
 	})
 }
-
-const filterAddressForm = "FILTER_ADDRESS_FORM: same addresses, different wire form"
 
 // routesSetByAPI reports whether the capture's routes were approved through
 // the routes API rather than by the policy.
@@ -357,7 +350,6 @@ func TestRoutesCompat(t *testing.T) {
 					gotRules := policyutil.ReduceFilterRules(
 						node.View(),
 						compiledRules,
-						nodeAddrSet(nodes.ViewSlice()),
 					)
 
 					wantRules := capture.PacketFilterRules
