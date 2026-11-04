@@ -26,8 +26,8 @@ metrics_listen_addr: 127.0.0.1:9090
 # CIDR(s) of reverse proxies (e.g. 127.0.0.1/32) whose
 # True-Client-IP, X-Real-IP and X-Forwarded-For headers should
 # be honoured. Empty (default) ignores those headers; setting
-# this without a proxy in front lets clients spoof their logged
-# source IP.
+# this without a proxy in front lets clients spoof their source
+# IP in logs and in the v2 API's ip:publicAddress.
 trusted_proxies: []
 
 # The Noise section includes specific configuration for the

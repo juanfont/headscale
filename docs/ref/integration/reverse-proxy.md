@@ -50,7 +50,8 @@ and indicates that the reverse proxy is in charge of terminating TLS.
 
 Headscale ignores `True-Client-IP`, `X-Real-IP` and `X-Forwarded-For` headers unless the request's TCP peer matches the
 `trusted_proxies` configuration option. Set this to the CIDR(s) your reverse proxy connects from so the real client IP
-appears in access logs.
+appears in access logs and in the v2 API's `ip:publicAddress` device attribute. Without it, every node reports the
+proxy's address.
 
 ```yaml title="config.yaml"
 trusted_proxies:
