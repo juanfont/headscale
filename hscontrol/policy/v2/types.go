@@ -43,9 +43,8 @@ var ErrUndefinedTagReference = errors.New("does not exist")
 
 // SSH validation errors.
 var (
-	ErrSSHTagSourceToUserDest             = errors.New("tags in SSH source cannot access user-owned devices")
-	ErrSSHUserDestRequiresSameUser        = errors.New("user destination requires source to contain only that same user")
-	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
+	ErrSSHUserDestRequiresSameUser        = errors.New("users in dst are only allowed from the same user")
+	ErrSSHAutogroupSelfRequiresUserSource = errors.New("is not allowed in src for autogroup:self")
 	ErrSSHCheckPeriodAboveMax             = errors.New("is above the max (168h)")
 	ErrSSHCheckPeriodNegative             = errors.New("must be a positive duration")
 	ErrSSHCheckPeriodOnNonCheck           = errors.New(`"checkPeriod" can only be specified for the "check" action`)
@@ -2345,52 +2344,52 @@ func validateAutogroupForSSHDst(dst *AutoGroup) error {
 	return nil
 }
 
-// validateSSHSrcDstCombination validates that SSH source/destination combinations
-// follow Tailscale's security model:
-//   - Destination can be: tags, autogroup:self (if source is users/groups), or same-user
-//   - Tags/autogroup:tagged CANNOT SSH to user destinations
-//   - [Username] destinations require the source to be that same single user only.
-func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAliases) error {
-	// Categorize source types
-	srcHasTaggedEntities := false
-	srcHasGroups := false
-	srcUsernames := make(map[string]bool)
+// validateSSHSrcDstCombination applies Tailscale's limits on reaching
+// user-owned devices: a user in dst only from sources that are all that
+// same user, and autogroup:self not from tagged sources.
+//
+// autogroup:tagged is refused for both, as Tailscale's docs require (tagged
+// devices cannot SSH into user-owned devices; autogroup:self needs user,
+// group or role sources). SaaS's validator accepts it there, but then sends
+// no SSH rules to any node, so refusing grants the same access with an
+// error instead. sshRefusedUnlikeSaaS in the SSH compat test pins the SaaS
+// side and fails when a re-capture shows it changed.
+func validateSSHSrcDstCombination(groups Groups, sources SSHSrcAliases, destinations SSHDstAliases) error {
+	var srcTagged Alias
+
+	srcUsers := make(map[Username]bool)
+	srcAllMembers := false
 
 	for _, src := range sources {
 		switch v := src.(type) {
-		case *Tag:
-			srcHasTaggedEntities = true
-		case *AutoGroup:
-			if v.Is(AutoGroupTagged) {
-				srcHasTaggedEntities = true
-			} else if v.Is(AutoGroupMember) {
-				srcHasGroups = true // autogroup:member is like a group of users
-			}
-		case *Group:
-			srcHasGroups = true
 		case *Username:
-			srcUsernames[string(*v)] = true
+			srcUsers[*v] = true
+		case *Group:
+			for _, u := range groups[*v] {
+				srcUsers[u] = true
+			}
+		case *Tag:
+			if srcTagged == nil {
+				srcTagged = v
+			}
+		case *AutoGroup:
+			srcAllMembers = srcAllMembers || v.Is(AutoGroupMember)
+
+			if v.Is(AutoGroupTagged) && srcTagged == nil {
+				srcTagged = v
+			}
 		}
 	}
 
-	// Check destinations against source constraints
 	for _, dst := range destinations {
 		switch v := dst.(type) {
 		case *Username:
-			// Rule: Tags/autogroup:tagged CANNOT SSH to user destinations
-			if srcHasTaggedEntities {
-				return fmt.Errorf("%w (%s); use autogroup:tagged or specific tags as destinations instead",
-					ErrSSHTagSourceToUserDest, *v)
-			}
-			// Rule: Username destination requires source to be that same single user only
-			if srcHasGroups || len(srcUsernames) != 1 || !srcUsernames[string(*v)] {
-				return fmt.Errorf("%w %q; use autogroup:self instead for same-user SSH access",
-					ErrSSHUserDestRequiresSameUser, *v)
+			if srcTagged != nil || srcAllMembers || len(srcUsers) != 1 || !srcUsers[*v] {
+				return ErrSSHUserDestRequiresSameUser
 			}
 		case *AutoGroup:
-			// Rule: autogroup:self requires source to NOT contain tags
-			if v.Is(AutoGroupSelf) && srcHasTaggedEntities {
-				return ErrSSHAutogroupSelfRequiresUserSource
+			if v.Is(AutoGroupSelf) && srcTagged != nil {
+				return fmt.Errorf("%q %w", srcTagged, ErrSSHAutogroupSelfRequiresUserSource)
 			}
 		}
 	}
@@ -2747,7 +2746,7 @@ func (p *Policy) validate() error {
 		}
 
 		// Validate SSH source/destination combinations follow Tailscale's security model
-		err := validateSSHSrcDstCombination(ssh.Sources, ssh.Destinations)
+		err := validateSSHSrcDstCombination(p.Groups, ssh.Sources, ssh.Destinations)
 		if err != nil {
 			errs = append(errs, err)
 		}
