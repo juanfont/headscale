@@ -60,7 +60,10 @@ var listPreAuthKeys = &cobra.Command{
 		return printListOutput(cmd, preAuthKeys, func() error {
 			rows := make([][]string, 0, len(preAuthKeys))
 			for _, key := range preAuthKeys {
-				expiration := ColourTime(key.Expiration)
+				expiration := "-"
+				if key.Expiration != nil {
+					expiration = ColourTime(*key.Expiration)
+				}
 
 				owner := "-"
 
