@@ -27,6 +27,7 @@ import (
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/derp"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -233,8 +234,11 @@ type State struct {
 	db *hsdb.HSDatabase
 	// ipAlloc manages IP address allocation for nodes
 	ipAlloc *hsdb.IPAllocator
-	// derpMap contains the current DERP relay configuration
-	derpMap atomic.Pointer[tailcfg.DERPMap]
+	// derpMap is configDERPMap with the policy's derpMap applied: the DERP
+	// map every node gets. derpMu orders its writers.
+	derpMap       atomic.Pointer[tailcfg.DERPMap]
+	derpMu        sync.Mutex
+	configDERPMap *tailcfg.DERPMap
 	// polMan handles policy evaluation and management
 	polMan policy.PolicyManager
 
@@ -530,9 +534,30 @@ func (s *State) Close() error {
 	return nil
 }
 
-// SetDERPMap updates the DERP relay configuration.
+// SetDERPMap sets the DERP map built from the configuration; nodes get it
+// with the policy's derpMap applied.
 func (s *State) SetDERPMap(dm *tailcfg.DERPMap) {
-	s.derpMap.Store(dm)
+	s.derpMu.Lock()
+	defer s.derpMu.Unlock()
+
+	s.configDERPMap = dm
+	s.derpMap.Store(derp.ApplyPolicy(dm, s.polMan.DERPMap()))
+}
+
+// applyPolicyDERPMap applies the current policy's derpMap to the configured
+// DERP map again and reports whether the map nodes get changed.
+func (s *State) applyPolicyDERPMap() bool {
+	s.derpMu.Lock()
+	defer s.derpMu.Unlock()
+
+	next := derp.ApplyPolicy(s.configDERPMap, s.polMan.DERPMap())
+	if reflect.DeepEqual(next, s.derpMap.Load()) {
+		return false
+	}
+
+	s.derpMap.Store(next)
+
+	return true
 }
 
 // DERPMap returns the current DERP relay configuration for peer-to-peer connectivity.
@@ -549,22 +574,28 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	s.policyMu.Lock()
 	defer s.policyMu.Unlock()
 
-	_, err := s.reloadPolicyLocked()
+	_, derpChanged, err := s.reloadPolicyLocked()
 	if err != nil {
 		return nil, err
 	}
 
 	// Nodes whose CapMap shifted get their self refresh from
 	// [State.DrainSelfRefreshes] when these changes are dispatched.
-	return []change.Change{change.PolicyChange()}, nil
+	changes := []change.Change{change.PolicyChange()}
+	if derpChanged {
+		changes = append(changes, change.DERPMap())
+	}
+
+	return changes, nil
 }
 
 // reloadPolicyLocked is [State.ReloadPolicy] for callers holding policyMu. It
-// reports whether the policy changed.
-func (s *State) reloadPolicyLocked() (bool, error) {
+// reports whether the policy changed, and apart from that whether the DERP
+// map nodes get did: a derpMap edit changes no filter.
+func (s *State) reloadPolicyLocked() (bool, bool, error) {
 	pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
 	if err != nil {
-		return false, fmt.Errorf("loading policy: %w", err)
+		return false, false, fmt.Errorf("loading policy: %w", err)
 	}
 
 	// nil means no policy is configured: nothing to install.
@@ -572,9 +603,13 @@ func (s *State) reloadPolicyLocked() (bool, error) {
 	if pol != nil {
 		policyChanged, err = s.polMan.SetPolicy(pol)
 		if err != nil {
-			return false, fmt.Errorf("setting policy: %w", err)
+			return false, false, fmt.Errorf("setting policy: %w", err)
 		}
 	}
+
+	// Checked even when the policy is unchanged: [State.SetPolicy] may have
+	// installed it already.
+	derpChanged := s.applyPolicyDERPMap()
 
 	// Rebuild peer maps after policy changes because the peersFunc in [NodeStore]
 	// uses the [policy.PolicyManager]'s filters. Without this, nodes won't see
@@ -596,7 +631,7 @@ func (s *State) reloadPolicyLocked() (bool, error) {
 		log.Info().Msg("Policy reload completed with changes")
 	}
 
-	return policyChanged, nil
+	return policyChanged, derpChanged, nil
 }
 
 // CreateUser creates a new user and updates the policy manager.
@@ -1908,17 +1943,23 @@ func (s *State) UpdatePolicy(pol []byte) (*types.Policy, []change.Change, error)
 		return nil, nil, fmt.Errorf("storing policy: %w", err)
 	}
 
-	changed, err := s.reloadPolicyLocked()
+	changed, derpChanged, err := s.reloadPolicyLocked()
 	if err != nil {
 		return stored, nil, err
 	}
 
+	var changes []change.Change
+
 	// As on SaaS, a write that changes nothing sends clients nothing.
-	if !changed {
-		return stored, nil, nil
+	if changed {
+		changes = append(changes, change.PolicyChange())
 	}
 
-	return stored, []change.Change{change.PolicyChange()}, nil
+	if derpChanged {
+		changes = append(changes, change.DERPMap())
+	}
+
+	return stored, changes, nil
 }
 
 // GetNodePrimaryRoutes returns the primary routes for a node.
