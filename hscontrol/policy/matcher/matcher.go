@@ -63,6 +63,13 @@ func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {
 // [policy.ReduceNodes], hiding the cap target
 // from the source unless a companion IP-level rule also exists.
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
+	return MatchFromFilterRuleSrcs(rule, buildIPSet(rule.SrcIPs))
+}
+
+// MatchFromFilterRuleSrcs is [MatchFromFilterRule] for a rule whose SrcIPs
+// are already parsed as srcs, see [ParseSrcs]: rules sharing one source
+// list, such as a via grant's on every router, parse it once.
+func MatchFromFilterRuleSrcs(rule tailcfg.FilterRule, srcs *netipx.IPSet) Match {
 	dests := new(netipx.IPSetBuilder)
 
 	for _, dp := range rule.DstPorts {
@@ -78,7 +85,12 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 
 	destsSet, _ := dests.IPSet()
 
-	return newMatch(buildIPSet(rule.SrcIPs), destsSet)
+	return newMatch(srcs, destsSet)
+}
+
+// ParseSrcs parses SrcIPs as [MatchFromFilterRule] does.
+func ParseSrcs(srcIPs []string) *netipx.IPSet {
+	return buildIPSet(srcIPs)
 }
 
 // buildIPSet parses each string via [util.ParseIPSet] and unions the

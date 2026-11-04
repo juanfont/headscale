@@ -102,6 +102,9 @@ type viaGrantData struct {
 	hasAutoGroupInternet bool
 	internetProtocols    []ProtocolPort
 	srcIPStrings         []string
+	// srcSet is srcIPStrings parsed once for the matchers of the grant's
+	// rules, which every router of the grant shares.
+	srcSet *netipx.IPSet
 	// keyPrefix and keys, by IPProto, build the merge keys of the grant's
 	// rules once, see [viaRuleKey].
 	keyPrefix string
@@ -474,6 +477,7 @@ func (pol *Policy) compileOneViaGrant(
 		hasAutoGroupInternet: hasAutoGroupInternet,
 		internetProtocols:    grant.InternetProtocols,
 		srcIPStrings:         srcIPStrings,
+		srcSet:               matcher.ParseSrcs(srcIPStrings),
 		keyPrefix:            fmt.Sprintf("via:%v|%s|", grant.Via, strings.Join(srcIPStrings, ",")),
 	}
 
@@ -801,7 +805,7 @@ func peerRulesForNode(
 
 // nodeOnlyMatchers returns the matchers of the self and via rules a node
 // adds to the pre-compiled rules every node shares. Self matchers are
-// shared per user; via rules are parsed for the node.
+// shared per user; via rules reuse their grant's parsed sources.
 func nodeOnlyMatchers(
 	grants []compiledGrant,
 	node types.NodeView,
@@ -818,7 +822,9 @@ func nodeOnlyMatchers(
 		case grantCategorySelf:
 			matchers = append(matchers, ownSelfRules(cg, node, userIdx).matchers...)
 		case grantCategoryVia:
-			matchers = append(matchers, matcher.MatchesFromFilterRules(viaRules(cg, node))...)
+			for _, rule := range viaRules(cg, node) {
+				matchers = append(matchers, matcher.MatchFromFilterRuleSrcs(rule, cg.via.srcSet))
+			}
 		}
 	}
 
