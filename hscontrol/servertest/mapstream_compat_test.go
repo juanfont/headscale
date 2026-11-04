@@ -6,10 +6,10 @@
 // routes it announces but has no approval for; what every node is sent as
 // one policy is compiled again for node changes and a group edit; and what
 // every node is sent when an admin role change alters what the policy
-// resolves.
+// resolves; and what peers hear of a node's exit node choice.
 //
 // Test data source: testdata/steps/{map-delivery,hidden-peers,route-announce,
-// policy-generation,user-role}.hujson, loaded by name. The disco rotation of
+// policy-generation,user-role,exit-node}.hujson, loaded by name. The disco rotation of
 // map-delivery also pins a row of TestBuildMapRequestChangeResponse in
 // ../state; policy-generation is also read by TestPolicySequenceCompat in
 // ../policy/v2; user-role's setup step is also read by
@@ -176,6 +176,129 @@ func TestPeerHostinfoCompat(t *testing.T) {
 
 // hostinfoStep is the quiet step whose captures hold the Hostinfo snapshots.
 const hostinfoStep = "S2.0"
+
+// TestPeerExitNodeIDCompat replays a node that picks an exit node, switches
+// to another and clears it, watched by a node of its own user, one of another
+// user and both exit nodes. SaaS keeps the choice to itself: no node is sent
+// a frame for it, and no map entry, the picker's own included, carries it.
+// https://github.com/juanfont/headscale/issues/3643
+func TestPeerExitNodeIDCompat(t *testing.T) {
+	t.Parallel()
+
+	const picker = "picker"
+
+	c := readStepCapture(t, "exit-node")
+
+	// What picker told control in each step after the setup.
+	reported := make([]tailcfg.StableNodeID, 0, len(c.Steps)-1)
+
+	for _, step := range c.Steps[1:] {
+		frames := step.Frames[picker]
+		i := slices.IndexFunc(frames, func(f testcapture.Frame) bool {
+			return f.Request != nil && f.Request.Hostinfo != nil
+		})
+		require.GreaterOrEqual(t, i, 0, "%s: picker reported no Hostinfo", step.Name)
+		reported = append(reported, frames[i].Request.Hostinfo.ExitNodeID)
+	}
+
+	require.Len(t, reported, 3)
+	require.NotEmpty(t, reported[0], "picked")
+	require.NotEqual(t, reported[0], reported[1], "switched")
+	require.Empty(t, reported[2], "cleared")
+
+	t.Run("saas", func(t *testing.T) {
+		t.Parallel()
+
+		for _, step := range c.Steps[1:] {
+			require.Len(t, step.Captures, 5, step.Name)
+
+			for alias, n := range step.Captures {
+				at := step.Name + "/" + alias
+				require.Equal(t, "silent", saasDelivered(step.Frames[alias]), at)
+				require.Empty(t, n.Netmap.SelfNode.Hostinfo().ExitNodeID(), at+" self")
+
+				for _, p := range n.Netmap.Peers {
+					require.Empty(t, p.Hostinfo().ExitNodeID(), at+" peer "+p.Hostinfo().Hostname())
+				}
+			}
+		}
+	})
+
+	t.Run("headscale", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t)
+		odin, thor := srv.CreateUser(t, "exitid-odin"), srv.CreateUser(t, "exitid-thor")
+
+		pick := servertest.NewClient(t, srv, picker, servertest.WithUser(odin))
+		all := []*servertest.TestClient{
+			pick,
+			servertest.NewClient(t, srv, "mate", servertest.WithUser(odin)),
+			servertest.NewClient(t, srv, "stranger", servertest.WithUser(thor)),
+		}
+
+		for _, cl := range all {
+			cl.WaitForPeers(t, len(all)-1, 10*time.Second)
+		}
+
+		id := findNodeID(t, srv, picker)
+
+		// quiet waits out the frames still in flight, so a frame counted
+		// after it belongs to the change that follows.
+		quiet := func() []int {
+			var last []int
+
+			require.Eventually(t, func() bool {
+				cur := make([]int, len(all))
+				for i, cl := range all {
+					cur[i] = cl.Frames()
+				}
+
+				same := slices.Equal(cur, last)
+				last = cur
+
+				return same
+			}, 10*time.Second, time.Second)
+
+			return last
+		}
+
+		for _, exit := range reported {
+			before := quiet()
+
+			pick.Direct().SetHostinfo(&tailcfg.Hostinfo{
+				BackendLogID: "servertest-" + picker, Hostname: picker, ExitNodeID: exit,
+			})
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			require.NoError(t, pick.Direct().SendUpdate(ctx))
+			cancel()
+
+			// Control is told, as SaaS was.
+			require.Eventually(t, func() bool {
+				n, ok := srv.State().GetNodeByID(id)
+				return ok && n.Hostinfo().ExitNodeID() == exit
+			}, 10*time.Second, 50*time.Millisecond, "stored %q", exit)
+
+			requireNetmapHolds(t, func(c require.TestingT) {
+				for i, cl := range all {
+					// picker's own update is answered once outside its
+					// stream, which the capture does not record.
+					if cl != pick {
+						require.Equal(c, before[i], cl.Frames(), "%s was sent a frame", cl.Name)
+					}
+
+					nm := cl.Netmap()
+					require.Empty(c, nm.SelfNode.Hostinfo().ExitNodeID(), "%s self", cl.Name)
+
+					for _, p := range nm.Peers {
+						require.Empty(c, p.Hostinfo().ExitNodeID(), "%s peer %s", cl.Name, p.Hostinfo().Hostname())
+					}
+				}
+			})
+		}
+	})
+}
 
 // mapEntryFields are the entry fields SaaS sets by whom the entry is about.
 var mapEntryFields = []struct {
