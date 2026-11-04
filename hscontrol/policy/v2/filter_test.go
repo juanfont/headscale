@@ -153,21 +153,21 @@ func TestParsing(t *testing.T) {
 }`,
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.0-100.115.91.255", "100.115.94.0-100.127.255.255", "fd7a:115c:a1e0::/48"},
+					SrcIPs: []string{"100.115.94.0-100.127.255.255", "100.64.0.0-100.115.91.255", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100", Ports: tailcfg.PortRangeAny},
 					},
 					IPProto: []int{ProtocolTCP},
 				},
 				{
-					SrcIPs: []string{"100.64.0.0-100.115.91.255", "100.115.94.0-100.127.255.255", "fd7a:115c:a1e0::/48"},
+					SrcIPs: []string{"100.115.94.0-100.127.255.255", "100.64.0.0-100.115.91.255", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100", Ports: tailcfg.PortRange{First: 53, Last: 53}},
 					},
 					IPProto: []int{ProtocolUDP},
 				},
 				{
-					SrcIPs: []string{"100.64.0.0-100.115.91.255", "100.115.94.0-100.127.255.255", "fd7a:115c:a1e0::/48"},
+					SrcIPs: []string{"100.115.94.0-100.127.255.255", "100.64.0.0-100.115.91.255", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100", Ports: tailcfg.PortRangeAny},
 					},
@@ -202,7 +202,7 @@ func TestParsing(t *testing.T) {
 `,
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.0-100.115.91.255", "100.115.94.0-100.127.255.255", "fd7a:115c:a1e0::/48"},
+					SrcIPs: []string{"100.115.94.0-100.127.255.255", "100.64.0.0-100.115.91.255", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100", Ports: tailcfg.PortRangeAny},
 					},
@@ -343,7 +343,7 @@ func TestParsing(t *testing.T) {
 `,
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.0-100.115.91.255", "100.115.94.0-100.127.255.255", "fd7a:115c:a1e0::/48"},
+					SrcIPs: []string{"100.115.94.0-100.127.255.255", "100.64.0.0-100.115.91.255", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100", Ports: tailcfg.PortRangeAny},
 					},
@@ -1497,7 +1497,7 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 
 	compiled := pol.compileFilterRulesForNode(users, userNode, nodes.ViewSlice())
 
-	userRules := policyutil.ReduceFilterRules(userNode, compiled, nodeAddrSet(nodes.ViewSlice()))
+	userRules := policyutil.ReduceFilterRules(userNode, compiled)
 
 	for _, rule := range userRules {
 		for _, dst := range rule.DstPorts {
@@ -1519,7 +1519,7 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 
 	compiled = pol.compileFilterRulesForNode(users, dbNode, nodes.ViewSlice())
 
-	dbRules := policyutil.ReduceFilterRules(dbNode, compiled, nodeAddrSet(nodes.ViewSlice()))
+	dbRules := policyutil.ReduceFilterRules(dbNode, compiled)
 
 	foundServerSrc := false
 
@@ -1590,7 +1590,7 @@ func TestUserToTagCrossIdentityGrant(t *testing.T) {
 
 	compiled := pol.compileFilterRulesForNode(users, taggedNode, nodes.ViewSlice())
 
-	rules := policyutil.ReduceFilterRules(taggedNode, compiled, nodeAddrSet(nodes.ViewSlice()))
+	rules := policyutil.ReduceFilterRules(taggedNode, compiled)
 
 	// user1's IP should appear as a source that can reach tag:server.
 	foundUser1Src := false
@@ -3513,7 +3513,7 @@ func TestSourcesHaveDangerAll(t *testing.T) {
 	}
 }
 
-func TestSrcIPsWithRoutes(t *testing.T) {
+func TestBuildSrcIPStrings(t *testing.T) {
 	t.Parallel()
 
 	// Build a resolved address set for a single IP.
@@ -3586,7 +3586,7 @@ func TestSrcIPsWithRoutes(t *testing.T) {
 				nodes = nodeWithRoutes
 			}
 
-			got := srcIPsWithRoutes(tt.resolved, tt.hasWildcard, tt.hasDangerAll, nodes)
+			got := buildSrcIPStrings([]ResolvedAddresses{tt.resolved}, tt.hasWildcard, tt.hasDangerAll, nodes)
 
 			if tt.hasDangerAll {
 				assert.Equal(t, []string{"*"}, got)
@@ -3598,6 +3598,26 @@ func TestSrcIPsWithRoutes(t *testing.T) {
 			}
 		})
 	}
+
+	// Each alias is written on its own: node addresses stay listed one by
+	// one next to the wildcard range that contains them, sorted as text.
+	var pair netipx.IPSetBuilder
+	pair.AddPrefix(netip.MustParsePrefix("100.64.0.2/31"))
+
+	pairSet, err := pair.IPSet()
+	require.NoError(t, err)
+
+	nodeAddrs, err := newNodeAddresses(pairSet, nil)
+	require.NoError(t, err)
+
+	wildcard, err := Asterix(0).Resolve(nil, nil, emptyNodes)
+	require.NoError(t, err)
+
+	want := append(wildcard.Strings(), "100.64.0.2", "100.64.0.3")
+	slices.Sort(want)
+
+	got := buildSrcIPStrings([]ResolvedAddresses{wildcard, nodeAddrs}, true, false, emptyNodes)
+	assert.Equal(t, want, got, "node addresses must stay listed beside the wildcard range")
 }
 
 func TestFilterAllowAllFix(t *testing.T) {
@@ -3771,15 +3791,13 @@ func TestCompileViaGrant(t *testing.T) {
 	}
 
 	// Expected rule for autogroup:internet on a via-tagged exit
-	// advertiser: SrcIPs scoped to the grant source, DstPorts
-	// enumerating util.TheInternet() prefixes.
-	internetDstPorts := make(
-		[]tailcfg.NetPortRange, 0, len(util.TheInternet().Prefixes()),
-	)
+	// advertiser: SrcIPs scoped to the grant source, DstPorts the
+	// internet's address ranges, as Tailscale writes them.
+	internetDstPorts := make([]tailcfg.NetPortRange, 0, len(internetStrings()))
 
-	for _, p := range util.TheInternet().Prefixes() {
+	for _, r := range internetStrings() {
 		internetDstPorts = append(internetDstPorts, tailcfg.NetPortRange{
-			IP:    p.String(),
+			IP:    r,
 			Ports: tailcfg.PortRangeAny,
 		})
 	}
@@ -4262,14 +4280,12 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 			switch tt.name {
 			case "autogroup:self destination for untagged node produces same-user devices":
 				// Should produce rules; sources and destinations should only
-				// include user1's untagged devices (node1 and node2).
-				// IPs are merged into ranges by IPSet (e.g. "100.64.0.1-100.64.0.2").
+				// include user1's untagged devices (node1 and node2), each
+				// address on its own, as Tailscale writes them.
 				require.NotEmpty(t, got, "expected rules for autogroup:self")
 				rule := got[0]
-				// SrcIPs from IPSet may be a merged range.
-				require.Len(t, rule.SrcIPs, 1)
-				assert.Equal(t, "100.64.0.1-100.64.0.2", rule.SrcIPs[0],
-					"SrcIPs should contain merged range for user1 untagged devices")
+				assert.Equal(t, []string{"100.64.0.1", "100.64.0.2"}, rule.SrcIPs,
+					"SrcIPs should list user1's untagged devices")
 
 				var destIPs []string
 				for _, dp := range rule.DstPorts {
@@ -4326,10 +4342,9 @@ func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
 	// autogroup:internet must surface as DstPorts (not be skipped at
 	// compile time). The matcher derived from these FilterRules is
 	// what makes Node.CanAccess return true for exit-node peers via
-	// DestsIsTheInternet (#3212). The wire format is currently the
-	// canonical CIDR breakdown of util.TheInternet(); aligning it to
-	// the SaaS range form is tracked separately.
-	internetPrefixCount := len(util.TheInternet().Prefixes())
+	// DestsIsTheInternet (#3212). They are written as the internet's
+	// address ranges, as Tailscale writes them.
+	internetPrefixCount := len(internetStrings())
 
 	tests := []struct {
 		name     string

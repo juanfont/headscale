@@ -11,11 +11,9 @@ import (
 )
 
 // ReduceFilterRules takes a node and a set of global filter rules and removes all rules
-// and destinations that are not relevant to that particular node.
-//
-// nodeAddrs holds every node's addresses. A destination prefix made only of
-// them merges several nodes' addresses, and the node keeps just its own, as
-// Tailscale lists them; any other prefix stays whole. nil keeps all whole.
+// and destinations that are not relevant to that particular node. Rules list
+// node addresses one by one, so a node keeps its own and those its routes
+// cover, as Tailscale sends them.
 //
 // IMPORTANT: This function is designed for global filters only. Per-node filters
 // (from autogroup:self policies) are already node-specific and should not be passed
@@ -24,7 +22,6 @@ import (
 func ReduceFilterRules(
 	node types.NodeView,
 	rules []tailcfg.FilterRule,
-	nodeAddrs *netipx.IPSet,
 ) []tailcfg.FilterRule {
 	ret := []tailcfg.FilterRule{}
 	nodeIPs := node.IPs()
@@ -48,7 +45,7 @@ func ReduceFilterRules(
 
 		for _, dest := range rule.DstPorts {
 			if destReachesNode(dest.IP, nodeIPs, subnetRoutes, exitRoutes) {
-				dests = appendOwnDests(dests, dest, nodeIPs, subnetRoutes, exitRoutes, nodeAddrs)
+				dests = append(dests, dest)
 			}
 		}
 
@@ -89,42 +86,6 @@ func destReachesNode(dst string, nodeIPs []netip.Addr, subnetRoutes, exitRoutes 
 	return slices.ContainsFunc(nodeIPs, r.Contains) ||
 		slices.ContainsFunc(subnetRoutes, overlaps) ||
 		slices.ContainsFunc(exitRoutes, overlaps)
-}
-
-// appendOwnDests appends dest, which reaches the node, to dests. A prefix
-// made only of node addresses, which no route of the node overlaps, becomes
-// one entry per node address inside it; anything else stays whole.
-func appendOwnDests(
-	dests []tailcfg.NetPortRange,
-	dest tailcfg.NetPortRange,
-	nodeIPs []netip.Addr,
-	subnetRoutes, exitRoutes []netip.Prefix,
-	nodeAddrs *netipx.IPSet,
-) []tailcfg.NetPortRange {
-	pfx, err := netip.ParsePrefix(dest.IP)
-	if err != nil || !destinationNeedsOwnAddressExpansion(pfx, subnetRoutes, exitRoutes, nodeAddrs) {
-		return append(dests, dest)
-	}
-
-	for _, ip := range nodeIPs {
-		if pfx.Contains(ip) {
-			own := dest
-			own.IP = ip.String()
-			dests = append(dests, own)
-		}
-	}
-
-	return dests
-}
-
-func destinationNeedsOwnAddressExpansion(
-	pfx netip.Prefix,
-	subnetRoutes, exitRoutes []netip.Prefix,
-	nodeAddrs *netipx.IPSet,
-) bool {
-	return !pfx.IsSingleIP() && nodeAddrs != nil && nodeAddrs.ContainsPrefix(pfx) &&
-		!slices.ContainsFunc(subnetRoutes, pfx.Overlaps) &&
-		!slices.ContainsFunc(exitRoutes, pfx.Overlaps)
 }
 
 // reduceCapGrantRule filters a [tailcfg.CapGrant] rule to only include

@@ -211,6 +211,10 @@ var (
 
 type resolved struct {
 	ips netipx.IPSet
+
+	// wire is the alias as Tailscale writes it in a filter rule; nil
+	// writes ips as ranges and prefixes.
+	wire []string
 }
 
 func newResolved(ipb *netipx.IPSetBuilder) (resolved, error) {
@@ -229,6 +233,35 @@ func newResolvedAddresses(ips *netipx.IPSet, err error) (ResolvedAddresses, erro
 
 	return resolved{ips: *ips}, err
 }
+
+// newNodeAddresses wraps the addresses of the nodes an alias names.
+// Tailscale writes each node address on its own, never merged into a
+// range with its neighbours.
+func newNodeAddresses(ips *netipx.IPSet, err error) (ResolvedAddresses, error) {
+	if ips == nil {
+		return nil, err
+	}
+
+	res := resolved{ips: *ips}
+	for addr := range util.IPSetAddrIter(ips) {
+		res.wire = append(res.wire, addr.String())
+	}
+
+	return res, err
+}
+
+// internetStrings writes [util.TheInternet] as Tailscale does: one address
+// range per span, also where a span is a prefix.
+var internetStrings = sync.OnceValue(func() []string {
+	ranges := util.TheInternet().Ranges()
+	out := make([]string, 0, len(ranges))
+
+	for _, r := range ranges {
+		out = append(out, r.String())
+	}
+
+	return out
+})
 
 func ipSetToStrings(ips *netipx.IPSet) []string {
 	var result []string
@@ -251,6 +284,10 @@ func ipSetToStrings(ips *netipx.IPSet) []string {
 }
 
 func (res resolved) Strings() []string {
+	if res.wire != nil {
+		return slices.Clip(res.wire)
+	}
+
 	return ipSetToStrings(&res.ips)
 }
 
@@ -492,7 +529,7 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 }
 
 func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(u.resolve(nil, users, nodes))
+	return newNodeAddresses(u.resolve(nil, users, nodes))
 }
 
 func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
@@ -591,7 +628,7 @@ func (g *Group) MarshalJSON() ([]byte, error) {
 }
 
 func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(g.resolve(p, users, nodes))
+	return newNodeAddresses(g.resolve(p, users, nodes))
 }
 
 func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
@@ -657,7 +694,7 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 }
 
 func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(t.resolve(p, users, nodes))
+	return newNodeAddresses(t.resolve(p, users, nodes))
 }
 
 func (t *Tag) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
@@ -875,7 +912,17 @@ func (ag *AutoGroup) MarshalJSON() ([]byte, error) {
 }
 
 func (ag *AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(ag.resolve(p, users, nodes))
+	ips, err := ag.resolve(p, users, nodes)
+
+	switch *ag {
+	case AutoGroupMember, AutoGroupTagged:
+		return newNodeAddresses(ips, err)
+	case AutoGroupInternet:
+		return resolved{ips: *ips, wire: internetStrings()}, err
+	case AutoGroupSelf, AutoGroupDangerAll, AutoGroupNonRoot:
+	}
+
+	return newResolvedAddresses(ips, err)
 }
 
 func (ag *AutoGroup) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
@@ -2502,7 +2549,7 @@ func validateGrantSrcDstCombination(sources Aliases, destinations Aliases) error
 // not known before the policy is compiled.
 func minDstPrefixes(dst Alias) int64 {
 	if ag, ok := dst.(*AutoGroup); ok && ag.Is(AutoGroupInternet) {
-		return int64(len(util.TheInternet().Prefixes()))
+		return int64(len(internetStrings()))
 	}
 
 	return 1

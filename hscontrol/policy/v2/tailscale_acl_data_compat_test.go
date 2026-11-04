@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"net/netip"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -28,10 +27,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
-	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 )
 
@@ -208,90 +204,11 @@ func loadACLTestFile(t *testing.T, path string) *testcapture.Capture {
 // aclSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>[/<node>]/<check>.
 var aclSkipReasons = map[string]string{
-	"acl-au06/beedrill/filter":   srcAddressForm,
-	"acl-k03/beedrill/filter":    srcAddressForm,
-	"acl-k03/bulbasaur/filter":   srcAddressForm,
-	"acl-k03/charmander/filter":  srcAddressForm,
-	"acl-k03/ivysaur/filter":     srcAddressForm,
-	"acl-k03/kakuna/filter":      srcAddressForm,
-	"acl-k03/squirtle/filter":    srcAddressForm,
-	"acl-k03/venusaur/filter":    srcAddressForm,
-	"acl-k03/weedle/filter":      srcAddressForm,
-	"acl-mr09/beedrill/filter":   srcAddressForm,
-	"acl-mr20/beedrill/filter":   srcAddressForm,
-	"acl-mu07/beedrill/filter":   srcAddressForm,
-	"acl-mu07/bulbasaur/filter":  srcAddressForm,
-	"acl-mu07/charmander/filter": srcAddressForm,
-	"acl-mu07/ivysaur/filter":    srcAddressForm,
-	"acl-mu07/kakuna/filter":     srcAddressForm,
-	"acl-mu07/squirtle/filter":   srcAddressForm,
-	"acl-mu07/venusaur/filter":   srcAddressForm,
-	"acl-mu07/weedle/filter":     srcAddressForm,
-
-	"acl-self-plus-dsts/kakuna/filter":    srcAddressForm,
-	"acl-self-plus-dsts/beedrill/filter":  srcAddressForm,
-	"acl-self-plus-dsts/bulbasaur/filter": srcAndSelfDstForm,
-
 	"routes-exit-family-ipv4/refused": aclDefaultRouteAccepted,
 	"routes-exit-family-ipv6/refused": aclDefaultRouteAccepted,
 }
 
-const (
-	srcAddressForm          = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
-	srcAndSelfDstForm       = "FILTER_ADDRESS_FORM+SELF_DST_REPEAT: sources listed one by one, the autogroup:self destination written once per source alias"
-	aclDefaultRouteAccepted = "ACL_DEFAULT_ROUTE_ACCEPTED: headscale accepts literal 0.0.0.0/0 and ::/0 ACL destinations; SaaS rejects them and requires * or autogroup:internet"
-)
-
-// sourcesAsRanges rewrites each rule's sources as the ranges they cover, so
-// that one list of addresses and one range of them compare equal.
-func sourcesAsRanges(t *testing.T, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
-	t.Helper()
-
-	out := make([]tailcfg.FilterRule, len(rules))
-
-	for i, rule := range rules {
-		var builder netipx.IPSetBuilder
-
-		for _, src := range rule.SrcIPs {
-			set, err := util.ParseIPSet(src, nil)
-			require.NoError(t, err)
-
-			builder.AddSet(set)
-		}
-
-		set, err := builder.IPSet()
-		require.NoError(t, err)
-
-		rule.SrcIPs = nil
-		for _, r := range set.Ranges() {
-			rule.SrcIPs = append(rule.SrcIPs, r.String())
-		}
-
-		out[i] = rule
-	}
-
-	return out
-}
-
-// withoutRepeatedDsts drops each rule's repeated destinations, keeping the
-// first of each.
-func withoutRepeatedDsts(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
-	out := make([]tailcfg.FilterRule, len(rules))
-
-	for i, rule := range rules {
-		seen := map[string]bool{}
-		rule.DstPorts = slices.DeleteFunc(slices.Clone(rule.DstPorts), func(dst tailcfg.NetPortRange) bool {
-			key := dst.IP + ":" + dst.Ports.String()
-			repeat := seen[key]
-			seen[key] = true
-
-			return repeat
-		})
-		out[i] = rule
-	}
-
-	return out
-}
+const aclDefaultRouteAccepted = "ACL_DEFAULT_ROUTE_ACCEPTED: headscale accepts literal 0.0.0.0/0 and ::/0 ACL destinations; SaaS rejects them and requires * or autogroup:internet"
 
 // TestACLCompat is a data-driven test that loads all ACL-*.json test files
 // and compares headscale's ACL engine output against the expected behavior.
@@ -441,27 +358,7 @@ func testACLSuccess(
 				return policyutil.ReduceFilterRules(
 					node.View(),
 					pol.compileFilterRulesForNode(users, node.View(), nodes.ViewSlice()),
-					nodeAddrSet(nodes.ViewSlice()),
 				)
-			}
-
-			// How sources and their repeats are written is all this skip may hide.
-			if reason := aclSkipReasons[key]; reason == srcAddressForm || reason == srcAndSelfDstForm {
-				pmRules, err := pm.FilterForNode(node.View())
-				require.NoError(t, err)
-
-				want := sourcesAsRanges(t, wantRules)
-				if reason == srcAndSelfDstForm {
-					want = withoutRepeatedDsts(want)
-				}
-
-				assert.Empty(t, cmp.Diff(want, sourcesAsRanges(t, pmRules), opts...),
-					"manager filter differs in more than how it is written")
-
-				if compiles {
-					assert.Empty(t, cmp.Diff(want, sourcesAsRanges(t, compiled()), opts...),
-						"compiled filter differs in more than how it is written")
-				}
 			}
 
 			compatCheck(t, aclSkipReasons, key, func() string {
