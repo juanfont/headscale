@@ -47,17 +47,21 @@ var (
 	ErrSSHUserDestRequiresSameUser        = errors.New("user destination requires source to contain only that same user")
 	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
 	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
-	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
 	ErrSSHCheckPeriodAboveMax             = errors.New("is above the max (168h)")
 	ErrSSHCheckPeriodNegative             = errors.New("must be a positive duration")
-	ErrSSHCheckPeriodOnNonCheck           = errors.New("checkPeriod is only valid with action \"check\"")
+	ErrSSHCheckPeriodOnNonCheck           = errors.New(`"checkPeriod" can only be specified for the "check" action`)
 	ErrInvalidLocalpart                   = errors.New("invalid localpart format, must be localpart:*@<domain>")
 	ErrSSHUsersMustBeSpecified            = errors.New("users must be specified")
 	ErrSSHUserInvalid                     = errors.New("is not valid")
 	ErrSSHAcceptEnvEmpty                  = errors.New("acceptEnv values cannot be empty")
 	ErrSSHActionMustBeSpecified           = errors.New("action must be specified")
 	ErrSSHActionInvalid                   = errors.New("is not a valid action")
-	ErrSSHDestinationHostAlias            = errors.New("invalid dst")
+	ErrSSHInvalidDst                      = errors.New("invalid dst")
+	ErrSSHGroupDst                        = errors.New("groups are not allowed dst")
+	ErrSSHSrcNotAllowed                   = errors.New("is not allowed")
+	ErrSSHSrcAutogroupNotAllowed          = errors.New("is not allowed in src")
+	ErrSSHSrcIP                           = errors.New("IPs and CIDRs are not allowed")
+	ErrSSHSrcHost                         = errors.New("hosts are not allowed")
 	ErrSSHCheckTagSource                  = errors.New(`"check" action does not support tags in src`)
 	ErrTagNameMustStartWithLetter         = errors.New("tag names must start with a letter, after 'tag:'")
 	ErrGroupMembersCannotBeRecursive      = errors.New("group members cannot be recursive")
@@ -173,7 +177,7 @@ var (
 	ErrInvalidAlias                = errors.New("invalid alias format")
 	ErrInvalidAutoApprover         = errors.New("invalid auto approver format")
 	ErrInvalidOwner                = errors.New("invalid owner format")
-	ErrGroupNotDefined             = errors.New("group not defined in policy")
+	ErrGroupNotDefined             = errors.New("group not found")
 	ErrInvalidGroupMember          = errors.New("invalid group member type")
 	ErrGroupValueNotArray          = errors.New("group value must be an array of users")
 	ErrInvalidHostIP               = errors.New("hostname contains invalid IP address")
@@ -190,11 +194,7 @@ var (
 	ErrAutogroupNotSupportedACLSrc = errors.New("autogroup not supported for ACL sources")
 	ErrAutogroupNotSupportedACLDst = errors.New("autogroup not supported for ACL destinations")
 	ErrAutogroupDangerAllDst       = errors.New("cannot use autogroup:danger-all as a dst")
-	ErrAutogroupNotSupportedSSHSrc = errors.New("autogroup not supported for SSH sources")
-	ErrAutogroupNotSupportedSSHDst = errors.New("autogroup not supported for SSH destinations")
 	ErrHostNotDefined              = errors.New("host not defined in policy")
-	ErrSSHSourceAliasNotSupported  = errors.New("alias not supported for SSH source")
-	ErrSSHDestAliasNotSupported    = errors.New("alias not supported for SSH destination")
 	ErrUnknownField                = errors.New("unknown field")
 	ErrProtocolNoSpecificPorts     = errors.New("protocol does not support specific ports")
 	ErrTestEmptyAssertions         = errors.New("test entry must have at least one of \"accept\" or \"deny\"")
@@ -2289,12 +2289,8 @@ func validateAutogroupForSSHSrc(src *AutoGroup) error {
 		return nil
 	}
 
-	if src.Is(AutoGroupInternet) {
-		return ErrAutogroupInternetSrc
-	}
-
 	if !slices.Contains(autogroupForSSHSrc, *src) {
-		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedSSHSrc, *src, autogroupForSSHSrc)
+		return fmt.Errorf("%q %w", *src, ErrSSHSrcAutogroupNotAllowed)
 	}
 
 	return nil
@@ -2305,12 +2301,8 @@ func validateAutogroupForSSHDst(dst *AutoGroup) error {
 		return nil
 	}
 
-	if dst.Is(AutoGroupInternet) {
-		return ErrAutogroupInternetSrc
-	}
-
 	if !slices.Contains(autogroupForSSHDst, *dst) {
-		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedSSHDst, *dst, autogroupForSSHDst)
+		return fmt.Errorf("%w %q", ErrSSHInvalidDst, *dst)
 	}
 
 	return nil
@@ -2670,6 +2662,12 @@ func (p *Policy) validate() error {
 				if err != nil {
 					errs = append(errs, err)
 				}
+			case Asterix:
+				errs = append(errs, fmt.Errorf("%q %w", src, ErrSSHSrcNotAllowed))
+			case *Prefix:
+				errs = append(errs, fmt.Errorf("%q: %w", filterIP(netip.Prefix(*src)), ErrSSHSrcIP))
+			case *Host:
+				errs = append(errs, fmt.Errorf("%q: %w", string(*src), ErrSSHSrcHost))
 			}
 		}
 
@@ -2702,10 +2700,16 @@ func (p *Policy) validate() error {
 				if err != nil {
 					errs = append(errs, err)
 				}
+			case *Group:
+				errs = append(errs, ErrSSHGroupDst)
+			case Asterix:
+				errs = append(errs, fmt.Errorf("%w %q", ErrSSHInvalidDst, dst))
+			case *Prefix:
+				errs = append(errs, fmt.Errorf("%w %q", ErrSSHInvalidDst, filterIP(netip.Prefix(*dst))))
 			case *Host:
 				// Hosts-table aliases are valid on ACL dst but
 				// rejected here for SSH dst.
-				errs = append(errs, fmt.Errorf("%w %q", ErrSSHDestinationHostAlias, string(*dst)))
+				errs = append(errs, fmt.Errorf("%w %q", ErrSSHInvalidDst, string(*dst)))
 			}
 		}
 
@@ -3136,14 +3140,10 @@ func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
+	// Kinds an SSH rule refuses are reported by [Policy.validate].
 	*a = make([]Alias, len(aliases))
 	for i, alias := range aliases {
-		switch alias.Alias.(type) {
-		case *Username, *Group, *Tag, *AutoGroup:
-			(*a)[i] = alias.Alias
-		default:
-			return fmt.Errorf("%w: %T", ErrSSHSourceAliasNotSupported, alias.Alias)
-		}
+		(*a)[i] = alias.Alias
 	}
 
 	return nil
@@ -3157,18 +3157,10 @@ func (a *SSHDstAliases) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
+	// Kinds an SSH rule refuses are reported by [Policy.validate].
 	*a = make([]Alias, len(aliases))
 	for i, alias := range aliases {
-		switch alias.Alias.(type) {
-		case *Username, *Tag, *AutoGroup, *Host:
-			(*a)[i] = alias.Alias
-		case Asterix:
-			return fmt.Errorf("%w; use 'autogroup:member' for user-owned devices, "+
-				"'autogroup:tagged' for tagged devices, or specific tags/users",
-				ErrSSHWildcardDestination)
-		default:
-			return fmt.Errorf("%w: %T", ErrSSHDestAliasNotSupported, alias.Alias)
-		}
+		(*a)[i] = alias.Alias
 	}
 
 	return nil

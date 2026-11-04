@@ -368,7 +368,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 	]
 }
 			`,
-			wantErr: "alias not supported for SSH source: v2.Asterix",
+			wantErr: `[ssh] "*" is not allowed`,
 		},
 		{
 			name: "invalid-username",
@@ -653,7 +653,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `autogroup:internet can only be used in ACL destinations`,
+			wantErr: `[ssh] invalid dst "autogroup:internet"`,
 		},
 		{
 			name: "ssh-basic",
@@ -787,7 +787,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			wantErr: `group not found: "group:notdefined"`,
 		},
 		{
 			name: "group-must-be-defined-acl-dst",
@@ -806,7 +806,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			wantErr: `group not found: "group:notdefined"`,
 		},
 		{
 			name: "group-must-be-defined-acl-ssh-src",
@@ -836,7 +836,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   },
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			wantErr: `group not found: "group:notdefined"`,
 		},
 		{
 			name: "group-must-be-defined-acl-autoapprover-route",
@@ -849,7 +849,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   },
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			wantErr: `group not found: "group:notdefined"`,
 		},
 		{
 			name: "group-must-be-defined-acl-autoapprover-exitnode",
@@ -860,7 +860,7 @@ func TestUnmarshalPolicy(t *testing.T) {
    },
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			wantErr: `group not found: "group:notdefined"`,
 		},
 		{
 			name: "tag-must-be-defined-acl-src",
@@ -1738,7 +1738,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "wildcard (*) is not supported as SSH destination",
+			wantErr: `[ssh] invalid dst "*"`,
 		},
 		{
 			name: "ssh-group-to-tag-allowed",
@@ -4735,7 +4735,7 @@ func TestSSHRuleSaaSValidation(t *testing.T) {
 			ssh: baseSSH(func(s *SSH) {
 				s.Destinations = SSHDstAliases{hp("srv")}
 			}),
-			wantErr: ErrSSHDestinationHostAlias,
+			wantErr: ErrSSHInvalidDst,
 		},
 	}
 
@@ -4790,7 +4790,7 @@ func TestSSHRuleErrorsLabelled(t *testing.T) {
 		{
 			name:    "checkPeriod on accept",
 			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["autogroup:self"], "users": ["root"], "checkPeriod": "1h"}`,
-			wantErr: `[ssh] checkPeriod is only valid with action "check"`,
+			wantErr: `[ssh] "checkPeriod" can only be specified for the "check" action`,
 		},
 		{
 			name:    "checkPeriod above max",
@@ -4810,7 +4810,42 @@ func TestSSHRuleErrorsLabelled(t *testing.T) {
 		{
 			name:    "unknown group in src",
 			rules:   `{"action": "accept", "src": ["group:nope"], "dst": ["tag:server"], "users": ["root"]}`,
-			wantErr: `[ssh] group not defined in policy: "group:nope"`,
+			wantErr: `[ssh] group not found: "group:nope"`,
+		},
+		{
+			name:    "wildcard src",
+			rules:   `{"action": "accept", "src": ["*"], "dst": ["tag:server"], "users": ["root"]}`,
+			wantErr: `[ssh] "*" is not allowed`,
+		},
+		{
+			name:    "IP src",
+			rules:   `{"action": "accept", "src": ["100.64.0.1"], "dst": ["tag:server"], "users": ["root"]}`,
+			wantErr: `[ssh] "100.64.0.1": IPs and CIDRs are not allowed`,
+		},
+		{
+			name:    "host src",
+			rules:   `{"action": "accept", "src": ["srv"], "dst": ["tag:server"], "users": ["root"]}`,
+			wantErr: `[ssh] "srv": hosts are not allowed`,
+		},
+		{
+			name:    "autogroup:self src",
+			rules:   `{"action": "accept", "src": ["autogroup:self"], "dst": ["tag:server"], "users": ["root"]}`,
+			wantErr: `[ssh] "autogroup:self" is not allowed in src`,
+		},
+		{
+			name:    "CIDR dst",
+			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["100.64.0.0/24"], "users": ["root"]}`,
+			wantErr: `[ssh] invalid dst "100.64.0.0/24"`,
+		},
+		{
+			name:    "group dst",
+			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["group:admins"], "users": ["root"]}`,
+			wantErr: `[ssh] groups are not allowed dst`,
+		},
+		{
+			name:    "autogroup:internet dst",
+			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["autogroup:internet"], "users": ["root"]}`,
+			wantErr: `[ssh] invalid dst "autogroup:internet"`,
 		},
 		{
 			name:    "check with tag src",
@@ -4829,6 +4864,8 @@ func TestSSHRuleErrorsLabelled(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := unmarshalPolicy([]byte(`{
 				"tagOwners": {"tag:server": ["odin@"]},
+				"groups": {"group:admins": ["odin@"]},
+				"hosts": {"srv": "100.64.0.9"},
 				"ssh": [` + tt.rules + `]
 			}`))
 			require.EqualError(t, err, tt.wantErr)
@@ -5577,7 +5614,7 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "group not defined in policy",
+			wantErr: "group not found",
 		},
 		{
 			name: "invalid-grant-undefined-source-tag",
