@@ -157,6 +157,12 @@ var grantSkipReasons = map[string]string{
 	"via-grant-v60": "FILTER_ADDRESS_FORM: same addresses, different wire form and rule order",
 	"via-grant-v61": "FILTER_ADDRESS_FORM: same addresses, different wire form",
 	"via-grant-v62": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v93": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v94": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v95": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v96": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v97": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v98": "FILTER_ADDRESS_FORM: same addresses, different wire form",
 
 	// Checks keyed <test_id>/<node>/filter: a listed check that matches
 	// fails, so a fix must delete its entry. Contiguous pinned addresses;

@@ -89,6 +89,12 @@ var viaCompatTests = []struct {
 	{"via-grant-v90", "port via and capability without via as two grants, non-via primary"},
 	{"via-grant-v91", "port and capability via in one grant, non-via primary"},
 	{"via-grant-v92", "port via with an empty capability map"},
+	{"via-grant-v93", "one member in two via exit grants, plus rules to each via exit node"},
+	{"via-grant-v94", "v93 with a user source"},
+	{"via-grant-v95", "one member in two via exit grants, no other rule"},
+	{"via-grant-v96", "one member in two via exit grants, plus a rule to a private subnet"},
+	{"via-grant-v97", "one member in two via exit grants, plus a rule to everything"},
+	{"via-grant-v98", "via exit steering plus a capability grant to *"},
 }
 
 // routesMapCompatTests lists routes captures replayed through the mapper.
