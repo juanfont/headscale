@@ -1129,7 +1129,7 @@ func TestLastControlAddressMigration(t *testing.T) {
 
 	result := database.DB.Exec(
 		"DELETE FROM migrations WHERE id = ?",
-		"202609040900-add-last-control-address",
+		"202611041200-node-last-control-address",
 	)
 	require.NoError(t, result.Error)
 	require.Equal(t, int64(1), result.RowsAffected)
