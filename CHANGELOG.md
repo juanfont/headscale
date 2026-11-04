@@ -193,6 +193,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Policy `tests` reject `autogroup:member` as a source. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - Document `ssh-behavior-v1`. Headscale does not set it. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - The v2 API sorts device lists by name. Devices report `connectedToControl`, `lastSeen` and `blocksIncomingConnections`. `fields=all` adds `sshEnabled`, `distro` and `clientConnectivity`. Add `POST /device/{id}/expire`. Settings report `routeSelection`. Errors use Tailscale's text and content types. A JSON policy read returns valid JSON. [#3649](https://github.com/juanfont/headscale/pull/3649)
+- The v2 API adds `GET /device/{id}/attributes`, scoped `devices:posture_attributes:read`. It reports `ip:publicAddress`: the source IP of the node's latest control connection, stored on the node. Behind a reverse proxy, set `trusted_proxies` or it reports the proxy. [#3419](https://github.com/juanfont/headscale/pull/3419)
 - PostgreSQL connection settings are assembled into a `postgres://` URL with proper escaping, so a password (or host, user, database name) containing spaces, quotes or other reserved characters no longer truncates the DSN [#3477](https://github.com/juanfont/headscale/pull/3477)
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
