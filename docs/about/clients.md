@@ -17,8 +17,10 @@ headscale.
 
 ## Update clients
 
-Tailscale clients can update themselves. Set `auto_update.enabled: true` in the configuration file to turn auto-updates
-on by default for nodes that have not made a local choice with `tailscale set --auto-update`.
+Tailscale clients can update themselves. `auto_update.enabled: true` in the configuration file turns auto-updates on
+by default, but a node takes the default only while its own setting is unset. Once it has stored a value, from an
+earlier default or from `tailscale set --auto-update`, it keeps it. Headscale always sends a default, so turning the
+option on later does not reach nodes that joined while it was off.
 
 A connected node can also be asked to update right away:
 
@@ -26,9 +28,11 @@ A connected node can also be asked to update right away:
 headscale nodes update-client --identifier <NODE_ID>
 ```
 
-The node only starts the update if auto-updates are enabled on it and its platform supports them. Otherwise the command
-reports why the node refused. A node with active Tailscale SSH sessions refuses as well, unless `--force` is given. The
-command returns once the update has started; the node reconnects with the new version when it is done.
+The node must allow remote updates (`tailscale set --auto-update`) and run on a platform that can update itself. As on
+Tailscale, a node that does not, is not connected, or refuses (for example, with active Tailscale SSH sessions) is
+answered "not found". Headscale logs the reason a node gives. The command returns once the update has started.
 
-The same request is available in the API as `POST /api/v2/device/<NODE_ID>/update-client` with an optional
-`{"force": true}` body. It needs an API key or an OAuth token with the `devices:core` scope.
+The same request is available in the API as `POST /api/v2/device/<NODE_ID>/update-client`, with no body. It needs an
+API key or an OAuth token with the `devices:core` scope. `GET /api/v2/device/<NODE_ID>/update-status` answers
+`{"status": "updating"}` from a started update until the node runs another version, for at most 10 minutes, and
+`{"status": "not-updating"}` otherwise. It needs the `devices:core:read` scope.
