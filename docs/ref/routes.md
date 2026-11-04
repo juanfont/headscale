@@ -206,9 +206,11 @@ for how to use an exit node on different operating systems.
 
 ### Restrict the use of an exit node with a policy
 
-An exit node is offered to all nodes in a tailnet. By default, without a policy enabled, all nodes in a tailnet can
-select and use an exit node. Configure `autogroup:internet` in a policy rule to restrict who can use _any_ of the
-available exit nodes.
+By default, without a policy enabled, all nodes in a tailnet can select and use an exit node. With a policy, a node can
+use an exit node only if one of its rules allows access to the internet: `autogroup:internet`, `*` or a public IP
+address. Through the exit node, it can reach only the addresses its rules allow. Rules that allow access only to nodes
+in the tailnet or to private subnets do not offer exit nodes. Configure `autogroup:internet` in a policy rule to restrict
+who can use _any_ of the available exit nodes.
 
 ```json title="Example use of autogroup:internet"
 {
@@ -250,6 +252,9 @@ tagged with `tag:exit1` while user `bob` can only use an exit node tagged with `
   ]
 }
 ```
+
+A user who matches several `via` grants can use the exit nodes of all of them. A `via` grant does not hide exit nodes
+from a user who also has a rule that allows access to the internet without `via`. Such a user can use all exit nodes.
 
 ### Automatically approve an exit node with auto approvers
 
