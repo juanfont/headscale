@@ -198,6 +198,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Errors in SSH rules start with `[ssh]` and use Tailscale's wording, for example `[ssh] users must be specified`; an undefined group now reads `group not found` [#3343](https://github.com/juanfont/headscale/pull/3343)
+- An SSH rule may target a user from a group whose only member is that user, as on Tailscale [#3343](https://github.com/juanfont/headscale/pull/3343)
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
 - `headscale preauthkeys create --user` accepts a user name as well as an ID

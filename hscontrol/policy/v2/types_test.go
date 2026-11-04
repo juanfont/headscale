@@ -825,7 +825,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `user destination requires source to contain only that same user "user@"`,
+			wantErr: `[ssh] users in dst are only allowed from the same user`,
 		},
 		{
 			name: "group-must-be-defined-acl-tagOwner",
@@ -1592,7 +1592,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "tags in SSH source cannot access user-owned devices",
+			wantErr: `[ssh] users in dst are only allowed from the same user`,
 		},
 		{
 			name: "ssh-autogroup-tagged-to-user-rejected",
@@ -1606,7 +1606,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "tags in SSH source cannot access user-owned devices",
+			wantErr: `[ssh] users in dst are only allowed from the same user`,
 		},
 		{
 			name: "ssh-tag-to-autogroup-self-rejected",
@@ -1621,7 +1621,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "autogroup:self destination requires source to contain only users or groups",
+			wantErr: `[ssh] "tag:server" is not allowed in src for autogroup:self`,
 		},
 		{
 			name: "ssh-group-to-user-rejected",
@@ -1636,7 +1636,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: `user destination requires source to contain only that same user "admin@"`,
+			wantErr: `[ssh] users in dst are only allowed from the same user`,
 		},
 		{
 			name: "ssh-same-user-to-user-allowed",
@@ -4873,6 +4873,48 @@ func TestSSHRuleErrorsLabelled(t *testing.T) {
 				"hosts": {"srv": "100.64.0.9"},
 				"ssh": [` + tt.rules + `]
 			}`))
+			require.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
+// TestSSHUserOwnedDestinations verifies which sources may reach a user in
+// dst or autogroup:self. Texts and verdicts follow SaaS, except for
+// autogroup:tagged sources; see validateSSHSrcDstCombination.
+func TestSSHUserOwnedDestinations(t *testing.T) {
+	tests := []struct {
+		name    string
+		src     string
+		dst     string
+		wantErr string
+	}{
+		{name: "same user", src: `"odin@"`, dst: `"odin@"`},
+		{name: "group of only that user", src: `"group:odin"`, dst: `"odin@"`},
+		{name: "autogroup:tagged and that user", src: `"autogroup:tagged", "odin@"`, dst: `"odin@"`, wantErr: `[ssh] users in dst are only allowed from the same user`},
+		{name: "group of two users", src: `"group:both"`, dst: `"odin@"`, wantErr: `[ssh] users in dst are only allowed from the same user`},
+		{name: "other user", src: `"thor@"`, dst: `"odin@"`, wantErr: `[ssh] users in dst are only allowed from the same user`},
+		{name: "autogroup:member", src: `"autogroup:member"`, dst: `"odin@"`, wantErr: `[ssh] users in dst are only allowed from the same user`},
+		{name: "only autogroup:tagged", src: `"autogroup:tagged"`, dst: `"odin@"`, wantErr: `[ssh] users in dst are only allowed from the same user`},
+		{name: "tag and that user", src: `"tag:server", "odin@"`, dst: `"odin@"`, wantErr: `[ssh] users in dst are only allowed from the same user`},
+		{name: "one of two user dsts", src: `"odin@"`, dst: `"odin@", "thor@"`, wantErr: `[ssh] users in dst are only allowed from the same user`},
+		{name: "autogroup:tagged to self", src: `"autogroup:tagged"`, dst: `"autogroup:self"`, wantErr: `[ssh] "autogroup:tagged" is not allowed in src for autogroup:self`},
+		{name: "autogroup:member and autogroup:tagged to self", src: `"autogroup:member", "autogroup:tagged"`, dst: `"autogroup:self"`, wantErr: `[ssh] "autogroup:tagged" is not allowed in src for autogroup:self`},
+		{name: "tag to self", src: `"group:odin", "tag:server"`, dst: `"autogroup:self"`, wantErr: `[ssh] "tag:server" is not allowed in src for autogroup:self`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := unmarshalPolicy([]byte(`{
+				"tagOwners": {"tag:server": ["odin@"]},
+				"groups": {"group:odin": ["odin@"], "group:both": ["odin@", "thor@"]},
+				"ssh": [{"action": "accept", "src": [` + tt.src + `], "dst": [` + tt.dst + `], "users": ["root"]}]
+			}`))
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
 			require.EqualError(t, err, tt.wantErr)
 		})
 	}
