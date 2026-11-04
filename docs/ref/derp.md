@@ -155,6 +155,38 @@ loaded DERP maps fetched via URL or to offer your own, custom DERP servers to no
 Independent of the custom DERP map, you may choose to [enable the embedded DERP server and have it automatically added
 to the custom DERP map](#enable-embedded-derp).
 
+### Customize the DERP map in the policy
+
+The [policy](policy.md#network-wide-policy-options) may hold a `derpMap`, as on Tailscale. It changes the DERP map from
+the configuration above, and connected nodes get the change as soon as the policy is updated. Headscale checks it like
+Tailscale does:
+
+- A region added in the policy needs a region ID from 900 to 999 and at least one node. Its `RegionID`, and the `RegionID`
+  of each node, must match the ID it is listed under. A policy region replaces a configured region with the same ID,
+  such as the embedded DERP server's.
+- A node's `HostName` and `CertName` must not be `tailscale.com` or one of its subdomains. Tailscale also rejects the IP
+  addresses of its own DERP servers; Headscale does not, as that needs Tailscale's current list of servers.
+- A region set to `null` is removed. This works for any region ID.
+- `OmitDefaultRegions: true` removes every region from the configuration, the embedded DERP server's included, and
+  needs at least one region added in the policy.
+- `HomeParams` is accepted but ignored, as on Tailscale. Set region scores in a `derp.paths` file instead.
+
+```json title="policy.json"
+{
+  "derpMap": {
+    "Regions": {
+      "1": null,
+      "900": {
+        "RegionID": 900,
+        "RegionCode": "custom",
+        "RegionName": "My region",
+        "Nodes": [{"Name": "900a", "RegionID": 900, "HostName": "derp900.example.com"}]
+      }
+    }
+  }
+}
+```
+
 ### Verify clients
 
 Access to DERP serves can be restricted to nodes that are members of your Tailnet. Relay access is denied for unknown

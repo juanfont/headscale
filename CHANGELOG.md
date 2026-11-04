@@ -204,6 +204,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - `dns.extra_records_path` files may be HuJSON or YAML as well as JSON
 - A `derp.paths` region set to `null` removes that region again, as documented
 - `derp.paths` files may set `homeparams.regionscore` to make clients prefer or avoid DERP regions [#2932](https://github.com/juanfont/headscale/pull/2932)
+- The policy accepts a `derpMap` that adds or removes DERP regions, with the rules and error messages of Tailscale SaaS [#2932](https://github.com/juanfont/headscale/pull/2932)
 - Lower CPU use on large tailnets when node tags, owners, IPs or routes change [#3501](https://github.com/juanfont/headscale/pull/3501)
 - `headscale nodes backfillips` now sends the new IPs to connected clients [#3501](https://github.com/juanfont/headscale/pull/3501)
 - A registration request from a client below the minimum supported version is now rejected before it can log a node out, use a pre-auth key or start a login [#3519](https://github.com/juanfont/headscale/pull/3519)
