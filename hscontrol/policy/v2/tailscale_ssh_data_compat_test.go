@@ -129,6 +129,21 @@ var sshSkipReasons = map[string]string{}
 // sshRejectSkipReasons documents captures the upstream control plane
 // rejects for reasons headscale cannot apply, keyed <test_id> for the whole
 // capture or <test_id>/<check>. Each entry names the feature gap.
+// sshRefusedUnlikeSaaS lists policies SaaS accepts but headscale refuses,
+// with the error headscale gives. They put autogroup:tagged in src next to
+// a user or autogroup:self in dst, which Tailscale's docs forbid. SaaS's
+// validator lets them through and then sends no SSH rules to any node, so
+// headscale refuses them instead (see validateSSHSrcDstCombination).
+// testSSHRefusedUnlikeSaaS fails once a re-capture shows SaaS refusing
+// them or granting access, so the exception gets revisited.
+var sshRefusedUnlikeSaaS = map[string]string{
+	"ssh-accept-tagged-src-autogroup-self":            `"autogroup:tagged" is not allowed in src for autogroup:self`,
+	"ssh-accept-tagged-and-user-src-self":             `"autogroup:tagged" is not allowed in src for autogroup:self`,
+	"ssh-accept-member-and-tagged-src-self":           `"autogroup:tagged" is not allowed in src for autogroup:self`,
+	"ssh-accept-tagged-and-user-src-user-dst":         `users in dst are only allowed from the same user`,
+	"ssh-accept-tagged-and-user-src-user-and-tag-dst": `users in dst are only allowed from the same user`,
+}
+
 var sshRejectSkipReasons = map[string]string{
 	"ssh-b4": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-d1": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
@@ -194,6 +209,12 @@ func TestSSHDataCompat(t *testing.T) {
 				return
 			}
 
+			if want, ok := sshRefusedUnlikeSaaS[tf.TestID]; ok {
+				testSSHRefusedUnlikeSaaS(t, tf, users, nodes, want)
+
+				return
+			}
+
 			if reason, ok := sshSkipReasons[tf.TestID]; ok {
 				t.Skipf("skipping: %s", reason)
 				return
@@ -231,6 +252,23 @@ func TestSSHDataCompat(t *testing.T) {
 			}
 		})
 	}
+}
+
+// testSSHRefusedUnlikeSaaS checks an [sshRefusedUnlikeSaaS] entry: SaaS
+// still accepts the policy and sends no SSH rules, and headscale refuses it.
+func testSSHRefusedUnlikeSaaS(t *testing.T, tf *testcapture.Capture, users types.Users, nodes types.Nodes, want string) {
+	t.Helper()
+
+	require.Equal(t, 200, tf.Input.APIResponseCode,
+		"SaaS now refuses this policy; drop it from sshRefusedUnlikeSaaS")
+
+	for name, capture := range tf.Captures {
+		assert.Emptyf(t, capture.SSHRules,
+			"SaaS now sends SSH rules to %s; revisit validateSSHSrcDstCombination", name)
+	}
+
+	_, err := NewPolicyManager([]byte(tf.Input.FullPolicy), users, nodes.ViewSlice())
+	require.ErrorContains(t, err, want)
 }
 
 // testSSHRefusal replays a policy SaaS refused: headscale must refuse it
@@ -523,6 +561,10 @@ func TestSSHCheckParamsMatchesCaptures(t *testing.T) {
 		}
 
 		if _, skip := sshSkipReasons[tf.TestID]; skip {
+			continue
+		}
+
+		if _, refused := sshRefusedUnlikeSaaS[tf.TestID]; refused {
 			continue
 		}
 
