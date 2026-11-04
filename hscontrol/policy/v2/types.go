@@ -45,20 +45,20 @@ var ErrUndefinedTagReference = errors.New("does not exist")
 var (
 	ErrSSHTagSourceToUserDest             = errors.New("tags in SSH source cannot access user-owned devices")
 	ErrSSHUserDestRequiresSameUser        = errors.New("user destination requires source to contain only that same user")
-	ErrSSHAutogroupSelfRequiresUserSource = errors.New("ssh: autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
+	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
 	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
 	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
 	ErrSSHCheckPeriodAboveMax             = errors.New("is above the max (168h)")
 	ErrSSHCheckPeriodNegative             = errors.New("must be a positive duration")
-	ErrSSHCheckPeriodOnNonCheck           = errors.New("ssh: checkPeriod is only valid with action \"check\"")
+	ErrSSHCheckPeriodOnNonCheck           = errors.New("checkPeriod is only valid with action \"check\"")
 	ErrInvalidLocalpart                   = errors.New("invalid localpart format, must be localpart:*@<domain>")
-	ErrSSHUsersMustBeSpecified            = errors.New("ssh: users must be specified")
+	ErrSSHUsersMustBeSpecified            = errors.New("users must be specified")
 	ErrSSHUserInvalid                     = errors.New("is not valid")
-	ErrSSHAcceptEnvEmpty                  = errors.New("ssh: acceptEnv values cannot be empty")
-	ErrSSHActionMustBeSpecified           = errors.New("ssh: action must be specified")
+	ErrSSHAcceptEnvEmpty                  = errors.New("acceptEnv values cannot be empty")
+	ErrSSHActionMustBeSpecified           = errors.New("action must be specified")
 	ErrSSHActionInvalid                   = errors.New("is not a valid action")
 	ErrSSHDestinationHostAlias            = errors.New("invalid dst")
-	ErrSSHCheckTagSource                  = errors.New(`[ssh] "check" action does not support tags in src`)
+	ErrSSHCheckTagSource                  = errors.New(`"check" action does not support tags in src`)
 	ErrTagNameMustStartWithLetter         = errors.New("tag names must start with a letter, after 'tag:'")
 	ErrGroupMembersCannotBeRecursive      = errors.New("group members cannot be recursive")
 )
@@ -1741,7 +1741,7 @@ func (a *SSHAction) UnmarshalJSON(b []byte) error {
 	case "check":
 		*a = SSHActionCheck
 	default:
-		return fmt.Errorf("ssh: %q %w", str, ErrSSHActionInvalid)
+		return fmt.Errorf("%q %w", str, ErrSSHActionInvalid)
 	}
 
 	return nil
@@ -2355,7 +2355,7 @@ func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAlia
 			}
 			// Rule: Username destination requires source to be that same single user only
 			if srcHasGroups || len(srcUsernames) != 1 || !srcUsernames[string(*v)] {
-				return fmt.Errorf("ssh: %w %q; use autogroup:self instead for same-user SSH access",
+				return fmt.Errorf("%w %q; use autogroup:self instead for same-user SSH access",
 					ErrSSHUserDestRequiresSameUser, *v)
 			}
 		case *AutoGroup:
@@ -2612,6 +2612,8 @@ func (p *Policy) validate() error {
 	}
 
 	for _, ssh := range p.SSHs {
+		ruleErrs := len(errs)
+
 		// Empty action and users survive parse; surface them here.
 		if ssh.Action == "" {
 			errs = append(errs, ErrSSHActionMustBeSpecified)
@@ -2627,7 +2629,7 @@ func (p *Policy) validate() error {
 		for _, user := range ssh.Users {
 			switch user {
 			case "", "*":
-				errs = append(errs, fmt.Errorf("ssh: user %q %w", user, ErrSSHUserInvalid))
+				errs = append(errs, fmt.Errorf("user %q %w", user, ErrSSHUserInvalid))
 			}
 		}
 
@@ -2703,7 +2705,7 @@ func (p *Policy) validate() error {
 			case *Host:
 				// Hosts-table aliases are valid on ACL dst but
 				// rejected here for SSH dst.
-				errs = append(errs, fmt.Errorf("ssh: %w %q", ErrSSHDestinationHostAlias, string(*dst)))
+				errs = append(errs, fmt.Errorf("%w %q", ErrSSHDestinationHostAlias, string(*dst)))
 			}
 		}
 
@@ -2724,6 +2726,12 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 				}
 			}
+		}
+
+		// Shared checks (tags, groups) cannot tell which section they
+		// serve; this label is the marker Tailscale uses for SSH rules.
+		for i := ruleErrs; i < len(errs); i++ {
+			errs[i] = fmt.Errorf("[ssh] %w", errs[i])
 		}
 	}
 
@@ -3068,11 +3076,11 @@ func (p SSHCheckPeriod) Validate() error {
 	}
 
 	if p.Duration < 0 {
-		return fmt.Errorf("ssh: checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodNegative)
+		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodNegative)
 	}
 
 	if p.Duration > SSHCheckPeriodMax {
-		return fmt.Errorf("ssh: checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodAboveMax)
+		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodAboveMax)
 	}
 
 	return nil
