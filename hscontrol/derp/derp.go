@@ -9,6 +9,7 @@ import (
 	"hash/crc64"
 	"io"
 	"maps"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -23,18 +24,19 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-var errEmptyDERPMapFile = errors.New("DERP map file has no regions (YAML keys are lowercased Go field names, e.g. regionid)")
+var errEmptyDERPMapFile = errors.New("DERP map file has no regions or homeparams (YAML keys are lowercased Go field names, e.g. regionid)")
 
 // loadDERPMapFromPath reads a DERP map file in the format its extension names
-// (see [util.UnmarshalByExt]). A map with no regions is an error: unknown keys
-// decode to nothing, e.g. YAML written with JSON's field names.
+// (see [util.UnmarshalByExt]). A map with neither regions nor HomeParams is an
+// error: unknown keys decode to nothing, e.g. YAML written with JSON's field
+// names. HomeParams alone is valid, to score regions from other sources.
 func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 	derpMap, err := util.ReadFileByExt[tailcfg.DERPMap](path)
 	if err != nil {
 		return nil, fmt.Errorf("reading DERP map: %w", err)
 	}
 
-	if len(derpMap.Regions) == 0 {
+	if len(derpMap.Regions) == 0 && derpMap.HomeParams == nil {
 		return nil, fmt.Errorf("%w: %s", errEmptyDERPMapFile, path)
 	}
 
@@ -73,20 +75,28 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 	return &derpMap, err
 }
 
-// mergeDERPMaps naively merges a list of [tailcfg.DERPMap] values into a single
-// [tailcfg.DERPMap], it will _only_ look at the Regions, an integer.
-// If a region exists in two of the given [tailcfg.DERPMap] values, the region
-// form the _last_ [tailcfg.DERPMap] will be preserved.
+// mergeDERPMaps merges a list of [tailcfg.DERPMap] values into a single
+// [tailcfg.DERPMap], looking only at Regions and HomeParams.RegionScore.
+// If a region or score exists in two of the given [tailcfg.DERPMap] values, the
+// one from the _last_ [tailcfg.DERPMap] will be preserved. HomeParams stays nil
+// unless a source sets it.
 // An empty [tailcfg.DERPMap] list will result in a [tailcfg.DERPMap] with no regions.
 func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 	result := tailcfg.DERPMap{
 		OmitDefaultRegions: false,
-		HomeParams:         &tailcfg.DERPHomeParams{},
 		Regions:            map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{},
 	}
 
 	for _, derpMap := range derpMaps {
-		maps.Copy(result.HomeParams.RegionScore, derpMap.HomeParams.RegionScore)
+		if hp := derpMap.HomeParams; hp != nil {
+			if result.HomeParams == nil {
+				result.HomeParams = &tailcfg.DERPHomeParams{
+					RegionScore: map[tailcfg.DERPRegionID]float64{},
+				}
+			}
+
+			maps.Copy(result.HomeParams.RegionScore, hp.RegionScore)
+		}
 
 		// Clone each region: copying the pointer would let a later in-place
 		// shuffle alias regions shared with the source map or a previously
@@ -103,10 +113,12 @@ func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 		}
 	}
 
-	for id, regionScore := range result.HomeParams.RegionScore {
-		if regionScore <= 0 {
-			delete(result.HomeParams.RegionScore, id)
-		}
+	if result.HomeParams != nil {
+		// Clients ignore non-positive scores, and NaN or Inf would fail the
+		// JSON encoding of every MapResponse.
+		maps.DeleteFunc(result.HomeParams.RegionScore, func(_ tailcfg.DERPRegionID, s float64) bool {
+			return s <= 0 || math.IsNaN(s) || math.IsInf(s, 0)
+		})
 	}
 
 	return &result

@@ -403,6 +403,9 @@ func TestLoadDERPMapFromPath(t *testing.T) {
 				},
 			},
 		},
+		HomeParams: &tailcfg.DERPHomeParams{
+			RegionScore: map[tailcfg.DERPRegionID]float64{999: 0.5},
+		},
 	}
 
 	tailcfgJSON, err := json.Marshal(want)
@@ -418,6 +421,9 @@ func TestLoadDERPMapFromPath(t *testing.T) {
         hostname: derp.test
         derpport: 443
         insecurefortests: true
+homeparams:
+  regionscore:
+    999: 0.5
 `
 
 	tests := []struct {
@@ -431,7 +437,7 @@ func TestLoadDERPMapFromPath(t *testing.T) {
 		{
 			name:    "flow-style yaml",
 			file:    "derp.yaml",
-			content: "{regions: {999: {regionid: 999, regioncode: test, nodes: [{name: 999a, regionid: 999, hostname: derp.test, derpport: 443, insecurefortests: true}]}}}",
+			content: "{regions: {999: {regionid: 999, regioncode: test, nodes: [{name: 999a, regionid: 999, hostname: derp.test, derpport: 443, insecurefortests: true}]}}, homeparams: {regionscore: {999: 0.5}}}",
 		},
 		{name: "tailcfg json", file: "derp.json", content: string(tailcfgJSON)},
 		{name: "tailcfg json with comments and trailing comma", file: "derp.json", content: "// test map\n" + strings.TrimSuffix(string(tailcfgJSON), "}") + ",}"},
