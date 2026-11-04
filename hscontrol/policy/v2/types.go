@@ -217,15 +217,6 @@ type resolved struct {
 	wire []string
 }
 
-func newResolved(ipb *netipx.IPSetBuilder) (resolved, error) {
-	ips, err := ipb.IPSet()
-	if err != nil {
-		return resolved{}, err
-	}
-
-	return resolved{ips: *ips}, nil
-}
-
 func newResolvedAddresses(ips *netipx.IPSet, err error) (ResolvedAddresses, error) {
 	if ips == nil {
 		return nil, err

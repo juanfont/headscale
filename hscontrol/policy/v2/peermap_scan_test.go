@@ -859,3 +859,21 @@ func benchmarkPeerMapBuilders(b *testing.B, pm *PolicyManager, nodes types.Nodes
 		})
 	}
 }
+
+// peerRulesForNode returns the rules that decide a node's peers: its
+// unreduced filter rules, with [viaPeerRule] in place of each via rule.
+func peerRulesForNode(
+	grants []compiledGrant,
+	node types.NodeView,
+	userIdx userNodeIndex,
+) []tailcfg.FilterRule {
+	return rulesForNode(grants, node, userIdx, ownSelfRules, viaPeerRule)
+}
+
+// peerRulesForNodeLocked returns the rules that decide a node's peers, see
+// [peerRulesForNode].
+func (pm *PolicyManager) peerRulesForNodeLocked(
+	node types.NodeView,
+) []tailcfg.FilterRule {
+	return peerRulesForNode(pm.compiledGrants, node, pm.userNodeIdx)
+}

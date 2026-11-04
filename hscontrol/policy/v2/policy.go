@@ -1019,14 +1019,6 @@ func (pm *PolicyManager) nodeMatchersLocked(
 		nodeOnlyMatchers(pm.compiledGrants, node, pm.userNodeIdx, viaRules))
 }
 
-// peerRulesForNodeLocked returns the rules that decide a node's peers, see
-// [peerRulesForNode].
-func (pm *PolicyManager) peerRulesForNodeLocked(
-	node types.NodeView,
-) []tailcfg.FilterRule {
-	return peerRulesForNode(pm.compiledGrants, node, pm.userNodeIdx)
-}
-
 // filterForNodeLocked returns the filter rules for a specific node,
 // already reduced to only include rules relevant to that node.
 //

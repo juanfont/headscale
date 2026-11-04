@@ -793,16 +793,6 @@ func filterRulesForNode(
 	return rulesForNode(grants, node, userIdx, filterSelfRules, compileViaForNode)
 }
 
-// peerRulesForNode returns the rules that decide a node's peers: its
-// unreduced filter rules, with [viaPeerRule] in place of each via rule.
-func peerRulesForNode(
-	grants []compiledGrant,
-	node types.NodeView,
-	userIdx userNodeIndex,
-) []tailcfg.FilterRule {
-	return rulesForNode(grants, node, userIdx, ownSelfRules, viaPeerRule)
-}
-
 // nodeOnlyMatchers returns the matchers of the self and via rules a node
 // adds to the pre-compiled rules every node shares. Self matchers are
 // shared per user; via rules reuse their grant's parsed sources.
@@ -869,17 +859,6 @@ func rulesForNode(
 	}
 
 	return mergeKeyedRules(rules, keys)
-}
-
-// compileAutogroupSelf produces filter rules for autogroup:self
-// destinations for a specific node. Only called for grants with
-// self destinations and only produces rules for untagged nodes.
-func compileAutogroupSelf(
-	cg *compiledGrant,
-	node types.NodeView,
-	userIdx userNodeIndex,
-) []tailcfg.FilterRule {
-	return ownSelfRules(cg, node, userIdx).rules
 }
 
 // ownSelfRules returns the autogroup:self rules of node's own user.
