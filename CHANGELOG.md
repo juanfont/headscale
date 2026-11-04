@@ -208,7 +208,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 
 - A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight [#3525](https://github.com/juanfont/headscale/pull/3525)
 - DERP client verification (the embedded DERP server and the `/verify` endpoint) looks up the node key directly instead of scanning every node on each connection [#3520](https://github.com/juanfont/headscale/pull/3520)
-- Fix a viewer seeing no exit nodes when it matches two `via` exit grants with different tags and also matches a non-via rule
+- Keep a node's `via` exit nodes when it also matches an `app` grant to `*`, as on Tailscale SaaS [#3566](https://github.com/juanfont/headscale/pull/3566)
 - Renaming a node now stores the name in lowercase; a node renamed with uppercase letters before gets no certificate name until it is renamed again [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Add `dns.certificates.enabled` and `dns.certificates.zone` to let nodes get TLS certificates [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Add `dns.challenge.provider`, `dns.challenge.propagation_timeout` and `dns.challenge.resolvers` for ACME DNS-01 challenges [#3554](https://github.com/juanfont/headscale/pull/3554)
