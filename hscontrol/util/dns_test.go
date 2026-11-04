@@ -26,13 +26,15 @@ func TestMagicDNSRootDomains172(t *testing.T) {
 
 // An octet-aligned mask has no wildcard bits, so it must yield exactly one
 // reverse-DNS name. Enumerating the next octet instead emits all 256 children
-// of that name, which overruns the search-domain limits of stub resolvers.
+// of that name, which can overflow a resolver's per-link domain limit.
 func TestMagicDNSRootDomainsOctetAligned(t *testing.T) {
 	for _, tt := range []struct {
 		prefix string
 		want   string
 	}{
+		{prefix: "0.0.0.0/0", want: "in-addr.arpa."},
 		{prefix: "100.0.0.0/8", want: "100.in-addr.arpa."},
+		{prefix: "100.120.0.5/24", want: "0.120.100.in-addr.arpa."},
 		{prefix: "100.120.0.0/16", want: "120.100.in-addr.arpa."},
 		{prefix: "100.120.0.0/24", want: "0.120.100.in-addr.arpa."},
 		{prefix: "100.120.0.5/32", want: "5.0.120.100.in-addr.arpa."},
@@ -50,7 +52,7 @@ func TestMagicDNSRootDomainsOctetAligned(t *testing.T) {
 // enumerate every value that octet takes within the prefix. RFC1035 reverse
 // delegation is per-octet, so a mask longer than /24 enumerates host names
 // rather than delegating classlessly (RFC2317), which is what Tailscale
-// expects. These counts and boundaries are unchanged by the aligned-mask case.
+// expects.
 func TestMagicDNSRootDomainsUnaligned(t *testing.T) {
 	for _, tt := range []struct {
 		prefix string
@@ -59,6 +61,21 @@ func TestMagicDNSRootDomainsUnaligned(t *testing.T) {
 		last   string
 		absent []string
 	}{
+		{
+			prefix: "10.0.0.0/7",
+			count:  2,
+			first:  "10.in-addr.arpa.",
+			last:   "11.in-addr.arpa.",
+			absent: []string{"12.in-addr.arpa."},
+		},
+		{
+			// Host bits set: the range starts at the masked octet.
+			prefix: "100.65.0.0/10",
+			count:  64,
+			first:  "64.100.in-addr.arpa.",
+			last:   "127.100.in-addr.arpa.",
+			absent: []string{"128.100.in-addr.arpa."},
+		},
 		{
 			prefix: "10.0.0.0/9",
 			count:  128,
