@@ -356,7 +356,14 @@ func (ns *noiseServer) C2NResponseHandler(
 
 	body, err := io.ReadAll(http.MaxBytesReader(writer, req.Body, maxC2NResponseBytes))
 	if err != nil {
-		httpError(writer, NewHTTPError(http.StatusRequestEntityTooLarge, "reading c2n response", err))
+		status := http.StatusBadRequest
+
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			status = http.StatusRequestEntityTooLarge
+		}
+
+		httpError(writer, NewHTTPError(status, "reading c2n response", err))
+
 		return
 	}
 
