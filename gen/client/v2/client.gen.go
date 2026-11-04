@@ -47,7 +47,7 @@ type CreateKeyRequest struct {
 	Capabilities *KeyCapabilities `json:"capabilities,omitempty"`
 	Description  *string          `json:"description,omitempty"`
 
-	// ExpirySeconds Lifetime in seconds; defaults to 90 days. Auth keys only.
+	// ExpirySeconds Lifetime in seconds, 0 to 90 days; 0 or omitted means 90 days. Auth keys only.
 	ExpirySeconds *int64 `json:"expirySeconds,omitempty"`
 
 	// KeyType Key kind: "auth" (default) or "client" (OAuth client).
@@ -190,7 +190,7 @@ type KeyDeviceCreateCapabilities struct {
 	Ephemeral     bool      `json:"ephemeral"`
 	Preauthorized bool      `json:"preauthorized"`
 	Reusable      bool      `json:"reusable"`
-	Tags          *[]string `json:"tags"`
+	Tags          *[]string `json:"tags,omitempty"`
 }
 
 // ListDevicesOutputBody defines model for ListDevicesOutputBody.
