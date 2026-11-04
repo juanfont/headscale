@@ -1838,7 +1838,8 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			// A non-via grant covering routes that a via grant included
 			// defers to global HA primary election. Match by overlap so
 			// a broader or narrower regular dst still catches the
-			// routes the via grant added to Include.
+			// routes the via grant added to Include. Exit routes have no
+			// election, so deferring would only drop them.
 			for _, dstPrefix := range resolvedDstPrefixes[i] {
 				for _, p := range result.Include {
 					if !tsaddr.IsExitRoute(p) && dstPrefix.Overlaps(p) &&

@@ -72,12 +72,14 @@ type ViaRouteResult struct {
 	// Include contains prefixes this peer should serve to this viewer (via-designated).
 	Include []netip.Prefix
 	// Exclude contains prefixes steered to OTHER peers (suppress from global primary).
+	// Two via grants can list one prefix in both; Include wins.
 	Exclude []netip.Prefix
 	// UsePrimary contains prefixes from [ViaRouteResult.Include] where a regular
 	// (non-via) grant also covers the prefix. In these cases HA
 	// primary election wins — only the primary router should get
 	// the route in [tailcfg.Node.AllowedIPs]. When a prefix is NOT in [ViaRouteResult.UsePrimary],
-	// per-viewer via steering applies.
+	// per-viewer via steering applies. Exit routes have no election, so
+	// they are never here.
 	UsePrimary []netip.Prefix
 }
 

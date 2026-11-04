@@ -207,6 +207,10 @@ func TestViaInternetExitSteeringSurvivesUnrelatedRules(t *testing.T) {
 			viaPeer := pm.ViaRoutesForPeer(aliceLaptop.View(), exitA.View())
 			require.Contains(t, viaPeer.Include, tsaddr.AllIPv4())
 
+			for _, p := range exitRoutes {
+				require.NotContains(t, viaPeer.UsePrimary, p)
+			}
+
 			other := pm.ViaRoutesForPeer(aliceLaptop.View(), exitB.View())
 			for _, p := range exitRoutes {
 				require.Equal(t, tt.wantExcluded, slices.Contains(other.Exclude, p),
