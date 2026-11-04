@@ -805,6 +805,31 @@ func peerRulesForNode(
 	return rulesForNode(grants, node, userIdx, viaPeerRule)
 }
 
+// nodeOnlyRules returns the self and via rules a node adds to the
+// pre-compiled rules every node shares.
+func nodeOnlyRules(
+	grants []compiledGrant,
+	node types.NodeView,
+	userIdx userNodeIndex,
+	viaRules func(*compiledGrant, types.NodeView) []tailcfg.FilterRule,
+) []tailcfg.FilterRule {
+	var rules []tailcfg.FilterRule
+
+	for i := range grants {
+		cg := &grants[i]
+
+		switch cg.category {
+		case grantCategoryRegular:
+		case grantCategorySelf:
+			rules = append(rules, compileAutogroupSelf(cg, node, userIdx)...)
+		case grantCategoryVia:
+			rules = append(rules, viaRules(cg, node)...)
+		}
+	}
+
+	return rules
+}
+
 func rulesForNode(
 	grants []compiledGrant,
 	node types.NodeView,
