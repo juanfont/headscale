@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -2598,4 +2599,27 @@ func TestC2NResponseHandler_OversizedBody(t *testing.T) {
 
 	_, pending := app.state.C2NTarget(c2nID)
 	assert.True(t, pending)
+}
+
+// TestC2NResponseHandler_BrokenBody verifies that a body that fails to read
+// for another reason than its size is a 400, not a 413.
+func TestC2NResponseHandler_BrokenBody(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("c2n-broken-user")
+	node := putTestNodeInStore(t, app, user, "c2n-node")
+
+	c2nID, _ := app.state.RegisterC2N(node.ID)
+	defer app.state.CancelC2N(c2nID)
+
+	ns := &noiseServer{headscale: app, machineKey: node.MachineKey}
+
+	req := newC2NResponseRequest(c2nID, nil)
+	req.Body = io.NopCloser(iotest.ErrReader(io.ErrUnexpectedEOF))
+
+	rec := httptest.NewRecorder()
+	ns.C2NResponseHandler(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
