@@ -5,6 +5,7 @@ import (
 	"maps"
 	"net/netip"
 	"slices"
+	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
@@ -51,6 +52,9 @@ type compiledGrant struct {
 	// For self grants with mixed destinations (self + other), this
 	// is the non-self portion only.
 	rules []tailcfg.FilterRule
+	// ruleKeys are rules' merge keys, built once per compile so that
+	// merging per node does not join long SrcIPs again.
+	ruleKeys []string
 
 	// self is non-nil when the grant has autogroup:self destinations.
 	self *selfGrantData
@@ -78,6 +82,10 @@ type viaGrantData struct {
 	hasAutoGroupInternet bool
 	internetProtocols    []ProtocolPort
 	srcIPStrings         []string
+	// keyPrefix and keys, by IPProto, build the merge keys of the grant's
+	// rules once, see [viaRuleKey].
+	keyPrefix string
+	keys      map[string]string
 }
 
 // resolveViaDestinations splits a via grant's destinations into the
@@ -258,6 +266,7 @@ func (pol *Policy) compileGrants(
 		}
 
 		if cg != nil {
+			cg.ruleKeys = ruleKeys(cg.rules)
 			compiled = append(compiled, *cg)
 		}
 	}
@@ -439,22 +448,35 @@ func (pol *Policy) compileOneViaGrant(
 		pol, users, nodes, grant.Destinations,
 	)
 
-	return &compiledGrant{
-		category: grantCategoryVia,
-		via: &viaGrantData{
-			viaTags:              grant.Via,
-			resolvedDsts:         resolvedDsts,
-			hasAutoGroupInternet: hasAutoGroupInternet,
-			internetProtocols:    grant.InternetProtocols,
-			srcIPStrings:         srcIPStrings,
-		},
-	}, nil
+	via := &viaGrantData{
+		viaTags:              grant.Via,
+		resolvedDsts:         resolvedDsts,
+		hasAutoGroupInternet: hasAutoGroupInternet,
+		internetProtocols:    grant.InternetProtocols,
+		srcIPStrings:         srcIPStrings,
+		keyPrefix:            fmt.Sprintf("via:%v|%s|", grant.Via, strings.Join(srcIPStrings, ",")),
+	}
+
+	via.keys = map[string]string{"[]": via.keyPrefix + "[]"}
+
+	for _, ipp := range grant.InternetProtocols {
+		proto := fmt.Sprint(ipp.Protocol.toIANAProtocolNumbers())
+		via.keys[proto] = via.keyPrefix + proto
+	}
+
+	return &compiledGrant{category: grantCategoryVia, via: via}, nil
 }
 
 // viaRuleKey returns the merge key of a rule of a via grant: Tailscale
-// merges a via rule only with via rules through the same tags.
+// merges a via rule only with via rules through the same tags. Keys of
+// the IPProtos the grant lists are built once; others on use.
 func viaRuleKey(cg *compiledGrant, rule tailcfg.FilterRule) string {
-	return fmt.Sprintf("via:%v|%s", cg.via.viaTags, filterRuleKey(rule))
+	proto := fmt.Sprint(rule.IPProto)
+	if key, ok := cg.via.keys[proto]; ok {
+		return key
+	}
+
+	return cg.via.keyPrefix + proto
 }
 
 // resolveSources resolves grant sources per alias. This is the canonical
@@ -717,7 +739,10 @@ func collectViaTargetTags(grants []compiledGrant) map[Tag]struct{} {
 // grants contribute their full pre-compiled ruleset; self grants
 // contribute their non-self portion.
 func globalFilterRules(grants []compiledGrant) []tailcfg.FilterRule {
-	var rules []tailcfg.FilterRule
+	var (
+		rules []tailcfg.FilterRule
+		keys  []string
+	)
 
 	for i := range grants {
 		if grants[i].category == grantCategoryVia {
@@ -725,9 +750,10 @@ func globalFilterRules(grants []compiledGrant) []tailcfg.FilterRule {
 		}
 
 		rules = append(rules, grants[i].rules...)
+		keys = append(keys, grants[i].ruleKeys...)
 	}
 
-	return mergeFilterRules(rules)
+	return mergeKeyedRules(rules, keys)
 }
 
 // filterRulesForNode produces unreduced filter rules for a specific
@@ -796,7 +822,7 @@ func rulesForNode(
 		// Pre-compiled rules apply to all grant categories
 		// (empty for via-only grants).
 		rules = append(rules, cg.rules...)
-		keys = append(keys, ruleKeys(cg.rules)...)
+		keys = append(keys, cg.ruleKeys...)
 
 		switch cg.category {
 		case grantCategoryRegular:
