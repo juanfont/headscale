@@ -55,24 +55,50 @@ func TestAPIV1ApiKeyCreate(t *testing.T) {
 		assert.NotEmpty(t, humBody.APIKey)
 	})
 
-	t.Run("no expiration is not immediately expired", func(t *testing.T) {
-		h := newAPIV1Harness(t)
+	t.Run("expiration stored and reported as sent", func(t *testing.T) {
+		future := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
 
-		res := h.callHuma(http.MethodPost, "/api/v1/apikey", []byte(`{}`))
-		require.Equal(t, http.StatusOK, res.status)
+		for _, tc := range []struct {
+			name string
+			body string
+			want any
+		}{
+			{"omitted", `{}`, nil},
+			{"null", `{"expiration":null}`, nil},
+			{
+				"future",
+				`{"expiration":"` + future.Format(time.RFC3339) + `"}`,
+				future.Format(time.RFC3339),
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				h := newAPIV1Harness(t)
 
-		var got struct {
-			APIKey string `json:"apiKey"`
+				res := h.callHuma(http.MethodPost, "/api/v1/apikey", []byte(tc.body))
+				require.Equal(t, http.StatusOK, res.status)
+
+				var created struct {
+					APIKey string `json:"apiKey"`
+				}
+				require.NoError(t, json.Unmarshal(res.body, &created))
+
+				// The zero time is already past, so an omitted expiration must
+				// stay NULL for the key to be usable.
+				valid, err := h.app.state.ValidateAPIKey(created.APIKey)
+				require.NoError(t, err)
+				assert.True(t, valid)
+
+				res = h.callHuma(http.MethodGet, "/api/v1/apikey", nil)
+				require.Equal(t, http.StatusOK, res.status)
+
+				var listed struct {
+					APIKeys []map[string]any `json:"apiKeys"`
+				}
+				require.NoError(t, json.Unmarshal(res.body, &listed))
+				require.Len(t, listed.APIKeys, 1)
+				assert.Equal(t, tc.want, listed.APIKeys[0]["expiration"])
+			})
 		}
-		require.NoError(t, json.Unmarshal(res.body, &got))
-		require.NotEmpty(t, got.APIKey)
-
-		// A missing expiration must persist as NULL, not the zero time, or the
-		// key is rejected as already-expired on first use (regression for the
-		// fix that the gRPC handler received in #3254).
-		valid, err := h.app.state.ValidateAPIKey(got.APIKey)
-		require.NoError(t, err)
-		assert.True(t, valid, "api key created without expiration must not be expired")
 	})
 }
 
@@ -117,7 +143,7 @@ func TestAPIV1ApiKeyList(t *testing.T) {
 
 	t.Run("zero expiration emitted as zero instant parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
-		// Non-nil zero expiration (as gRPC CreateApiKey does for a missing one)
+		// Older releases stored the zero time for an omitted expiration; it
 		// must render as the zero instant, not null.
 		var zero time.Time
 
