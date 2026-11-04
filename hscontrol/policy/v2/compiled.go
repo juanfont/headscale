@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
@@ -69,6 +70,25 @@ type selfGrantData struct {
 	resolvedSrcs      []ResolvedAddresses
 	internetProtocols []ProtocolPort
 	app               tailcfg.PeerCapMap
+
+	// byUser holds each user's rules, see [precomputeSelfRules].
+	byUser map[uint]keyedRules
+}
+
+// keyedRules are filter rules with their merge keys, see [filterRuleKey],
+// and their matchers.
+type keyedRules struct {
+	rules    []tailcfg.FilterRule
+	keys     []string
+	matchers []matcher.Match
+}
+
+func newKeyedRules(rules []tailcfg.FilterRule) keyedRules {
+	return keyedRules{
+		rules:    rules,
+		keys:     ruleKeys(rules),
+		matchers: matcher.MatchesFromFilterRules(rules),
+	}
 }
 
 // viaGrantData holds data needed for per-node via-grant compilation.
@@ -776,18 +796,19 @@ func peerRulesForNode(
 	node types.NodeView,
 	userIdx userNodeIndex,
 ) []tailcfg.FilterRule {
-	return rulesForNode(grants, node, userIdx, compileAutogroupSelf, viaPeerRule)
+	return rulesForNode(grants, node, userIdx, ownSelfRules, viaPeerRule)
 }
 
-// nodeOnlyRules returns the self and via rules a node adds to the
-// pre-compiled rules every node shares.
-func nodeOnlyRules(
+// nodeOnlyMatchers returns the matchers of the self and via rules a node
+// adds to the pre-compiled rules every node shares. Self matchers are
+// shared per user; via rules are parsed for the node.
+func nodeOnlyMatchers(
 	grants []compiledGrant,
 	node types.NodeView,
 	userIdx userNodeIndex,
 	viaRules func(*compiledGrant, types.NodeView) []tailcfg.FilterRule,
-) []tailcfg.FilterRule {
-	var rules []tailcfg.FilterRule
+) []matcher.Match {
+	var matchers []matcher.Match
 
 	for i := range grants {
 		cg := &grants[i]
@@ -795,20 +816,20 @@ func nodeOnlyRules(
 		switch cg.category {
 		case grantCategoryRegular:
 		case grantCategorySelf:
-			rules = append(rules, compileAutogroupSelf(cg, node, userIdx)...)
+			matchers = append(matchers, ownSelfRules(cg, node, userIdx).matchers...)
 		case grantCategoryVia:
-			rules = append(rules, viaRules(cg, node)...)
+			matchers = append(matchers, matcher.MatchesFromFilterRules(viaRules(cg, node))...)
 		}
 	}
 
-	return rules
+	return matchers
 }
 
 func rulesForNode(
 	grants []compiledGrant,
 	node types.NodeView,
 	userIdx userNodeIndex,
-	selfRules func(*compiledGrant, types.NodeView, userNodeIndex) []tailcfg.FilterRule,
+	selfRules func(*compiledGrant, types.NodeView, userNodeIndex) keyedRules,
 	viaRules func(*compiledGrant, types.NodeView) []tailcfg.FilterRule,
 ) []tailcfg.FilterRule {
 	var (
@@ -830,8 +851,8 @@ func rulesForNode(
 
 		case grantCategorySelf:
 			self := selfRules(cg, node, userIdx)
-			rules = append(rules, self...)
-			keys = append(keys, ruleKeys(self)...)
+			rules = append(rules, self.rules...)
+			keys = append(keys, self.keys...)
 
 		case grantCategoryVia:
 			for _, rule := range viaRules(cg, node) {
@@ -852,37 +873,77 @@ func compileAutogroupSelf(
 	node types.NodeView,
 	userIdx userNodeIndex,
 ) []tailcfg.FilterRule {
+	return ownSelfRules(cg, node, userIdx).rules
+}
+
+// ownSelfRules returns the autogroup:self rules of node's own user.
+func ownSelfRules(
+	cg *compiledGrant,
+	node types.NodeView,
+	userIdx userNodeIndex,
+) keyedRules {
 	if node.IsTagged() || cg.self == nil || !node.User().Valid() {
-		return nil
+		return keyedRules{}
 	}
 
-	return compileSelfForUser(cg, userIdx[node.User().ID()])
+	return userSelfRules(cg, node.User().ID(), userIdx)
 }
 
 // filterSelfRules returns the autogroup:self rules a node's packet filter
 // holds: its own user's, or, on an exit node, whose exit routes contain
 // every self destination, every user's in user order, as Tailscale sends
 // them. Only the packet filter needs other users' rules: they never make
-// the exit node a peer, so the peer paths use [compileAutogroupSelf].
+// the exit node a peer, so the peer paths use [ownSelfRules].
 func filterSelfRules(
 	cg *compiledGrant,
 	node types.NodeView,
 	userIdx userNodeIndex,
-) []tailcfg.FilterRule {
+) keyedRules {
 	if !node.IsExitNode() {
-		return compileAutogroupSelf(cg, node, userIdx)
+		return ownSelfRules(cg, node, userIdx)
 	}
 
 	if cg.self == nil {
-		return nil
+		return keyedRules{}
 	}
 
-	var rules []tailcfg.FilterRule
+	var all keyedRules
+
 	for _, uid := range slices.Sorted(maps.Keys(userIdx)) {
-		rules = append(rules, compileSelfForUser(cg, userIdx[uid])...)
+		r := userSelfRules(cg, uid, userIdx)
+		all.rules = append(all.rules, r.rules...)
+		all.keys = append(all.keys, r.keys...)
 	}
 
-	return rules
+	return all
+}
+
+// userSelfRules returns uid's autogroup:self rules, shared from
+// [precomputeSelfRules], or built now for a grant compiled without it.
+func userSelfRules(cg *compiledGrant, uid uint, userIdx userNodeIndex) keyedRules {
+	if r, ok := cg.self.byUser[uid]; ok {
+		return r
+	}
+
+	return newKeyedRules(compileSelfForUser(cg, userIdx[uid]))
+}
+
+// precomputeSelfRules builds every user's autogroup:self rules once per
+// compile. They depend only on the user, so all of a user's nodes share
+// them instead of each node building them again.
+func precomputeSelfRules(grants []compiledGrant, userIdx userNodeIndex) {
+	for i := range grants {
+		self := grants[i].self
+		if self == nil {
+			continue
+		}
+
+		self.byUser = make(map[uint]keyedRules, len(userIdx))
+
+		for uid, nodes := range userIdx {
+			self.byUser[uid] = newKeyedRules(compileSelfForUser(&grants[i], nodes))
+		}
+	}
 }
 
 // compileSelfForUser produces the autogroup:self rules for one user's
