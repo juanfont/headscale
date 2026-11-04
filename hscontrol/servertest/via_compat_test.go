@@ -95,6 +95,8 @@ var viaCompatTests = []struct {
 	{"via-grant-v96", "one member in two via exit grants, plus a rule to a private subnet"},
 	{"via-grant-v97", "one member in two via exit grants, plus a rule to everything"},
 	{"via-grant-v98", "via exit steering plus a capability grant to *"},
+	{"via-grant-v99", "via exit steering plus a member capability grant to a public address"},
+	{"via-grant-v100", "approved exit nodes, only a member capability grant to a public address"},
 	{"via-grant-v101", "approved exit nodes, only a member capability grant to a private address"},
 	{"via-grant-v103", "unapproved exit nodes, only a member capability grant to a public address"},
 	{"via-grant-v104", "approved exit nodes, only a member capability grant to the wildcard"},

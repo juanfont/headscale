@@ -869,6 +869,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 		ids := make([]types.NodeID, nodes.Len())
 		srcOf := make([][]uint64, nodes.Len()) // nil: source of no matcher
 		dstOf := make([][]uint64, nodes.Len()) // nil: destination of no matcher
+		capSrc := make([]bool, nodes.Len())
 
 		for i, n := range nodes.All() {
 			ids[i] = n.ID()
@@ -887,6 +888,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 					}
 
 					srcOf[i][k/64] |= 1 << (k % 64) //nolint:mnd
+					capSrc[i] = capSrc[i] || m.CapDestsIsTheInternet()
 				}
 
 				if matcherReachesDestination(m, ips, ri.subnet, ri.isExit) {
@@ -924,7 +926,12 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 				if linked || sameUser(nodes.At(i), nodes.At(j)) {
 					ret[ids[i]] = append(ret[ids[i]], ids[j])
 					ret[ids[j]] = append(ret[ids[j]], ids[i])
+
+					continue
 				}
+
+				addCapSourceOnExit(ret, ids[i], ids[j], capSrc[i], routeInfo[ids[j]].isExit)
+				addCapSourceOnExit(ret, ids[j], ids[i], capSrc[j], routeInfo[ids[i]].isExit)
 			}
 		}
 
@@ -939,8 +946,15 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	// Reduced rules only show destinations where the node is the target,
 	// but peer relationships require the full bidirectional access rules.
 	nodeMatchers := make(map[types.NodeID][]matcher.Match, nodes.Len())
+	capSrc := make(map[types.NodeID]bool, nodes.Len())
+
 	for _, node := range nodes.All() {
-		nodeMatchers[node.ID()] = pm.nodeMatchersLocked(node, viaPeerRule)
+		ms := pm.nodeMatchersLocked(node, viaPeerRule)
+		nodeMatchers[node.ID()] = ms
+		capSrc[node.ID()] = slices.ContainsFunc(ms, func(m matcher.Match) bool {
+			return m.CapDestsIsTheInternet() &&
+				matcherReachesSource(&m, node.IPs(), routeInfo[node.ID()].subnet)
+		})
 	}
 
 	// Check each node pair for peer relationships.
@@ -977,11 +991,29 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			if linked || sameUser(nodeI, nodeJ) {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
+
+				continue
 			}
+
+			addCapSourceOnExit(ret, nodeI.ID(), nodeJ.ID(), capSrc[nodeI.ID()], riJ.isExit)
+			addCapSourceOnExit(ret, nodeJ.ID(), nodeI.ID(), capSrc[nodeJ.ID()], riI.isExit)
 		}
 	}
 
 	return ret
+}
+
+// addCapSourceOnExit lists src on exit, and only there, when src is the
+// source of a capability to the internet. SaaS does this: the capability
+// carries no traffic, so src gets no exit route and does not list exit.
+func addCapSourceOnExit(
+	ret map[types.NodeID][]types.NodeID,
+	src, exit types.NodeID,
+	srcHasCap, isExit bool,
+) {
+	if srcHasCap && isExit {
+		ret[exit] = append(ret[exit], src)
+	}
 }
 
 func matcherReachesSource(m *matcher.Match, ips []netip.Addr, routes []netipx.IPRange) bool {
