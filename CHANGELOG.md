@@ -205,7 +205,6 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Lower CPU use on large tailnets when node tags, owners, IPs or routes change [#3501](https://github.com/juanfont/headscale/pull/3501)
 - `headscale nodes backfillips` now sends the new IPs to connected clients [#3501](https://github.com/juanfont/headscale/pull/3501)
 - A registration request from a client below the minimum supported version is now rejected before it can log a node out, use a pre-auth key or start a login [#3519](https://github.com/juanfont/headscale/pull/3519)
-- Fix the MagicDNS search domain generation for octet-aligned subnets (/8, /16, /24) to output a single covering PTR [#3482](https://github.com/juanfont/headscale/pull/3482)
 
 - A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight [#3525](https://github.com/juanfont/headscale/pull/3525)
 - DERP client verification (the embedded DERP server and the `/verify` endpoint) looks up the node key directly instead of scanning every node on each connection [#3520](https://github.com/juanfont/headscale/pull/3520)
@@ -234,6 +233,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Fix a `via` router that is also a source peering with others serving the route, and a router inside a subnet source missing `via` routes [#3637](https://github.com/juanfont/headscale/pull/3637)
 - With MagicDNS on, exit nodes refuse DNS queries for names under `dns.base_domain`, as on Tailscale SaaS. Clients cannot read the tailnet's names through an exit node. Reverse lookups still pass. [#3636](https://github.com/juanfont/headscale/pull/3636)
 - Peers get a node's last seen time when it goes offline, not at the next full map. [#3636](https://github.com/juanfont/headscale/pull/3636)
+- With MagicDNS on, stop sending reverse DNS routes for `prefixes` inside 100.64.0.0/10 and fd7a:115c:a1e0::/48, as on Tailscale SaaS; clients add them. A `prefixes.v4` subset such as 100.64.0.0/24 sent 256, which overflowed systemd-resolved's domain limit and dropped reverse DNS. An octet-aligned prefix outside the ranges gets one route instead of 256 [#3482](https://github.com/juanfont/headscale/pull/3482)
 
 ## 0.29.7 (2026-10-30)
 

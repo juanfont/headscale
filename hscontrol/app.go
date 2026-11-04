@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -50,6 +51,7 @@ import (
 	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
@@ -233,16 +235,23 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	app.authProvider = authProvider
 
 	if app.cfg.TailcfgDNSConfig != nil && app.cfg.TailcfgDNSConfig.Proxied { // if MagicDNS
+		// Clients route reverse lookups for the Tailscale ranges themselves
+		// (magicDNSRootDomains in tailscale.com/ipn/ipnlocal) and SaaS sends
+		// no reverse routes, so only a prefix outside those ranges needs them.
+		outside := func(p, r netip.Prefix) bool {
+			return p.Bits() < r.Bits() || !r.Contains(p.Addr())
+		}
+
 		// TODO(kradalby): revisit why this takes a list.
 		var magicDNSDomains []dnsname.FQDN
-		if cfg.PrefixV4 != nil {
+		if cfg.PrefixV4 != nil && outside(*cfg.PrefixV4, tsaddr.CGNATRange()) {
 			magicDNSDomains = append(
 				magicDNSDomains,
 				util.GenerateIPv4DNSRootDomain(*cfg.PrefixV4)...,
 			)
 		}
 
-		if cfg.PrefixV6 != nil {
+		if cfg.PrefixV6 != nil && outside(*cfg.PrefixV6, tsaddr.TailscaleULARange()) {
 			magicDNSDomains = append(
 				magicDNSDomains,
 				util.GenerateIPv6DNSRootDomain(*cfg.PrefixV6)...,

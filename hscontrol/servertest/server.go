@@ -58,6 +58,7 @@ type serverConfig struct {
 	magicDNSDomain        string
 	dnsResolvers          []string
 	certProvider          hsdns.Provider
+	prefixV4              netip.Prefix
 }
 
 func defaultServerConfig() *serverConfig {
@@ -67,6 +68,7 @@ func defaultServerConfig() *serverConfig {
 		batcherWorkers:   1,
 		ephemeralTimeout: 30 * time.Second,
 		taildropEnabled:  true,
+		prefixV4:         netip.MustParsePrefix("100.64.0.0/10"),
 	}
 }
 
@@ -125,6 +127,11 @@ func WithMagicDNS(domain string) ServerOption {
 	return func(c *serverConfig) { c.magicDNSDomain = domain }
 }
 
+// WithPrefixV4 sets prefixes.v4, the range node IPv4 addresses come from.
+func WithPrefixV4(p netip.Prefix) ServerOption {
+	return func(c *serverConfig) { c.prefixV4 = p }
+}
+
 // WithCertificates enables node certificates (dns.certificates) with
 // provider publishing the challenges. It needs [WithMagicDNS]; the
 // propagation check is off because the provider is not real DNS.
@@ -157,7 +164,7 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 
 	tmpDir := tb.TempDir()
 
-	prefixV4 := netip.MustParsePrefix("100.64.0.0/10")
+	prefixV4 := sc.prefixV4
 	prefixV6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
 
 	cfg := types.Config{
