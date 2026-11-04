@@ -1,9 +1,11 @@
 package util
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -40,6 +42,16 @@ var ErrUnknownFileFormat = errors.New("unknown file format, want .json, .hujson,
 // JSON syntax, so sniffing cannot tell the two apart. YAML keys are the
 // lowercased Go field names.
 func UnmarshalByExt[T any](name string, data []byte) (T, error) {
+	return unmarshalByExt[T](name, data, false)
+}
+
+// UnmarshalByExtStrict is [UnmarshalByExt] that fails on a key T has no
+// field for, so a misspelt key is an error rather than silently dropped.
+func UnmarshalByExtStrict[T any](name string, data []byte) (T, error) {
+	return unmarshalByExt[T](name, data, true)
+}
+
+func unmarshalByExt[T any](name string, data []byte, strict bool) (T, error) {
 	var (
 		v   T
 		err error
@@ -49,10 +61,21 @@ func UnmarshalByExt[T any](name string, data []byte) (T, error) {
 	case ".json", ".hujson":
 		data, err = hujson.Standardize(data)
 		if err == nil {
-			err = json.Unmarshal(data, &v)
+			dec := json.NewDecoder(bytes.NewReader(data))
+			if strict {
+				dec.DisallowUnknownFields()
+			}
+
+			err = dec.Decode(&v)
 		}
 	case ".yaml", ".yml":
-		err = yaml.Unmarshal(data, &v)
+		dec := yaml.NewDecoder(bytes.NewReader(data))
+		dec.KnownFields(strict)
+
+		err = dec.Decode(&v)
+		if errors.Is(err, io.EOF) {
+			err = nil // an empty document, as yaml.Unmarshal reads it
+		}
 	default:
 		return v, fmt.Errorf("%s: %w", name, ErrUnknownFileFormat)
 	}

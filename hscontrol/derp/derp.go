@@ -13,6 +13,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"slices"
 	"sync"
@@ -24,14 +25,20 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-var errEmptyDERPMapFile = errors.New("DERP map file has no regions or homeparams (YAML keys are lowercased Go field names, e.g. regionid)")
+var errEmptyDERPMapFile = errors.New("DERP map file has no regions or homeparams")
 
 // loadDERPMapFromPath reads a DERP map file in the format its extension names
-// (see [util.UnmarshalByExt]). A map with neither regions nor HomeParams is an
-// error: unknown keys decode to nothing, e.g. YAML written with JSON's field
-// names. HomeParams alone is valid, to score regions from other sources.
+// (see [util.UnmarshalByExtStrict]). An unknown key is an error, as SaaS
+// rejects one in a policy derpMap, so a misspelt key cannot silently do
+// nothing. A map with neither regions nor HomeParams is an error too;
+// HomeParams alone is valid, to score regions from other sources.
 func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
-	derpMap, err := util.ReadFileByExt[tailcfg.DERPMap](path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading DERP map: %w", err)
+	}
+
+	derpMap, err := util.UnmarshalByExtStrict[tailcfg.DERPMap](path, data)
 	if err != nil {
 		return nil, fmt.Errorf("reading DERP map: %w", err)
 	}

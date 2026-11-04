@@ -444,6 +444,8 @@ homeparams:
 		{name: "tailcfg hujson", file: "derp.hujson", content: "// test map\n" + string(tailcfgJSON)},
 		{name: "tailcfg json with unterminated comment", file: "derp.json", content: string(tailcfgJSON) + " /*", wantErr: true},
 		{name: "json as yaml decodes to nothing", file: "derp.yaml", content: string(tailcfgJSON), wantErr: true},
+		{name: "misspelt yaml key", file: "derp.yaml", content: "homeparams: {regionscores: {999: 0.5}}", wantErr: true},
+		{name: "unknown json key", file: "derp.json", content: `{"HomeParams": {"Bogus": 1}}`, wantErr: true},
 		{name: "empty", file: "derp.yaml", content: "", wantErr: true},
 		{name: "no extension", file: "derp", content: yamlMap, wantErr: true},
 	}
