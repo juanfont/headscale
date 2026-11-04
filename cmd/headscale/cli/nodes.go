@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -11,15 +10,12 @@ import (
 	"time"
 
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
-	clientv2 "github.com/juanfont/headscale/gen/client/v2"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/pterm/pterm"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"tailscale.com/types/key"
 )
-
-var errClientUpdateNotStarted = errors.New("node did not start the client update")
 
 func init() {
 	rootCmd.AddCommand(nodeCmd)
@@ -61,7 +57,6 @@ func init() {
 	nodeCmd.AddCommand(backfillNodeIPsCmd)
 
 	updateClientCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	updateClientCmd.Flags().Bool("force", false, "Update even if the node has active Tailscale SSH sessions")
 	mustMarkRequired(updateClientCmd, "identifier")
 	nodeCmd.AddCommand(updateClientCmd)
 }
@@ -267,27 +262,33 @@ var renameNodeCmd = &cobra.Command{
 	}),
 }
 
+// updateClientTimeout outlasts the server's wait for the node's answer,
+// which the default cli.timeout does not.
+const updateClientTimeout = 15 * time.Second
+
 var updateClientCmd = &cobra.Command{
 	Use:   "update-client",
 	Short: "Update the Tailscale client of a connected node",
-	Long: `Ask a connected node to update its Tailscale client to the latest stable release.
+	Long: `Ask a connected node to update its Tailscale client to the newest
+release on its track.
 
-The node only starts the update if it has auto-updates enabled
-("tailscale set --auto-update") and its platform supports them.
+The node must allow remote updates ("tailscale set --auto-update") on a
+platform that can update itself. As on Tailscale, a node that does not,
+is not connected, or refuses is answered "not found".
 The command returns once the update has started, not when it has finished.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
-		force, _ := cmd.Flags().GetBool("force")
 
-		ctx, client, cancel, err := newV2Client()
+		_, client, cancel, err := newV2Client()
 		if err != nil {
 			return err
 		}
 		defer cancel()
 
-		resp, err := client.UpdateDeviceClientWithResponse(ctx, strconv.FormatUint(identifier, util.Base10), clientv2.UpdateDeviceClientRequest{
-			Force: &force,
-		})
+		ctx, cancelWait := context.WithTimeout(context.Background(), updateClientTimeout)
+		defer cancelWait()
+
+		resp, err := client.UpdateDeviceClientWithResponse(ctx, strconv.FormatUint(identifier, util.Base10))
 		if err != nil {
 			return fmt.Errorf("updating node client: %w", err)
 		}
@@ -297,17 +298,7 @@ The command returns once the update has started, not when it has finished.`,
 			return err
 		}
 
-		update := resp.JSON200
-		if !update.Started {
-			reason := update.Error
-			if reason == "" {
-				reason = fmt.Sprintf("enabled=%t, supported=%t", update.Enabled, update.Supported)
-			}
-
-			return fmt.Errorf("%w: %s", errClientUpdateNotStarted, reason)
-		}
-
-		return printOutput(cmd, update, "Client update started")
+		return printOutput(cmd, struct{}{}, "Client update started")
 	},
 }
 
