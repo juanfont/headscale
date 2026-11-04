@@ -1263,13 +1263,13 @@ func TestNodeBackfillIPsCommand(t *testing.T) {
 }
 
 // TestNodeUpdateClientCommand verifies that `headscale nodes update-client`
-// reaches a real tailscaled over c2n and reports its answer. The test
-// clients have auto-updates off, so each one must refuse with "not enabled".
+// answers every client version as Tailscale does. The test clients have
+// auto-updates off, so Hostinfo.AllowsUpdate is false and each is "not found".
 func TestNodeUpdateClientCommand(t *testing.T) {
 	IntegrationSkip(t)
 
 	spec := ScenarioSpec{
-		NodesPerUser: 1,
+		NodesPerUser: len(MustTestVersions),
 		Users:        []string{"node-update-user"},
 	}
 
@@ -1310,9 +1310,8 @@ func TestNodeUpdateClientCommand(t *testing.T) {
 			"--identifier",
 			node.Id,
 		})
-		require.Error(t, err, "node %s has auto-updates off and must refuse", node.Name)
-		assert.Contains(t, err.Error(), "node did not start the client update: not enabled",
-			"node %s should answer the c2n request with its refusal", node.Name)
+		require.Error(t, err, "node %s has auto-updates off and must be refused", node.Name)
+		assert.Contains(t, err.Error(), "api error (404): not found", "node %s", node.Name)
 	}
 
 	// Unknown nodes are rejected before anything is sent.
@@ -1324,5 +1323,5 @@ func TestNodeUpdateClientCommand(t *testing.T) {
 		"9999",
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "device not found")
+	assert.Contains(t, err.Error(), "api error (404): no manageable device matching this ID found")
 }
