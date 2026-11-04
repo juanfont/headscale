@@ -1700,7 +1700,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "tags in SSH source cannot access autogroup:member",
+			wantErr: `[ssh] invalid dst "autogroup:member"`,
 		},
 		{
 			name: "ssh-autogroup-tagged-to-autogroup-tagged-allowed",
@@ -4550,7 +4550,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
-				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
 				Users:        SSHUsers{"root"},
 			},
 		},
@@ -4559,7 +4559,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
-				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Always: true},
 			},
@@ -4569,7 +4569,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
-				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Duration: time.Hour},
 			},
@@ -4579,7 +4579,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			ssh: SSH{
 				Action:       SSHActionAccept,
 				Sources:      SSHSrcAliases{up("user@")},
-				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Duration: time.Hour},
 			},
@@ -4590,7 +4590,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
-				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Duration: 30 * time.Second},
 			},
@@ -4600,7 +4600,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
-				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Duration: 168 * time.Hour},
 			},
@@ -4610,7 +4610,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
-				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Duration: 168*time.Hour + time.Second},
 			},
@@ -4621,7 +4621,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
-				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Duration: 200 * time.Hour},
 			},
@@ -4632,7 +4632,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
-				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Duration: -time.Minute},
 			},
@@ -4663,7 +4663,7 @@ func TestSSHRuleSaaSValidation(t *testing.T) {
 		ssh := SSH{
 			Action:       SSHActionAccept,
 			Sources:      SSHSrcAliases{up("user@")},
-			Destinations: SSHDstAliases{agp("autogroup:member")},
+			Destinations: SSHDstAliases{agp("autogroup:self")},
 			Users:        SSHUsers{"root"},
 		}
 		if modify != nil {
@@ -4841,6 +4841,11 @@ func TestSSHRuleErrorsLabelled(t *testing.T) {
 			name:    "group dst",
 			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["group:admins"], "users": ["root"]}`,
 			wantErr: `[ssh] groups are not allowed dst`,
+		},
+		{
+			name:    "autogroup:member dst",
+			rules:   `{"action": "accept", "src": ["odin@"], "dst": ["autogroup:member"], "users": ["root"]}`,
+			wantErr: `[ssh] invalid dst "autogroup:member"`,
 		},
 		{
 			name:    "autogroup:internet dst",
