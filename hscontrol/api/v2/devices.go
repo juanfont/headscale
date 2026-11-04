@@ -20,7 +20,7 @@ import (
 )
 
 func init() {
-	registrations = append(registrations, registerDevices)
+	registrations = append(registrations, registerDevices, registerDeviceUpdates)
 }
 
 // Device is the Tailscale device response. Headscale nodes map onto it; fields
@@ -503,6 +503,10 @@ func registerDevices(api huma.API, b Backend) {
 
 		return &deviceRoutesOutput{Body: routesFromView(node)}, nil
 	})
+}
+
+func registerDeviceUpdates(api huma.API, b Backend) {
+	deviceTags := []string{"Devices", tagTailscaleCompat}
 
 	huma.Register(api, requireScope(huma.Operation{
 		OperationID:   "updateDeviceClient",
