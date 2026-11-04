@@ -131,6 +131,9 @@ var routesMapCompatTests = []struct {
 	{"routes-exit-family-private", "private destinations keep the subnet without exit routes"},
 	{"routes-exit-family-public-ip", "one public destination offers both exit route families"},
 	{"routes-exit-family-wildcard", "wildcard destinations offer both exit route families"},
+	{"routes-exit-offer-no-rules", "a policy without rules offers exit routes"},
+	{"routes-exit-offer-empty-acls", "an empty acls list offers no exit node"},
+	{"routes-exit-offer-empty-grants", "an empty grants list offers no exit node"},
 }
 
 // aclMapCompatTests lists ACL captures replayed through the mapper, with only
