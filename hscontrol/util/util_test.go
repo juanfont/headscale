@@ -908,6 +908,7 @@ func TestUnmarshalByExt(t *testing.T) {
 		file       string
 		data       string
 		want       rec
+		strict     bool
 		wantFormat bool // want ErrUnknownFileFormat
 		wantErr    bool
 	}{
@@ -925,11 +926,23 @@ func TestUnmarshalByExt(t *testing.T) {
 		{name: "json with wrong value type", file: "x.json", data: `{"name": "a", "port": "1"}`, wantErr: true},
 		{name: "unknown extension", file: "x.txt", data: `{"name": "a", "port": 1}`, wantFormat: true},
 		{name: "no extension", file: "x", data: `{"name": "a", "port": 1}`, wantFormat: true},
+		{name: "json unknown key is ignored", file: "x.json", data: `{"name": "a", "port": 1, "bogus": 2}`, want: a1},
+		{name: "yaml unknown key is ignored", file: "x.yaml", data: "name: a\nport: 1\nbogus: 2\n", want: a1},
+		{name: "strict json unknown key", file: "x.json", data: `{"name": "a", "port": 1, "bogus": 2}`, strict: true, wantErr: true},
+		{name: "strict yaml unknown key", file: "x.yaml", data: "name: a\nport: 1\nbogus: 2\n", strict: true, wantErr: true},
+		{name: "strict json", file: "x.json", data: `{"name": "a", "port": 1}`, strict: true, want: a1},
+		{name: "strict yaml", file: "x.yaml", data: "name: a\nport: 1\n", strict: true, want: a1},
+		{name: "empty yaml", file: "x.yaml", data: "", want: rec{}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := UnmarshalByExt[rec](tt.file, []byte(tt.data))
+			unmarshal := UnmarshalByExt[rec]
+			if tt.strict {
+				unmarshal = UnmarshalByExtStrict[rec]
+			}
+
+			got, err := unmarshal(tt.file, []byte(tt.data))
 			if tt.wantFormat {
 				if !errors.Is(err, ErrUnknownFileFormat) {
 					t.Fatalf("UnmarshalByExt(%q) error = %v, want %v", tt.file, err, ErrUnknownFileFormat)
