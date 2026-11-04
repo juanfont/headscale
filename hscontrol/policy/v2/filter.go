@@ -760,21 +760,6 @@ func ruleKeys(rules []tailcfg.FilterRule) []string {
 	return keys
 }
 
-// mergeFilterRules merges rules with identical [tailcfg.FilterRule.SrcIPs] and
-// [tailcfg.FilterRule.IPProto] by combining their [tailcfg.FilterRule.DstPorts].
-// DstPorts are NOT deduplicated to match Tailscale behavior.
-// [tailcfg.CapGrant] rules (which have no [tailcfg.FilterRule.DstPorts]) are
-// passed through without merging since [tailcfg.CapGrant] and
-// [tailcfg.FilterRule.DstPorts] are mutually exclusive in a
-// [tailcfg.FilterRule].
-func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
-	if len(rules) <= 1 {
-		return rules
-	}
-
-	return mergeKeyedRules(rules, ruleKeys(rules))
-}
-
 // mergeKeyedRules merges rules whose keys are equal into the first of them,
 // keeping first-appearance order, as Tailscale does. keys[i] is rules[i]'s
 // key; [tailcfg.CapGrant] rules pass through.

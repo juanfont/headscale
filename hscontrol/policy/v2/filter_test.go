@@ -3520,7 +3520,7 @@ func TestBuildSrcIPStrings(t *testing.T) {
 	var b netipx.IPSetBuilder
 	b.AddPrefix(netip.MustParsePrefix("100.64.0.1/32"))
 
-	resolved, err := newResolved(&b)
+	resolved, err := newResolvedAddresses(b.IPSet())
 	require.NoError(t, err)
 
 	// Node with approved subnet route.
@@ -4273,7 +4273,7 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 			var got []tailcfg.FilterRule
 			if cg != nil {
 				got = append(got, cg.rules...)
-				got = append(got, compileAutogroupSelf(cg, nodeView, userIdx)...)
+				got = append(got, ownSelfRules(cg, nodeView, userIdx).rules...)
 				got = mergeFilterRules(got)
 			}
 
@@ -4500,4 +4500,19 @@ func TestMergeFilterRulesKeysSharedSrcIPsOnce(t *testing.T) {
 	extra := bytesPerMerge(wide) - bytesPerMerge(rulesSharing(1))
 	assert.Less(t, extra, 8*keyBytes,
 		"merging %d rules that share %d sources", numRules, len(wide[0].SrcIPs))
+}
+
+// mergeFilterRules merges rules with identical [tailcfg.FilterRule.SrcIPs] and
+// [tailcfg.FilterRule.IPProto] by combining their [tailcfg.FilterRule.DstPorts].
+// DstPorts are NOT deduplicated to match Tailscale behavior.
+// [tailcfg.CapGrant] rules (which have no [tailcfg.FilterRule.DstPorts]) are
+// passed through without merging since [tailcfg.CapGrant] and
+// [tailcfg.FilterRule.DstPorts] are mutually exclusive in a
+// [tailcfg.FilterRule].
+func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+	if len(rules) <= 1 {
+		return rules
+	}
+
+	return mergeKeyedRules(rules, ruleKeys(rules))
 }
