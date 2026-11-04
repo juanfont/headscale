@@ -322,7 +322,7 @@ func TestMapEntryFieldsCompat(t *testing.T) {
 	t.Run("wire", func(t *testing.T) {
 		t.Parallel()
 
-		for _, id := range []string{"map-delivery", "hidden-peers", "route-announce", "policy-generation", "user-role", "expiry"} {
+		for _, id := range []string{"map-delivery", "hidden-peers", "route-announce", "policy-generation", "user-role", "expiry", "exit-node"} {
 			for _, step := range readStepCapture(t, id).Steps {
 				for alias, frames := range step.Frames {
 					for _, f := range frames {
@@ -386,7 +386,7 @@ func TestExitNodeFilteredSetCompat(t *testing.T) {
 	t.Run("saas", func(t *testing.T) {
 		t.Parallel()
 
-		for _, id := range []string{"map-delivery", "names", "expiry"} {
+		for _, id := range []string{"map-delivery", "names", "expiry", "exit-node"} {
 			for _, step := range readStepCapture(t, id).Steps {
 				for _, n := range step.Captures {
 					if n.Netmap != nil {
