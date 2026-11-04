@@ -108,6 +108,11 @@ type DevicePostureAttributes struct {
 	Expiries   map[string]time.Time `json:"expiries,omitempty"`
 }
 
+// DeviceUpdateStatus is the GET /device/{id}/update-status response.
+type DeviceUpdateStatus struct {
+	Status string `enum:"updating,not-updating" json:"status"`
+}
+
 // Request bodies match the Tailscale SDK wire shapes and, like Tailscale's,
 // ignore properties they do not define.
 type (
@@ -186,6 +191,8 @@ type (
 		}
 	}
 	emptyOutput struct{ Body struct{} }
+
+	deviceUpdateStatusOutput struct{ Body DeviceUpdateStatus }
 )
 
 func registerDevices(api huma.API, b Backend) {
@@ -541,7 +548,37 @@ func registerDevices(api huma.API, b Backend) {
 			return nil, huma.Error404NotFound("not found")
 		}
 
+		b.State.ClientUpdateStarted(node.ID(), hi.IPNVersion())
+
 		return &emptyOutput{}, nil
+	})
+
+	huma.Register(api, requireScope(huma.Operation{
+		OperationID: "getDeviceUpdateStatus",
+		Method:      http.MethodGet,
+		Path:        "/api/v2/device/{id}/update-status",
+		Summary:     "Get a device's client update status",
+		Description: "updating from a started client update until the device runs a new version, else not-updating.",
+		Tags:        deviceTags,
+		Security:    security,
+		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
+	}, scope.DevicesCoreRead), func(_ context.Context, in *deviceIDInput) (*deviceUpdateStatusOutput, error) {
+		node, err := lookupNode(b, in.DeviceID)
+		if err != nil {
+			return nil, err
+		}
+
+		var version string
+		if hi := node.Hostinfo(); hi.Valid() {
+			version = hi.IPNVersion()
+		}
+
+		status := "not-updating"
+		if b.State.ClientUpdating(node.ID(), version) {
+			status = "updating"
+		}
+
+		return &deviceUpdateStatusOutput{Body: DeviceUpdateStatus{Status: status}}, nil
 	})
 }
 

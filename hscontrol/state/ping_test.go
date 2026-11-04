@@ -243,3 +243,20 @@ func TestPingTracker_DrainC2N(t *testing.T) {
 
 	assert.Empty(t, pt.c2n, "c2n map should be empty after drain")
 }
+
+func TestPingTracker_ClientUpdate(t *testing.T) {
+	pt := newPingTracker()
+	start := time.Now()
+
+	assert.False(t, pt.updating(types.NodeID(1), "1.0.0", start), "no update started")
+
+	pt.updateStarted(types.NodeID(1), "1.0.0", start)
+	assert.True(t, pt.updating(types.NodeID(1), "1.0.0", start.Add(time.Minute)), "still on the old version")
+	assert.False(t, pt.updating(types.NodeID(2), "1.0.0", start), "another node")
+
+	assert.False(t, pt.updating(types.NodeID(1), "1.2.0", start.Add(time.Minute)), "on a new version")
+	assert.False(t, pt.updating(types.NodeID(1), "1.0.0", start.Add(time.Minute)), "an ended update is forgotten")
+
+	pt.updateStarted(types.NodeID(1), "1.0.0", start)
+	assert.False(t, pt.updating(types.NodeID(1), "1.0.0", start.Add(clientUpdateWindow)), "past the window")
+}
