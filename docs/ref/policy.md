@@ -246,6 +246,21 @@ fine-grained configuration instead.
 }
 ```
 
+- `derpMap`: Add custom DERP regions or remove regions from the DERP map, like a
+  [Tailscale policy file](https://tailscale.com/docs/reference/derp-servers/custom-derp-servers). See
+  [DERP](derp.md#customize-the-derp-map-in-the-policy) for the rules.
+
+```json title="policy.json"
+{
+  // Do not use the New York DERP region
+  "derpMap": {
+    "Regions": {
+      "1": null
+    }
+  }
+}
+```
+
 [^1]: Headscale also allows to store the policy in the database. This is typically only required in case a [web
     interface](integration/web-ui.md) is used.
 
