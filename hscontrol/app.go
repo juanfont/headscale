@@ -717,9 +717,10 @@ func (h *Headscale) Serve() error {
 	// manage OAuth clients through the same v2 keys handler the Tailscale
 	// ecosystem uses.
 	humaV2Mux, _ := apiv2.Handler(apiv2.Backend{
-		State:  h.state,
-		Change: h.Change,
-		Cfg:    h.cfg,
+		State:     h.state,
+		Change:    h.Change,
+		Cfg:       h.cfg,
+		Connected: h.isConnected,
 	})
 
 	// Serve both Huma APIs over the unix socket without TLS or auth: socket
@@ -1380,9 +1381,10 @@ func (h *Headscale) HTTPHandler() http.Handler {
 	})
 
 	humaV2Mux, _ := apiv2.Handler(apiv2.Backend{
-		State:  h.state,
-		Change: h.Change,
-		Cfg:    h.cfg,
+		State:     h.state,
+		Change:    h.Change,
+		Cfg:       h.cfg,
+		Connected: h.isConnected,
 	})
 
 	return h.createRouter(humaMux, humaV2Mux)
@@ -1426,6 +1428,12 @@ func (h *Headscale) StartBatcherForTest(tb testing.TB) {
 // MapBatcher returns the map response batcher (for test use).
 func (h *Headscale) MapBatcher() *mapper.Batcher {
 	return h.mapBatcher
+}
+
+// isConnected reads mapBatcher on each call: tests build the HTTP handler
+// before they start the batcher.
+func (h *Headscale) isConnected(id types.NodeID) bool {
+	return h.mapBatcher.IsConnected(id)
 }
 
 // StartEphemeralGCForTest starts the ephemeral node garbage collector.

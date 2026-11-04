@@ -11,12 +11,15 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
 
 // c2nTimeout bounds how long a c2n request waits for the node to answer.
 // For an update, the node replies once the update has started, not finished.
-const c2nTimeout = 30 * time.Second
+// It stays well under the server's write timeout, so the caller gets the 504.
+const c2nTimeout = 10 * time.Second
 
 // sendC2N sends a POST to path on the node's c2n handler, carried in a
 // [tailcfg.PingRequest], and waits for the node's HTTP response.
@@ -71,13 +74,16 @@ func sendC2N(ctx context.Context, b Backend, nodeID types.NodeID, path string) (
 		if res.StatusCode != http.StatusOK {
 			res.Body.Close()
 
-			return nil, huma.Error502BadGateway("device answered c2n request with " + res.Status)
+			// The status text is the node's; it is logged, not echoed.
+			log.Info().Uint64(zf.NodeID, nodeID.Uint64()).Str("status", res.Status).Msg("node answered c2n request with an error")
+
+			return nil, huma.Error502BadGateway("device answered c2n request with an error")
 		}
 
 		return res, nil
 	case <-timer.C:
 		return nil, huma.Error504GatewayTimeout("device did not answer within " + c2nTimeout.String())
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, huma.Error504GatewayTimeout("request ended before the device answered", ctx.Err())
 	}
 }

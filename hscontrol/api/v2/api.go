@@ -38,6 +38,10 @@ type Backend struct {
 	State  *state.State
 	Change func(...change.Change)
 	Cfg    *types.Config
+	// Connected reports whether a node has a live map stream. A node stays
+	// online through the disconnect grace period, but only a stream can
+	// carry a c2n request.
+	Connected func(types.NodeID) bool
 }
 
 // security is the requirement applied to authenticated operations: an API key
