@@ -3,6 +3,7 @@ package policyutil
 import (
 	"net/netip"
 	"slices"
+	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -28,6 +29,17 @@ func ReduceFilterRules(
 	subnetRoutes := node.SubnetRoutes()
 	exitRoutes := node.ExitRoutes()
 
+	// A rule lists every node address it names, so most entries are single
+	// addresses. Without routes, one reaches the node only as one of its own
+	// addresses; both are written by [netip.Addr.String], so the text says
+	// so without parsing every entry for every node.
+	routed := len(subnetRoutes) > 0 || len(exitRoutes) > 0
+	ownIPs := make([]string, len(nodeIPs))
+
+	for i, ip := range nodeIPs {
+		ownIPs[i] = ip.String()
+	}
+
 	for _, rule := range rules {
 		// Handle CapGrant rules separately — they use CapGrant[].Dsts
 		// instead of DstPorts for destination matching.
@@ -44,6 +56,14 @@ func ReduceFilterRules(
 		var dests []tailcfg.NetPortRange
 
 		for _, dest := range rule.DstPorts {
+			if !routed && !strings.ContainsAny(dest.IP, "/-*") {
+				if slices.Contains(ownIPs, dest.IP) {
+					dests = append(dests, dest)
+				}
+
+				continue
+			}
+
 			if destReachesNode(dest.IP, nodeIPs, subnetRoutes, exitRoutes) {
 				dests = append(dests, dest)
 			}
