@@ -196,7 +196,7 @@ func (pol *Policy) compileFilterRulesForNode(
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
 ) []tailcfg.FilterRule {
-	if pol == nil {
+	if pol == nil || (pol.ACLs == nil && pol.Grants == nil) {
 		return noRulesFilter(users, nodes)
 	}
 
