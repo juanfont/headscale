@@ -16,19 +16,20 @@ func init() {
 	registrations = append(registrations, registerPreAuthKeys)
 }
 
-// PreAuthKey is the v1 PreAuthKey message. User is a pointer with no omitempty
-// so tagged (system-created) keys emit "user":null. Expiration and CreatedAt
-// are always emitted, zero-stamped when unset.
+// PreAuthKey is the v1 PreAuthKey message. User and Expiration are pointers
+// with no omitempty so tagged (system-created) keys emit "user":null and keys
+// that never expire emit "expiration":null. CreatedAt is always emitted,
+// zero-stamped when unset.
 type PreAuthKey struct {
-	User       *User     `json:"user"`
-	ID         string    `format:"uint64"   json:"id"`
-	Key        string    `json:"key"`
-	Reusable   bool      `json:"reusable"`
-	Ephemeral  bool      `json:"ephemeral"`
-	Used       bool      `json:"used"`
-	Expiration time.Time `json:"expiration"`
-	CreatedAt  time.Time `json:"createdAt"`
-	ACLTags    []string  `json:"aclTags"    nullable:"false"`
+	User       *User      `json:"user"`
+	ID         string     `format:"uint64"   json:"id"`
+	Key        string     `json:"key"`
+	Reusable   bool       `json:"reusable"`
+	Ephemeral  bool       `json:"ephemeral"`
+	Used       bool       `json:"used"`
+	Expiration *time.Time `json:"expiration" nullable:"true"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	ACLTags    []string   `json:"aclTags"    nullable:"false"`
 }
 
 // CreatePreAuthKeyRequestBody is the v1.CreatePreAuthKeyRequest body. Every
@@ -113,9 +114,7 @@ func registerPreAuthKeys(api huma.API, b Backend) {
 			userID = u.TypedID()
 		}
 
-		// A missing expiration must persist as NULL, not the zero time, or the
-		// key is rejected as already-expired on first use. Body.Expiration is
-		// already *time.Time (nil when omitted), so pass it straight through.
+		// Omitted persists as NULL (never expires); the zero time reads as expired.
 		preAuthKey, err := b.State.CreatePreAuthKey(
 			userID,
 			in.Body.Reusable,
@@ -217,20 +216,17 @@ func registerPreAuthKeys(api huma.API, b Backend) {
 // plaintext key is returned only here; Used is always false.
 func preAuthKeyNewToResponse(key *types.PreAuthKeyNew) PreAuthKey {
 	out := PreAuthKey{
-		ID:        formatID(key.ID),
-		Key:       key.Key,
-		Reusable:  key.Reusable,
-		Ephemeral: key.Ephemeral,
-		ACLTags:   nonNilTags(key.Tags),
+		ID:         formatID(key.ID),
+		Key:        key.Key,
+		Reusable:   key.Reusable,
+		Ephemeral:  key.Ephemeral,
+		ACLTags:    nonNilTags(key.Tags),
+		Expiration: key.Expiration,
 	}
 
 	if key.User != nil {
 		u := userFromView(key.User.View())
 		out.User = &u
-	}
-
-	if key.Expiration != nil {
-		out.Expiration = *key.Expiration
 	}
 
 	if key.CreatedAt != nil {
@@ -244,21 +240,18 @@ func preAuthKeyNewToResponse(key *types.PreAuthKeyNew) PreAuthKey {
 // field masked (see maskedPreAuthKey).
 func preAuthKeyToResponse(key *types.PreAuthKey) PreAuthKey {
 	out := PreAuthKey{
-		ID:        formatID(key.ID),
-		Key:       maskedPreAuthKey(key.Prefix),
-		Reusable:  key.Reusable,
-		Ephemeral: key.Ephemeral,
-		Used:      key.Used,
-		ACLTags:   nonNilTags(key.Tags),
+		ID:         formatID(key.ID),
+		Key:        maskedPreAuthKey(key.Prefix),
+		Reusable:   key.Reusable,
+		Ephemeral:  key.Ephemeral,
+		Used:       key.Used,
+		ACLTags:    nonNilTags(key.Tags),
+		Expiration: key.Expiration,
 	}
 
 	if key.User != nil {
 		u := userFromView(key.User.View())
 		out.User = &u
-	}
-
-	if key.Expiration != nil {
-		out.Expiration = *key.Expiration
 	}
 
 	if key.CreatedAt != nil {

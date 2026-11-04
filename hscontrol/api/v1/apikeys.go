@@ -85,9 +85,7 @@ func registerApiKeys(api huma.API, b Backend) {
 		Tags:        []string{"ApiKeys"},
 		Security:    bearerAuth,
 	}, func(ctx context.Context, in *createApiKeyInput) (*createApiKeyOutput, error) {
-		// A missing expiration must persist as NULL, not the zero time, or the
-		// key is rejected as already-expired on first use. Body.Expiration is
-		// already *time.Time (nil when omitted), so pass it straight through.
+		// Omitted persists as NULL (never expires); the zero time reads as expired.
 		keyStr, _, err := b.State.CreateAPIKey(in.Body.Expiration)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("creating api key", err)

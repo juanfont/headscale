@@ -195,7 +195,6 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - The v2 API sorts device lists by name. Devices report `connectedToControl`, `lastSeen` and `blocksIncomingConnections`. `fields=all` adds `sshEnabled`, `distro` and `clientConnectivity`. Add `POST /device/{id}/expire`. Settings report `routeSelection`. Errors use Tailscale's text and content types. A JSON policy read returns valid JSON. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - PostgreSQL connection settings are assembled into a `postgres://` URL with proper escaping, so a password (or host, user, database name) containing spaces, quotes or other reserved characters no longer truncates the DSN [#3477](https://github.com/juanfont/headscale/pull/3477)
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
-- Fix API keys and pre-auth keys created without an expiration being stored as `0001-01-01` instead of NULL, which made them immediately rejected as expired [#3254](https://github.com/juanfont/headscale/pull/3254)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
@@ -235,6 +234,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - With MagicDNS on, exit nodes refuse DNS queries for names under `dns.base_domain`, as on Tailscale SaaS. Clients cannot read the tailnet's names through an exit node. Reverse lookups still pass. [#3636](https://github.com/juanfont/headscale/pull/3636)
 - Peers get a node's last seen time when it goes offline, not at the next full map. [#3636](https://github.com/juanfont/headscale/pull/3636)
 - With MagicDNS on, stop sending reverse DNS routes for `prefixes` inside 100.64.0.0/10 and fd7a:115c:a1e0::/48, as on Tailscale SaaS; clients add them. A `prefixes.v4` subset such as 100.64.0.0/24 sent 256, which overflowed systemd-resolved's domain limit and dropped reverse DNS. An octet-aligned prefix outside the ranges gets one route instead of 256 [#3482](https://github.com/juanfont/headscale/pull/3482)
+- The v1 API stores an API key or pre-auth key created without `expiration` as one that never expires, and reports its expiration as `null`. It was stored as already expired and rejected on first use. The CLI always sends an expiration and was not affected. Keys created this way before stay expired; create new ones [#3254](https://github.com/juanfont/headscale/pull/3254)
 
 ## 0.29.7 (2026-10-30)
 
