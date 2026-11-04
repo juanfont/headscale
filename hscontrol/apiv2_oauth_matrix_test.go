@@ -125,6 +125,7 @@ func TestAPIv2OAuthMatrix_Enforcement(t *testing.T) {
 		{"updateDeviceClient", http.MethodPost, "/api/v2/device/1/update-client", scope.DevicesCore, nil, false},
 		{"setDeviceRoutes", http.MethodPost, "/api/v2/device/1/routes", scope.DevicesRoutes, map[string]any{}, false},
 		{"getDeviceRoutes", http.MethodGet, "/api/v2/device/1/routes", scope.DevicesRoutesRead, nil, false},
+		{"getDeviceUpdateStatus", http.MethodGet, "/api/v2/device/1/update-status", scope.DevicesCoreRead, nil, false},
 		{"getACL", http.MethodGet, "/api/v2/tailnet/-/acl", scope.PolicyFileRead, nil, false},
 		{"setACL", http.MethodPost, "/api/v2/tailnet/-/acl", scope.PolicyFile, map[string]any{}, false},
 		{"getSettings", http.MethodGet, "/api/v2/tailnet/-/settings", scope.FeatureSettingsRead, nil, false},
