@@ -49,10 +49,10 @@ type KeyDeviceCreateCapabilities struct {
 	Reusable      bool `json:"reusable"`
 	Ephemeral     bool `json:"ephemeral"`
 	Preauthorized bool `json:"preauthorized"`
-	// Tags is not nullable:"false": the Tailscale clients send "tags":null for
-	// an untagged key, which must be accepted. The response always emits [] via
-	// emptyIfNil.
-	Tags []string `json:"tags"`
+	// Tags is not nullable:"false" nor required: the Tailscale clients send
+	// "tags":null for an untagged key and SaaS takes it left out. The response
+	// always emits [] via emptyIfNil.
+	Tags []string `json:"tags" required:"false"`
 }
 
 // CreateKeyRequest is the POST body. It is multiplexed by keyType: "auth"
