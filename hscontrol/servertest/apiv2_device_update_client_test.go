@@ -23,13 +23,12 @@ import (
 )
 
 // fakeUpdater answers c2n "POST /update" the way tailscaled does, with a
-// fixed [tailcfg.C2NUpdateResponse], and records the force query value
-// of every request.
+// fixed [tailcfg.C2NUpdateResponse], and counts the requests.
 type fakeUpdater struct {
 	res tailcfg.C2NUpdateResponse
 
-	mu     sync.Mutex
-	forces []string
+	mu    sync.Mutex
+	calls int
 }
 
 func (f *fakeUpdater) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +38,7 @@ func (f *fakeUpdater) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f.mu.Lock()
-	f.forces = append(f.forces, r.FormValue("force"))
+	f.calls++
 	f.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -50,38 +49,37 @@ func (f *fakeUpdater) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (f *fakeUpdater) seenForces() []string {
+func (f *fakeUpdater) seenCalls() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return append([]string(nil), f.forces...)
+	return f.calls
 }
 
-type deviceClientUpdate struct {
-	Enabled   bool   `json:"enabled"`
-	Supported bool   `json:"supported"`
-	Started   bool   `json:"started"`
-	Error     string `json:"error"`
-}
-
-// updateDeviceClient calls POST /api/v2/device/{id}/update-client and
-// returns the status code and decoded body.
-func updateDeviceClient(t *testing.T, srv *servertest.TestServer, nodeID types.NodeID, force bool) (int, deviceClientUpdate) {
+// updatableHarness runs one client that allows remote updates, as
+// "tailscale set --auto-update" makes it, and answers c2n with updater.
+func updatableHarness(t *testing.T, updater *fakeUpdater) *servertest.TestHarness {
 	t.Helper()
 
-	body, err := json.Marshal(map[string]bool{"force": force})
-	require.NoError(t, err)
+	hi := &tailcfg.Hostinfo{BackendLogID: "servertest-updatable", Hostname: "updatable", AllowsUpdate: true}
+
+	return servertest.NewHarness(t, 1, servertest.WithDefaultClientOptions(
+		servertest.WithHostinfo(hi), servertest.WithC2NHandler(updater)))
+}
+
+// updateDeviceClient calls POST /api/v2/device/{id}/update-client, with no
+// body as Tailscale's console sends it, and returns the status and body.
+func updateDeviceClient(t *testing.T, srv *servertest.TestServer, nodeID types.NodeID) (int, string) {
+	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		srv.URL+"/api/v2/device/"+strconv.FormatUint(nodeID.Uint64(), 10)+"/update-client",
-		bytes.NewReader(body))
+		srv.URL+"/api/v2/device/"+strconv.FormatUint(nodeID.Uint64(), 10)+"/update-client", nil)
 	require.NoError(t, err)
 
 	req.Header.Set("Authorization", "Bearer "+srv.CreateAPIKey(t, nil))
-	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Transport: &http.Transport{DialContext: srv.MemNet().Dial}}
 
@@ -90,18 +88,16 @@ func updateDeviceClient(t *testing.T, srv *servertest.TestServer, nodeID types.N
 
 	defer resp.Body.Close()
 
-	var out deviceClientUpdate
-	if resp.StatusCode == http.StatusOK {
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
-	}
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 
-	return resp.StatusCode, out
+	return resp.StatusCode, string(body)
 }
 
 // TestAPIv2DeviceUpdateClient verifies the full c2n round-trip: the API sends a
 // c2n [tailcfg.PingRequest] carrying "POST /update", the real
 // [controlclient.Direct] runs it against its c2n handler and posts the
-// response back over Noise, and the API returns the node's answer.
+// response back over Noise, and the API answers 200 {} once it started.
 func TestAPIv2DeviceUpdateClient(t *testing.T) {
 	t.Parallel()
 
@@ -111,57 +107,57 @@ func TestAPIv2DeviceUpdateClient(t *testing.T) {
 		Started:   true,
 	}}
 
-	h := servertest.NewHarness(t, 1,
-		servertest.WithDefaultClientOptions(servertest.WithC2NHandler(updater)))
+	h := updatableHarness(t, updater)
+	nodeID := types.NodeID(h.Client(0).Netmap().SelfNode.ID()) //nolint:gosec
 
-	nm := h.Client(0).Netmap()
-	require.NotNil(t, nm)
-
-	nodeID := types.NodeID(nm.SelfNode.ID()) //nolint:gosec
-
-	code, res := updateDeviceClient(t, h.Server, nodeID, false)
-	require.Equal(t, http.StatusOK, code)
-	assert.True(t, res.Enabled)
-	assert.True(t, res.Supported)
-	assert.True(t, res.Started)
-	assert.Empty(t, res.Error)
-
-	code, _ = updateDeviceClient(t, h.Server, nodeID, true)
-	require.Equal(t, http.StatusOK, code)
-
-	assert.Equal(t, []string{"", "true"}, updater.seenForces(),
-		"force must reach the client as ?force=true only when requested")
+	code, body := updateDeviceClient(t, h.Server, nodeID)
+	require.Equal(t, http.StatusOK, code, body)
+	assert.JSONEq(t, `{}`, body)
+	assert.Equal(t, 1, updater.seenCalls())
 }
 
 // TestAPIv2DeviceUpdateClientRefused verifies that a client refusing the update
-// (auto-updates off, unsupported platform, active SSH) is reported back
-// as a successful call with started=false and the client's reason.
+// (platform cannot update, active SSH) is answered 404, as SaaS answers every
+// device it will not update.
 func TestAPIv2DeviceUpdateClientRefused(t *testing.T) {
 	t.Parallel()
 
 	updater := &fakeUpdater{res: tailcfg.C2NUpdateResponse{
-		Supported: true,
-		Err:       "not enabled",
+		Enabled: true,
+		Err:     "not supported",
 	}}
 
+	h := updatableHarness(t, updater)
+	nodeID := types.NodeID(h.Client(0).Netmap().SelfNode.ID()) //nolint:gosec
+
+	code, body := updateDeviceClient(t, h.Server, nodeID)
+	assert.Equal(t, http.StatusNotFound, code)
+	assert.Equal(t, "not found", errorMessage([]byte(body)))
+	assert.Equal(t, 1, updater.seenCalls(), "the refusal should come from the node")
+}
+
+// TestAPIv2DeviceUpdateClientNotAllowed verifies that a node that does not
+// allow remote updates is answered 404 without being asked.
+func TestAPIv2DeviceUpdateClientNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	updater := &fakeUpdater{res: tailcfg.C2NUpdateResponse{Enabled: true, Supported: true, Started: true}}
 	h := servertest.NewHarness(t, 1,
 		servertest.WithDefaultClientOptions(servertest.WithC2NHandler(updater)))
 
 	nodeID := types.NodeID(h.Client(0).Netmap().SelfNode.ID()) //nolint:gosec
 
-	code, res := updateDeviceClient(t, h.Server, nodeID, false)
-	require.Equal(t, http.StatusOK, code)
-	assert.False(t, res.Enabled)
-	assert.False(t, res.Started)
-	assert.Equal(t, "not enabled", res.Error)
+	code, _ := updateDeviceClient(t, h.Server, nodeID)
+	assert.Equal(t, http.StatusNotFound, code)
+	assert.Zero(t, updater.seenCalls())
 }
 
 // TestAPIv2DeviceUpdateClientNotConnected verifies that a disconnected device is
-// rejected with 409 instead of waiting for an answer that cannot come.
+// answered 404 instead of waiting for an answer that cannot come.
 func TestAPIv2DeviceUpdateClientNotConnected(t *testing.T) {
 	t.Parallel()
 
-	h := servertest.NewHarness(t, 1)
+	h := updatableHarness(t, &fakeUpdater{})
 
 	nodeID := types.NodeID(h.Client(0).Netmap().SelfNode.ID()) //nolint:gosec
 
@@ -176,8 +172,8 @@ func TestAPIv2DeviceUpdateClientNotConnected(t *testing.T) {
 		assert.True(c, known && !isOnline, "node should be offline")
 	}, 20*time.Second, 200*time.Millisecond)
 
-	code, _ := updateDeviceClient(t, h.Server, nodeID, false)
-	assert.Equal(t, http.StatusConflict, code)
+	code, _ := updateDeviceClient(t, h.Server, nodeID)
+	assert.Equal(t, http.StatusNotFound, code)
 }
 
 // TestAPIv2DeviceUpdateClientDuringDisconnectGrace verifies that a node whose
@@ -186,7 +182,7 @@ func TestAPIv2DeviceUpdateClientNotConnected(t *testing.T) {
 func TestAPIv2DeviceUpdateClientDuringDisconnectGrace(t *testing.T) {
 	t.Parallel()
 
-	h := servertest.NewHarness(t, 1)
+	h := updatableHarness(t, &fakeUpdater{})
 
 	nodeID := types.NodeID(h.Client(0).Netmap().SelfNode.ID()) //nolint:gosec
 
@@ -202,7 +198,7 @@ func TestAPIv2DeviceUpdateClientDuringDisconnectGrace(t *testing.T) {
 
 	// SaaS answers a device it cannot reach 404 (testdata/steps/update-client.hujson).
 	start := time.Now()
-	code, _ := updateDeviceClient(t, h.Server, nodeID, false)
+	code, _ := updateDeviceClient(t, h.Server, nodeID)
 	assert.Equal(t, http.StatusNotFound, code)
 	assert.Less(t, time.Since(start), 5*time.Second, "refusal should not wait for the c2n timeout")
 }
@@ -213,7 +209,7 @@ func TestAPIv2DeviceUpdateClientUnknownDevice(t *testing.T) {
 
 	h := servertest.NewHarness(t, 0)
 
-	code, _ := updateDeviceClient(t, h.Server, types.NodeID(9999), false)
+	code, _ := updateDeviceClient(t, h.Server, types.NodeID(9999))
 	assert.Equal(t, http.StatusNotFound, code)
 }
 
@@ -226,6 +222,7 @@ func TestAPIv2DeviceUpdateClientUnknownDevice(t *testing.T) {
 // Test data source: testdata/steps/update-client.hujson. Rows by
 // devices:core:read and dns:read tokens are not replayed: SaaS answers them
 // 404 before any scope check, which shows its order, not this endpoint's shape.
+// Nor are GETs: headscale answers a wrong method 405 on every route.
 func TestAPIv2DeviceUpdateClientCompat(t *testing.T) {
 	t.Parallel()
 
@@ -274,7 +271,7 @@ func TestAPIv2DeviceUpdateClientCompat(t *testing.T) {
 		}
 
 		for _, a := range step.Actions {
-			if a.Kind != "api" || !strings.Contains(a.Path, "/update-client") || skipped[a.Principal] {
+			if a.Kind != "api" || !strings.Contains(a.Path, "/update-client") || a.Method != http.MethodPost || skipped[a.Principal] {
 				continue
 			}
 
@@ -295,7 +292,7 @@ func TestAPIv2DeviceUpdateClientCompat(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, 19, ran, "update-client rows replayed")
+	require.Equal(t, 17, ran, "update-client rows replayed")
 }
 
 // TestAPIv2DeviceUpdateClientConsoleCompat replays the admin console's Start
