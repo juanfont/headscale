@@ -16,8 +16,8 @@ func init() {
 	registrations = append(registrations, registerKeys)
 }
 
-// defaultExpiry is the auth-key lifetime when the request omits expirySeconds:
-// 90 days, matching Tailscale and the Terraform provider default.
+// defaultExpiry is the auth-key lifetime when the request omits expirySeconds,
+// and the longest it may ask for: 90 days, as Tailscale.
 const defaultExpiry = 90 * 24 * time.Hour
 
 const (
@@ -68,8 +68,8 @@ type CreateKeyRequest struct {
 	// but an OAuth client (keyType:"client") has none and the Tailscale clients
 	// omit the field entirely, so it must not be required.
 	Capabilities  *KeyCapabilities `json:"capabilities,omitempty"`
-	ExpirySeconds int64            `doc:"Lifetime in seconds; defaults to 90 days. Auth keys only." json:"expirySeconds,omitempty"`
-	Description   string           `json:"description,omitempty"                                    maxLength:"50"`
+	ExpirySeconds int64            `doc:"Lifetime in seconds, 0 to 90 days; 0 or omitted means 90 days. Auth keys only." json:"expirySeconds,omitempty"`
+	Description   string           `json:"description,omitempty"                                                         maxLength:"50"`
 	// Scopes and Tags are top-level and apply only to keyType "client" (an OAuth
 	// client). Auth-key tags live under Capabilities.Devices.Create.Tags.
 	Scopes []string `doc:"OAuth scopes granted to the client. keyType=client only." json:"scopes,omitempty"`
@@ -371,6 +371,14 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 	err := requireKeyScope(ctx, scope.AuthKeys)
 	if err != nil {
 		return nil, err
+	}
+
+	switch {
+	case body.ExpirySeconds < 0:
+		return nil, huma.Error400BadRequest("expirySeconds must be greater than or equal to 0")
+	case body.ExpirySeconds > int64(defaultExpiry/time.Second):
+		return nil, huma.Error400BadRequest("expirySeconds must be less than or equal to " +
+			strconv.FormatInt(int64(defaultExpiry/time.Second), 10))
 	}
 
 	var create KeyDeviceCreateCapabilities
