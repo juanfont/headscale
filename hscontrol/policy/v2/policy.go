@@ -1891,8 +1891,13 @@ func isPreferredViaPrimary(
 // to dsts, reach the internet by the test the grant's filter rule gets
 // ([matcher.Match.DestsIsTheInternet]). Neither the wildcard nor
 // autogroup:internet resolves to the internet here, so check those
-// aliases themselves.
+// aliases themselves. That test reads port destinations only, so an
+// app-only grant never reaches the internet.
 func grantReachesInternet(grant Grant, dsts []netip.Prefix) bool {
+	if len(grant.InternetProtocols) == 0 && len(grant.App) > 0 {
+		return false
+	}
+
 	internetAlias := slices.ContainsFunc(grant.Destinations, func(d Alias) bool {
 		if ag, ok := d.(*AutoGroup); ok {
 			return ag.Is(AutoGroupInternet)

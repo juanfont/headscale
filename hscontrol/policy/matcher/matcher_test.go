@@ -575,6 +575,25 @@ func TestDestsIsTheInternet(t *testing.T) {
 	}
 }
 
+// A capability grant carries no traffic, so a public capability
+// destination must not select exit nodes; SaaS shows no exit node to the
+// grant's sources (via-grant-v100).
+func TestCapGrantToPublicIP(t *testing.T) {
+	t.Parallel()
+
+	m := MatchFromFilterRule(tailcfg.FilterRule{
+		SrcIPs: []string{"100.64.0.1/32"},
+		CapGrant: []tailcfg.CapGrant{{
+			Dsts:   []netip.Prefix{netip.MustParsePrefix("8.8.8.8/32")},
+			CapMap: tailcfg.PeerCapMap{"example.com/cap/review": nil},
+		}},
+	})
+
+	assert.True(t, m.DestsContainsIP(netip.MustParseAddr("8.8.8.8")))
+	assert.False(t, m.DestsIsTheInternet())
+	assert.True(t, m.CapDestsIsTheInternet())
+}
+
 func TestDebugString(t *testing.T) {
 	t.Parallel()
 

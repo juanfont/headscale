@@ -16,14 +16,28 @@ type Match struct {
 
 	srcRanges  []netipx.IPRange
 	destRanges []netipx.IPRange
+
+	// Kept apart because only port destinations carry traffic to an exit
+	// node; a capability to the internet changes who the exit node lists.
+	internet    bool
+	capInternet bool
 }
 
-func newMatch(srcs, dests *netipx.IPSet) Match {
+// newMatch unions the port and capability destinations into one set.
+func newMatch(srcs, ports, caps *netipx.IPSet) Match {
+	var b netipx.IPSetBuilder
+	b.AddSet(ports)
+	b.AddSet(caps)
+
+	dests, _ := b.IPSet()
+
 	return Match{
-		srcs:       srcs,
-		dests:      dests,
-		srcRanges:  srcs.Ranges(),
-		destRanges: dests.Ranges(),
+		srcs:        srcs,
+		dests:       dests,
+		srcRanges:   srcs.Ranges(),
+		destRanges:  dests.Ranges(),
+		internet:    util.HasInternetDestination(ports),
+		capInternet: util.HasInternetDestination(caps),
 	}
 }
 
@@ -70,22 +84,23 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 // are already parsed as srcs, see [ParseSrcs]: rules sharing one source
 // list, such as a via grant's on every router, parse it once.
 func MatchFromFilterRuleSrcs(rule tailcfg.FilterRule, srcs *netipx.IPSet) Match {
-	dests := new(netipx.IPSetBuilder)
+	var ports, caps netipx.IPSetBuilder
 
 	for _, dp := range rule.DstPorts {
 		set, _ := util.ParseIPSet(dp.IP, nil)
-		dests.AddSet(set)
+		ports.AddSet(set)
 	}
 
 	for _, cg := range rule.CapGrant {
 		for _, pref := range cg.Dsts {
-			dests.AddPrefix(pref)
+			caps.AddPrefix(pref)
 		}
 	}
 
-	destsSet, _ := dests.IPSet()
+	portsSet, _ := ports.IPSet()
+	capsSet, _ := caps.IPSet()
 
-	return newMatch(srcs, destsSet)
+	return newMatch(srcs, portsSet, capsSet)
 }
 
 // ParseSrcs parses SrcIPs as [MatchFromFilterRule] does.
@@ -163,8 +178,14 @@ func overlaps(ranges []netipx.IPRange, r netipx.IPRange) bool {
 	return i < len(ranges) && ranges[i].Overlaps(r)
 }
 
-// DestsIsTheInternet reports whether any destination is in [util.TheInternet].
-// It lets clients select exit nodes for that traffic.
+// DestsIsTheInternet reports whether any port destination is in
+// [util.TheInternet]. It lets clients select exit nodes for that traffic.
 func (m *Match) DestsIsTheInternet() bool {
-	return util.HasInternetDestination(m.dests)
+	return m.internet
+}
+
+// CapDestsIsTheInternet reports whether any capability destination is in
+// [util.TheInternet].
+func (m *Match) CapDestsIsTheInternet() bool {
+	return m.capInternet
 }

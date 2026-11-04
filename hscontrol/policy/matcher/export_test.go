@@ -6,5 +6,5 @@ package matcher
 // wider. Callers that need strict validation should pre-validate
 // their inputs via [util.ParseIPSet].
 func MatchFromStrings(sources, destinations []string) Match {
-	return newMatch(buildIPSet(sources), buildIPSet(destinations))
+	return newMatch(buildIPSet(sources), buildIPSet(destinations), buildIPSet(nil))
 }
