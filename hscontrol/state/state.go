@@ -132,56 +132,38 @@ var nodeUpdateColumns = []string{
 	"UpdatedAt",
 }
 
-// SetLastControlAddress stores the source IP most recently observed on an
-// authenticated control connection. The update is deliberately metadata-only:
-// it does not rescan policy or emit a peer-map change. Repeated observations of
-// the same address do not touch either the NodeStore or database.
-func (s *State) SetLastControlAddress(id types.NodeID, addr netip.Addr) (bool, error) {
+// SetLastControlAddress stores the source IP of a node's latest authenticated
+// control connection. Every map request calls it, so it takes persistMu only
+// for the database write, and an unchanged address writes nothing.
+func (s *State) SetLastControlAddress(id types.NodeID, addr netip.Addr) error {
+	// A zero address would be stored as text that no longer parses, failing
+	// every later read of the node.
 	if !addr.IsValid() {
-		return false, ErrInvalidLastControlAddress
+		return ErrInvalidLastControlAddress
 	}
 
-	addr = addr.Unmap()
+	// The zone names the server's interface, or is header text from a proxy.
+	addr = addr.Unmap().WithZone("")
 
-	s.persistMu.Lock()
-	defer s.persistMu.Unlock()
-
-	current, ok := s.nodeStore.GetNode(id)
+	node, ok := s.nodeStore.GetNode(id)
 	if !ok {
-		return false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
+		return fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
 	}
 
-	previous := current.LastControlAddress()
-	if previous.Valid() && previous.Get() == addr {
-		return false, nil
+	if node.LastControlAddress().GetOr(netip.Addr{}) == addr {
+		return nil
 	}
 
-	_, ok = s.nodeStore.UpdateNode(id, func(n *types.Node) {
+	node, ok = s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.LastControlAddress = &addr
 	})
 	if !ok {
-		return false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
+		return fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
 	}
 
-	err := s.db.SetLastControlAddress(id, addr)
-	if err != nil {
-		// Keep the in-memory source of truth aligned with the failed database
-		// write so a later observation of the same address retries persistence.
-		var old *netip.Addr
+	_, err := s.persistNodeWith(node, []string{"LastControlAddress"}, nil)
 
-		if previous.Valid() {
-			addr := previous.Get()
-			old = &addr
-		}
-
-		s.nodeStore.UpdateNode(id, func(n *types.Node) {
-			n.LastControlAddress = old
-		})
-
-		return false, fmt.Errorf("persisting last control address: %w", err)
-	}
-
-	return true, nil
+	return err
 }
 
 // ErrRegistrationExpired is returned when a registration has expired.

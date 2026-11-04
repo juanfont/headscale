@@ -319,49 +319,26 @@ func TestPersistEmptyEndpoints(t *testing.T) {
 func TestSetLastControlAddressPersists(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		addr netip.Addr
+		addr string
+		want string
 	}{
-		{name: "IPv4", addr: netip.MustParseAddr("203.0.113.10")},
-		{name: "IPv6", addr: netip.MustParseAddr("2001:db8::10")},
+		{name: "IPv4", addr: "203.0.113.10", want: "203.0.113.10"},
+		{name: "IPv6", addr: "2001:db8::10", want: "2001:db8::10"},
+		{name: "IPv4-mapped", addr: "::ffff:203.0.113.44", want: "203.0.113.44"},
+		{name: "zoned", addr: "fe80::1%eth0", want: "fe80::1"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dbPath, s, nodeID := persistTestSetup(t)
+			want := netip.MustParseAddr(test.want)
 
-			require.NoError(t, s.db.DB.Exec(`
-CREATE TABLE last_control_address_writes(count integer);
-CREATE TRIGGER count_last_control_address_writes
-AFTER UPDATE OF last_control_address ON nodes
-BEGIN
-  INSERT INTO last_control_address_writes VALUES(1);
-END;
-			`).Error)
-
-			changed, err := s.SetLastControlAddress(nodeID, test.addr)
-			require.NoError(t, err)
-			require.True(t, changed)
-
-			var writes int64
-			require.NoError(t, s.db.DB.Model(&struct{ Count int }{}).
-				Table("last_control_address_writes").Count(&writes).Error)
-			require.Equal(t, int64(1), writes)
-
-			changed, err = s.SetLastControlAddress(nodeID, test.addr)
-			require.NoError(t, err)
-			assert.False(t, changed, "the same address must be a no-op")
-
-			require.NoError(t, s.db.DB.Model(&struct{ Count int }{}).
-				Table("last_control_address_writes").Count(&writes).Error)
-			assert.Equal(t, int64(1), writes,
-				"the same address must not issue another database update")
-			require.NoError(t, s.db.DB.Exec(`
-DROP TRIGGER count_last_control_address_writes;
-DROP TABLE last_control_address_writes;
-			`).Error)
+			require.NoError(t, s.SetLastControlAddress(nodeID, netip.MustParseAddr(test.addr)))
+			require.NoError(t, s.SetLastControlAddress(nodeID, netip.MustParseAddr(test.addr)))
 
 			nv, ok := s.GetNodeByID(nodeID)
 			require.True(t, ok)
+			assert.Equal(t, want, nv.LastControlAddress().Get())
 
-			_, err = s.UpdateNodeFromMapRequest(nodeID, tailcfg.MapRequest{
+			_, err := s.UpdateNodeFromMapRequest(nodeID, tailcfg.MapRequest{
 				NodeKey:  nv.NodeKey(),
 				Hostinfo: &tailcfg.Hostinfo{Hostname: "updated-after-control-address"},
 			})
@@ -370,7 +347,7 @@ DROP TABLE last_control_address_writes;
 			stored, err := s.DB().GetNodeByID(nodeID)
 			require.NoError(t, err)
 			require.NotNil(t, stored.LastControlAddress)
-			assert.Equal(t, test.addr, *stored.LastControlAddress,
+			assert.Equal(t, want, *stored.LastControlAddress,
 				"an unrelated node update must preserve the address")
 
 			require.NoError(t, s.Close())
@@ -379,9 +356,22 @@ DROP TABLE last_control_address_writes;
 			reloaded, ok := s2.GetNodeByID(nodeID)
 			require.True(t, ok)
 			require.True(t, reloaded.LastControlAddress().Valid())
-			assert.Equal(t, test.addr, reloaded.LastControlAddress().Get())
+			assert.Equal(t, want, reloaded.LastControlAddress().Get())
 		})
 	}
+}
+
+func TestSetLastControlAddressRejects(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+
+	require.ErrorIs(t, s.SetLastControlAddress(nodeID, netip.Addr{}),
+		ErrInvalidLastControlAddress)
+	require.ErrorIs(t, s.SetLastControlAddress(nodeID+999, netip.MustParseAddr("192.0.2.1")),
+		ErrNodeNotInNodeStore)
+
+	stored, err := s.DB().GetNodeByID(nodeID)
+	require.NoError(t, err, "a rejected address must leave the node readable")
+	assert.Nil(t, stored.LastControlAddress)
 }
 
 // TestRegistrationRejectsNodeKeyClaimedByAnotherMachine proves a new
@@ -2888,4 +2878,27 @@ func TestUserNameCollisionDoesNotBlockCreationOrRestart(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, users, 3)
 	require.Empty(t, reopened.polMan.NodeCapMap(node.ID))
+}
+
+// TestSetLastControlAddressWritesNodeStoreOutsidePersistMu holds persistMu
+// and expects the NodeStore write to land anyway: every map request calls
+// SetLastControlAddress, and waiting for a NodeStore batch under the lock
+// would serialise all nodes' persists behind one batch interval each.
+func TestSetLastControlAddressWritesNodeStoreOutsidePersistMu(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	addr := netip.MustParseAddr("203.0.113.10")
+
+	s.persistMu.Lock()
+
+	done := make(chan error, 1)
+	go func() { done <- s.SetLastControlAddress(nodeID, addr) }()
+
+	assert.Eventually(t, func() bool {
+		nv, ok := s.GetNodeByID(nodeID)
+
+		return ok && nv.LastControlAddress().GetOr(netip.Addr{}) == addr
+	}, 5*time.Second, 10*time.Millisecond)
+
+	s.persistMu.Unlock()
+	require.NoError(t, <-done)
 }

@@ -385,10 +385,9 @@ func TestPollNetMapHandler_LastControlAddress(t *testing.T) {
 		})
 	}
 
-	before, ok := app.state.GetNodeByID(view.ID())
-	require.True(t, ok)
-	require.True(t, before.LastControlAddress().Valid())
-	wantUnchanged := before.LastControlAddress().Get()
+	// Seeded, so the cases below do not depend on the ones above.
+	wantUnchanged := netip.MustParseAddr("203.0.113.50")
+	require.NoError(t, app.state.SetLastControlAddress(view.ID(), wantUnchanged))
 
 	t.Run("invalid address is ignored", func(t *testing.T) {
 		resp := pollMapRequest(t, ns, "not-an-address", request)

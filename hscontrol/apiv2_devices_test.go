@@ -230,12 +230,10 @@ func TestAPIv2Device_GetPostureAttributes(t *testing.T) {
 		{name: "IPv6", addr: "2001:db8::10"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			changed, err := e.app.state.SetLastControlAddress(
+			require.NoError(t, e.app.state.SetLastControlAddress(
 				e.nodeID,
 				netip.MustParseAddr(test.addr),
-			)
-			require.NoError(t, err)
-			assert.True(t, changed)
+			))
 
 			attrs := getDevicePostureAttributes(t, e.api, e.deviceID)
 			assert.Equal(t, test.addr, attrs.Attributes["ip:publicAddress"])

@@ -165,38 +165,6 @@ func TestSnapshotFromNodes(t *testing.T) {
 	}
 }
 
-func TestSetLastControlAddressReusesPeerTopology(t *testing.T) {
-	peerCalculations := 0
-	nodes := types.Nodes{
-		new(createTestNode(1, 1, "user1", "node1")),
-		new(createTestNode(2, 1, "user1", "node2")),
-	}
-	store := NewNodeStore(nodes, func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
-		peerCalculations++
-
-		return allowAllPeersFunc(nodes)
-	}, 1, time.Millisecond)
-	store.Start()
-	t.Cleanup(store.Stop)
-
-	require.Equal(t, 1, peerCalculations)
-
-	addr := netip.MustParseAddr("203.0.113.10")
-	updated, ok := store.UpdateNode(1, func(n *types.Node) {
-		n.LastControlAddress = &addr
-	})
-	require.True(t, ok)
-	require.True(t, updated.LastControlAddress().Valid())
-	assert.Equal(t, addr, updated.LastControlAddress().Get())
-	assert.Equal(t, 1, peerCalculations, "metadata must not recalculate peer membership")
-
-	peers := store.ListPeers(2)
-	require.Equal(t, 1, peers.Len())
-	require.True(t, peers.At(0).LastControlAddress().Valid())
-	assert.Equal(t, addr, peers.At(0).LastControlAddress().Get(),
-		"reused peer topology must contain refreshed node views")
-}
-
 // Helper functions
 
 func createTestNode(nodeID types.NodeID, userID uint, username, hostname string) types.Node {
@@ -1996,7 +1964,8 @@ var nodeFieldImpact = map[string]string{
 	"IsOnline":           "election", "Unhealthy": "election",
 	"MachineKey": "payload", "NodeKey": "payload", "DiscoKey": "payload",
 	"Endpoints": "payload", "Hostname": "payload", "GivenName": "payload",
-	"RegisterMethod": "payload", "AuthKeyID": "payload", "AuthKey": "payload",
+	"LastControlAddress": "payload",
+	"RegisterMethod":     "payload", "AuthKeyID": "payload", "AuthKey": "payload",
 	"Ephemeral": "payload",
 	"Expiry":    "election", "LastSeen": "payload", "CreatedAt": "payload",
 	"UpdatedAt": "payload", "DeletedAt": "payload",
@@ -2053,6 +2022,7 @@ func TestUpdateChangesReportsRelationFields(t *testing.T) {
 		{name: "session start", mutate: func(n *types.Node) { n.SessionStart = time.Now() }, wantElection: true},
 		{name: "endpoint", mutate: func(n *types.Node) { n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:1")} }},
 		{name: "lastseen", mutate: func(n *types.Node) { n.LastSeen = new(time.Now()) }},
+		{name: "last control address", mutate: func(n *types.Node) { n.LastControlAddress = new(netip.MustParseAddr("203.0.113.10")) }},
 	}
 
 	for _, tt := range tests {
