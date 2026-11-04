@@ -926,8 +926,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	// but peer relationships require the full bidirectional access rules.
 	nodeMatchers := make(map[types.NodeID][]matcher.Match, nodes.Len())
 	for _, node := range nodes.All() {
-		unreduced := pm.peerRulesForNodeLocked(node)
-		nodeMatchers[node.ID()] = matcher.MatchesFromFilterRules(unreduced)
+		nodeMatchers[node.ID()] = pm.nodeMatchersLocked(node, viaPeerRule)
 	}
 
 	// Check each node pair for peer relationships.
@@ -1009,6 +1008,18 @@ func (pm *PolicyManager) filterRulesForNodeLocked(
 	return filterRulesForNode(
 		pm.compiledGrants, node, pm.userNodeIdx,
 	)
+}
+
+// nodeMatchersLocked returns the global matchers plus matchers for the self
+// and via rules node adds. Matchers do not depend on how rules merge, so the
+// global ones, parsed once per compile, are shared rather than re-parsed per
+// node.
+func (pm *PolicyManager) nodeMatchersLocked(
+	node types.NodeView,
+	viaRules func(*compiledGrant, types.NodeView) []tailcfg.FilterRule,
+) []matcher.Match {
+	return slices.Concat(pm.matchers, matcher.MatchesFromFilterRules(
+		nodeOnlyRules(pm.compiledGrants, node, pm.userNodeIdx, viaRules)))
 }
 
 // peerRulesForNodeLocked returns the rules that decide a node's peers, see
@@ -1106,10 +1117,7 @@ func (pm *PolicyManager) MatchersForNode(node types.NodeView) ([]matcher.Match, 
 		return cached, nil
 	}
 
-	// For autogroup:self or via grants, derive matchers from
-	// the stored compiled grants for this specific node.
-	unreduced := pm.filterRulesForNodeLocked(node)
-	matchers := matcher.MatchesFromFilterRules(unreduced)
+	matchers := pm.nodeMatchersLocked(node, compileViaForNode)
 
 	if pm.cacheableLocked(node) {
 		pm.matchersForNodeMap.Store(node.ID(), matchers)
