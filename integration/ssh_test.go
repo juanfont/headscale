@@ -95,10 +95,10 @@ func TestSSHOneUserToAll(t *testing.T) {
 				{
 					Action:  "accept",
 					Sources: policyv2.SSHSrcAliases{groupp("group:integration-test")},
-					// Use autogroup:member and autogroup:tagged instead of wildcard
-					// since wildcard (*) is no longer supported for SSH destinations
+					// SSH dst refuses * and autogroup:member; self+tagged is the
+					// widest reach a user source can get.
 					Destinations: policyv2.SSHDstAliases{
-						new(policyv2.AutoGroupMember),
+						new(policyv2.AutoGroupSelf),
 						new(policyv2.AutoGroupTagged),
 					},
 					Users:     []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
@@ -126,14 +126,19 @@ func TestSSHOneUserToAll(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
+	// Even the widest rule never lets user1 into user2's devices.
 	for _, client := range user1Clients {
-		for _, peer := range allClients {
+		for _, peer := range user1Clients {
 			if client.Hostname() == peer.Hostname() {
 				continue
 			}
 
 			assertSSHHostname(t, client, peer)
 			assertSSHAcceptEnv(t, client, peer)
+		}
+
+		for _, peer := range user2Clients {
+			assertSSHPermissionDenied(t, client, peer)
 		}
 	}
 
@@ -307,7 +312,7 @@ func TestSSHRulesRemovedDeniesAccess(t *testing.T) {
 				Action:  "accept",
 				Sources: policyv2.SSHSrcAliases{groupp("group:integration-test")},
 				Destinations: policyv2.SSHDstAliases{
-					new(policyv2.AutoGroupMember),
+					new(policyv2.AutoGroupSelf),
 					new(policyv2.AutoGroupTagged),
 				},
 				Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
@@ -320,9 +325,8 @@ func TestSSHRulesRemovedDeniesAccess(t *testing.T) {
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	allClients, err := scenario.ListTailscaleClients()
-	requireNoErrListClients(t, err)
-
+	// user1 holds one client per version, so its own devices cover every
+	// version as a destination.
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	requireNoErrListClients(t, err)
 
@@ -330,7 +334,7 @@ func TestSSHRulesRemovedDeniesAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, client := range user1Clients {
-		for _, peer := range allClients {
+		for _, peer := range user1Clients {
 			if client.Hostname() == peer.Hostname() {
 				continue
 			}
@@ -345,7 +349,7 @@ func TestSSHRulesRemovedDeniesAccess(t *testing.T) {
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		for _, client := range user1Clients {
-			for _, peer := range allClients {
+			for _, peer := range user1Clients {
 				if client.Hostname() == peer.Hostname() {
 					continue
 				}
@@ -840,7 +844,8 @@ func findSSHCheckAuthID(t *testing.T, headscale ControlServer) string {
 }
 
 // sshCheckPolicy returns a [policyv2.Policy] with SSH "check" mode for group:integration-test
-// targeting autogroup:member and autogroup:tagged destinations.
+// targeting autogroup:self and autogroup:tagged destinations. With no tagged
+// nodes, user1 can only target its own devices, so callers need two per user.
 func sshCheckPolicy() *policyv2.Policy {
 	return &policyv2.Policy{
 		Groups: policyv2.Groups{
@@ -863,7 +868,7 @@ func sshCheckPolicy() *policyv2.Policy {
 				Action:  "check",
 				Sources: policyv2.SSHSrcAliases{groupp("group:integration-test")},
 				Destinations: policyv2.SSHDstAliases{
-					new(policyv2.AutoGroupMember),
+					new(policyv2.AutoGroupSelf),
 					new(policyv2.AutoGroupTagged),
 				},
 				Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
@@ -896,7 +901,7 @@ func sshCheckPolicyWithPeriod(period time.Duration) *policyv2.Policy {
 				Action:  "check",
 				Sources: policyv2.SSHSrcAliases{groupp("group:integration-test")},
 				Destinations: policyv2.SSHDstAliases{
-					new(policyv2.AutoGroupMember),
+					new(policyv2.AutoGroupSelf),
 					new(policyv2.AutoGroupTagged),
 				},
 				Users:       []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
@@ -951,7 +956,7 @@ func findNewSSHCheckAuthID(
 func TestSSHOneUserToOneCheckModeCLI(t *testing.T) {
 	IntegrationSkip(t)
 
-	scenario := sshScenario(t, sshCheckPolicy(), "ssh-checkcli", 1)
+	scenario := sshScenario(t, sshCheckPolicy(), "ssh-checkcli", 2)
 	// defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -972,40 +977,43 @@ func TestSSHOneUserToOneCheckModeCLI(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	// user1 can SSH (via check) to all peers
+	// One pair only: findSSHCheckAuthID returns the newest auth-id in the
+	// log, so a second check in the same run would pick up a stale one.
+	require.Len(t, user1Clients, 2)
+	client, peer := user1Clients[0], user1Clients[1]
+
+	// Start SSH — will block waiting for check auth
+	sshResult := doSSHCheck(t, client, peer)
+
+	// Find the auth-id from headscale logs
+	authID := findSSHCheckAuthID(t, headscale)
+
+	// Approve via CLI
+	_, err = headscale.Execute(
+		[]string{
+			"headscale", "auth", "approve",
+			"--auth-id", authID,
+		},
+	)
+	require.NoError(t, err)
+
+	// Wait for SSH to complete
+	select {
+	case result := <-sshResult:
+		require.NoError(t, result.err)
+		require.Contains(
+			t,
+			peer.ContainerID(),
+			strings.ReplaceAll(result.stdout, "\n", ""),
+		)
+	case <-time.After(30 * time.Second):
+		t.Fatal("SSH did not complete after auth approval")
+	}
+
+	// autogroup:self never reaches another user's devices.
 	for _, client := range user1Clients {
-		for _, peer := range allClients {
-			if client.Hostname() == peer.Hostname() {
-				continue
-			}
-
-			// Start SSH — will block waiting for check auth
-			sshResult := doSSHCheck(t, client, peer)
-
-			// Find the auth-id from headscale logs
-			authID := findSSHCheckAuthID(t, headscale)
-
-			// Approve via CLI
-			_, err := headscale.Execute(
-				[]string{
-					"headscale", "auth", "approve",
-					"--auth-id", authID,
-				},
-			)
-			require.NoError(t, err)
-
-			// Wait for SSH to complete
-			select {
-			case result := <-sshResult:
-				require.NoError(t, result.err)
-				require.Contains(
-					t,
-					peer.ContainerID(),
-					strings.ReplaceAll(result.stdout, "\n", ""),
-				)
-			case <-time.After(30 * time.Second):
-				t.Fatal("SSH did not complete after auth approval")
-			}
+		for _, peer := range user2Clients {
+			assertSSHPermissionDenied(t, client, peer)
 		}
 	}
 
@@ -1025,12 +1033,14 @@ func TestSSHOneUserToOneCheckModeOIDC(t *testing.T) {
 	IntegrationSkip(t)
 
 	spec := ScenarioSpec{
-		NodesPerUser:         1,
+		NodesPerUser:         2,
 		Users:                []string{"user1", "user2"},
 		OIDCSkipUserCreation: true,
 		OIDCUsers: []mockoidc.MockUser{
-			// First 2: consumed during node registration
+			// First 4: consumed during node registration, user by user
 			oidcMockUser("user1", true),
+			oidcMockUser("user1", true),
+			oidcMockUser("user2", true),
 			oidcMockUser("user2", true),
 			// Extra: consumed during SSH check auth flows.
 			// Each SSH check pops one user from the queue.
@@ -1085,40 +1095,43 @@ func TestSSHOneUserToOneCheckModeOIDC(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	// user1 can SSH (via check) to all peers
+	// One pair only: findSSHCheckAuthID returns the newest auth-id in the
+	// log, and the OIDC queue holds a single extra login.
+	require.Len(t, user1Clients, 2)
+	client, peer := user1Clients[0], user1Clients[1]
+
+	// Start SSH — will block waiting for check auth
+	sshResult := doSSHCheck(t, client, peer)
+
+	// Find the auth-id from headscale logs
+	authID := findSSHCheckAuthID(t, headscale)
+
+	// Build auth URL and visit it to trigger OIDC flow.
+	// The mock OIDC server auto-authenticates from the user queue.
+	authURL := headscale.GetEndpoint() + "/auth/" + authID
+	parsedURL, err := url.Parse(authURL)
+	require.NoError(t, err)
+
+	_, err = doLoginURL("ssh-check-oidc", parsedURL)
+	require.NoError(t, err)
+
+	// Wait for SSH to complete
+	select {
+	case result := <-sshResult:
+		require.NoError(t, result.err)
+		require.Contains(
+			t,
+			peer.ContainerID(),
+			strings.ReplaceAll(result.stdout, "\n", ""),
+		)
+	case <-time.After(30 * time.Second):
+		t.Fatal("SSH did not complete after OIDC auth")
+	}
+
+	// autogroup:self never reaches another user's devices.
 	for _, client := range user1Clients {
-		for _, peer := range allClients {
-			if client.Hostname() == peer.Hostname() {
-				continue
-			}
-
-			// Start SSH — will block waiting for check auth
-			sshResult := doSSHCheck(t, client, peer)
-
-			// Find the auth-id from headscale logs
-			authID := findSSHCheckAuthID(t, headscale)
-
-			// Build auth URL and visit it to trigger OIDC flow.
-			// The mock OIDC server auto-authenticates from the user queue.
-			authURL := headscale.GetEndpoint() + "/auth/" + authID
-			parsedURL, err := url.Parse(authURL)
-			require.NoError(t, err)
-
-			_, err = doLoginURL("ssh-check-oidc", parsedURL)
-			require.NoError(t, err)
-
-			// Wait for SSH to complete
-			select {
-			case result := <-sshResult:
-				require.NoError(t, result.err)
-				require.Contains(
-					t,
-					peer.ContainerID(),
-					strings.ReplaceAll(result.stdout, "\n", ""),
-				)
-			case <-time.After(30 * time.Second):
-				t.Fatal("SSH did not complete after OIDC auth")
-			}
+		for _, peer := range user2Clients {
+			assertSSHPermissionDenied(t, client, peer)
 		}
 	}
 
@@ -1140,7 +1153,7 @@ func TestSSHCheckModeUnapprovedTimeout(t *testing.T) {
 	IntegrationSkip(t)
 
 	spec := ScenarioSpec{
-		NodesPerUser: 1,
+		NodesPerUser: 2,
 		Users:        []string{"user1", "user2"},
 	}
 
@@ -1184,27 +1197,23 @@ func TestSSHCheckModeUnapprovedTimeout(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	// user1 attempts SSH — enters check flow, but nobody approves
-	for _, client := range user1Clients {
-		for _, peer := range allClients {
-			if client.Hostname() == peer.Hostname() {
-				continue
-			}
+	// user1 attempts SSH to its other device — enters check flow, but
+	// nobody approves
+	require.Len(t, user1Clients, 2)
+	client, peer := user1Clients[0], user1Clients[1]
 
-			sshResult := doSSHCheck(t, client, peer)
+	sshResult := doSSHCheck(t, client, peer)
 
-			// Confirm the check flow was entered
-			_ = findSSHCheckAuthID(t, headscale)
+	// Confirm the check flow was entered
+	_ = findSSHCheckAuthID(t, headscale)
 
-			// Do NOT approve — wait for cache expiry and SSH rejection
-			select {
-			case result := <-sshResult:
-				require.Error(t, result.err, "SSH should be rejected when unapproved")
-				assert.Empty(t, result.stdout, "no command output expected on rejection")
-			case <-time.After(60 * time.Second):
-				t.Fatal("SSH did not complete after cache expiry timeout")
-			}
-		}
+	// Do NOT approve — wait for cache expiry and SSH rejection
+	select {
+	case result := <-sshResult:
+		require.Error(t, result.err, "SSH should be rejected when unapproved")
+		assert.Empty(t, result.stdout, "no command output expected on rejection")
+	case <-time.After(60 * time.Second):
+		t.Fatal("SSH did not complete after cache expiry timeout")
 	}
 
 	// user2 still gets immediate Permission Denied
@@ -1226,11 +1235,8 @@ func TestSSHCheckModeCheckPeriodCLI(t *testing.T) {
 	IntegrationSkip(t)
 
 	// 1 minute is the documented minimum checkPeriod
-	scenario := sshScenario(t, sshCheckPolicyWithPeriod(time.Minute), "ssh-checkperiod", 1)
+	scenario := sshScenario(t, sshCheckPolicyWithPeriod(time.Minute), "ssh-checkperiod", 2)
 	defer scenario.ShutdownAssertNoPanics(t)
-
-	allClients, err := scenario.ListTailscaleClients()
-	requireNoErrListClients(t, err)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	requireNoErrListClients(t, err)
@@ -1244,74 +1250,69 @@ func TestSSHCheckModeCheckPeriodCLI(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
+	require.Len(t, user1Clients, 2)
+	client, peer := user1Clients[0], user1Clients[1]
+
 	// === Phase 1: First SSH check — approve, verify success ===
-	for _, client := range user1Clients {
-		for _, peer := range allClients {
-			if client.Hostname() == peer.Hostname() {
-				continue
-			}
+	sshResult := doSSHCheck(t, client, peer)
+	firstAuthID := findSSHCheckAuthID(t, headscale)
 
-			sshResult := doSSHCheck(t, client, peer)
-			firstAuthID := findSSHCheckAuthID(t, headscale)
+	_, err = headscale.Execute(
+		[]string{
+			"headscale", "auth", "approve",
+			"--auth-id", firstAuthID,
+		},
+	)
+	require.NoError(t, err)
 
-			_, err := headscale.Execute(
-				[]string{
-					"headscale", "auth", "approve",
-					"--auth-id", firstAuthID,
-				},
-			)
-			require.NoError(t, err)
+	select {
+	case result := <-sshResult:
+		require.NoError(t, result.err, "first SSH should succeed after approval")
+		require.Contains(
+			t,
+			peer.ContainerID(),
+			strings.ReplaceAll(result.stdout, "\n", ""),
+		)
+	case <-time.After(30 * time.Second):
+		t.Fatal("first SSH did not complete after auth approval")
+	}
 
-			select {
-			case result := <-sshResult:
-				require.NoError(t, result.err, "first SSH should succeed after approval")
-				require.Contains(
-					t,
-					peer.ContainerID(),
-					strings.ReplaceAll(result.stdout, "\n", ""),
-				)
-			case <-time.After(30 * time.Second):
-				t.Fatal("first SSH did not complete after auth approval")
-			}
+	// === Phase 2: Wait for checkPeriod to expire ===
+	//nolint:forbidigo // Intentional sleep: waiting for the check period session
+	// to expire. This is a time-based expiry, not a pollable condition — the
+	// Tailscale client caches the approval for SessionDuration and only
+	// re-triggers the check flow after it elapses.
+	time.Sleep(70 * time.Second)
 
-			// === Phase 2: Wait for checkPeriod to expire ===
-			//nolint:forbidigo // Intentional sleep: waiting for the check period session
-			// to expire. This is a time-based expiry, not a pollable condition — the
-			// Tailscale client caches the approval for SessionDuration and only
-			// re-triggers the check flow after it elapses.
-			time.Sleep(70 * time.Second)
+	// === Phase 3: Second SSH — must re-authenticate ===
+	sshResult2 := doSSHCheck(t, client, peer)
+	secondAuthID := findNewSSHCheckAuthID(t, headscale, firstAuthID)
 
-			// === Phase 3: Second SSH — must re-authenticate ===
-			sshResult2 := doSSHCheck(t, client, peer)
-			secondAuthID := findNewSSHCheckAuthID(t, headscale, firstAuthID)
+	require.NotEqual(
+		t,
+		firstAuthID,
+		secondAuthID,
+		"second SSH should trigger a new auth flow after checkPeriod expiry",
+	)
 
-			require.NotEqual(
-				t,
-				firstAuthID,
-				secondAuthID,
-				"second SSH should trigger a new auth flow after checkPeriod expiry",
-			)
+	_, err = headscale.Execute(
+		[]string{
+			"headscale", "auth", "approve",
+			"--auth-id", secondAuthID,
+		},
+	)
+	require.NoError(t, err)
 
-			_, err = headscale.Execute(
-				[]string{
-					"headscale", "auth", "approve",
-					"--auth-id", secondAuthID,
-				},
-			)
-			require.NoError(t, err)
-
-			select {
-			case result := <-sshResult2:
-				require.NoError(t, result.err, "second SSH should succeed after re-approval")
-				require.Contains(
-					t,
-					peer.ContainerID(),
-					strings.ReplaceAll(result.stdout, "\n", ""),
-				)
-			case <-time.After(30 * time.Second):
-				t.Fatal("second SSH did not complete after re-auth approval")
-			}
-		}
+	select {
+	case result := <-sshResult2:
+		require.NoError(t, result.err, "second SSH should succeed after re-approval")
+		require.Contains(
+			t,
+			peer.ContainerID(),
+			strings.ReplaceAll(result.stdout, "\n", ""),
+		)
+	case <-time.After(30 * time.Second):
+		t.Fatal("second SSH did not complete after re-auth approval")
 	}
 }
 
@@ -1321,11 +1322,8 @@ func TestSSHCheckModeAutoApprove(t *testing.T) {
 	IntegrationSkip(t)
 
 	// 5 minute checkPeriod — long enough not to expire during test
-	scenario := sshScenario(t, sshCheckPolicyWithPeriod(5*time.Minute), "ssh-autoapprove", 1)
+	scenario := sshScenario(t, sshCheckPolicyWithPeriod(5*time.Minute), "ssh-autoapprove", 2)
 	defer scenario.ShutdownAssertNoPanics(t)
-
-	allClients, err := scenario.ListTailscaleClients()
-	requireNoErrListClients(t, err)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	requireNoErrListClients(t, err)
@@ -1339,46 +1337,41 @@ func TestSSHCheckModeAutoApprove(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
+	require.Len(t, user1Clients, 2)
+	client, peer := user1Clients[0], user1Clients[1]
+
 	// === Phase 1: First SSH check — approve, verify success ===
-	for _, client := range user1Clients {
-		for _, peer := range allClients {
-			if client.Hostname() == peer.Hostname() {
-				continue
-			}
+	sshResult := doSSHCheck(t, client, peer)
+	firstAuthID := findSSHCheckAuthID(t, headscale)
 
-			sshResult := doSSHCheck(t, client, peer)
-			firstAuthID := findSSHCheckAuthID(t, headscale)
+	_, err = headscale.Execute(
+		[]string{
+			"headscale", "auth", "approve",
+			"--auth-id", firstAuthID,
+		},
+	)
+	require.NoError(t, err)
 
-			_, err := headscale.Execute(
-				[]string{
-					"headscale", "auth", "approve",
-					"--auth-id", firstAuthID,
-				},
-			)
-			require.NoError(t, err)
-
-			select {
-			case result := <-sshResult:
-				require.NoError(t, result.err, "first SSH should succeed after approval")
-				require.Contains(
-					t,
-					peer.ContainerID(),
-					strings.ReplaceAll(result.stdout, "\n", ""),
-				)
-			case <-time.After(30 * time.Second):
-				t.Fatal("first SSH did not complete after auth approval")
-			}
-
-			// === Phase 2: Immediate retry — should auto-approve ===
-			result, _, err := doSSH(t, client, peer)
-			require.NoError(t, err, "second SSH should auto-approve without manual auth")
-			require.Contains(
-				t,
-				peer.ContainerID(),
-				strings.ReplaceAll(result, "\n", ""),
-			)
-		}
+	select {
+	case result := <-sshResult:
+		require.NoError(t, result.err, "first SSH should succeed after approval")
+		require.Contains(
+			t,
+			peer.ContainerID(),
+			strings.ReplaceAll(result.stdout, "\n", ""),
+		)
+	case <-time.After(30 * time.Second):
+		t.Fatal("first SSH did not complete after auth approval")
 	}
+
+	// === Phase 2: Immediate retry — should auto-approve ===
+	result, _, err := doSSH(t, client, peer)
+	require.NoError(t, err, "second SSH should auto-approve without manual auth")
+	require.Contains(
+		t,
+		peer.ContainerID(),
+		strings.ReplaceAll(result, "\n", ""),
+	)
 }
 
 // TestSSHCheckModeSessionLossReDelegates reproduces the failure in
@@ -1391,11 +1384,8 @@ func TestSSHCheckModeAutoApprove(t *testing.T) {
 func TestSSHCheckModeSessionLossReDelegates(t *testing.T) {
 	IntegrationSkip(t)
 
-	scenario := sshScenario(t, sshCheckPolicy(), "ssh-sessionloss", 1)
+	scenario := sshScenario(t, sshCheckPolicy(), "ssh-sessionloss", 2)
 	defer scenario.ShutdownAssertNoPanics(t)
-
-	allClients, err := scenario.ListTailscaleClients()
-	requireNoErrListClients(t, err)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	requireNoErrListClients(t, err)
@@ -1409,59 +1399,54 @@ func TestSSHCheckModeSessionLossReDelegates(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	for _, client := range user1Clients {
-		for _, peer := range allClients {
-			if client.Hostname() == peer.Hostname() {
-				continue
-			}
+	require.Len(t, user1Clients, 2)
+	client, peer := user1Clients[0], user1Clients[1]
 
-			// Start SSH — blocks waiting for the check verdict while the
-			// pending auth session sits in the control plane's cache. Allow a
-			// generous window: the flow spans a full control-plane restart.
-			sshResult := doSSHCheckWithTimeout(t, client, peer, 120*time.Second)
+	// Start SSH — blocks waiting for the check verdict while the
+	// pending auth session sits in the control plane's cache. Allow a
+	// generous window: the flow spans a full control-plane restart.
+	sshResult := doSSHCheckWithTimeout(t, client, peer, 120*time.Second)
 
-			firstAuthID := findSSHCheckAuthID(t, headscale)
+	firstAuthID := findSSHCheckAuthID(t, headscale)
 
-			// Restart the control plane: the in-memory auth cache is dropped
-			// (the on-disk database and keys persist), so the auth_id the
-			// client is still polling for no longer exists.
-			err := headscale.Restart()
-			require.NoError(t, err, "restarting headscale should succeed")
+	// Restart the control plane: the in-memory auth cache is dropped
+	// (the on-disk database and keys persist), so the auth_id the
+	// client is still polling for no longer exists.
+	err = headscale.Restart()
+	require.NoError(t, err, "restarting headscale should succeed")
 
-			err = scenario.WaitForTailscaleSync()
-			requireNoErrSync(t, err)
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
 
-			// The client keeps polling the now-missing auth_id; with the fix the
-			// server re-delegates a fresh session instead of returning an error
-			// the client cannot recover from. A new auth_id only appears if the
-			// re-delegation happened.
-			secondAuthID := findNewSSHCheckAuthID(t, headscale, firstAuthID)
-			require.NotEqual(t, firstAuthID, secondAuthID,
-				"a lost session under an active check must re-delegate with a new auth_id")
+	// The client keeps polling the now-missing auth_id; with the fix the
+	// server re-delegates a fresh session instead of returning an error
+	// the client cannot recover from. A new auth_id only appears if the
+	// re-delegation happened.
+	secondAuthID := findNewSSHCheckAuthID(t, headscale, firstAuthID)
+	require.NotEqual(t, firstAuthID, secondAuthID,
+		"a lost session under an active check must re-delegate with a new auth_id")
 
-			// Approve the re-delegated session; the SSH connection must now
-			// complete instead of hanging until it times out.
-			_, err = headscale.Execute(
-				[]string{
-					"headscale", "auth", "approve",
-					"--auth-id", secondAuthID,
-				},
-			)
-			require.NoError(t, err)
+	// Approve the re-delegated session; the SSH connection must now
+	// complete instead of hanging until it times out.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale", "auth", "approve",
+			"--auth-id", secondAuthID,
+		},
+	)
+	require.NoError(t, err)
 
-			select {
-			case result := <-sshResult:
-				require.NoError(t, result.err,
-					"SSH should succeed after re-delegation recovers the lost session")
-				require.Contains(
-					t,
-					peer.ContainerID(),
-					strings.ReplaceAll(result.stdout, "\n", ""),
-				)
-			case <-time.After(90 * time.Second):
-				t.Fatal("SSH did not complete after session-loss re-delegation")
-			}
-		}
+	select {
+	case result := <-sshResult:
+		require.NoError(t, result.err,
+			"SSH should succeed after re-delegation recovers the lost session")
+		require.Contains(
+			t,
+			peer.ContainerID(),
+			strings.ReplaceAll(result.stdout, "\n", ""),
+		)
+	case <-time.After(90 * time.Second):
+		t.Fatal("SSH did not complete after session-loss re-delegation")
 	}
 }
 
@@ -1470,11 +1455,8 @@ func TestSSHCheckModeSessionLossReDelegates(t *testing.T) {
 func TestSSHCheckModeNegativeCLI(t *testing.T) {
 	IntegrationSkip(t)
 
-	scenario := sshScenario(t, sshCheckPolicy(), "ssh-negcli", 1)
+	scenario := sshScenario(t, sshCheckPolicy(), "ssh-negcli", 2)
 	defer scenario.ShutdownAssertNoPanics(t)
-
-	allClients, err := scenario.ListTailscaleClients()
-	requireNoErrListClients(t, err)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	requireNoErrListClients(t, err)
@@ -1488,32 +1470,27 @@ func TestSSHCheckModeNegativeCLI(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	for _, client := range user1Clients {
-		for _, peer := range allClients {
-			if client.Hostname() == peer.Hostname() {
-				continue
-			}
+	require.Len(t, user1Clients, 2)
+	client, peer := user1Clients[0], user1Clients[1]
 
-			sshResult := doSSHCheck(t, client, peer)
-			authID := findSSHCheckAuthID(t, headscale)
+	sshResult := doSSHCheck(t, client, peer)
+	authID := findSSHCheckAuthID(t, headscale)
 
-			// Reject via CLI
-			_, err := headscale.Execute(
-				[]string{
-					"headscale", "auth", "reject",
-					"--auth-id", authID,
-				},
-			)
-			require.NoError(t, err)
+	// Reject via CLI
+	_, err = headscale.Execute(
+		[]string{
+			"headscale", "auth", "reject",
+			"--auth-id", authID,
+		},
+	)
+	require.NoError(t, err)
 
-			select {
-			case result := <-sshResult:
-				require.Error(t, result.err, "SSH should be rejected")
-				assert.Empty(t, result.stdout, "no command output expected on rejection")
-			case <-time.After(30 * time.Second):
-				t.Fatal("SSH did not complete after auth rejection")
-			}
-		}
+	select {
+	case result := <-sshResult:
+		require.Error(t, result.err, "SSH should be rejected")
+		assert.Empty(t, result.stdout, "no command output expected on rejection")
+	case <-time.After(30 * time.Second):
+		t.Fatal("SSH did not complete after auth rejection")
 	}
 }
 
@@ -1541,7 +1518,7 @@ func TestSSHLocalpart(t *testing.T) {
 		testFn func(t *testing.T, scenario *Scenario)
 	}{
 		{
-			name: "MemberAndTagged",
+			name: "SelfAndTagged",
 			policy: &policyv2.Policy{
 				ACLs: baseACLs,
 				SSHs: []policyv2.SSH{
@@ -1549,7 +1526,7 @@ func TestSSHLocalpart(t *testing.T) {
 						Action:  "accept",
 						Sources: policyv2.SSHSrcAliases{new(policyv2.AutoGroupMember)},
 						Destinations: policyv2.SSHDstAliases{
-							new(policyv2.AutoGroupMember),
+							new(policyv2.AutoGroupSelf),
 							new(policyv2.AutoGroupTagged),
 						},
 						Users: []policyv2.SSHUser{"localpart:*@headscale.net"},
@@ -1559,37 +1536,22 @@ func TestSSHLocalpart(t *testing.T) {
 			testFn: func(t *testing.T, scenario *Scenario) {
 				t.Helper()
 
-				user1Clients, err := scenario.ListTailscaleClients("user1")
-				requireNoErrListClients(t, err)
+				// On its own devices each user logs in as its own localpart and
+				// not as the other user's: localpart maps the source, not the
+				// destination.
+				for user, other := range map[string]string{"user1": "user2", "user2": "user1"} {
+					clients, err := scenario.ListTailscaleClients(user)
+					requireNoErrListClients(t, err)
 
-				user2Clients, err := scenario.ListTailscaleClients("user2")
-				requireNoErrListClients(t, err)
+					for _, client := range clients {
+						for _, peer := range clients {
+							if client.Hostname() == peer.Hostname() {
+								continue
+							}
 
-				// user1 can SSH to user2's nodes as "user1" (localpart of user1@headscale.net)
-				for _, client := range user1Clients {
-					for _, peer := range user2Clients {
-						assertSSHHostnameAsUser(t, client, peer, "user1")
-					}
-				}
-
-				// user2 can SSH to user1's nodes as "user2" (localpart of user2@headscale.net)
-				for _, client := range user2Clients {
-					for _, peer := range user1Clients {
-						assertSSHHostnameAsUser(t, client, peer, "user2")
-					}
-				}
-
-				// user1 CANNOT SSH as "user2" — no rule maps user1's IPs to user2
-				for _, client := range user1Clients {
-					for _, peer := range user2Clients {
-						assertSSHPermissionDeniedAsUser(t, client, peer, "user2")
-					}
-				}
-
-				// user2 CANNOT SSH as "user1" — no rule maps user2's IPs to user1
-				for _, client := range user2Clients {
-					for _, peer := range user1Clients {
-						assertSSHPermissionDeniedAsUser(t, client, peer, "user1")
+							assertSSHHostnameAsUser(t, client, peer, user)
+							assertSSHPermissionDeniedAsUser(t, client, peer, other)
+						}
 					}
 				}
 			},
@@ -1648,7 +1610,7 @@ func TestSSHLocalpart(t *testing.T) {
 						Action:  "accept",
 						Sources: policyv2.SSHSrcAliases{new(policyv2.AutoGroupMember)},
 						Destinations: policyv2.SSHDstAliases{
-							new(policyv2.AutoGroupMember),
+							new(policyv2.AutoGroupSelf),
 							new(policyv2.AutoGroupTagged),
 						},
 						Users: []policyv2.SSHUser{
@@ -1661,37 +1623,21 @@ func TestSSHLocalpart(t *testing.T) {
 			testFn: func(t *testing.T, scenario *Scenario) {
 				t.Helper()
 
-				user1Clients, err := scenario.ListTailscaleClients("user1")
-				requireNoErrListClients(t, err)
+				// A localpart entry does not crowd out a literal user in the
+				// same rule.
+				for _, user := range []string{"user1", "user2"} {
+					clients, err := scenario.ListTailscaleClients(user)
+					requireNoErrListClients(t, err)
 
-				user2Clients, err := scenario.ListTailscaleClients("user2")
-				requireNoErrListClients(t, err)
+					for _, client := range clients {
+						for _, peer := range clients {
+							if client.Hostname() == peer.Hostname() {
+								continue
+							}
 
-				// localpart works: user1 can SSH to user2's nodes as "user1"
-				for _, client := range user1Clients {
-					for _, peer := range user2Clients {
-						assertSSHHostnameAsUser(t, client, peer, "user1")
-					}
-				}
-
-				// root also works: user1 can SSH to user2's nodes as "root"
-				for _, client := range user1Clients {
-					for _, peer := range user2Clients {
-						assertSSHHostnameAsUser(t, client, peer, "root")
-					}
-				}
-
-				// user2 can SSH as "user2" (localpart)
-				for _, client := range user2Clients {
-					for _, peer := range user1Clients {
-						assertSSHHostnameAsUser(t, client, peer, "user2")
-					}
-				}
-
-				// user2 can SSH as "root"
-				for _, client := range user2Clients {
-					for _, peer := range user1Clients {
-						assertSSHHostnameAsUser(t, client, peer, "root")
+							assertSSHHostnameAsUser(t, client, peer, user)
+							assertSSHHostnameAsUser(t, client, peer, "root")
+						}
 					}
 				}
 			},
@@ -1700,11 +1646,16 @@ func TestSSHLocalpart(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Two nodes per user: autogroup:self gives each user only its own
+			// devices to SSH into.
 			spec := ScenarioSpec{
-				NodesPerUser: 1,
+				NodesPerUser: 2,
 				Users:        []string{"user1", "user2"},
+				// Registration logs in user by user, popping one per node.
 				OIDCUsers: []mockoidc.MockUser{
 					oidcMockUser("user1", true),
+					oidcMockUser("user1", true),
+					oidcMockUser("user2", true),
 					oidcMockUser("user2", true),
 				},
 			}

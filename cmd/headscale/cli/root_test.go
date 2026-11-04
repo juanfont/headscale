@@ -341,8 +341,8 @@ func TestOfflineSetPolicyRunsTests(t *testing.T) {
 			name: "failing SSH test preserves stored policy",
 			policy: `{
   "acls": [{"action":"accept","src":["*"],"dst":["*:*"]}],
-  "ssh": [{"action":"accept","src":["alice@"],"dst":["autogroup:member"],"users":["root"]}],
-  "sshTests": [{"src":"bob@","dst":["autogroup:member"],"accept":["root"]}]
+  "ssh": [{"action":"accept","src":["alice@"],"dst":["autogroup:self"],"users":["root"]}],
+  "sshTests": [{"src":"bob@","dst":["alice@"],"accept":["root"]}]
 }`,
 			invalid: true,
 		},

@@ -1063,8 +1063,8 @@ func TestSSHPolicySharedBetweenNodes(t *testing.T) {
 	}
 
 	pm, err := NewPolicyManager([]byte(`{"ssh": [
-		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member"], "users": ["a"]},
-		{"action": "accept", "src": ["user1@headscale.net"], "dst": ["autogroup:member"], "users": ["b"]}
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["a"]},
+		{"action": "accept", "src": ["user1@headscale.net"], "dst": ["autogroup:self"], "users": ["b"]}
 	]}`), users, nodes[:2].ViewSlice())
 	require.NoError(t, err)
 

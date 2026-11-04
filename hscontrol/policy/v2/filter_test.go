@@ -2643,7 +2643,7 @@ func TestCompileSSHPolicy_CheckPeriodVariants(t *testing.T) {
 					{
 						Action:       SSHActionCheck,
 						Sources:      SSHSrcAliases{up("user1@")},
-						Destinations: SSHDstAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{agp("autogroup:self")},
 						Users:        SSHUsers{"root"},
 						CheckPeriod:  tt.checkPeriod,
 					},

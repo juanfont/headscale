@@ -107,6 +107,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Use `{}` to allow all. Headscale rejects empty policy writes. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - A policy without `acls` or `grants` allows only tailnet addresses and approved routes. Hosts outside the tailnet cannot connect to nodes. Use `autogroup:danger-all` to allow all addresses. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - A user's devices are always peers of each other. The packet filter still controls access. [#3649](https://github.com/juanfont/headscale/pull/3649)
+- SSH `dst` rejects `autogroup:member`, as Tailscale does. Use `autogroup:self`, tags, or the source's own user. A policy file that still uses it stops headscale at startup. [#3343](https://github.com/juanfont/headscale/pull/3343)
 
 #### Nodes and routes
 

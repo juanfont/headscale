@@ -46,7 +46,6 @@ var (
 	ErrSSHTagSourceToUserDest             = errors.New("tags in SSH source cannot access user-owned devices")
 	ErrSSHUserDestRequiresSameUser        = errors.New("user destination requires source to contain only that same user")
 	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
-	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
 	ErrSSHCheckPeriodAboveMax             = errors.New("is above the max (168h)")
 	ErrSSHCheckPeriodNegative             = errors.New("must be a positive duration")
 	ErrSSHCheckPeriodOnNonCheck           = errors.New(`"checkPeriod" can only be specified for the "check" action`)
@@ -2176,7 +2175,7 @@ var (
 	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged, AutoGroupDangerAll}
 	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
 	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
-	autogroupForSSHDst    = []AutoGroup{AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
+	autogroupForSSHDst    = []AutoGroup{AutoGroupTagged, AutoGroupSelf}
 	autogroupForNodeAttrs = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupNotSupported = []AutoGroup{}
 
@@ -2354,10 +2353,6 @@ func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAlia
 			// Rule: autogroup:self requires source to NOT contain tags
 			if v.Is(AutoGroupSelf) && srcHasTaggedEntities {
 				return ErrSSHAutogroupSelfRequiresUserSource
-			}
-			// Rule: autogroup:member (user-owned devices) cannot be accessed by tagged entities
-			if v.Is(AutoGroupMember) && srcHasTaggedEntities {
-				return ErrSSHTagSourceToAutogroupMember
 			}
 		}
 	}

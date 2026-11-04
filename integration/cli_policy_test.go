@@ -211,14 +211,15 @@ func TestSSHTestsRejectFailingPolicy(t *testing.T) {
 		user2 = "user2@"
 	)
 
-	// Good policy: user1@ may SSH as root, and the sshTests asserts it.
+	// Good policy: user1@ may SSH as root to its own devices, and the
+	// sshTests asserts it.
 	goodPolicy := policyv2.Policy{
 		SSHs: []policyv2.SSH{
 			{
 				Action:  policyv2.SSHActionAccept,
 				Sources: policyv2.SSHSrcAliases{usernamep(user1)},
 				Destinations: policyv2.SSHDstAliases{
-					new(policyv2.AutoGroupMember),
+					new(policyv2.AutoGroupSelf),
 				},
 				Users: []policyv2.SSHUser{policyv2.SSHUser("root")},
 			},
