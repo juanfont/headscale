@@ -791,6 +791,23 @@ func warnMalformedNextDNSAttrs(pol *Policy) {
 		Msg("nextdns attrs have no effect: a profile must match [A-Za-z0-9._-]{1,64}")
 }
 
+// DERPMap returns the policy's derpMap, nil without one. Callers must not
+// modify it.
+func (pm *PolicyManager) DERPMap() *tailcfg.DERPMap {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.pol == nil {
+		return nil
+	}
+
+	return pm.pol.DERPMap
+}
+
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.
 func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	if pm == nil {

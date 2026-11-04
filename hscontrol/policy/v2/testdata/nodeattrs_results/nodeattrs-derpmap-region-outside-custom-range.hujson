@@ -1,0 +1,88 @@
+// nodeattrs-derpmap-region-outside-custom-range
+//
+// Policy derpMap adds region 500, outside the 900-999 custom range -- accepted?
+//
+// Steps: 1
+// Captured at:    2026-11-04T16:30:12Z
+// tool version:   tscap/00035e96222bceb1ae7402466498adcf3e5c58dd
+// schema version: 1
+{
+	"schema_version": 1,
+	"test_id":        "nodeattrs-derpmap-region-outside-custom-range",
+	"description":    "Policy derpMap adds region 500, outside the 900-999 custom range -- accepted?",
+	"category":       "nodeattrs",
+	"captured_at":    "2026-11-04T16:30:12.34256005Z",
+	"tool_version":   "tscap/00035e96222bceb1ae7402466498adcf3e5c58dd",
+	"tailnet":        "odin@example.com",
+	"error":          true,
+	"input": {
+		"api_response_code": 400,
+		"api_response_body": {"message": "invalid region ID 500; must be in range [900,999]"},
+		"tailnet": {
+			"dns":      {"magic_dns": false, "nameservers": [], "search_paths": [], "split_dns": {}},
+			"settings": {}
+		},
+		"scenario_hujson": "                                                \n{\n    \"category\":    \"nodeattrs\",\n    \"description\": \"Policy derpMap adds region 500, outside the 900-999 custom range -- accepted?\",\n    \"id\":          \"nodeattrs-derpmap-region-outside-custom-range\",\n    \"options\":     {\"capture\": \"none\"},\n    \"policy\": {\n        \"tagOwners\": {\"tag:server\": [\"odin@example.com\"]},\n        \"derpMap\":   {\"Regions\": {\"500\": {\"RegionID\": 500, \"RegionCode\": \"custom\", \"Nodes\": [{\"Name\": \"500a\", \"RegionID\": 500, \"HostName\": \"derp500.example.com\", \"IPv4\": \"192.0.2.5\"}]}}}\n    },\n    \"tailnet\": {\n        \"dns\":      {\"magic_dns\": false, \"nameservers\": [], \"search_paths\": [], \"split_dns\": {}},\n        \"settings\": {}\n    },\n    \"topology\": \"../_topologies/dns.hujson\"\n}\n",
+		"scenario_path":   "scenarios/nodeattrs/nodeattrs-derpmap-region-outside-custom-range.hujson",
+		"full_policy": {
+			"derpMap": {"Regions": {"500": {"Nodes": [{
+				"HostName": "derp500.example.com",
+				"IPv4":     "192.0.2.5",
+				"Name":     "500a",
+				"RegionID": 500
+			}], "RegionCode": "custom", "RegionID": 500}}},
+			"tagOwners": {"tag:server": ["odin@example.com"]}
+		}
+	},
+	"topology": {"users": [
+		{"id": 1, "name": "odin", "email": "odin@example.com"},
+		{"id": 2, "name": "thor", "email": "thor@example.org"}
+	], "nodes": {"ivysaur": {
+		"hostname":        "ivysaur",
+		"tags":            [],
+		"ipv4":            "100.81.7.2",
+		"ipv6":            "fd7a:115c:a1e0::2",
+		"user":            "thor",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "server": {
+		"hostname":        "server",
+		"tags":            ["tag:server"],
+		"ipv4":            "100.81.7.3",
+		"ipv6":            "fd7a:115c:a1e0::3",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "user-tid": {
+		"hostname":        "user-tid",
+		"tags":            [],
+		"ipv4":            "100.81.7.1",
+		"ipv6":            "fd7a:115c:a1e0::1",
+		"user":            "odin",
+		"routable_ips":    [],
+		"approved_routes": []
+	}}},
+	"captures": {},
+	"steps": [{
+		"name":   "validate",
+		"at":     "2026-11-04T16:30:19.917932586Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/acl/validate",
+			"header":    {"Content-Type": "application/hujson"},
+			"body": {
+				"derpMap": {"Regions": {"500": {"Nodes": [{
+					"HostName": "derp500.example.com",
+					"IPv4":     "192.0.2.5",
+					"Name":     "500a",
+					"RegionID": 500
+				}], "RegionCode": "custom", "RegionID": 500}}},
+				"tagOwners": {"tag:server": ["odin@example.com"]}
+			},
+			"status":   200,
+			"response": {"message": "invalid region ID 500; must be in range [900,999]"}
+		}]
+	}]
+}

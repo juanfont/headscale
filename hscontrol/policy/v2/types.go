@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"maps"
 	"net/netip"
 	"regexp"
 	"slices"
@@ -196,6 +197,12 @@ var (
 	ErrSSHSourceAliasNotSupported  = errors.New("alias not supported for SSH source")
 	ErrSSHDestAliasNotSupported    = errors.New("alias not supported for SSH destination")
 	ErrUnknownField                = errors.New("unknown field")
+	ErrDERPRegionIDRange           = errors.New("must be in range [900,999]")
+	ErrDERPRegionIDKey             = errors.New("doesn't match its key")
+	ErrDERPRegionNoNodes           = errors.New("must specify at least one node in DERP Region")
+	ErrDERPRegionNullNode          = errors.New("null node in DERP Region")
+	ErrDERPNodeRegionID            = errors.New("doesn't match its region")
+	ErrDERPOmitDefaultsNoRegions   = errors.New("OmitDefaultRegions specified but no custom DERP regions specified")
 	ErrProtocolNoSpecificPorts     = errors.New("protocol does not support specific ports")
 	ErrTestEmptyAssertions         = errors.New("test entry must have at least one of \"accept\" or \"deny\"")
 	ErrTestProtocolNotAllowed      = errors.New("test protocol must be tcp, udp, sctp, or empty")
@@ -2105,6 +2112,10 @@ type Policy struct {
 	SSHTests            []SSHPolicyTest    `json:"sshTests,omitempty"`
 	RandomizeClientPort bool               `json:"randomizeClientPort,omitempty"`
 
+	// DERPMap changes the DERP map served to every node, as a Tailscale
+	// policy's derpMap does; see [validateDERPMap].
+	DERPMap *tailcfg.DERPMap `json:"derpMap,omitempty"`
+
 	// nodesByTag is set only on the copy [Policy.withNodesByTag] makes for
 	// one compile, and indexes the nodes that compile resolves against.
 	nodesByTag map[string][]types.NodeView
@@ -3006,6 +3017,8 @@ func (p *Policy) validate() error {
 		}
 	}
 
+	errs = append(errs, validateDERPMap(p.DERPMap)...)
+
 	if err := validateTests(p, p.Tests); err != nil { //nolint:noinlineerr
 		errs = append(errs, err)
 	}
@@ -3444,6 +3457,62 @@ func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWi
 	}
 
 	return nil
+}
+
+// validateDERPMap checks a policy derpMap the way Tailscale SaaS does, with
+// its wording: an added region uses an ID in 900-999, has a node, and every
+// ID in it matches the key it sits under. A null region only removes one, so
+// it is not checked. HomeParams are decoded but never sent, as on SaaS.
+func validateDERPMap(dm *tailcfg.DERPMap) []error {
+	if dm == nil {
+		return nil
+	}
+
+	var (
+		errs   []error
+		custom int
+	)
+
+	for _, id := range slices.Sorted(maps.Keys(dm.Regions)) {
+		region := dm.Regions[id]
+		if region == nil {
+			continue
+		}
+
+		custom++
+
+		if id < 900 || id > 999 {
+			errs = append(errs, fmt.Errorf("invalid region ID %d; %w", id, ErrDERPRegionIDRange))
+
+			continue
+		}
+
+		if region.RegionID != id {
+			errs = append(errs, fmt.Errorf(
+				"custom DERP Region %d has RegionID %d that %w", id, region.RegionID, ErrDERPRegionIDKey))
+		}
+
+		if len(region.Nodes) == 0 {
+			errs = append(errs, fmt.Errorf("%w %d", ErrDERPRegionNoNodes, id))
+		}
+
+		for _, node := range region.Nodes {
+			switch {
+			case node == nil:
+				errs = append(errs, fmt.Errorf("%w %d", ErrDERPRegionNullNode, id))
+			case node.RegionID != id:
+				errs = append(errs, fmt.Errorf(
+					"custom DERP Region %d has node %q with RegionID %d that %w",
+					id, node.Name, node.RegionID, ErrDERPNodeRegionID))
+			}
+		}
+	}
+
+	if dm.OmitDefaultRegions && custom == 0 {
+		errs = append(errs, ErrDERPOmitDefaultsNoRegions)
+	}
+
+	return errs
 }
 
 // validateTests enforces the four shape rules a tests-block entry must

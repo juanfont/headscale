@@ -1,0 +1,82 @@
+// nodeattrs-derpmap-homeparams-key-not-number
+//
+// Policy derpMap RegionScore keyed by region code, not ID -- does SaaS type-check keys?
+//
+// Steps: 1
+// Captured at:    2026-11-04T16:16:34Z
+// tool version:   tscap/fddc3a4f2cf0c37dcffd46be320a00646b7679c6
+// schema version: 1
+{
+	"schema_version": 1,
+	"test_id":        "nodeattrs-derpmap-homeparams-key-not-number",
+	"description":    "Policy derpMap RegionScore keyed by region code, not ID -- does SaaS type-check keys?",
+	"category":       "nodeattrs",
+	"captured_at":    "2026-11-04T16:16:34.347521879Z",
+	"tool_version":   "tscap/fddc3a4f2cf0c37dcffd46be320a00646b7679c6",
+	"tailnet":        "odin@example.com",
+	"error":          true,
+	"input": {
+		"api_response_code": 400,
+		"api_response_body": {
+			"message": "json: cannot unmarshal number nyc into Go struct field policyJSON.derpMap.HomeParams.RegionScore.nyc of type tailcfg.DERPRegionID"
+		},
+		"tailnet": {
+			"dns":      {"magic_dns": false, "nameservers": [], "search_paths": [], "split_dns": {}},
+			"settings": {}
+		},
+		"scenario_hujson": "                                              \n{\n    \"category\":    \"nodeattrs\",\n    \"description\": \"Policy derpMap RegionScore keyed by region code, not ID -- does SaaS type-check keys?\",\n    \"id\":          \"nodeattrs-derpmap-homeparams-key-not-number\",\n    \"options\":     {\"capture\": \"none\"},\n    \"policy\": {\n        \"tagOwners\": {\"tag:server\": [\"odin@example.com\"]},\n        \"derpMap\":   {\"HomeParams\": {\"RegionScore\": {\"nyc\": 0.5}}}\n    },\n    \"tailnet\": {\n        \"dns\":      {\"magic_dns\": false, \"nameservers\": [], \"search_paths\": [], \"split_dns\": {}},\n        \"settings\": {}\n    },\n    \"topology\": \"../_topologies/dns.hujson\"\n}\n",
+		"scenario_path":   "scenarios/nodeattrs/nodeattrs-derpmap-homeparams-key-not-number.hujson",
+		"full_policy": {
+			"derpMap":   {"HomeParams": {"RegionScore": {"nyc": 0.5}}},
+			"tagOwners": {"tag:server": ["odin@example.com"]}
+		}
+	},
+	"topology": {"users": [
+		{"id": 1, "name": "odin", "email": "odin@example.com"},
+		{"id": 2, "name": "thor", "email": "thor@example.org"}
+	], "nodes": {"ivysaur": {
+		"hostname":        "ivysaur",
+		"tags":            [],
+		"ipv4":            "100.81.7.2",
+		"ipv6":            "fd7a:115c:a1e0::2",
+		"user":            "thor",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "server": {
+		"hostname":        "server",
+		"tags":            ["tag:server"],
+		"ipv4":            "100.81.7.3",
+		"ipv6":            "fd7a:115c:a1e0::3",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "user-tid": {
+		"hostname":        "user-tid",
+		"tags":            [],
+		"ipv4":            "100.81.7.1",
+		"ipv6":            "fd7a:115c:a1e0::1",
+		"user":            "odin",
+		"routable_ips":    [],
+		"approved_routes": []
+	}}},
+	"captures": {},
+	"steps": [{
+		"name":   "validate",
+		"at":     "2026-11-04T16:16:42.001236983Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/acl/validate",
+			"header":    {"Content-Type": "application/hujson"},
+			"body": {
+				"derpMap":   {"HomeParams": {"RegionScore": {"nyc": 0.5}}},
+				"tagOwners": {"tag:server": ["odin@example.com"]}
+			},
+			"status": 200,
+			"response": {
+				"message": "json: cannot unmarshal number nyc into Go struct field policyJSON.derpMap.HomeParams.RegionScore.nyc of type tailcfg.DERPRegionID"
+			}
+		}]
+	}]
+}
