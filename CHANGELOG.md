@@ -88,10 +88,9 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 
 `headscale nodes update-client` and `POST /api/v2/device/{id}/update-client` ask a
 connected node to update its Tailscale client, like the "Start update" button of
-the Tailscale admin console. The request is sent over c2n, and the node only
-starts the update if it has auto-updates enabled and its platform supports them;
-otherwise its reason is reported back. `--force` updates even with active
-Tailscale SSH sessions. See [the client docs](https://headscale.net/stable/about/clients/#update-clients). [#3632](https://github.com/juanfont/headscale/pull/3632)
+the Tailscale admin console. `GET /api/v2/device/{id}/update-status` reports the
+update. Both answer as Tailscale does: a node that does not allow remote updates,
+is not connected, or refuses is "not found". See [the client docs](https://headscale.net/stable/about/clients/#update-clients). [#3632](https://github.com/juanfont/headscale/pull/3632)
 
 ### BREAKING
 
