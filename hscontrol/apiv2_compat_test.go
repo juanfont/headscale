@@ -1,7 +1,7 @@
 // This file replays admin API exchanges captured from Tailscale SaaS, in
 // order and as the principal SaaS saw, and compares each answer with SaaS's.
 //
-// Test data source: servertest/testdata/steps/{oauth,policy-api,key-list}.hujson,
+// Test data source: servertest/testdata/steps/{oauth,policy-api,key-list,key-expiry}.hujson,
 // loaded by name. oauth's late joins are also replayed with real clients by
 // TestAPIv2OAuthClientDeleteCompat in servertest.
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
@@ -141,6 +141,13 @@ func TestAPIv2OAuthCompat(t *testing.T) {
 // made, and an admin key made after the token-made ones.
 func TestAPIv2KeyListCompat(t *testing.T) {
 	runAPICompat(t, "key-list", false)
+}
+
+// TestAPIv2KeyExpiryCompat replays the admin making an untagged auth key and
+// an API key with expirySeconds left out, zero, null, negative, short, 90
+// days, a second over and a year, and compares status and stored lifetime.
+func TestAPIv2KeyExpiryCompat(t *testing.T) {
+	runAPICompat(t, "key-expiry", false)
 }
 
 // TestAPIv2ACLCompat replays policy writes over a fixed baseline: an
