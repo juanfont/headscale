@@ -332,6 +332,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.resolvedPol = pol
 	pm.compiledGrants = grants
 	pm.userNodeIdx = buildUserNodeIndex(pm.nodes)
+	precomputeSelfRules(pm.compiledGrants, pm.userNodeIdx)
 	pm.needsPerNodeFilter = hasPerNodeGrants(pm.compiledGrants)
 	pm.viaTargetTags = collectViaTargetTags(pm.compiledGrants)
 	pm.relayTargetIPs = relayTargetIPs
@@ -1014,8 +1015,8 @@ func (pm *PolicyManager) nodeMatchersLocked(
 	node types.NodeView,
 	viaRules func(*compiledGrant, types.NodeView) []tailcfg.FilterRule,
 ) []matcher.Match {
-	return slices.Concat(pm.matchers, matcher.MatchesFromFilterRules(
-		nodeOnlyRules(pm.compiledGrants, node, pm.userNodeIdx, viaRules)))
+	return slices.Concat(pm.matchers,
+		nodeOnlyMatchers(pm.compiledGrants, node, pm.userNodeIdx, viaRules))
 }
 
 // peerRulesForNodeLocked returns the rules that decide a node's peers, see

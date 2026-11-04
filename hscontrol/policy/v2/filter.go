@@ -202,6 +202,7 @@ func (pol *Policy) compileFilterRulesForNode(
 
 	grants := pol.compileGrants(users, nodes)
 	userIdx := buildUserNodeIndex(nodes)
+	precomputeSelfRules(grants, userIdx)
 
 	return filterRulesForNode(grants, node, userIdx)
 }
