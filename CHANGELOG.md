@@ -238,6 +238,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Peers get a node's last seen time when it goes offline, not at the next full map. [#3636](https://github.com/juanfont/headscale/pull/3636)
 - With MagicDNS on, stop sending reverse DNS routes for `prefixes` inside 100.64.0.0/10 and fd7a:115c:a1e0::/48, as on Tailscale SaaS; clients add them. A `prefixes.v4` subset such as 100.64.0.0/24 sent 256, which overflowed systemd-resolved's domain limit and dropped reverse DNS. An octet-aligned prefix outside the ranges gets one route instead of 256 [#3482](https://github.com/juanfont/headscale/pull/3482)
 - The v1 API stores an API key or pre-auth key created without `expiration` as one that never expires, and reports its expiration as `null`. It was stored as already expired and rejected on first use. The CLI always sends an expiration and was not affected. Keys created this way before stay expired; create new ones [#3254](https://github.com/juanfont/headscale/pull/3254)
+- The v2 API accepts an auth key create that leaves out `tags`, as Tailscale does [#3254](https://github.com/juanfont/headscale/pull/3254)
 
 ## 0.29.7 (2026-10-30)
 
