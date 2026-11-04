@@ -131,6 +131,36 @@ func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 	return &result
 }
 
+// ApplyPolicy returns base with a policy derpMap applied the way Tailscale
+// SaaS applies one: OmitDefaultRegions drops every base region, a null region
+// removes one, and the other regions are added. The policy's HomeParams are
+// dropped, as SaaS never sends them; base's are kept.
+func ApplyPolicy(base, pol *tailcfg.DERPMap) *tailcfg.DERPMap {
+	if base == nil || pol == nil {
+		return base
+	}
+
+	out := &tailcfg.DERPMap{
+		HomeParams: base.HomeParams,
+		Regions:    map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{},
+	}
+
+	if !pol.OmitDefaultRegions {
+		maps.Copy(out.Regions, base.Regions)
+	}
+
+	for id, region := range pol.Regions {
+		if region == nil {
+			delete(out.Regions, id)
+			continue
+		}
+
+		out.Regions[id] = region.Clone()
+	}
+
+	return out
+}
+
 func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 	var derpMaps []*tailcfg.DERPMap
 	if cfg.DERPMap != nil {
