@@ -3616,6 +3616,13 @@ var benchPolicies = []struct {
 	// Names every user node, so its sources grow with the tailnet.
 	{name: "member-all", policy: `{
 		"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["*:*"]}]}`, routerFiltered: true},
+	// Every member's address is a destination of every member.
+	{name: "member-member", policy: `{
+		"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:22"]}]}`},
+	// A per-node via rule whose sources grow with the tailnet.
+	{name: "via-members", policy: `{
+		"tagOwners": {"tag:router": ["u1@"]},
+		"grants": [{"src": ["autogroup:member"], "dst": ["10.0.0.0/8"], "ip": ["*"], "via": ["tag:router"]}]}`, routerFiltered: true},
 }
 
 // benchSetNodesPolicies is the subset of benchPolicies BenchmarkSetNodes
