@@ -885,6 +885,7 @@ func TestPeerHostinfoEqual(t *testing.T) {
 			want:   false,
 		},
 		{name: "ssh host keys", mutate: func(hi *tailcfg.Hostinfo) { hi.SSH_HostKeys = []string{"ssh-ed25519 AAAA"} }, want: false},
+		{name: "exit node", mutate: func(hi *tailcfg.Hostinfo) { hi.ExitNodeID = "n123" }, want: false},
 		{name: "location", mutate: func(hi *tailcfg.Hostinfo) { hi.Location = &tailcfg.Location{Priority: 5} }, want: true},
 		{
 			name:   "dns proxy service",

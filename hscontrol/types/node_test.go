@@ -1450,3 +1450,18 @@ func TestValidateHostinfo(t *testing.T) {
 		})
 	}
 }
+
+func TestPeerHostinfoCarriesExitNodeID(t *testing.T) {
+	t.Parallel()
+
+	hi := (&tailcfg.Hostinfo{
+		Hostname:   "node",
+		OS:         "linux",
+		ExitNodeID: "n123",
+	}).View()
+
+	peer := PeerHostinfo(hi)
+
+	require.True(t, peer.Valid())
+	require.Equal(t, tailcfg.StableNodeID("n123"), peer.ExitNodeID())
+}
