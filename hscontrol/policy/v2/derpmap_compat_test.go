@@ -18,6 +18,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// derpMapSkipReasons lists the policies SaaS rejects for a reason headscale
+// cannot check. An entry headscale starts to reject fails, so a fix must
+// delete it.
+//
+//	TAILSCALE_DERP_IPS — SaaS rejects a custom node on the IP of one of its
+//	    DERP servers. That takes Tailscale's live server list; the one in the
+//	    tailscale.com module is a stale fallback.
+var derpMapSkipReasons = map[string]string{
+	"nodeattrs-derpmap-node-tailscale-ip": "TAILSCALE_DERP_IPS",
+}
+
 func TestDERPMapPolicyCompat(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join("testdata", "nodeattrs_results", "nodeattrs-derpmap-*.hujson"))
 	require.NoError(t, err)
@@ -32,15 +43,25 @@ func TestDERPMapPolicyCompat(t *testing.T) {
 				err = pol.validate()
 			}
 
+			if reason, ok := derpMapSkipReasons[tf.TestID]; ok {
+				require.NoError(t, err, "headscale refuses this policy; delete derpMapSkipReasons[%q]", tf.TestID)
+				t.Skip(reason)
+			}
+
 			if tf.Input.APIResponseCode == http.StatusOK {
 				require.NoError(t, err)
 
 				return
 			}
 
+			msg := tf.Input.APIResponseBody.Message
+
 			require.Error(t, err)
 
-			msg := tf.Input.APIResponseBody.Message
+			// SaaS names its own DERP servers by host; headscale has no list of
+			// them and rejects them by their domain.
+			msg = strings.Replace(msg, "Tailscale host name", "Tailscale hostname or subdomain", 1)
+
 			if !strings.HasPrefix(msg, "json:") {
 				assert.Contains(t, err.Error(), msg)
 			}

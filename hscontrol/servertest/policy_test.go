@@ -319,11 +319,14 @@ var rejectedPolicySkipReasons = map[string]string{
 
 	"routes-exit-family-ipv4/refused": aclDefaultRouteAccepted,
 	"routes-exit-family-ipv6/refused": aclDefaultRouteAccepted,
+
+	"nodeattrs-derpmap-node-tailscale-ip/refused": tailscaleDERPIPs,
 }
 
 const (
 	noTailnetDomains        = "NO_TAILNET_DOMAINS: headscale does not check user:*@domain or localpart:*@domain against the tailnet's domains"
 	aclDefaultRouteAccepted = "ACL_DEFAULT_ROUTE_ACCEPTED: headscale accepts literal 0.0.0.0/0 and ::/0 ACL destinations; SaaS rejects them and requires * or autogroup:internet"
+	tailscaleDERPIPs        = "TAILSCALE_DERP_IPS: SaaS refuses a policy derpMap node on a Tailscale DERP server's IP; that takes its live server list"
 )
 
 // TestRejectedPolicyLeavesLivePolicyCompat posts every policy SaaS refused to

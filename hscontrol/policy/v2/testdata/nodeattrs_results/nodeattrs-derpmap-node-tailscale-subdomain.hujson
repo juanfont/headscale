@@ -1,0 +1,84 @@
+// nodeattrs-derpmap-node-tailscale-subdomain
+//
+// Policy derpMap custom node on a tailscale.com subdomain that is no DERP host -- which wording?
+//
+// Steps: 1
+// Captured at:    2026-11-04T21:11:52Z
+// tool version:   tscap/9b5baac1f1e8ab33896273893a21d7312d2d6dc8
+// schema version: 1
+{
+	"schema_version": 1,
+	"test_id":        "nodeattrs-derpmap-node-tailscale-subdomain",
+	"description":    "Policy derpMap custom node on a tailscale.com subdomain that is no DERP host -- which wording?",
+	"category":       "nodeattrs",
+	"captured_at":    "2026-11-04T21:11:52.296113337Z",
+	"tool_version":   "tscap/9b5baac1f1e8ab33896273893a21d7312d2d6dc8",
+	"tailnet":        "odin@example.com",
+	"error":          true,
+	"input": {
+		"api_response_code": 400,
+		"api_response_body": {
+			"message": "custom DERP Region 900 cannot use Tailscale hostname or subdomain \"foo.tailscale.com\""
+		},
+		"tailnet": {
+			"dns":      {"magic_dns": false, "nameservers": [], "search_paths": [], "split_dns": {}},
+			"settings": {}
+		},
+		"scenario_hujson": "                                             \n{\n    \"category\":    \"nodeattrs\",\n    \"description\": \"Policy derpMap custom node on a tailscale.com subdomain that is no DERP host -- which wording?\",\n    \"id\":          \"nodeattrs-derpmap-node-tailscale-subdomain\",\n    \"options\":     {\"capture\": \"none\"},\n    \"policy\": {\n        \"tagOwners\": {\"tag:server\": [\"odin@example.com\"]},\n        \"derpMap\":   {\"Regions\": {\"900\": {\"RegionID\": 900, \"RegionCode\": \"custom\", \"Nodes\": [{\"Name\": \"900a\", \"RegionID\": 900, \"HostName\": \"foo.tailscale.com\"}]}}}\n    },\n    \"tailnet\": {\n        \"dns\":      {\"magic_dns\": false, \"nameservers\": [], \"search_paths\": [], \"split_dns\": {}},\n        \"settings\": {}\n    },\n    \"topology\": \"../_topologies/dns.hujson\"\n}\n",
+		"scenario_path":   "scenarios/nodeattrs/nodeattrs-derpmap-node-tailscale-subdomain.hujson",
+		"full_policy": {"derpMap": {"Regions": {"900": {
+			"Nodes":      [{"HostName": "foo.tailscale.com", "Name": "900a", "RegionID": 900}],
+			"RegionCode": "custom",
+			"RegionID":   900
+		}}}, "tagOwners": {"tag:server": ["odin@example.com"]}}
+	},
+	"topology": {"users": [
+		{"id": 1, "name": "odin", "email": "odin@example.com"},
+		{"id": 2, "name": "thor", "email": "thor@example.org"}
+	], "nodes": {"ivysaur": {
+		"hostname":        "ivysaur",
+		"tags":            [],
+		"ipv4":            "100.81.7.2",
+		"ipv6":            "fd7a:115c:a1e0::2",
+		"user":            "thor",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "server": {
+		"hostname":        "server",
+		"tags":            ["tag:server"],
+		"ipv4":            "100.81.7.3",
+		"ipv6":            "fd7a:115c:a1e0::3",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "user-tid": {
+		"hostname":        "user-tid",
+		"tags":            [],
+		"ipv4":            "100.81.7.1",
+		"ipv6":            "fd7a:115c:a1e0::1",
+		"user":            "odin",
+		"routable_ips":    [],
+		"approved_routes": []
+	}}},
+	"captures": {},
+	"steps": [{
+		"name":   "validate",
+		"at":     "2026-11-04T21:12:02.286491285Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/acl/validate",
+			"header":    {"Content-Type": "application/hujson"},
+			"body": {"derpMap": {"Regions": {"900": {
+				"Nodes":      [{"HostName": "foo.tailscale.com", "Name": "900a", "RegionID": 900}],
+				"RegionCode": "custom",
+				"RegionID":   900
+			}}}, "tagOwners": {"tag:server": ["odin@example.com"]}},
+			"status": 200,
+			"response": {
+				"message": "custom DERP Region 900 cannot use Tailscale hostname or subdomain \"foo.tailscale.com\""
+			}
+		}]
+	}]
+}

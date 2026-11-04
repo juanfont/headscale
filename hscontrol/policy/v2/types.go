@@ -202,6 +202,7 @@ var (
 	ErrDERPRegionNoNodes           = errors.New("must specify at least one node in DERP Region")
 	ErrDERPRegionNullNode          = errors.New("null node in DERP Region")
 	ErrDERPNodeRegionID            = errors.New("doesn't match its region")
+	ErrDERPTailscaleName           = errors.New("cannot use Tailscale hostname or subdomain")
 	ErrDERPOmitDefaultsNoRegions   = errors.New("OmitDefaultRegions specified but no custom DERP regions specified")
 	ErrProtocolNoSpecificPorts     = errors.New("protocol does not support specific ports")
 	ErrTestEmptyAssertions         = errors.New("test entry must have at least one of \"accept\" or \"deny\"")
@@ -3460,9 +3461,10 @@ func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWi
 }
 
 // validateDERPMap checks a policy derpMap the way Tailscale SaaS does, with
-// its wording: an added region uses an ID in 900-999, has a node, and every
-// ID in it matches the key it sits under. A null region only removes one, so
-// it is not checked. HomeParams are decoded but never sent, as on SaaS.
+// its wording: an added region uses an ID in 900-999, has a node, every ID in
+// it matches the key it sits under, and no node is on tailscale.com. A null
+// region only removes one, so it is not checked. HomeParams are decoded but
+// never sent, as on SaaS.
 func validateDERPMap(dm *tailcfg.DERPMap) []error {
 	if dm == nil {
 		return nil
@@ -3497,13 +3499,26 @@ func validateDERPMap(dm *tailcfg.DERPMap) []error {
 		}
 
 		for _, node := range region.Nodes {
-			switch {
-			case node == nil:
+			if node == nil {
 				errs = append(errs, fmt.Errorf("%w %d", ErrDERPRegionNullNode, id))
-			case node.RegionID != id:
+
+				continue
+			}
+
+			if node.RegionID != id {
 				errs = append(errs, fmt.Errorf(
 					"custom DERP Region %d has node %q with RegionID %d that %w",
 					id, node.Name, node.RegionID, ErrDERPNodeRegionID))
+			}
+
+			// SaaS keeps custom regions off Tailscale's own servers. It also
+			// rejects their IPs, which takes a live list of them.
+			for _, name := range []string{node.HostName, node.CertName} {
+				if name == "tailscale.com" || strings.HasSuffix(name, ".tailscale.com") {
+					errs = append(errs, fmt.Errorf("custom DERP Region %d %w %q", id, ErrDERPTailscaleName, name))
+
+					break
+				}
 			}
 		}
 	}

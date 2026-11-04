@@ -130,7 +130,9 @@ func parsePrefixes(t *testing.T, name string, s []string) []netip.Prefix {
 //	NO_USER_ROLES — `autogroup:admin` and `autogroup:owner` depend on
 //	    user-role and tailnet-ownership concepts headscale does not
 //	    model.
+//	TAILSCALE_DERP_IPS — see derpMapSkipReasons.
 var nodeAttrsSkipReasons = map[string]string{
+	"nodeattrs-derpmap-node-tailscale-ip":  "TAILSCALE_DERP_IPS",
 	"nodeattrs-ippool-g1-admin":            "IPPOOL_ALLOCATOR",
 	"nodeattrs-ippool-g2-group":            "IPPOOL_ALLOCATOR",
 	"nodeattrs-ippool-g3-mixed":            "IPPOOL_ALLOCATOR",
