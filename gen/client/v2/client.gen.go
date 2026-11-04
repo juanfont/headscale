@@ -96,7 +96,7 @@ type Device struct {
 // DevicePostureAttributes defines model for DevicePostureAttributes.
 type DevicePostureAttributes struct {
 	Attributes map[string]interface{} `json:"attributes"`
-	Expiries   map[string]time.Time   `json:"expiries"`
+	Expiries   *map[string]time.Time  `json:"expiries,omitempty"`
 }
 
 // DeviceRoutes defines model for DeviceRoutes.
