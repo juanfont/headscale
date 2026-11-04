@@ -97,11 +97,12 @@ type DeviceRoutes struct {
 	Enabled    []string `json:"enabledRoutes"    nullable:"false"`
 }
 
-// DevicePostureAttributes is the Tailscale-compatible posture attribute
-// response. Headscale currently exposes only the server-derived public address.
+// DevicePostureAttributes is the GET /device/{id}/attributes response. Of
+// Tailscale's attributes, headscale sets only ip:publicAddress, and like
+// Tailscale leaves expiries out when no attribute has one.
 type DevicePostureAttributes struct {
-	Attributes map[string]any       `json:"attributes" nullable:"false"`
-	Expiries   map[string]time.Time `json:"expiries"   nullable:"false"`
+	Attributes map[string]any       `json:"attributes"         nullable:"false"`
+	Expiries   map[string]time.Time `json:"expiries,omitempty"`
 }
 
 // Request bodies match the Tailscale SDK wire shapes and, like Tailscale's,
@@ -630,10 +631,7 @@ func devicePostureAttributesFromView(view types.NodeView) DevicePostureAttribute
 		attributes["ip:publicAddress"] = addr.Get().String()
 	}
 
-	return DevicePostureAttributes{
-		Attributes: attributes,
-		Expiries:   make(map[string]time.Time),
-	}
+	return DevicePostureAttributes{Attributes: attributes}
 }
 
 func routesFromView(view types.NodeView) DeviceRoutes {

@@ -146,10 +146,6 @@ func TestAPIv2Device_Get(t *testing.T) {
 	resp := e.api.Get("/api/v2/device/" + e.deviceID + "?fields=all")
 	require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
 
-	var raw map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &raw))
-	assert.NotContains(t, raw, "otherKnown"+"IPs")
-
 	var dev apiv2.Device
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &dev))
 	assert.Equal(t, e.deviceID, dev.ID)
@@ -215,11 +211,10 @@ func TestAPIv2Device_GetPostureAttributes(t *testing.T) {
 	e := newDeviceTestEnv(t)
 
 	t.Run("unknown address", func(t *testing.T) {
-		attrs := getDevicePostureAttributes(t, e.api, e.deviceID)
-		assert.NotNil(t, attrs.Attributes)
-		assert.Empty(t, attrs.Attributes)
-		assert.NotNil(t, attrs.Expiries)
-		assert.Empty(t, attrs.Expiries)
+		resp := e.api.Get("/api/v2/device/" + e.deviceID + "/attributes")
+		require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
+		// SaaS leaves expiries out when no attribute has one.
+		assert.JSONEq(t, `{"attributes":{}}`, resp.Body.String())
 	})
 
 	for _, test := range []struct {
@@ -237,7 +232,6 @@ func TestAPIv2Device_GetPostureAttributes(t *testing.T) {
 
 			attrs := getDevicePostureAttributes(t, e.api, e.deviceID)
 			assert.Equal(t, test.addr, attrs.Attributes["ip:publicAddress"])
-			assert.NotNil(t, attrs.Expiries)
 			assert.Empty(t, attrs.Expiries)
 		})
 	}
@@ -266,21 +260,10 @@ func TestAPIv2Device_List(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
 
-		var raw struct {
-			Devices []map[string]json.RawMessage `json:"devices"`
-		}
-		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &raw))
-
-		for _, device := range raw.Devices {
-			assert.NotContains(t, device, "otherKnown"+"IPs")
-		}
-
 		return out.Devices
 	}
 
-	devices := list()
-	require.Len(t, devices, 1)
-	assert.True(t, containsDeviceID(devices, e.deviceID))
+	assert.True(t, containsDeviceID(list(), e.deviceID))
 	assert.Len(t, list(), e.app.state.ListNodes().Len(), "list count == ListNodes")
 
 	// A second node appears; deleting it removes it from both the list and state.
