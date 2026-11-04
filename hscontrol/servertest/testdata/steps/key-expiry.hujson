@@ -1,0 +1,504 @@
+// key-expiry
+//
+// The lifetime the admin API gives an auth key and an API key by expirySeconds form
+//
+// Steps: 18
+// Captured at:    2026-11-04T16:18:57Z
+// tool version:   saasprobe 4f88289fb9fd04cfd738a7dadea015882fe0b13d
+// schema version: 1
+{
+	"schema_version": 1,
+	"test_id":        "key-expiry",
+	"description":    "The lifetime the admin API gives an auth key and an API key by expirySeconds form",
+	"captured_at":    "2026-11-04T16:18:57.622651899Z",
+	"tool_version":   "saasprobe 4f88289fb9fd04cfd738a7dadea015882fe0b13d",
+	"tailnet":        "odin@example.com",
+	"input": {"api_response_code": 0, "tailnet": {"dns": {
+		"magic_dns":    false,
+		"nameservers":  null,
+		"search_paths": null,
+		"split_dns":    null
+	}, "settings": {}}, "scenario_hujson": "", "full_policy": null},
+	"topology": {"users": [
+		{"id": 1, "name": "odin", "email": "odin@example.com"},
+		{"id": 2, "name": "thor", "email": "thor@example.org"},
+		{"id": 3, "name": "freya", "email": "freya@example.com"}
+	], "nodes": {}},
+	"captures": null,
+	"steps": [{
+		"name":   "X-omitted",
+		"at":     "2026-11-04T16:18:57.622672492Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-omitted",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {
+				"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+			}, "description": "tscap-saasprobe X-omitted"},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+				},
+				"created":       "2026-11-04T16:18:58Z",
+				"description":   "tscap-saasprobe X-omitted",
+				"expires":       "2027-02-02T16:18:58Z",
+				"expirySeconds": 7776000,
+				"id":            "{key:X-omitted}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "DELETE",
+			"path":        "/tailnet/-/keys/{key:X-omitted}",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    null,
+			"offset_ms":   2095
+		}]
+	}, {
+		"name":   "X-zero",
+		"at":     "2026-11-04T16:18:59.737032846Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-zero",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {
+				"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+			}, "description": "tscap-saasprobe X-zero", "expirySeconds": 0},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+				},
+				"created":       "2026-11-04T16:19:02Z",
+				"description":   "tscap-saasprobe X-zero",
+				"expires":       "2027-02-02T16:19:02Z",
+				"expirySeconds": 7776000,
+				"id":            "{key:X-zero}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 2000
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "DELETE",
+			"path":        "/tailnet/-/keys/{key:X-zero}",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    null,
+			"offset_ms":   4019
+		}]
+	}, {
+		"name":   "X-null",
+		"at":     "2026-11-04T16:19:03.772600037Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-null",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {
+				"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+			}, "description": "tscap-saasprobe X-null", "expirySeconds": null},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+				},
+				"created":       "2026-11-04T16:19:06Z",
+				"description":   "tscap-saasprobe X-null",
+				"expires":       "2027-02-02T16:19:06Z",
+				"expirySeconds": 7776000,
+				"id":            "{key:X-null}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 2000
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "DELETE",
+			"path":        "/tailnet/-/keys/{key:X-null}",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    null,
+			"offset_ms":   4018
+		}]
+	}, {
+		"name":   "X-negative",
+		"at":     "2026-11-04T16:19:07.808490275Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-negative",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {
+				"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+			}, "description": "tscap-saasprobe X-negative", "expirySeconds": -1},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "expirySeconds must be greater than or equal to 0"},
+			"offset_ms":   2000
+		}]
+	}, {
+		"name":   "X-second",
+		"at":     "2026-11-04T16:19:09.82709281Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-second",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {
+				"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+			}, "description": "tscap-saasprobe X-second", "expirySeconds": 1},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+				},
+				"created":       "2026-11-04T16:19:12Z",
+				"description":   "tscap-saasprobe X-second",
+				"expires":       "2026-11-04T16:19:13Z",
+				"expirySeconds": 1,
+				"id":            "{key:X-second}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 2002
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "DELETE",
+			"path":        "/tailnet/-/keys/{key:X-second}",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    null,
+			"offset_ms":   4020
+		}]
+	}, {
+		"name":   "X-day",
+		"at":     "2026-11-04T16:19:13.865467889Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-day",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {
+				"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+			}, "description": "tscap-saasprobe X-day", "expirySeconds": 86400},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+				},
+				"created":       "2026-11-04T16:19:16Z",
+				"description":   "tscap-saasprobe X-day",
+				"expires":       "2026-11-05T16:19:16Z",
+				"expirySeconds": 86400,
+				"id":            "{key:X-day}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 2000
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "DELETE",
+			"path":        "/tailnet/-/keys/{key:X-day}",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    null,
+			"offset_ms":   4020
+		}]
+	}, {
+		"name":   "X-max",
+		"at":     "2026-11-04T16:19:17.90352903Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-max",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {
+				"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+			}, "description": "tscap-saasprobe X-max", "expirySeconds": 7776000},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+				},
+				"created":       "2026-11-04T16:19:20Z",
+				"description":   "tscap-saasprobe X-max",
+				"expires":       "2027-02-02T16:19:20Z",
+				"expirySeconds": 7776000,
+				"id":            "{key:X-max}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 2002
+		}, {
+			"kind":        "api",
+			"principal":   "admin",
+			"method":      "DELETE",
+			"path":        "/tailnet/-/keys/{key:X-max}",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    null,
+			"offset_ms":   4021
+		}]
+	}, {
+		"name":   "X-over",
+		"at":     "2026-11-04T16:19:21.946999309Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-over",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {
+				"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+			}, "description": "tscap-saasprobe X-over", "expirySeconds": 7776001},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "expirySeconds must be less than or equal to 7776000"},
+			"offset_ms":   2001
+		}]
+	}, {
+		"name":   "X-year",
+		"at":     "2026-11-04T16:19:23.971866944Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-year",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {
+				"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": false}}
+			}, "description": "tscap-saasprobe X-year", "expirySeconds": 31536000},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "expirySeconds must be less than or equal to 7776000"},
+			"offset_ms":   2001
+		}]
+	}, {
+		"name":   "X-api-omitted",
+		"at":     "2026-11-04T16:19:25.992653207Z",
+		"result": "observed",
+		"actions": [{
+			"kind":        "api",
+			"key":         "X-api-omitted",
+			"principal":   "admin",
+			"method":      "POST",
+			"path":        "/tailnet/-/keys",
+			"header":      {"Content-Type": "application/json"},
+			"body":        {"description": "tscap-saasprobe X-api-omitted", "keyType": "api"},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "invalid key type, \"api\" is not supported"},
+			"offset_ms":   1999
+		}]
+	}, {
+		"name":   "X-api-zero",
+		"at":     "2026-11-04T16:19:28.013468642Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-api-zero",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description":   "tscap-saasprobe X-api-zero",
+				"expirySeconds": 0,
+				"keyType":       "api"
+			},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "invalid key type, \"api\" is not supported"},
+			"offset_ms":   2000
+		}]
+	}, {
+		"name":   "X-api-null",
+		"at":     "2026-11-04T16:19:30.032434052Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-api-null",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description":   "tscap-saasprobe X-api-null",
+				"expirySeconds": null,
+				"keyType":       "api"
+			},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "invalid key type, \"api\" is not supported"},
+			"offset_ms":   2001
+		}]
+	}, {
+		"name":   "X-api-negative",
+		"at":     "2026-11-04T16:19:32.051782177Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-api-negative",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description":   "tscap-saasprobe X-api-negative",
+				"expirySeconds": -1,
+				"keyType":       "api"
+			},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "invalid key type, \"api\" is not supported"},
+			"offset_ms":   2001
+		}]
+	}, {
+		"name":   "X-api-second",
+		"at":     "2026-11-04T16:19:34.070960092Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-api-second",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description":   "tscap-saasprobe X-api-second",
+				"expirySeconds": 1,
+				"keyType":       "api"
+			},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "invalid key type, \"api\" is not supported"},
+			"offset_ms":   2001
+		}]
+	}, {
+		"name":   "X-api-day",
+		"at":     "2026-11-04T16:19:36.09022729Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-api-day",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description":   "tscap-saasprobe X-api-day",
+				"expirySeconds": 86400,
+				"keyType":       "api"
+			},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "invalid key type, \"api\" is not supported"},
+			"offset_ms":   2001
+		}]
+	}, {
+		"name":   "X-api-max",
+		"at":     "2026-11-04T16:19:38.111918307Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-api-max",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description":   "tscap-saasprobe X-api-max",
+				"expirySeconds": 7776000,
+				"keyType":       "api"
+			},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "invalid key type, \"api\" is not supported"},
+			"offset_ms":   2001
+		}]
+	}, {
+		"name":   "X-api-over",
+		"at":     "2026-11-04T16:19:40.133400566Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-api-over",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description":   "tscap-saasprobe X-api-over",
+				"expirySeconds": 7776001,
+				"keyType":       "api"
+			},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "invalid key type, \"api\" is not supported"},
+			"offset_ms":   2000
+		}]
+	}, {
+		"name":   "X-api-year",
+		"at":     "2026-11-04T16:19:42.15146693Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "X-api-year",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description":   "tscap-saasprobe X-api-year",
+				"expirySeconds": 31536000,
+				"keyType":       "api"
+			},
+			"status":      400,
+			"resp_header": {"Content-Type": "application/json"},
+			"response":    {"message": "invalid key type, \"api\" is not supported"},
+			"offset_ms":   2001
+		}]
+	}]
+}
