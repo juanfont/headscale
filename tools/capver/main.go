@@ -25,7 +25,7 @@ import (
 const (
 	ghcrTokenURL                = "https://ghcr.io/token?service=ghcr.io&scope=repository:tailscale/tailscale:pull" //nolint:gosec
 	ghcrTagsURL                 = "https://ghcr.io/v2/tailscale/tailscale/tags/list?n=10000"
-	rawFileURL                  = "https://github.com/tailscale/tailscale/raw/refs/tags/%s/tailcfg/tailcfg.go"
+	rawFileURL                  = "https://raw.githubusercontent.com/tailscale/tailscale/refs/tags/%s/tailcfg/tailcfg.go"
 	outputFile                  = "../../hscontrol/capver/capver_generated.go"
 	testFile                    = "../../hscontrol/capver/capver_test_data.go"
 	fallbackCapVer              = 90
