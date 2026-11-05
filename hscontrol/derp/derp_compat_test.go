@@ -54,6 +54,7 @@ func TestApplyPolicySaaSCompat(t *testing.T) {
 	}
 
 	require.NotEmpty(t, base.Regions)
+	require.NoError(t, validateRegions(base), "Tailscale's own map must pass the rules every DERP map does")
 
 	files, err := filepath.Glob(derpCaptures + "nodeattrs-derpmap-*.hujson")
 	require.NoError(t, err)

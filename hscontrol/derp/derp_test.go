@@ -2,6 +2,9 @@ package derp
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -446,6 +449,10 @@ homeparams:
 		{name: "json as yaml decodes to nothing", file: "derp.yaml", content: string(tailcfgJSON), wantErr: true},
 		{name: "misspelt yaml key", file: "derp.yaml", content: "homeparams: {regionscores: {999: 0.5}}", wantErr: true},
 		{name: "unknown json key", file: "derp.json", content: `{"HomeParams": {"Bogus": 1}}`, wantErr: true},
+		{name: "region id not its key", file: "derp.json", content: `{"Regions": {"999": {"RegionID": 998, "Nodes": [{"Name": "a", "RegionID": 999}]}}}`, wantErr: true},
+		{name: "node in another region", file: "derp.json", content: `{"Regions": {"999": {"RegionID": 999, "Nodes": [{"Name": "a", "RegionID": 998}]}}}`, wantErr: true},
+		{name: "region without nodes", file: "derp.json", content: `{"Regions": {"999": {"RegionID": 999}}}`, wantErr: true},
+		{name: "null node", file: "derp.json", content: `{"Regions": {"999": {"RegionID": 999, "Nodes": [null]}}}`, wantErr: true},
 		{name: "empty", file: "derp.yaml", content: "", wantErr: true},
 		{name: "no extension", file: "derp", content: yamlMap, wantErr: true},
 	}
@@ -469,4 +476,26 @@ homeparams:
 			}
 		})
 	}
+
+	// A null region removes one and has nothing to check.
+	path := filepath.Join(t.TempDir(), "drop.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"Regions": {"1": null}}`), 0o600))
+
+	_, err = loadDERPMapFromPath(path)
+	require.NoError(t, err)
+}
+
+// TestLoadDERPMapFromURLValidates pins that a fetched map meets the region
+// rules a derp.paths file does.
+func TestLoadDERPMapFromURLValidates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"Regions": {"1": {"RegionID": 2, "Nodes": [{"Name": "a", "RegionID": 1}]}}}`))
+	}))
+	defer srv.Close()
+
+	addr, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	_, err = loadDERPMapFromURL(*addr)
+	require.ErrorIs(t, err, ErrRegionIDKey)
 }
