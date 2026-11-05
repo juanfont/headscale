@@ -25,13 +25,68 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-var errEmptyDERPMapFile = errors.New("DERP map file has no regions or homeparams")
+var (
+	errEmptyDERPMapFile = errors.New("DERP map file has no regions or homeparams")
+
+	ErrRegionIDKey    = errors.New("doesn't match its key")
+	ErrRegionNoNodes  = errors.New("must specify at least one node in DERP Region")
+	ErrRegionNullNode = errors.New("null node in DERP Region")
+	ErrNodeRegionID   = errors.New("doesn't match its region")
+)
+
+// ValidateRegion returns what is wrong with region, stored under id in a DERP
+// map. Clients look regions up by key and attribute a node's latency to its
+// RegionID, so every map must pass, whatever its source. The wording is
+// Tailscale SaaS's for a policy derpMap.
+func ValidateRegion(id tailcfg.DERPRegionID, region *tailcfg.DERPRegion) []error {
+	var errs []error
+
+	if region.RegionID != id {
+		errs = append(errs, fmt.Errorf(
+			"custom DERP Region %d has RegionID %d that %w", id, region.RegionID, ErrRegionIDKey))
+	}
+
+	if len(region.Nodes) == 0 {
+		errs = append(errs, fmt.Errorf("%w %d", ErrRegionNoNodes, id))
+	}
+
+	for _, node := range region.Nodes {
+		if node == nil {
+			errs = append(errs, fmt.Errorf("%w %d", ErrRegionNullNode, id))
+
+			continue
+		}
+
+		if node.RegionID != id {
+			errs = append(errs, fmt.Errorf(
+				"custom DERP Region %d has node %q with RegionID %d that %w",
+				id, node.Name, node.RegionID, ErrNodeRegionID))
+		}
+	}
+
+	return errs
+}
+
+// validateRegions runs [ValidateRegion] on every region of dm. A null region
+// only removes one, so it is not checked.
+func validateRegions(dm *tailcfg.DERPMap) error {
+	var errs []error
+
+	for _, id := range slices.Sorted(maps.Keys(dm.Regions)) {
+		if region := dm.Regions[id]; region != nil {
+			errs = append(errs, ValidateRegion(id, region)...)
+		}
+	}
+
+	return errors.Join(errs...)
+}
 
 // loadDERPMapFromPath reads a DERP map file in the format its extension names
 // (see [util.UnmarshalByExtStrict]). An unknown key is an error, as SaaS
 // rejects one in a policy derpMap, so a misspelt key cannot silently do
 // nothing. A map with neither regions nor HomeParams is an error too;
-// HomeParams alone is valid, to score regions from other sources.
+// HomeParams alone is valid, to score regions from other sources. Regions
+// must pass [ValidateRegion].
 func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -45,6 +100,11 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 
 	if len(derpMap.Regions) == 0 && derpMap.HomeParams == nil {
 		return nil, fmt.Errorf("%w: %s", errEmptyDERPMapFile, path)
+	}
+
+	err = validateRegions(&derpMap)
+	if err != nil {
+		return nil, fmt.Errorf("DERP map %s: %w", path, err)
 	}
 
 	return &derpMap, nil
@@ -78,8 +138,16 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 	var derpMap tailcfg.DERPMap
 
 	err = json.Unmarshal(body, &derpMap)
+	if err != nil {
+		return nil, err
+	}
 
-	return &derpMap, err
+	err = validateRegions(&derpMap)
+	if err != nil {
+		return nil, fmt.Errorf("DERP map %s: %w", addr.String(), err)
+	}
+
+	return &derpMap, nil
 }
 
 // mergeDERPMaps merges a list of [tailcfg.DERPMap] values into a single

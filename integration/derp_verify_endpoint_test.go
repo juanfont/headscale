@@ -52,6 +52,7 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	require.NoError(t, err)
 
 	derpRegion := tailcfg.DERPRegion{
+		RegionID:   900,
 		RegionCode: "test-derpverify",
 		RegionName: "TestDerpVerify",
 		Nodes: []*tailcfg.DERPNode{

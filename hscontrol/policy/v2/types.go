@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-json-experiment/json"
+	"github.com/juanfont/headscale/hscontrol/derp"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/tailscale/hujson"
@@ -198,10 +199,6 @@ var (
 	ErrSSHDestAliasNotSupported    = errors.New("alias not supported for SSH destination")
 	ErrUnknownField                = errors.New("unknown field")
 	ErrDERPRegionIDRange           = errors.New("must be in range [900,999]")
-	ErrDERPRegionIDKey             = errors.New("doesn't match its key")
-	ErrDERPRegionNoNodes           = errors.New("must specify at least one node in DERP Region")
-	ErrDERPRegionNullNode          = errors.New("null node in DERP Region")
-	ErrDERPNodeRegionID            = errors.New("doesn't match its region")
 	ErrDERPTailscaleName           = errors.New("cannot use Tailscale hostname or subdomain")
 	ErrDERPOmitDefaultsNoRegions   = errors.New("OmitDefaultRegions specified but no custom DERP regions specified")
 	ErrProtocolNoSpecificPorts     = errors.New("protocol does not support specific ports")
@@ -3461,8 +3458,8 @@ func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWi
 }
 
 // validateDERPMap checks a policy derpMap the way Tailscale SaaS does, with
-// its wording: an added region uses an ID in 900-999, has a node, every ID in
-// it matches the key it sits under, and no node is on tailscale.com. A null
+// its wording: an added region uses an ID in 900-999, passes
+// [derp.ValidateRegion] like every DERP map, and no node is on tailscale.com. A null
 // region only removes one, so it is not checked. HomeParams are decoded but
 // never sent, as on SaaS.
 func validateDERPMap(dm *tailcfg.DERPMap) []error {
@@ -3489,26 +3486,11 @@ func validateDERPMap(dm *tailcfg.DERPMap) []error {
 			continue
 		}
 
-		if region.RegionID != id {
-			errs = append(errs, fmt.Errorf(
-				"custom DERP Region %d has RegionID %d that %w", id, region.RegionID, ErrDERPRegionIDKey))
-		}
-
-		if len(region.Nodes) == 0 {
-			errs = append(errs, fmt.Errorf("%w %d", ErrDERPRegionNoNodes, id))
-		}
+		errs = append(errs, derp.ValidateRegion(id, region)...)
 
 		for _, node := range region.Nodes {
 			if node == nil {
-				errs = append(errs, fmt.Errorf("%w %d", ErrDERPRegionNullNode, id))
-
 				continue
-			}
-
-			if node.RegionID != id {
-				errs = append(errs, fmt.Errorf(
-					"custom DERP Region %d has node %q with RegionID %d that %w",
-					id, node.Name, node.RegionID, ErrDERPNodeRegionID))
 			}
 
 			// SaaS keeps custom regions off Tailscale's own servers. It also
