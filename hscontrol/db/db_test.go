@@ -752,22 +752,46 @@ func TestSQLiteMigrationAddsCreatedByToken(t *testing.T) {
 	assert.True(t, got.CreatedByToken)
 }
 
-// TestSQLiteRejectsPre029Database ensures a real pre-0.29 database is refused
-// rather than silently skipping the migrations that were removed.
+// TestSQLiteRejectsPre029Database ensures real pre-0.29 databases are refused
+// before anything is written, rather than silently skipping the migrations
+// that were removed.
 func TestSQLiteRejectsPre029Database(t *testing.T) {
-	dbPath := t.TempDir() + "/headscale_test.db"
-
-	err := createSQLiteFromSQLFile("testdata/sqlite_too_old/headscale_0.26.1_dump.sql", dbPath)
+	dumps, err := os.ReadDir("testdata/sqlite_too_old")
 	require.NoError(t, err)
 
-	_, err = NewHeadscaleDatabase(&types.Config{
-		Database: types.DatabaseConfig{
-			Type:   "sqlite3",
-			Sqlite: types.SqliteConfig{Path: dbPath},
-		},
-		Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
-	})
-	require.ErrorIs(t, err, errDatabaseTooOld)
+	for _, dump := range dumps {
+		t.Run(dump.Name(), func(t *testing.T) {
+			dbPath := t.TempDir() + "/headscale_test.db"
+
+			err := createSQLiteFromSQLFile(filepath.Join("testdata/sqlite_too_old", dump.Name()), dbPath)
+			require.NoError(t, err)
+
+			schema := func() string {
+				raw, err := sql.Open("sqlite", dbPath)
+				require.NoError(t, err)
+
+				defer raw.Close()
+
+				var s string
+				require.NoError(t, raw.QueryRowContext(context.Background(),
+					"SELECT group_concat(sql, ';') FROM (SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name)",
+				).Scan(&s))
+
+				return s
+			}
+			before := schema()
+
+			_, err = NewHeadscaleDatabase(&types.Config{
+				Database: types.DatabaseConfig{
+					Type:   "sqlite3",
+					Sqlite: types.SqliteConfig{Path: dbPath},
+				},
+				Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
+			})
+			require.ErrorIs(t, err, errDatabaseTooOld)
+			assert.Equal(t, before, schema())
+		})
+	}
 }
 
 // TestSQLiteAllTestdataMigrations tests migration compatibility across all SQLite schemas
