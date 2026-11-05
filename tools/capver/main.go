@@ -15,7 +15,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/cmpver"
 )
@@ -35,7 +37,15 @@ const (
 	latest2Count                = 2
 )
 
-var errUnexpectedStatusCode = errors.New("unexpected status code")
+var (
+	errUnexpectedStatusCode = errors.New("unexpected status code")
+	errNotFound             = errors.New("not found")
+)
+
+const fetchTries = 5
+
+// fetchBackOff is a var so tests can retry without sleeping.
+var fetchBackOff = func() backoff.BackOff { return backoff.NewExponentialBackOff() }
 
 // GHCRTokenResponse represents the response from GHCR token endpoint.
 type GHCRTokenResponse struct {
@@ -48,28 +58,50 @@ type GHCRTagsResponse struct {
 	Tags []string `json:"tags"`
 }
 
+// fetch GETs url, retrying 5xx, 429 and network errors. A transient failure
+// must fail the run: skipping it would silently drop a version from the table.
+// A 404 is returned at once as errNotFound.
+func fetch(ctx context.Context, url, bearer string) ([]byte, error) {
+	return backoff.Retry(ctx, func() ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, backoff.Permanent(err)
+		}
+
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		switch {
+		case resp.StatusCode == http.StatusOK:
+			return io.ReadAll(resp.Body)
+		case resp.StatusCode == http.StatusNotFound:
+			return nil, backoff.Permanent(fmt.Errorf("%s: %w", url, errNotFound))
+		case resp.StatusCode == http.StatusTooManyRequests, resp.StatusCode >= http.StatusInternalServerError:
+			return nil, fmt.Errorf("%s: %w: %d", url, errUnexpectedStatusCode, resp.StatusCode)
+		default:
+			return nil, backoff.Permanent(fmt.Errorf("%s: %w: %d", url, errUnexpectedStatusCode, resp.StatusCode))
+		}
+	},
+		backoff.WithBackOff(fetchBackOff()),
+		backoff.WithMaxTries(fetchTries),
+		backoff.WithNotify(func(err error, d time.Duration) {
+			log.Printf("Retrying in %s: %v", d, err)
+		}),
+	)
+}
+
 // getGHCRToken fetches an anonymous token from GHCR for accessing public container images.
 func getGHCRToken(ctx context.Context) (string, error) {
-	client := &http.Client{}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ghcrTokenURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("error creating token request: %w", err)
-	}
-
-	resp, err := client.Do(req)
+	body, err := fetch(ctx, ghcrTokenURL, "")
 	if err != nil {
 		return "", fmt.Errorf("error fetching GHCR token: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%w: %d", errUnexpectedStatusCode, resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading token response: %w", err)
 	}
 
 	var tokenResp GHCRTokenResponse
@@ -89,28 +121,9 @@ func getGHCRTags(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to get GHCR token: %w", err)
 	}
 
-	client := &http.Client{}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ghcrTagsURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating tags request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := client.Do(req)
+	body, err := fetch(ctx, ghcrTagsURL, token)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching tags: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: %d", errUnexpectedStatusCode, resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading tags response: %w", err)
 	}
 
 	var tagsResp GHCRTagsResponse
@@ -199,34 +212,15 @@ func getCapabilityVersions(ctx context.Context) (map[string]tailcfg.CapabilityVe
 	re := regexp.MustCompile(`const CurrentCapabilityVersion CapabilityVersion = (\d+)`)
 
 	versions := make(map[string]tailcfg.CapabilityVersion)
-	client := &http.Client{}
-
 	for minorVer, patchVer := range minorVersions {
-		// Fetch the raw Go file for the patch version
-		rawURL := fmt.Sprintf(rawFileURL, patchVer)
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil) //nolint:gosec
-		if err != nil {
-			log.Printf("Warning: failed to create request for %s: %v", patchVer, err)
+		body, err := fetch(ctx, fmt.Sprintf(rawFileURL, patchVer), "")
+		if errors.Is(err, errNotFound) {
+			log.Printf("Warning: skipping %s: %v", patchVer, err)
 			continue
 		}
 
-		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("Warning: failed to fetch %s: %v", patchVer, err)
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("Warning: got status %d for %s", resp.StatusCode, patchVer)
-			continue
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Printf("Warning: failed to read response for %s: %v", patchVer, err)
-			continue
+			return nil, fmt.Errorf("fetching tailcfg.go for %s: %w", patchVer, err)
 		}
 
 		// Find the [tailcfg.CurrentCapabilityVersion]
