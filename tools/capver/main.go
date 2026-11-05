@@ -212,6 +212,7 @@ func getCapabilityVersions(ctx context.Context) (map[string]tailcfg.CapabilityVe
 	re := regexp.MustCompile(`const CurrentCapabilityVersion CapabilityVersion = (\d+)`)
 
 	versions := make(map[string]tailcfg.CapabilityVersion)
+
 	for minorVer, patchVer := range minorVersions {
 		body, err := fetch(ctx, fmt.Sprintf(rawFileURL, patchVer), "")
 		if errors.Is(err, errNotFound) {
