@@ -514,17 +514,20 @@ func checkVersionUpgradePathFromVersions(db *gorm.DB, currentVersion string) err
 
 func TestCheckMinimumMigration(t *testing.T) {
 	tests := []struct {
-		name        string
-		ids         []string // nil means no migrations table
-		legacyTable string   // non-empty creates this legacy/current core table without a migrations table
-		wantErr     bool
+		name    string
+		ids     []string // nil means no migrations table
+		table   string   // non-empty creates this table first
+		wantErr bool
 	}{
 		{name: "no migrations table", ids: nil},
 		{name: "empty migrations table", ids: []string{}},
+		{name: "fresh database after a failed InitSchema", ids: []string{}, table: "users"},
 		{name: "0.29 database", ids: []string{"SCHEMA_INIT", minimumMigrationID}},
 		{name: "created fresh by this release", ids: []string{"SCHEMA_INIT", "202606181200-recover-null-tags-node-user-id"}},
 		{name: "0.28 database", ids: []string{"SCHEMA_INIT", "202601121700-migrate-hostinfo-request-tags"}, wantErr: true},
-		{name: "legacy database without migrations table", legacyTable: "users", wantErr: true},
+		{name: "pre-0.23 database", table: "machines", wantErr: true},
+		{name: "pre-0.23 database after a failed InitSchema", ids: []string{}, table: "machines", wantErr: true},
+		{name: "pre-0.23 database stamped by InitSchema", ids: []string{"SCHEMA_INIT", minimumMigrationID}, table: "machines", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -532,8 +535,8 @@ func TestCheckMinimumMigration(t *testing.T) {
 			db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{})
 			require.NoError(t, err)
 
-			if tt.legacyTable != "" {
-				require.NoError(t, db.Exec("CREATE TABLE "+tt.legacyTable+" (id varchar(255) PRIMARY KEY)").Error)
+			if tt.table != "" {
+				require.NoError(t, db.Exec("CREATE TABLE "+tt.table+" (id varchar(255) PRIMARY KEY)").Error)
 			}
 
 			if tt.ids != nil {
