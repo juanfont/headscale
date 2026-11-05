@@ -183,21 +183,26 @@ func isDev(version string) bool {
 	return ok
 }
 
+// upgradePath is the documented route for any database older than v0.29.0.
+const upgradePath = "upgrade one minor release at a time, using the latest patch of each, " +
+	"to the latest v0.29.x first, release page: https://github.com/juanfont/headscale/releases"
+
 // checkMinimumMigration rejects non-fresh databases that have not reached
 // v0.29.0. It keys on the migrations table rather than database_versions,
 // which only exists since 0.29.0 and is skipped for dev builds.
 func checkMinimumMigration(db *gorm.DB) error {
-	if !db.Migrator().HasTable("migrations") {
-		// Databases created before gormigrate was introduced (0.23) have no
-		// migrations table either. Only treat the database as fresh when no
-		// legacy or current core table exists; otherwise InitSchema would
-		// stamp the schema as initialised instead of running migrations.
-		for _, table := range []string{"users", "machines", "nodes"} {
-			if db.Migrator().HasTable(table) {
-				return tooOldUpgradeError()
-			}
-		}
+	// Every release before 0.23 has a machines table and every path to 0.29
+	// renames or drops it. Check it before the migrations table, which
+	// InitSchema may have stamped without migrating.
+	if db.Migrator().HasTable("machines") {
+		return fmt.Errorf(
+			"database has the machines table of a release before v0.23.0, "+
+				"if a later release has started on it, restore the backup taken before that, then %s: %w",
+			upgradePath, errDatabaseTooOld,
+		)
+	}
 
+	if !db.Migrator().HasTable("migrations") {
 		return nil
 	}
 
@@ -208,6 +213,8 @@ func checkMinimumMigration(db *gorm.DB) error {
 		return fmt.Errorf("counting migrations: %w", err)
 	}
 
+	// Still fresh: InitSchema is not atomic, so a crashed first start leaves
+	// core tables beside an empty migrations table.
 	if total == 0 {
 		return nil
 	}
@@ -222,18 +229,10 @@ func checkMinimumMigration(db *gorm.DB) error {
 	}
 
 	if found == 0 {
-		return tooOldUpgradeError()
+		return fmt.Errorf("%s: %w", upgradePath, errDatabaseTooOld)
 	}
 
 	return nil
-}
-
-func tooOldUpgradeError() error {
-	return fmt.Errorf(
-		"upgrade to the latest v0.29.x release first, "+
-			"release page: https://github.com/juanfont/headscale/releases: %w",
-		errDatabaseTooOld,
-	)
 }
 
 // checkVersionUpgradePath verifies that the running headscale version

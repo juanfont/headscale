@@ -69,7 +69,8 @@ func NewHeadscaleDatabase(cfg *types.Config) (*HSDatabase, error) {
 		[]*gormigrate.Migration{
 			// New migrations must be added as transactions at the end of this list.
 			// Migrations start from v0.29.0; older databases are rejected by
-			// checkMinimumMigration and must upgrade to the latest 0.29.x first.
+			// checkMinimumMigration and must upgrade one minor release at a time
+			// to the latest 0.29.x first.
 			//
 			// Rules:
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed

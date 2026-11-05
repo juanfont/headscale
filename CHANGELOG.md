@@ -96,7 +96,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 
 #### Database
 
-- Only upgrades from 0.29.x are supported; migrations for older releases are removed and headscale refuses to start on an older database. Upgrade to the latest 0.29.x first [#3352](https://github.com/juanfont/headscale/pull/3352)
+- Only upgrades from 0.29.x are supported; migrations for older releases are removed and headscale refuses to start on an older database. Upgrade one minor release at a time to the latest 0.29.x first [#3352](https://github.com/juanfont/headscale/pull/3352) [#3650](https://github.com/juanfont/headscale/pull/3650)
 - The `pre_auth_keys`, `api_keys`, `oauth_clients` and `oauth_access_tokens` tables are merged into `credentials` and dropped. The migration cannot be reversed; take a backup before upgrading, as downgrading means restoring it [#3352](https://github.com/juanfont/headscale/pull/3352)
 - API key IDs are renumbered, as all credential kinds now share one ID sequence; scripts using `headscale apikeys expire|delete --id` should look IDs up again or use `--prefix` [#3352](https://github.com/juanfont/headscale/pull/3352)
 - Deleting a user now clears the owner of its API keys and OAuth clients instead of leaving a dangling reference [#3352](https://github.com/juanfont/headscale/pull/3352)
