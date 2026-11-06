@@ -2,11 +2,16 @@ package hscontrol
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSecurityHeaders(t *testing.T) {
@@ -78,4 +83,79 @@ func TestDebugHostGuard(t *testing.T) {
 			}
 		})
 	}
+}
+
+// serveTestConfig returns a config for running Serve on loopback with the
+// embedded DERP server enabled on stunAddr.
+func serveTestConfig(t *testing.T, stunAddr string) *types.Config {
+	t.Helper()
+
+	dir := t.TempDir()
+
+	return &types.Config{
+		ServerURL:            "http://127.0.0.1:8080",
+		Addr:                 "127.0.0.1:0",
+		UnixSocket:           filepath.Join(dir, "hs.sock"),
+		UnixSocketPermission: 0o770,
+		NoisePrivateKeyPath:  filepath.Join(dir, "noise.key"),
+		Database: types.DatabaseConfig{
+			Type:   types.DatabaseSqlite,
+			Sqlite: types.SqliteConfig{Path: filepath.Join(dir, "hs.db")},
+		},
+		Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
+		DERP: types.DERPConfig{
+			ServerEnabled:                      true,
+			AutomaticallyAddEmbeddedDerpRegion: true,
+			ServerPrivateKeyPath:               filepath.Join(dir, "derp.key"),
+			ServerRegionID:                     999,
+			ServerRegionCode:                   "test",
+			STUNAddr:                           stunAddr,
+		},
+		Tuning: types.Tuning{BatchChangeDelay: 100 * time.Millisecond, BatcherWorkers: 1},
+	}
+}
+
+// Cancelling the context must run the graceful shutdown and return nil, so
+// an embedder can stop Serve without sending the process a signal.
+func TestServeStopsOnContextCancel(t *testing.T) {
+	cfg := serveTestConfig(t, "127.0.0.1:0")
+
+	app, err := NewHeadscale(cfg)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	served := make(chan error, 1)
+
+	go func() { served <- app.Serve(ctx) }()
+
+	client := &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return new(net.Dialer).DialContext(ctx, "unix", cfg.UnixSocket)
+		},
+	}}
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/api/v1/health", nil)
+		require.NoError(c, err)
+
+		res, err := client.Do(req)
+		require.NoError(c, err)
+
+		defer res.Body.Close()
+
+		assert.Equal(c, http.StatusOK, res.StatusCode)
+	}, 10*time.Second, 50*time.Millisecond)
+
+	cancel()
+
+	select {
+	case err := <-served:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Serve did not return after its context was cancelled")
+	}
+
+	assert.NoFileExists(t, cfg.UnixSocket)
 }
