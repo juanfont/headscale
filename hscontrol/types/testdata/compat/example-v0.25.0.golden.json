@@ -1,0 +1,7 @@
+{
+  "warnings": [
+    "configuration key \"ephemeral_node_inactivity_timeout\" is deprecated; use \"node.ephemeral.inactivity_timeout\" instead",
+    "configuration key \"database.gorm.prepare_stmt\" is ignored"
+  ],
+  "error": "Fatal config error: configuration key randomize_client_port has been removed\n  current: randomize_client_port: false\n  hint: Set \"randomizeClientPort\": true at the top level of your policy file (see policy.path / policy.mode), or grant the cap per-node via a \"nodeAttrs\" entry. See CHANGELOG.md (BREAKING / Configuration).\n"
+}
