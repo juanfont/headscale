@@ -36,6 +36,42 @@ imports = [ inputs.headscale.nixosModules.default ];
 See [`example-configuration.nix`](./example-configuration.nix) for configuration
 options.
 
+The flake's module defaults `services.headscale.package` to the flake's
+headscale. Another package must provide `headscale check` while the checks
+below are on.
+
+## Checks
+
+The module checks what headscale would reject before it can stop a running
+headscale. Every check is offline: no database, network or server.
+
+- **Build time** (`check.policy`): a file policy in the Nix store goes through
+  the new package's `headscale check policy -f`, including its `tests` and
+  `sshTests` against stand-in users and nodes. A bad policy fails
+  `nixos-rebuild build`, before the system profile changes. Native builds only.
+- **Before a switch** (`check.config`): a
+  [`system.preSwitchChecks`](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/system/activation/pre-switch-check.nix)
+  entry runs `headscale check all` on the new config as
+  `services.headscale.user`, and aborts the switch before any unit restarts. It
+  checks the config and every file it names (policy, DERP maps, extra records,
+  TLS pair, existing keys). A policy outside the Nix store, or from a cross
+  build, is checked here too. It runs only when headscale's unit changes.
+
+Both default to `true`. `NIXOS_NO_CHECK=1 nixos-rebuild switch` skips the
+switch check once; a failed check prints this hint. Limits:
+
+- The switch check runs before activation, so it sees files as they were:
+  `/etc` entries, sops-nix or agenix secrets and new users arrive after it. A
+  user that does not exist yet skips the check.
+- It runs outside the unit, without the unit's `EnvironmentFile` or
+  credentials. A config that reads `$CREDENTIALS_DIRECTORY` fails it; turn off
+  `check.config` (the module warns).
+- `nixos-rebuild switch` sets the system profile before the switch check, and
+  does not undo it. The boot menu is not updated, so a reboot starts the old
+  generation. `nixos-rebuild switch --rollback` resets the profile.
+- A pass does not prove that migrations, the network, an OIDC provider or the
+  listeners work.
+
 ## Test kit
 
 `nixosModules.testkit` turns a node of a NixOS VM test into a headscale control

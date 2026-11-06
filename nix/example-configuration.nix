@@ -20,12 +20,22 @@
   services.headscale = {
     enable = true;
 
-    # Optional: Use a specific package (defaults to pkgs.headscale)
+    # Optional: use another package. Defaults to this flake's. With the checks
+    # below on, it must provide `headscale check`.
     # package = pkgs.headscale;
 
     # Listen on all interfaces (default is 127.0.0.1)
     address = "0.0.0.0";
     port = 8080;
+
+    # Check a store-path policy while building, and the config and the files it
+    # names before a switch restarts headscale. All offline. Set to false to
+    # turn a check off; `NIXOS_NO_CHECK=1 nixos-rebuild switch` skips the
+    # switch check once.
+    check = {
+      config = true;
+      policy = true;
+    };
 
     settings = {
       # The URL clients will connect to

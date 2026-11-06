@@ -187,6 +187,8 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 - `settings.ephemeral_node_inactivity_timeout` is removed; set `settings.node.ephemeral.inactivity_timeout`, which headscale reads instead
 - `settings.dns.split` is removed; headscale never read it, set `settings.dns.nameservers.split`
 - `settings.tls_*` options move to `settings.tls.*`; old `settings.tls_*` values still work [#3554](https://github.com/juanfont/headscale/pull/3554)
+- A file policy in the Nix store that headscale rejects, failing `tests` and `sshTests` included, now fails the build (`headscale check policy -f`), and a config or file it names that headscale rejects fails a switch before headscale restarts (`headscale check all`). All checks run offline. Turn them off with `check.policy = false` and `check.config = false`, or skip the switch check once with `NIXOS_NO_CHECK=1` [#3666](https://github.com/juanfont/headscale/pull/3666)
+- `nixosModules.default` now defaults `services.headscale.package` to this flake's headscale instead of `pkgs.headscale`, because the checks need `headscale check` [#3666](https://github.com/juanfont/headscale/pull/3666)
 
 ### Changes
 
