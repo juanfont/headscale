@@ -67,6 +67,8 @@ var (
 	errEmptyInitialDERPMap = errors.New(
 		"initial DERPMap is empty, Headscale requires at least one entry",
 	)
+	errTailSQLDatabase = errors.New("tailsql only supports sqlite")
+	errTailSQLAuthKey  = errors.New("tailsql requires TS_AUTHKEY to be set")
 )
 
 var (
@@ -570,19 +572,31 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 	return r
 }
 
-// Serve launches the HTTP servers that run Headscale and its API.
+// Serve launches the HTTP servers that run Headscale and its API. It shuts
+// down gracefully when ctx is cancelled or any of its components fails, and
+// returns that component's error.
 //
 //nolint:gocyclo // complex server startup function
-func (h *Headscale) Serve() error {
+func (h *Headscale) Serve(ctx context.Context) error {
 	var err error
 
 	capver.CanOldCodeBeCleanedUp()
+
+	if tailsqlEnabled {
+		if h.cfg.Database.Type != types.DatabaseSqlite {
+			return fmt.Errorf("%w, got %q", errTailSQLDatabase, h.cfg.Database.Type)
+		}
+
+		if tailsqlTSKey == "" {
+			return errTailSQLAuthKey
+		}
+	}
 
 	if profilingEnabled {
 		if profilingPath != "" {
 			err = os.MkdirAll(profilingPath, os.ModePerm)
 			if err != nil {
-				log.Fatal().Err(err).Msg("failed to create profiling directory")
+				return fmt.Errorf("creating profiling directory: %w", err)
 			}
 
 			defer profile.Start(profile.ProfilePath(profilingPath)).Stop()
@@ -601,6 +615,12 @@ func (h *Headscale) Serve() error {
 		Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 		Msg("Clients with a lower minimum version will be rejected")
 
+	// The cancel stops what already started when Serve returns early.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errorGroup, ctx := errgroup.WithContext(ctx)
+
 	h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)
 
 	h.mapBatcher.Start()
@@ -612,18 +632,23 @@ func (h *Headscale) Serve() error {
 			return errSTUNAddressNotSet
 		}
 
-		go h.DERPServer.ServeSTUN()
+		stunServer, err := h.DERPServer.ListenSTUN(ctx)
+		if err != nil {
+			return err
+		}
+
+		errorGroup.Go(stunServer.Serve)
 	}
 
 	// Start on the sources that loaded; only a map with no region at all,
 	// after the embedded region and the policy's derpMap, is fatal.
-	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP)
+	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP) //nolint:contextcheck // startup fetch, bounded by its HTTP client
 	if derpErr != nil {
 		log.Warn().Err(derpErr).Msg("skipping DERP map sources that failed to load")
 	}
 
 	if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
-		region, err := h.DERPServer.GenerateRegion()
+		region, err := h.DERPServer.GenerateRegion() //nolint:contextcheck // only a debug DNS lookup uses a context
 		if err != nil {
 			return fmt.Errorf("generating embedded DERP region: %w", err)
 		}
@@ -656,7 +681,7 @@ func (h *Headscale) Serve() error {
 
 		h.cfg.SetExtraRecords(h.extraRecordMan.Records())
 
-		go h.extraRecordMan.Run()
+		go h.extraRecordMan.Run() //nolint:contextcheck // stopped by Close
 		defer h.extraRecordMan.Close()
 	}
 
@@ -665,18 +690,7 @@ func (h *Headscale) Serve() error {
 
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
 	// records updates
-	scheduleCtx, scheduleCancel := context.WithCancel(context.Background())
-	defer scheduleCancel()
-
-	go h.scheduledTasks(scheduleCtx)
-
-	// Prepare group for running listeners
-	errorGroup := new(errgroup.Group)
-
-	ctx := context.Background()
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	go h.scheduledTasks(ctx)
 
 	//
 	//
@@ -695,7 +709,7 @@ func (h *Headscale) Serve() error {
 		return fmt.Errorf("setting up unix socket: %w", err)
 	}
 
-	socketListener, err := new(net.ListenConfig).Listen(context.Background(), "unix", h.cfg.UnixSocket)
+	socketListener, err := new(net.ListenConfig).Listen(ctx, "unix", h.cfg.UnixSocket)
 	if err != nil {
 		return fmt.Errorf("setting up socket: %w", err)
 	}
@@ -738,7 +752,7 @@ func (h *Headscale) Serve() error {
 		ReadTimeout: types.HTTPTimeout,
 	}
 
-	errorGroup.Go(func() error { return socketServer.Serve(socketListener) })
+	errorGroup.Go(serveHTTP(socketServer, socketListener))
 
 	//
 	//
@@ -776,7 +790,7 @@ func (h *Headscale) Serve() error {
 		httpServer.TLSConfig = tlsConfig
 		httpListener, err = tls.Listen("tcp", h.cfg.Addr, tlsConfig)
 	} else {
-		httpListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", h.cfg.Addr)
+		httpListener, err = new(net.ListenConfig).Listen(ctx, "tcp", h.cfg.Addr)
 	}
 
 	if err != nil {
@@ -788,7 +802,7 @@ func (h *Headscale) Serve() error {
 		}
 	}
 
-	errorGroup.Go(func() error { return httpServer.Serve(httpListener) })
+	errorGroup.Go(serveHTTP(httpServer, httpListener))
 
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
@@ -820,7 +834,7 @@ func (h *Headscale) Serve() error {
 			WriteTimeout: types.HTTPTimeout,
 		}
 
-		errorGroup.Go(func() error { return insecureTLSServer.Serve(insecureTLSListener) })
+		errorGroup.Go(serveHTTP(insecureTLSServer, insecureTLSListener))
 
 		log.Warn().
 			Str("addr", addr).
@@ -866,7 +880,7 @@ func (h *Headscale) Serve() error {
 
 		debugHTTPServer = h.debugHTTPServer()
 
-		errorGroup.Go(func() error { return debugHTTPServer.Serve(debugHTTPListener) })
+		errorGroup.Go(serveHTTP(debugHTTPServer, debugHTTPListener))
 
 		log.Info().
 			Msgf("listening and serving debug and metrics on: %s", h.cfg.MetricsAddr)
@@ -877,18 +891,6 @@ func (h *Headscale) Serve() error {
 	var tailsqlCancel context.CancelFunc
 
 	if tailsqlEnabled {
-		if h.cfg.Database.Type != types.DatabaseSqlite {
-			//nolint:gocritic // exitAfterDefer: Fatal exits during initialization before servers start
-			log.Fatal().
-				Str("type", h.cfg.Database.Type).
-				Msgf("tailsql only support %q", types.DatabaseSqlite)
-		}
-
-		if tailsqlTSKey == "" {
-			//nolint:gocritic // exitAfterDefer: Fatal exits during initialization before servers start
-			log.Fatal().Msg("tailsql requires TS_AUTHKEY to be set")
-		}
-
 		var tailsqlCtx context.Context
 
 		tailsqlCtx, tailsqlCancel = context.WithCancel(ctx)
@@ -898,21 +900,16 @@ func (h *Headscale) Serve() error {
 		})
 	}
 
-	// Handle common process-killing signals so we can gracefully shut down:
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc,
-		syscall.SIGHUP,
-		syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGQUIT,
-		syscall.SIGHUP)
+	// Stop signals belong to the caller, which cancels ctx; SIGHUP reloads.
+	sighup := make(chan os.Signal, 1)
 
-	sigFunc := func(c chan os.Signal) {
-		// Wait for a SIGINT or SIGKILL:
+	signal.Notify(sighup, syscall.SIGHUP)
+	defer signal.Stop(sighup)
+
+	errorGroup.Go(func() error {
 		for {
-			sig := <-c
-			switch sig {
-			case syscall.SIGHUP:
+			select {
+			case sig := <-sighup:
 				log.Info().
 					Str("signal", sig.String()).
 					Msg("Received SIGHUP")
@@ -938,14 +935,13 @@ func (h *Headscale) Serve() error {
 					continue
 				}
 
-			default:
+			case <-ctx.Done():
 				info := func(msg string) { log.Info().Msg(msg) }
 
 				log.Info().
-					Str("signal", sig.String()).
-					Msg("Received signal to stop, shutting down gracefully")
+					Str("reason", context.Cause(ctx).Error()).
+					Msg("shutting down gracefully")
 
-				scheduleCancel()
 				h.ephemeralGC.Close()
 
 				// Gracefully shut down servers
@@ -1050,18 +1046,25 @@ func (h *Headscale) Serve() error {
 				log.Info().
 					Msg("Headscale stopped")
 
-				return
+				return nil
 			}
 		}
-	}
-
-	errorGroup.Go(func() error {
-		sigFunc(sigc)
-
-		return nil
 	})
 
 	return errorGroup.Wait()
+}
+
+// serveHTTP treats a graceful Shutdown as success so only a real failure
+// cancels the group.
+func serveHTTP(srv *http.Server, l net.Listener) func() error {
+	return func() error {
+		err := srv.Serve(l)
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+
+		return err
+	}
 }
 
 // tlsBundle carries the TLS settings produced by getTLSSettings. When
