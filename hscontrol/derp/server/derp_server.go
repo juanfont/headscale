@@ -377,13 +377,23 @@ func DERPBootstrapDNSHandler(
 	}
 }
 
-// ServeSTUN starts a STUN server on the configured addr. It uses Tailscale's
-// stunserver so replies match what Tailscale's own derpers send.
-func (d *DERPServer) ServeSTUN() {
-	err := stunserver.New(context.Background()).ListenAndServe(string(d.cfg.Server.STUNAddr))
+// ListenSTUN binds a STUN server on the configured addr; the caller runs its
+// Serve, which returns once ctx is cancelled. It uses Tailscale's stunserver
+// so replies match what Tailscale's own derpers send.
+func (d *DERPServer) ListenSTUN(ctx context.Context) (*stunserver.STUNServer, error) {
+	srv := stunserver.New(ctx)
+
+	err := srv.Listen(string(d.cfg.Server.STUNAddr))
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to open STUN listener")
+		return nil, &types.ListenerBindError{
+			Listener: "STUN",
+			YAMLKey:  "derp.server.stun_listen_addr",
+			Addr:     string(d.cfg.Server.STUNAddr),
+			Err:      err,
+		}
 	}
+
+	return srv, nil
 }
 
 func NewDERPVerifyTransport(handleVerifyRequest func(*http.Request, io.Writer) error) *DERPVerifyTransport {
