@@ -53,7 +53,7 @@ func NewExtraRecordsManager(path string) (*ExtraRecordsMan, error) {
 		return nil, fmt.Errorf("%w: %s", ErrPathIsDirectory, path)
 	}
 
-	records, hash, err := readExtraRecordsFromPath(path)
+	records, hash, err := ReadExtraRecordsFromPath(path)
 	if err != nil {
 		closeWatcher()
 		return nil, fmt.Errorf("reading extra records from path: %w", err)
@@ -183,7 +183,7 @@ func (e *ExtraRecordsMan) UpdateCh() <-chan []tailcfg.DNSRecord {
 }
 
 func (e *ExtraRecordsMan) updateRecords() {
-	records, newHash, err := readExtraRecordsFromPath(e.path)
+	records, newHash, err := ReadExtraRecordsFromPath(e.path)
 	if err != nil {
 		log.Error().Caller().Err(err).Msgf("reading extra records from path: %s", e.path)
 		return
@@ -222,10 +222,10 @@ func (e *ExtraRecordsMan) updateRecords() {
 	}
 }
 
-// readExtraRecordsFromPath reads a file of [tailcfg.DNSRecord] in the format its
+// ReadExtraRecordsFromPath reads a file of [tailcfg.DNSRecord] in the format its
 // extension names (see [util.UnmarshalByExt]) and returns the records and the
 // hash of the file.
-func readExtraRecordsFromPath(path string) ([]tailcfg.DNSRecord, [32]byte, error) {
+func ReadExtraRecordsFromPath(path string) ([]tailcfg.DNSRecord, [32]byte, error) {
 	var zero [32]byte
 
 	b, err := os.ReadFile(path)
@@ -244,7 +244,7 @@ func readExtraRecordsFromPath(path string) ([]tailcfg.DNSRecord, [32]byte, error
 
 	records, err := util.UnmarshalByExt[[]tailcfg.DNSRecord](path, b)
 	if err != nil {
-		return nil, zero, fmt.Errorf("unmarshalling records, content: %q: %w", string(b), err)
+		return nil, zero, fmt.Errorf("unmarshalling records: %w", err)
 	}
 
 	return records, hash, nil
