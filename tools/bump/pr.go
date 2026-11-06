@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +18,8 @@ const skipLabel = "no-autoupdate"
 // closedCooldown is how long a rejected change is left alone. Reopening the
 // same diff the next morning is how an automation earns itself an ignore rule.
 const closedCooldown = 7 * 24 * time.Hour
+
+var errHeadMoved = errors.New("HEAD moved after the gate")
 
 type prState struct {
 	Number     int    `json:"number"`
@@ -80,27 +84,67 @@ type publishOptions struct {
 	Title  string
 	Gate   string
 	Force  bool
+	// Head is the commit the gate passed; publish pushes nothing else.
+	Head string
 	// Lease is the branch tip the run started from, when it updates an open
 	// pull request; Carried lists hand-pushed commits it built on.
 	Lease   string
 	Carried []string
 }
 
+// handoff is a gated run waiting to be published. Publishing in a later step
+// keeps the write token away from the gate, which builds freshly bumped
+// dependencies, and mints it after the gate, which can outlive it.
+type handoff struct {
+	Options publishOptions
+	Body    string
+}
+
+func writeHandoff(path string, h handoff) error {
+	data, err := json.Marshal(h)
+	if err != nil {
+		return fmt.Errorf("encoding handoff: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0o600); err != nil { //nolint:noinlineerr
+		return fmt.Errorf("writing handoff: %w", err)
+	}
+
+	return nil
+}
+
+func readHandoff(path string) (handoff, error) {
+	var h handoff
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return h, fmt.Errorf("reading handoff: %w", err)
+	}
+
+	if err := json.Unmarshal(data, &h); err != nil { //nolint:noinlineerr
+		return h, fmt.Errorf("decoding handoff: %w", err)
+	}
+
+	return h, nil
+}
+
 // publish force-pushes the rebuilt branch and puts it in front of a human:
 // reusing the open pull request if there is one, opening a new one once the
 // last was merged, and staying out of the way when the last was rejected.
-func publish(ctx context.Context, r *repo, opt publishOptions, results []result) error {
-	tree, err := treeSHA(ctx, r)
-	if err != nil {
-		return err
-	}
-
+func publish(ctx context.Context, r *repo, opt publishOptions, body string) error {
 	head, err := headSHA(ctx, r)
 	if err != nil {
 		return err
 	}
 
-	body := renderBody(results, markerOf(results, tree, head), opt.Gate, opt.Carried)
+	if head != opt.Head {
+		return fmt.Errorf("%w: gated %s, HEAD is %s", errHeadMoved, opt.Head, head)
+	}
+
+	tree, err := treeSHA(ctx, r)
+	if err != nil {
+		return err
+	}
 
 	pr, err := lookupPR(ctx, r, opt.Slug, opt.Branch)
 	if err != nil {
