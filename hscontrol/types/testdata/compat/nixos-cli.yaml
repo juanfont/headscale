@@ -1,0 +1,2 @@
+disable_check_updates: true
+unix_socket: /run/headscale/headscale.sock
