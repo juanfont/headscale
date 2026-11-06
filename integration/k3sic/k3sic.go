@@ -177,6 +177,10 @@ func New(
 			"--disable", "servicelb",
 			"--disable", "metrics-server",
 			"--disable-network-policy",
+			// The embedded CCM can start before its RBAC is authorised and
+			// exit "forbidden", which shuts k3s down into a restart loop.
+			// Nothing here needs it once servicelb is disabled.
+			"--disable-cloud-controller",
 			"--snapshotter", "native",
 			"--tls-san", hostname,
 		},
