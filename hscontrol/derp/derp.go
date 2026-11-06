@@ -235,8 +235,16 @@ func ApplyPolicy(base, pol *tailcfg.DERPMap) *tailcfg.DERPMap {
 	return out
 }
 
+// GetDERPMap merges every configured DERP map source. A source that fails to
+// load is skipped rather than failing the rest, as a derp.urls server is often
+// a third party's: the map always holds what did load, and the error joins
+// every failure for the caller to judge.
 func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
-	var derpMaps []*tailcfg.DERPMap
+	var (
+		derpMaps []*tailcfg.DERPMap
+		errs     []error
+	)
+
 	if cfg.DERPMap != nil {
 		derpMaps = append(derpMaps, cfg.DERPMap)
 	}
@@ -244,7 +252,8 @@ func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 	for _, addr := range cfg.URLs {
 		derpMap, err := loadDERPMapFromURL(addr)
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
+			continue
 		}
 
 		derpMaps = append(derpMaps, derpMap)
@@ -253,7 +262,8 @@ func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 	for _, path := range cfg.Paths {
 		derpMap, err := loadDERPMapFromPath(path)
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
+			continue
 		}
 
 		derpMaps = append(derpMaps, derpMap)
@@ -262,7 +272,7 @@ func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 	derpMap := mergeDERPMaps(derpMaps)
 	shuffleDERPMap(derpMap)
 
-	return derpMap, nil
+	return derpMap, errors.Join(errs...)
 }
 
 func shuffleDERPMap(dm *tailcfg.DERPMap) {

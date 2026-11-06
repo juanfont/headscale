@@ -500,6 +500,49 @@ func TestLoadDERPMapFromURLValidates(t *testing.T) {
 	require.ErrorIs(t, err, ErrRegionIDKey)
 }
 
+// TestGetDERPMapSkipsFailedSources: a derp.urls server is often run by a
+// third party, so one failing source must not cost the regions of the others
+// (https://github.com/juanfont/headscale/issues/3142).
+func TestGetDERPMapSkipsFailedSources(t *testing.T) {
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"Regions": {"1": {"RegionID": 1, "Nodes": [{"Name": "1a", "RegionID": 1}]}}}`))
+	}))
+	defer good.Close()
+
+	down := httptest.NewServer(http.NotFoundHandler())
+	defer down.Close()
+
+	goodURL, err := url.Parse(good.URL)
+	require.NoError(t, err)
+
+	downURL, err := url.Parse(down.URL)
+	require.NoError(t, err)
+
+	goodPath := filepath.Join(t.TempDir(), "good.yaml")
+	require.NoError(t, os.WriteFile(goodPath, []byte(`
+regions:
+  2:
+    regionid: 2
+    nodes:
+      - name: 2a
+        regionid: 2
+`), 0o600))
+
+	brokenPath := filepath.Join(t.TempDir(), "broken.yaml")
+	require.NoError(t, os.WriteFile(brokenPath, []byte("regions: [\n"), 0o600))
+
+	dm, err := GetDERPMap(types.DERPConfig{
+		URLs:  []url.URL{*goodURL, *downURL},
+		Paths: []string{goodPath, brokenPath, filepath.Join(t.TempDir(), "missing.yaml")},
+	})
+	require.ErrorIs(t, err, errDERPMapStatus)
+	require.ErrorContains(t, err, down.URL)
+	require.ErrorContains(t, err, brokenPath)
+	require.ErrorContains(t, err, "missing.yaml")
+	require.Contains(t, dm.Regions, tailcfg.DERPRegionID(1))
+	require.Contains(t, dm.Regions, tailcfg.DERPRegionID(2))
+}
+
 // TestLoadDERPMapFromURLRejectsHTTPError: an error page that happens to be
 // JSON must not pass as an empty map, or a refresh drops that URL's regions.
 func TestLoadDERPMapFromURLRejectsHTTPError(t *testing.T) {

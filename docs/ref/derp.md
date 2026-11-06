@@ -57,10 +57,15 @@ The DERP map offered to clients can be customized with a [dedicated YAML-configu
 file](https://github.com/juanfont/headscale/blob/main/derp-example.yaml). The file extension picks the format: `.yaml`
 or `.yml`, or the JSON format Tailscale serves DERP maps in as `.json` or `.hujson`. Both JSON extensions are read as
 [HuJSON](https://github.com/tailscale/hujson), so comments and trailing commas are allowed. This allows to modify previously
-loaded DERP maps fetched via URL or to offer your own, custom DERP servers to nodes. A key that has no field in
-[DERPMap](https://pkg.go.dev/tailscale.com/tailcfg#DERPMap) stops headscale from starting. So does a region whose
-`regionid` differs from its key, a node whose `regionid` differs from its region, or a region without nodes: clients
-count latency by `regionid`.
+loaded DERP maps fetched via URL or to offer your own, custom DERP servers to nodes. A file with a key that has no field
+in [DERPMap](https://pkg.go.dev/tailscale.com/tailcfg#DERPMap) fails to load. So does a region whose `regionid` differs
+from its key, a node whose `regionid` differs from its region, or a region without nodes: clients count latency by
+`regionid`.
+
+A `derp.urls` or `derp.paths` source that fails to load, for example a URL that is down or a file with an error, is
+logged as a warning and skipped. Headscale starts with the DERP regions from the other sources, the embedded DERP server
+and the policy's `derpMap`, and refuses to start only when no region remains. A refresh with a failing source keeps the
+previous DERP map. A skipped file also skips what it removes: a region it sets to `null` comes back.
 
 === "Remove specific DERP regions"
 

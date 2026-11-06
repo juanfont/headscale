@@ -615,9 +615,11 @@ func (h *Headscale) Serve() error {
 		go h.DERPServer.ServeSTUN()
 	}
 
-	derpMap, err := derp.GetDERPMap(h.cfg.DERP)
-	if err != nil {
-		return fmt.Errorf("getting DERPMap: %w", err)
+	// Start on the sources that loaded; only a map with no region at all,
+	// after the embedded region and the policy's derpMap, is fatal.
+	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP)
+	if derpErr != nil {
+		log.Warn().Err(derpErr).Msg("skipping DERP map sources that failed to load")
 	}
 
 	if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
@@ -629,11 +631,11 @@ func (h *Headscale) Serve() error {
 		derpMap.Regions[region.RegionID] = &region
 	}
 
-	if len(derpMap.Regions) == 0 {
-		return errEmptyInitialDERPMap
-	}
-
 	h.state.SetDERPMap(derpMap)
+
+	if h.state.DERPMap().Regions().Len() == 0 {
+		return errors.Join(errEmptyInitialDERPMap, derpErr)
+	}
 
 	// Start ephemeral node garbage collector and schedule all nodes
 	// that are already in the database and ephemeral. If they are still
