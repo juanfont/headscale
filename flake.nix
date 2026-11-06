@@ -25,8 +25,19 @@
     {
       # NixOS module
       nixosModules = rec {
-        # A path, so importing it twice (directly and via testkit) dedupes.
-        headscale = ./nix/module.nix;
+        # Defaults the package to this flake's: the pre-switch checks need
+        # `headscale check`. Priority 1001 sits just below mkDefault, so a
+        # user's mkDefault wins instead of conflicting. The overlay, not
+        # self.packages, so every system nixpkgs supports evaluates.
+        headscale =
+          { lib, pkgs, ... }:
+          {
+            # Dedupes importing it twice, directly and via testkit.
+            key = "${toString ./flake.nix}#nixosModules.headscale";
+            _file = "${toString ./flake.nix}#nixosModules.headscale";
+            imports = [ ./nix/module.nix ];
+            services.headscale.package = lib.mkOverride 1001 (self.overlays.default pkgs pkgs).headscale;
+          };
         default = headscale;
         # Control node for NixOS VM tests of Tailscale clients, and a peer
         # that joins it; nix/README.md.
@@ -402,11 +413,12 @@
         );
 
         # Gated to Linux: parts of the tree are Linux-specific, and the VM
-        # test needs KVM.
+        # tests need KVM.
         checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (
           goChecks
           // {
             headscale = pkgs.testers.runNixOSTest (import ./nix/tests/headscale.nix self);
+            headscale-checks = pkgs.testers.runNixOSTest (import ./nix/tests/checks.nix self);
             inherit nixos-options;
           }
         );
