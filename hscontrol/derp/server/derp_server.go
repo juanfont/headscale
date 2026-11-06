@@ -10,7 +10,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -23,7 +22,7 @@ import (
 	"tailscale.com/derp"
 	"tailscale.com/derp/derpserver"
 	"tailscale.com/envknob"
-	"tailscale.com/net/stun"
+	"tailscale.com/net/stunserver"
 	"tailscale.com/net/wsconn"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -378,70 +377,12 @@ func DERPBootstrapDNSHandler(
 	}
 }
 
-// ServeSTUN starts a STUN server on the configured addr.
+// ServeSTUN starts a STUN server on the configured addr. It uses Tailscale's
+// stunserver so replies match what Tailscale's own derpers send.
 func (d *DERPServer) ServeSTUN() {
-	packetConn, err := new(net.ListenConfig).ListenPacket(context.Background(), "udp", d.cfg.STUNAddr)
+	err := stunserver.New(context.Background()).ListenAndServe(d.cfg.STUNAddr)
 	if err != nil {
-		log.Fatal().Msgf("failed to open STUN listener: %v", err)
-	}
-
-	log.Info().Msgf("stun server started at %s", packetConn.LocalAddr())
-
-	udpConn, ok := packetConn.(*net.UDPConn)
-	if !ok {
-		log.Fatal().Msg("stun listener is not a UDP listener")
-	}
-
-	serverSTUNListener(context.Background(), udpConn)
-}
-
-func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
-	var buf [64 << 10]byte
-
-	for {
-		bytesRead, udpAddr, err := packetConn.ReadFromUDP(buf[:])
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-
-			log.Error().Caller().Err(err).Msgf("stun ReadFrom")
-
-			// Rate limit error logging - wait before retrying, but respect context cancellation
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Second):
-			}
-
-			continue
-		}
-
-		log.Trace().Caller().Msgf("stun request from %v", udpAddr)
-
-		pkt := buf[:bytesRead]
-		if !stun.Is(pkt) {
-			log.Trace().Caller().Msgf("udp packet is not stun")
-
-			continue
-		}
-
-		txid, err := stun.ParseBindingRequest(pkt)
-		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("stun parse error")
-
-			continue
-		}
-
-		addr, _ := netip.AddrFromSlice(udpAddr.IP)
-		res := stun.Response(txid, netip.AddrPortFrom(addr, uint16(udpAddr.Port))) //nolint:gosec // port is always <=65535
-
-		_, err = packetConn.WriteTo(res, udpAddr)
-		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("issue writing to UDP")
-
-			continue
-		}
+		log.Fatal().Err(err).Msg("failed to open STUN listener")
 	}
 }
 
