@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -482,4 +483,71 @@ func TestDERPRefreshDoesNotBlockScheduledTasks(t *testing.T) {
 
 	assert.Eventually(t, func() bool { return app.cfg.HasExtraRecord("a.example.com") }, 10*time.Second, 50*time.Millisecond,
 		"extra records not reloaded while the DERP refresh is stuck")
+}
+
+// serveTestConfig is validConfig serving on loopback and a unix socket, with
+// the embedded DERP server and its STUN listener on stunAddr.
+func serveTestConfig(t *testing.T, stunAddr string) *types.Config {
+	t.Helper()
+
+	cfg := validConfig(t)
+	dir := filepath.Dir(cfg.Noise.PrivateKeyPath)
+	cfg.Addr = "127.0.0.1:0"
+	cfg.UnixSocket = filepath.Join(dir, "hs.sock")
+	cfg.DERP.URLs = nil
+	cfg.DERP.Server = types.DERPServerConfig{
+		Enabled:                            true,
+		AutomaticallyAddEmbeddedDerpRegion: true,
+		PrivateKeyPath:                     filepath.Join(dir, "derp.key"),
+		RegionID:                           999,
+		RegionCode:                         "test",
+		STUNAddr:                           types.ListenAddr(stunAddr),
+	}
+
+	return &cfg
+}
+
+// Cancelling the context must run the graceful shutdown and return nil, so
+// an embedder can stop Serve without sending the process a signal.
+func TestServeStopsOnContextCancel(t *testing.T) {
+	cfg := serveTestConfig(t, "127.0.0.1:0")
+
+	app, err := NewHeadscale(cfg)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	served := make(chan error, 1)
+
+	go func() { served <- app.Serve(ctx) }()
+
+	client := &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return new(net.Dialer).DialContext(ctx, "unix", cfg.UnixSocket)
+		},
+	}}
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/api/v1/health", nil)
+		require.NoError(c, err)
+
+		res, err := client.Do(req)
+		require.NoError(c, err)
+
+		defer res.Body.Close()
+
+		assert.Equal(c, http.StatusOK, res.StatusCode)
+	}, 10*time.Second, 50*time.Millisecond)
+
+	cancel()
+
+	select {
+	case err := <-served:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Serve did not return after its context was cancelled")
+	}
+
+	assert.NoFileExists(t, cfg.UnixSocket)
 }

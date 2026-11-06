@@ -3,7 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"net/http"
+	"os/signal"
 	"syscall"
 
 	"github.com/juanfont/headscale/hscontrol/config"
@@ -33,12 +33,15 @@ var serveCmd = &cobra.Command{
 			return fmt.Errorf("initializing: %w", err)
 		}
 
-		err = app.Serve()
-		if err == nil || errors.Is(err, http.ErrServerClosed) {
-			return nil
+		ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+		defer stop()
+
+		err = app.Serve(ctx)
+		if err != nil {
+			return classifyServeError(err)
 		}
 
-		return classifyServeError(err)
+		return nil
 	},
 }
 
