@@ -16,7 +16,7 @@ func TestFetch(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		statuses  []int // served in order; the last one repeats
+		statuses  []int // served in order; the last one repeats; 0 drops the connection
 		wantBody  string
 		wantErr   error
 		wantCalls int32
@@ -30,6 +30,18 @@ func TestFetch(t *testing.T) {
 		{
 			name:      "unavailable-then-ok",
 			statuses:  []int{http.StatusServiceUnavailable, http.StatusOK},
+			wantBody:  "body",
+			wantCalls: 2,
+		},
+		{
+			name:      "rate-limited-then-ok",
+			statuses:  []int{http.StatusTooManyRequests, http.StatusOK},
+			wantBody:  "body",
+			wantCalls: 2,
+		},
+		{
+			name:      "dropped-connection-then-ok",
+			statuses:  []int{0, http.StatusOK},
 			wantBody:  "body",
 			wantCalls: 2,
 		},
@@ -53,7 +65,13 @@ func TestFetch(t *testing.T) {
 
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				n := int(calls.Add(1)) - 1
-				w.WriteHeader(tt.statuses[min(n, len(tt.statuses)-1)])
+
+				status := tt.statuses[min(n, len(tt.statuses)-1)]
+				if status == 0 {
+					panic(http.ErrAbortHandler)
+				}
+
+				w.WriteHeader(status)
 				_, _ = w.Write([]byte("body"))
 			}))
 			defer srv.Close()
