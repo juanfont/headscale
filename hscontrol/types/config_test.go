@@ -1850,6 +1850,216 @@ func TestDNSDomainsCompat(t *testing.T) {
 	}
 }
 
+// compatRecord is the golden for one config input: what the loader produced.
+type compatRecord struct {
+	Config   json.RawMessage   `json:"config,omitempty"`
+	Secrets  map[string]string `json:"secrets,omitempty"` // fields hidden from JSON
+	Warnings []string          `json:"warnings,omitempty"`
+	Error    string            `json:"error,omitempty"`
+}
+
+func TestConfigCompat(t *testing.T) {
+	type row struct {
+		name, file, envFile, loader string
+		inPlace                     bool // read from its own directory instead of a temp copy
+	}
+
+	compatDir := filepath.Join("testdata", "compat")
+
+	// Rows whose golden is only an error pin today's rejection of that input.
+	rows := make([]row, 0, 22)
+
+	examples, err := filepath.Glob(filepath.Join(compatDir, "example-*.yaml"))
+	require.NoError(t, err)
+
+	for _, f := range examples {
+		rows = append(rows, row{
+			name:   strings.TrimSuffix(filepath.Base(f), ".yaml"),
+			file:   f,
+			loader: "server",
+		})
+	}
+
+	rows = append(rows,
+		row{name: "nixos-example", file: filepath.Join(compatDir, "nixos-example.json"), loader: "server"},
+		row{name: "nixos-cli", file: filepath.Join(compatDir, "nixos-cli.yaml"), loader: "cli"},
+		row{name: "hsic-default", file: filepath.Join(compatDir, "hsic-default.yaml"), envFile: filepath.Join(compatDir, "hsic-default.env"), loader: "server"},
+		row{name: "env-secrets", envFile: filepath.Join(compatDir, "env-secrets.env"), loader: "server"},
+		row{name: "env-only", envFile: filepath.Join(compatDir, "env-only.env"), loader: "server"},
+		row{name: "env-lists-maps", envFile: filepath.Join(compatDir, "env-lists-maps.env"), loader: "server"},
+	)
+
+	legacy, err := filepath.Glob(filepath.Join("testdata", "*.yaml"))
+	require.NoError(t, err)
+
+	for _, f := range legacy {
+		rows = append(rows, row{
+			name:    "testdata-" + strings.TrimSuffix(filepath.Base(f), ".yaml"),
+			file:    f,
+			loader:  "server",
+			inPlace: true,
+		})
+	}
+
+	update := os.Getenv("HEADSCALE_UPDATE_GOLDEN") != ""
+
+	for _, tt := range rows {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			// Ambient HEADSCALE_* would leak into the load and the goldens;
+			// viper treats an empty env var as unset.
+			for _, kv := range os.Environ() {
+				if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "HEADSCALE_") {
+					t.Setenv(k, "")
+				}
+			}
+
+			dir := t.TempDir()
+			path, isFile := dir, false
+
+			switch {
+			case tt.inPlace:
+				abs, err := filepath.Abs(tt.file)
+				require.NoError(t, err)
+
+				dir, path, isFile = filepath.Dir(abs), abs, true
+			case tt.file != "":
+				data, err := os.ReadFile(tt.file)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "config"+filepath.Ext(tt.file)), data, 0o600)) //nolint:gosec // dir is t.TempDir()
+			}
+
+			if tt.envFile != "" {
+				raw, err := os.ReadFile(tt.envFile)
+				require.NoError(t, err)
+
+				for line := range strings.SplitSeq(string(raw), "\n") {
+					line = strings.TrimSpace(line)
+					if line == "" || strings.HasPrefix(line, "#") {
+						continue
+					}
+
+					k, v, _ := strings.Cut(line, "=")
+					t.Setenv(k, v)
+				}
+			}
+
+			var buf bytes.Buffer
+
+			oldLogger := log.Logger
+			log.Logger = zerolog.New(&buf)
+
+			// LoadCLIConfig and LoadServerConfig set the process-wide level from
+			// log.level, which would leak into the next row's warnings.
+			oldLevel := zerolog.GlobalLevel()
+
+			zerolog.SetGlobalLevel(zerolog.TraceLevel)
+
+			t.Cleanup(func() {
+				log.Logger = oldLogger
+
+				zerolog.SetGlobalLevel(oldLevel)
+			})
+
+			var (
+				cfg     *Config
+				loadErr error
+			)
+
+			loadErr = LoadConfig(path, isFile)
+			if loadErr == nil {
+				if tt.loader == "cli" {
+					cfg, loadErr = LoadCLIConfig()
+				} else {
+					cfg, loadErr = LoadServerConfig()
+				}
+			}
+
+			log.Logger = oldLogger
+
+			var rec compatRecord
+
+			for line := range strings.SplitSeq(buf.String(), "\n") {
+				if line == "" {
+					continue
+				}
+
+				var entry struct{ Level, Message string }
+
+				require.NoError(t, json.Unmarshal([]byte(line), &entry))
+
+				if entry.Level == "warn" {
+					rec.Warnings = append(rec.Warnings, entry.Message)
+				}
+			}
+
+			if loadErr != nil {
+				rec.Error = strings.ReplaceAll(loadErr.Error(), dir, "$DIR")
+			}
+
+			if cfg != nil {
+				cfg.Tuning.BatcherWorkers = 0 // depends on runtime.NumCPU
+
+				raw, err := json.Marshal(cfg)
+				require.NoError(t, err)
+
+				rec.Config = json.RawMessage(strings.ReplaceAll(string(raw), dir, "$DIR"))
+
+				secrets := map[string]string{
+					"database.postgres.pass": cfg.Database.Postgres.Pass,
+					"oidc.client_secret":     cfg.OIDC.ClientSecret,
+					"cli.api_key":            cfg.CLI.APIKey,
+				}
+				for k, v := range secrets {
+					if v != "" {
+						if rec.Secrets == nil {
+							rec.Secrets = map[string]string{}
+						}
+
+						rec.Secrets[k] = strings.ReplaceAll(v, dir, "$DIR")
+					}
+				}
+			}
+
+			gpath := filepath.Join(compatDir, tt.name+".golden.json")
+
+			if update {
+				out, err := json.MarshalIndent(rec, "", "  ")
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(gpath, append(out, '\n'), 0o600))
+
+				return
+			}
+
+			raw, err := os.ReadFile(gpath)
+			require.NoErrorf(t, err, "missing golden %s: run with HEADSCALE_UPDATE_GOLDEN=1", gpath)
+
+			var want compatRecord
+			require.NoError(t, json.Unmarshal(raw, &want))
+
+			// Round-trip so RawMessage whitespace does not matter.
+			var got compatRecord
+
+			gotRaw, err := json.Marshal(rec)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(gotRaw, &got))
+
+			if d := cmp.Diff(want, got, cmp.Transformer("raw", func(m json.RawMessage) any {
+				var v any
+				if len(m) > 0 {
+					_ = json.Unmarshal(m, &v)
+				}
+
+				return v
+			})); d != "" {
+				t.Errorf("config compat mismatch (-golden +got):\n%s", d)
+			}
+		})
+	}
+}
+
 func TestDERPServerRequiresPrivateKeyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := filepath.Join(tmpDir, "config.yaml")
