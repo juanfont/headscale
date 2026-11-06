@@ -21,6 +21,13 @@ let
   settingsFormat = pkgs.formats.yaml { };
   cliConfigFile = settingsFormat.generate "headscale.yaml" cliConfig;
 
+  sqlite = cfg.settings.database.type != "postgres";
+  headscale = "${lib.getExe cfg.package} --config ${cfg.configFile}";
+  # Interpolated, so a Nix path lands at the same store path the config names.
+  policyFileCheck = cfg.check.policy && policyFile != null;
+  anyCheck = cfg.check.config || policyFileCheck;
+  policyFile = with cfg.settings.policy; if mode == "file" && path != null then "${path}" else null;
+
   assertRemovedOption = option: message: {
     assertion = !lib.hasAttrByPath option cfg;
     message =
@@ -44,6 +51,45 @@ in
         defaultText = lib.literalExpression ''(pkgs.formats.yaml { }).generate "headscale.yaml" config.services.headscale.settings'';
         description = ''
           Path to the configuration file of headscale.
+        '';
+      };
+
+      check.config = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Before a switch restarts headscale, run the new package's
+          `headscale check config --database` with the new configuration
+          against a throwaway copy of the SQLite database, and abort the
+          switch if it fails. This catches what would stop headscale from
+          starting: a bad setting, an unreadable file the configuration names,
+          a migration that fails on your data, or a policy (file or database
+          mode) that does not load. Existing key files are read, never
+          created. A pass does not prove that the network, an OIDC provider
+          or the listeners will work.
+
+          The copy lives in a fresh directory under {env}`TMPDIR` and is
+          removed afterwards; the live database is only read, its contents never change, and SQLite may create `-wal` and `-shm` files next to it. The check
+          runs as {option}`services.headscale.user` and is skipped while no
+          database exists yet. It needs room for a copy of the database and
+          takes as long as copying and migrating it.
+
+          Postgres is not checked. A failed switch has already pointed the
+          system profile at the new generation, but not the boot menu. Skip all
+          checks once with `NIXOS_NO_CHECK=1 nixos-rebuild switch`.
+        '';
+      };
+
+      check.policy = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          In file policy mode, also run `headscale check policy --database` on the new
+          policy against the same database copy as
+          {option}`services.headscale.check.config`. On top of what startup
+          rejects, this enforces the policy's `tests` and `sshTests` and
+          ambiguous user references, as `headscale policy set` and a reload do.
+          Startup only logs those. This check loads the configuration too.
         '';
       };
 
@@ -778,6 +824,52 @@ in
         "ephemeral_node_inactivity_timeout"
       ] "Use `node.ephemeral.inactivity_timeout` instead.")
     ];
+
+    warnings = lib.optional (!sqlite && anyCheck) ''
+      services.headscale.check.config and check.policy only check SQLite
+      databases, so nothing is checked before a switch. Set both to false to
+      silence this warning.
+    '';
+
+    system.preSwitchChecks.headscale = lib.mkIf (sqlite && anyCheck) ''
+      live=${lib.escapeShellArg cfg.settings.database.sqlite.path}
+      if [ ! -e "$live" ]; then
+        echo "headscale: no database at $live yet, skipping checks"
+        exit 0
+      fi
+
+      export PATH=${
+        lib.makeBinPath [
+          pkgs.coreutils
+          pkgs.sqlite
+          pkgs.util-linux
+        ]
+      }
+      tmp=$(mktemp -d -t headscale-check.XXXXXXXXXX)
+      trap 'rm -rf "$tmp"' EXIT
+      chown ${lib.escapeShellArg "${cfg.user}:${cfg.group}"} "$tmp"
+
+      export HEADSCALE_DATABASE_SQLITE_PATH="$tmp/db.sqlite"
+      as_headscale() {
+        setpriv --reuid=${lib.escapeShellArg cfg.user} --regid=${lib.escapeShellArg cfg.group} --init-groups -- "$@"
+      }
+
+      # Normal locking, so committed data left in a -wal after a crash is
+      # read and a restart mid-copy is safe. SQLite may create
+      # -wal/-shm files next to the live database; its contents never change.
+      uri="file:$live?mode=ro"
+      # Constant name inside $tmp keeps paths out of sqlite's dot-command parser.
+      (cd "$tmp" && as_headscale sqlite3 "$uri" ".backup db.sqlite")
+
+      ${lib.optionalString cfg.check.config ''
+        echo "headscale: checking the new configuration"
+        as_headscale ${headscale} check config --database --force
+      ''}
+      ${lib.optionalString policyFileCheck ''
+        echo "headscale: checking the new policy"
+        as_headscale ${headscale} check policy --database --force -f ${lib.escapeShellArg policyFile}
+      ''}
+    '';
 
     services.headscale.settings = lib.mkMerge [
       cliConfig
