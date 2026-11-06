@@ -194,6 +194,109 @@ func TestNewProvider(t *testing.T) {
 	}
 }
 
+// A map setting holds secrets as much as a string one does, so <setting>_path
+// must read it from a YAML or JSON file too.
+func TestNewProviderStructuredPath(t *testing.T) {
+	dir := t.TempDir()
+
+	yamlPath := filepath.Join(dir, "acmedns.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+node.ts.example.com:
+  username: user
+  password: pass
+  subdomain: reg
+  server_url: https://auth.acme-dns.io
+`), 0o600))
+
+	jsonPath := filepath.Join(dir, "acmedns.json")
+	require.NoError(t, os.WriteFile(jsonPath, []byte(`{
+  "node.ts.example.com": {
+    "username": "user",
+    "password": "pass",
+    "subdomain": "reg",
+    "server_url": "https://auth.acme-dns.io"
+  }
+}`), 0o600))
+
+	typoPath := filepath.Join(dir, "typo.yaml")
+	require.NoError(t, os.WriteFile(typoPath, []byte(`
+node.ts.example.com:
+  usrname: user
+  password: pass
+  subdomain: reg
+  server_url: https://auth.acme-dns.io
+`), 0o600))
+
+	want := &acmeDNS{
+		Configs: map[string]acmedns.DomainConfig{
+			"node.ts.example.com": {
+				Username:  "user",
+				Password:  "pass",
+				Subdomain: "reg",
+				ServerURL: "https://auth.acme-dns.io",
+			},
+		},
+		served: map[string][2]acmeDNSValue{},
+	}
+
+	tests := []struct {
+		name     string
+		settings map[string]any
+		env      map[string]any
+		want     Provider
+		wantErr  error
+	}{
+		{
+			name:     "yaml file",
+			settings: map[string]any{"config_path": yamlPath},
+			want:     want,
+		},
+		{
+			name:     "json file",
+			settings: map[string]any{"config_path": jsonPath},
+			want:     want,
+		},
+		{
+			name: "path from environment",
+			env:  map[string]any{"config_path": yamlPath},
+			want: want,
+		},
+		{
+			name: "value and path both set",
+			settings: map[string]any{
+				"config":      map[string]any{"a.example.com": map[string]any{}},
+				"config_path": yamlPath,
+			},
+			wantErr: ErrProviderConfig,
+		},
+		{
+			name:     "unknown key in file",
+			settings: map[string]any{"config_path": typoPath},
+			wantErr:  ErrProviderConfig,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			get := func(key string) (any, bool) {
+				v, ok := tt.env[key]
+
+				return v, ok
+			}
+
+			got, err := NewProvider("acmedns", tt.settings, get)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 // fakeAcmeDNS is an acme-dns server with one registration, reg. It has two
 // rows, and an update overwrites the one stamped with the earlier second.
 // acme-dns overwrites either on a tie; the fake picks the one written

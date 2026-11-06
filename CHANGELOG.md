@@ -230,6 +230,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 - Renaming a node now stores the name in lowercase; a node renamed with uppercase letters before gets no certificate name until it is renamed again [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Add `dns.certificates.enabled` and `dns.certificates.zone` to let nodes get TLS certificates [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Add `dns.challenge.provider`, `dns.challenge.propagation_timeout` and `dns.challenge.resolvers` for ACME DNS-01 challenges [#3554](https://github.com/juanfont/headscale/pull/3554)
+- The acmedns `config` of `dns.challenge.provider` can be read from a YAML or JSON file with `config_path` [#3588](https://github.com/juanfont/headscale/issues/3588)
 - The v2 tailnet setting `httpsEnabled` reports `dns.certificates.enabled` [#3554](https://github.com/juanfont/headscale/pull/3554)
 - `tls.acme.challenge_type` accepts `DNS-01`, using `dns.challenge.provider` [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Fix the unix socket being created `0700` instead of the documented `0770` when `unix_socket_permission` is unset. The socket grants full admin access without authentication, so members of its group gain that access; check who is in it before upgrading [#3540](https://github.com/juanfont/headscale/pull/3540)

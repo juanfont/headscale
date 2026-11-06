@@ -1680,7 +1680,7 @@ func LoadServerConfig() (*Config, error) {
 			Current: []KV{{"dns.challenge.provider.name", dnsChallenge.ProviderName}},
 			Detail:  err.Error(),
 			Allowed: allowed,
-			Hint:    "check the provider name and its settings; any string setting can be read from a file with <setting>_path",
+			Hint:    "check the provider name and its settings; any setting can be read from a file with <setting>_path",
 			See:     dnsDocsURL,
 			Cause:   err,
 		})
