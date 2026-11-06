@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 	"slices"
@@ -39,7 +40,16 @@ func init() {
 	})
 }
 
-func initConfig() {
+// skipsInitConfig reports whether args select the check command group, which
+// must work without a loadable config. Find runs lazily because init order
+// across files is not guaranteed to have registered every command.
+func skipsInitConfig(args []string) bool {
+	cmd, _, err := rootCmd.Find(args)
+
+	return err == nil && (cmd == checkCmd || cmd.HasParent() && cmd.Parent() == checkCmd)
+}
+
+func loadConfig() error {
 	if cfgFile == "" {
 		cfgFile = os.Getenv("HEADSCALE_CONFIG")
 	}
@@ -47,13 +57,28 @@ func initConfig() {
 	if cfgFile != "" {
 		err := types.LoadConfig(cfgFile, true)
 		if err != nil {
-			log.Fatal().Caller().Err(err).Msgf("error loading config file %s", cfgFile)
+			return fmt.Errorf("loading config file %s: %w", cfgFile, err)
 		}
-	} else {
-		err := types.LoadConfig("", false)
-		if err != nil {
-			log.Fatal().Caller().Err(err).Msgf("error loading config")
-		}
+
+		return nil
+	}
+
+	err := types.LoadConfig("", false)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	return nil
+}
+
+func initConfig() {
+	if skipsInitConfig(os.Args[1:]) {
+		return
+	}
+
+	err := loadConfig()
+	if err != nil {
+		log.Fatal().Caller().Err(err).Msg("error loading config")
 	}
 
 	machineOutput := hasMachineOutputFlag()
