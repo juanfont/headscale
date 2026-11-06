@@ -17,11 +17,13 @@ import (
 
 // Tailscale's policy file `tests` block validates a policy against operator
 // assertions: from a given src, named dst:port pairs must be accepted, and
-// (optionally) other dst:port pairs must be denied. They run at user-write
-// boundaries — `headscale policy set`, file-mode reload after a change,
-// `headscale policy check` — and reject the write if any assertion fails.
-// Boot-time reload of an already-stored policy does not run them, so a
-// stale referenced entity (e.g. a deleted user) cannot lock the server out.
+// (optionally) other dst:port pairs must be denied. `headscale policy set`
+// and file-mode reload after a change reject the write if any assertion
+// fails; `headscale check policy --database` and `--server` run the
+// assertions and report failures without applying the policy.
+// Boot-time loading of an already-stored policy runs them too but only logs
+// failures, so a stale referenced entity (e.g. a deleted user) cannot lock
+// the server out.
 //
 // The tests evaluate against the compiled global filter rules, which fold in
 // both `acls` and `grants`, so the `tests` block validates the whole policy.

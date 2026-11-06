@@ -40,13 +40,14 @@ func init() {
 	})
 }
 
-// skipsInitConfig reports whether args select the check command group, which
-// must work without a loadable config. Find runs lazily because init order
+// skipsInitConfig reports whether args select the check command group or a
+// removed-command stub, which must work without a loadable config. Find runs lazily because init order
 // across files is not guaranteed to have registered every command.
 func skipsInitConfig(args []string) bool {
 	cmd, _, err := rootCmd.Find(args)
 
-	return err == nil && (cmd == checkCmd || cmd.HasParent() && cmd.Parent() == checkCmd)
+	return err == nil && (cmd == checkCmd || cmd.HasParent() && cmd.Parent() == checkCmd ||
+		cmd == removedPolicyCheckCmd)
 }
 
 func loadConfig() error {

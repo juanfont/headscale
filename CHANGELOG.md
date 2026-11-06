@@ -178,6 +178,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 
 - `--output json` / `--output yaml` now emit the API's shape — camelCase fields, string-encoded IDs, RFC3339 timestamps — instead of the old Protobuf encoding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - `headscale policy` renames the database-bypass flag from `--bypass-grpc-and-access-database-directly` to `--bypass-server-and-access-database-directly` [#3324](https://github.com/juanfont/headscale/pull/3324)
+- `headscale policy check` is now `headscale check policy`. It checks offline by default (syntax, shape, references) and needs no server, database or config. `--database` (was `--bypass-grpc-and-access-database-directly`) and `--server` (was the default) also run `tests` and `sshTests`. `--database` runs migrations and may modify the database: use a copy. [#3355](https://github.com/juanfont/headscale/issues/3355)
 
 #### NixOS module
 
