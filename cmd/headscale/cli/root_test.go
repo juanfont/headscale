@@ -8,6 +8,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -415,4 +416,20 @@ dns:
 			}
 		})
 	}
+}
+
+func TestInitConfigSkippedLogLevel(t *testing.T) {
+	oldArgs, oldLevel := os.Args, zerolog.GlobalLevel()
+
+	t.Cleanup(func() {
+		os.Args = oldArgs
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	os.Args = []string{"headscale", "check", "policy", "-f", "p"}
+
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	initConfig()
+	require.Equal(t, zerolog.InfoLevel, zerolog.GlobalLevel(), "log.level's default, as with a config")
 }
