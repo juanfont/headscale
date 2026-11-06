@@ -14,6 +14,7 @@
 //
 //	bump plan     resolve every source of truth and print what would change
 //	bump run      apply, gate, and open or update the pull request
+//	bump publish  open or update the pull request a run handed off
 //	bump verify   assert the pins are mutually consistent
 package main
 
@@ -30,19 +31,26 @@ import (
 )
 
 type runFlags struct {
-	DryRun bool   `flag:"dry-run,default=false,Rebuild the branch locally and report, but run no final gate and touch no remote"`
-	NoPR   bool   `flag:"no-pr,default=false,Push nothing and open no pull request"`
-	Areas  string `flag:"areas,Comma-separated areas to run (default: all)"`
-	Skip   string `flag:"skip,Comma-separated areas to skip"`
-	Force  bool   `flag:"force,default=false,Open a pull request even if an identical one was closed unmerged"`
-	Branch string `flag:"branch,default=automation/version-bump,Branch to push"`
-	Base   string `flag:"base,default=main,Base branch"`
-	Remote string `flag:"remote,default=origin,Git remote"`
-	Repo   string `flag:"repo,GitHub repository (default: the one the job runs in)"`
-	Gate   string `flag:"gate,default=full,Final gate level: none, quick or full"`
+	DryRun  bool   `flag:"dry-run,default=false,Rebuild the branch locally and report, but run no final gate and touch no remote"`
+	NoPR    bool   `flag:"no-pr,default=false,Push nothing and open no pull request"`
+	Areas   string `flag:"areas,Comma-separated areas to run (default: all)"`
+	Skip    string `flag:"skip,Comma-separated areas to skip"`
+	Force   bool   `flag:"force,default=false,Open a pull request even if an identical one was closed unmerged"`
+	Branch  string `flag:"branch,default=automation/version-bump,Branch to push"`
+	Base    string `flag:"base,default=main,Base branch"`
+	Remote  string `flag:"remote,default=origin,Git remote"`
+	Repo    string `flag:"repo,GitHub repository (default: the one the job runs in)"`
+	Gate    string `flag:"gate,default=full,Final gate level: none, quick or full"`
+	Handoff string `flag:"handoff,Write the pull request to this file for bump publish instead of opening it"`
 }
 
 var runCfg runFlags
+
+type publishFlags struct {
+	Handoff string `flag:"handoff,File written by bump run --handoff"`
+}
+
+var publishCfg publishFlags
 
 func main() {
 	log.SetFlags(0)
@@ -62,6 +70,12 @@ func main() {
 				Help:     "Apply, gate, and open or update the pull request",
 				SetFlags: command.Flags(flax.MustBind, &runCfg),
 				Run:      func(env *command.Env) error { return cmdRun(env.Context()) },
+			},
+			{
+				Name:     "publish",
+				Help:     "Open or update the pull request a run handed off",
+				SetFlags: command.Flags(flax.MustBind, &publishCfg),
+				Run:      func(env *command.Env) error { return cmdPublish(env.Context()) },
 			},
 			{
 				Name: "verify",
@@ -190,7 +204,7 @@ func cmdRun(ctx context.Context) error {
 		lease = open.HeadRefOid
 	}
 
-	return publish(ctx, r, publishOptions{
+	opt := publishOptions{
 		Slug:    slug,
 		Remote:  runCfg.Remote,
 		Branch:  runCfg.Branch,
@@ -198,9 +212,30 @@ func cmdRun(ctx context.Context) error {
 		Title:   "all: bump pinned versions",
 		Gate:    gate,
 		Force:   runCfg.Force,
+		Head:    head,
 		Lease:   lease,
 		Carried: carried,
-	}, results)
+	}
+
+	if runCfg.Handoff != "" {
+		return writeHandoff(runCfg.Handoff, handoff{Options: opt, Body: body})
+	}
+
+	return publish(ctx, r, opt, body)
+}
+
+func cmdPublish(ctx context.Context) error {
+	h, err := readHandoff(publishCfg.Handoff)
+	if err != nil {
+		return err
+	}
+
+	r, err := openRepo(ctx)
+	if err != nil {
+		return err
+	}
+
+	return publish(ctx, r, h.Options, h.Body)
 }
 
 func anyApplied(results []result) bool {
