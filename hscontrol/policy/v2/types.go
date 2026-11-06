@@ -3411,6 +3411,12 @@ func stripMetadataMembers(v *hujson.Value) {
 	}
 }
 
+// ParsePolicy parses and validates a policy without users or nodes: syntax,
+// shape and cross-reference checks only. Empty input returns nil, nil.
+func ParsePolicy(b []byte) (*Policy, error) {
+	return unmarshalPolicy(b)
+}
+
 // unmarshalPolicy takes a byte slice and unmarshals it into a [Policy] struct.
 // In addition to unmarshalling, it will also validate the policy.
 // This is the only entrypoint of reading a policy from a file or other source.

@@ -6902,3 +6902,16 @@ func TestSetPolicyBareAtToken(t *testing.T) {
 		}
 	}
 }
+
+func TestParsePolicy(t *testing.T) {
+	pol, err := ParsePolicy([]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
+	require.NoError(t, err)
+	require.NotNil(t, pol)
+
+	_, err = ParsePolicy([]byte(`{"acls":[{"action":"accept","src":["group:missing"],"dst":["*:*"]}]}`))
+	require.ErrorIs(t, err, ErrGroupNotDefined)
+
+	pol, err = ParsePolicy([]byte(""))
+	require.NoError(t, err)
+	require.Nil(t, pol)
+}
