@@ -27,6 +27,7 @@ import (
 
 var (
 	errEmptyDERPMapFile = errors.New("DERP map file has no regions or homeparams")
+	errDERPMapStatus    = errors.New("unexpected HTTP status")
 
 	ErrRegionIDKey    = errors.New("doesn't match its key")
 	ErrRegionNoNodes  = errors.New("must specify at least one node in DERP Region")
@@ -130,21 +131,26 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 
 	defer resp.Body.Close()
 
+	// An error page can be JSON that decodes to an empty map.
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("DERP map %s: %w: %s", addr.Redacted(), errDERPMapStatus, resp.Status)
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("DERP map %s: %w", addr.Redacted(), err)
 	}
 
 	var derpMap tailcfg.DERPMap
 
 	err = json.Unmarshal(body, &derpMap)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("DERP map %s: %w", addr.Redacted(), err)
 	}
 
 	err = validateRegions(&derpMap)
 	if err != nil {
-		return nil, fmt.Errorf("DERP map %s: %w", addr.String(), err)
+		return nil, fmt.Errorf("DERP map %s: %w", addr.Redacted(), err)
 	}
 
 	return &derpMap, nil

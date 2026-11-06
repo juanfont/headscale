@@ -499,3 +499,19 @@ func TestLoadDERPMapFromURLValidates(t *testing.T) {
 	_, err = loadDERPMapFromURL(*addr)
 	require.ErrorIs(t, err, ErrRegionIDKey)
 }
+
+// TestLoadDERPMapFromURLRejectsHTTPError: an error page that happens to be
+// JSON must not pass as an empty map, or a refresh drops that URL's regions.
+func TestLoadDERPMapFromURLRejectsHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"message": "down for maintenance"}`))
+	}))
+	defer srv.Close()
+
+	addr, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	_, err = loadDERPMapFromURL(*addr)
+	require.ErrorIs(t, err, errDERPMapStatus)
+}
