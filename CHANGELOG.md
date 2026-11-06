@@ -181,6 +181,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - A SIGHUP now reloads the certificate from `tls.cert_path` and `tls.key_path` without a restart; a certificate that cannot be loaded or is not valid now is logged as an error and the previous one keeps serving [#3027](https://github.com/juanfont/headscale/issues/3027)
 - The NixOS module's `headscale` service now supports `systemctl reload`
 - DERP map refreshes keep the node order. Clients keep their home relay. [#3649](https://github.com/juanfont/headscale/pull/3649)
+- Fix the embedded STUN server returning IPv4 addresses as IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`), and change it to use Tailscale's STUN server implementation [#3573](https://github.com/juanfont/headscale/issues/3573)
 - Nodes with `disable-ipv4` get their peers over IPv6 only. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - A node name follows a new hostname at login, unless an administrator set the name. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - `AllowedIPs` list the node's own addresses first. `tailscale whois` reads them in this order. [#3649](https://github.com/juanfont/headscale/pull/3649)
