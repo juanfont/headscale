@@ -186,6 +186,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 - `settings.ephemeral_node_inactivity_timeout` is removed; set `settings.node.ephemeral.inactivity_timeout`, which headscale reads instead
 - `settings.dns.split` is removed; headscale never read it, set `settings.dns.nameservers.split`
 - `settings.tls_*` options move to `settings.tls.*`; old `settings.tls_*` values still work [#3554](https://github.com/juanfont/headscale/pull/3554)
+- A switch now checks the new configuration and policy before it restarts headscale, against a throwaway copy of the SQLite database, and fails if headscale would reject them. The check is offline config and referenced-file checks plus migrations and startup state and policy initialisation; it does not prove network or OIDC availability, key creation or listener startup. A file policy's `tests` and `sshTests` must pass, as with `headscale policy set`. Turn the checks off with `check.config = false` and `check.policy = false`, or skip them once with `NIXOS_NO_CHECK=1 nixos-rebuild switch`. Postgres is not checked. [#2898](https://github.com/juanfont/headscale/issues/2898)
 
 ### Changes
 

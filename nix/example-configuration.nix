@@ -20,12 +20,21 @@
   services.headscale = {
     enable = true;
 
-    # Optional: Use a specific package (defaults to pkgs.headscale)
+    # Optional: use a specific package. Defaults to this flake's package; an
+    # override must provide `headscale check` while the checks below are on.
     # package = pkgs.headscale;
 
     # Listen on all interfaces (default is 127.0.0.1)
     address = "0.0.0.0";
     port = 8080;
+
+    # Before a switch restarts headscale, check the new config and policy
+    # against a throwaway copy of the database (SQLite only). Set to false to
+    # turn a check off; `NIXOS_NO_CHECK=1 nixos-rebuild switch` skips them once.
+    check = {
+      config = true;
+      policy = true;
+    };
 
     settings = {
       # The URL clients will connect to

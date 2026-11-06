@@ -36,6 +36,42 @@ imports = [ inputs.headscale.nixosModules.default ];
 See [`example-configuration.nix`](./example-configuration.nix) for configuration
 options.
 
+## Checks before a switch
+
+A switch that changes headscale's config or policy restarts headscale. If the
+new headscale rejects them, it stops serving. So the module adds a
+[`system.preSwitchChecks`](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/system/activation/pre-switch-check.nix)
+entry that runs before any unit restarts and aborts the switch on failure:
+
+- It copies the SQLite database read-only into a fresh directory under
+  `TMPDIR`, as `services.headscale.user`, and removes the copy afterwards. The
+  live database is only read; SQLite may create `-wal` and `-shm` files
+  next to it.
+- `check.config`: the new package's `headscale check config --database` with the new
+  config, against the copy. It fails where startup would fail, and parses the
+  files the config names. It reads existing keys and creates none.
+- `check.policy`: `headscale check policy --database` on a file policy, against the copy. It
+  also enforces the policy's `tests` and `sshTests`, as `headscale policy set`
+  does.
+
+Both default to `true`. `NIXOS_NO_CHECK=1 nixos-rebuild switch` skips all
+pre-switch checks once. Limits:
+
+- Postgres is not checked; the module warns.
+- No database yet means nothing to check against, so the check is skipped.
+- `nixos-rebuild switch` sets the system profile before the check runs, and does
+  not undo it. The boot menu is not updated, so a reboot starts the old
+  generation. `nixos-rebuild switch --rollback` resets the profile.
+- A config that reads `$CREDENTIALS_DIRECTORY` (OIDC secret, DNS provider
+  secret paths) only works inside the unit, so both checks fail outside it; turn
+  off `check.config` and `check.policy`.
+- A pass is offline config and referenced-file checks, plus migrations and
+  startup state and policy initialisation against the copy. It does not prove
+  network or OIDC availability, or that listeners start; it never creates keys.
+- The module imported from the flake defaults `services.headscale.package` to
+  the flake's package, because the checks need `headscale check`. An explicit
+  `services.headscale.package` overrides it.
+
 ## Test kit
 
 `nixosModules.testkit` turns a node of a NixOS VM test into a headscale control
