@@ -2,16 +2,20 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/envknob"
+	"tailscale.com/net/stun"
 	"tailscale.com/tailcfg"
 )
 
@@ -84,4 +88,63 @@ func TestDERPBootstrapDNSHandlerFollowsDERPMapUpdates(t *testing.T) {
 	var got map[string][]net.IP
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&got))
 	assert.Contains(t, got, "localhost")
+}
+
+// TestSTUNServerUnmapsIPv4 pins that an IPv4 client of a dual-stack
+// listener (what the default "0.0.0.0" opens) gets an IPv4
+// XOR-MAPPED-ADDRESS, as Tailscale's derpers send. Raw bytes are compared
+// because stun.ParseResponse unmaps and would hide the bug.
+// https://github.com/juanfont/headscale/issues/3573
+func TestSTUNServerUnmapsIPv4(t *testing.T) {
+	// Probe for a free port and whether "0.0.0.0" opens a dual-stack socket.
+	probe, err := new(net.ListenConfig).ListenPacket(t.Context(), "udp", "0.0.0.0:0")
+	require.NoError(t, err)
+
+	local, ok := probe.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	require.NoError(t, probe.Close())
+
+	if !local.IP.Equal(net.IPv6unspecified) {
+		t.Skipf("listener is not dual-stack: %s", local)
+	}
+
+	d := &DERPServer{cfg: &types.DERPConfig{Server: types.DERPServerConfig{STUNAddr: types.ListenAddr(fmt.Sprintf("0.0.0.0:%d", local.Port))}}}
+	go d.ServeSTUN()
+
+	tests := []struct {
+		network string
+		client  netip.Addr
+	}{
+		{network: "udp4", client: netip.MustParseAddr("127.0.0.1")},
+		{network: "udp6", client: netip.MustParseAddr("::1")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.network, func(t *testing.T) {
+			conn, err := net.DialUDP(tt.network, nil, net.UDPAddrFromAddrPort(netip.AddrPortFrom(tt.client, uint16(local.Port)))) //nolint:gosec // port is always <=65535
+			if err != nil {
+				t.Skipf("no %s loopback: %v", tt.network, err)
+			}
+			defer conn.Close()
+
+			txid := stun.NewTxID()
+			buf := make([]byte, 1024)
+
+			var n int
+
+			// Retry until ServeSTUN has bound the port.
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				_, err := conn.Write(stun.Request(txid))
+				require.NoError(c, err)
+				require.NoError(c, conn.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
+
+				n, err = conn.Read(buf)
+				require.NoError(c, err)
+			}, 5*time.Second, 10*time.Millisecond)
+
+			clientPort := conn.LocalAddr().(*net.UDPAddr).Port                             //nolint:forcetypeassert // DialUDP always yields *net.UDPAddr
+			want := stun.Response(txid, netip.AddrPortFrom(tt.client, uint16(clientPort))) //nolint:gosec // port is always <=65535
+			assert.Equal(t, want, buf[:n])
+		})
+	}
 }
