@@ -163,9 +163,9 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 
 - `derp.paths` files must end in `.yaml`, `.yml`, `.json` or `.hujson`; the extension picks the format
 - `dns.extra_records_path` must end in `.json`, `.hujson`, `.yaml` or `.yml`; the extension picks the format
-- A `derp.paths` file that decodes to neither regions nor `homeparams` now stops headscale from starting instead of being silently ignored
-- A `derp.paths` file with a key `tailcfg.DERPMap` has no field for (e.g. a misspelt `regionscore`) stops headscale from starting instead of the key being ignored, as Tailscale SaaS rejects such a policy `derpMap` [#2932](https://github.com/juanfont/headscale/pull/2932)
-- A DERP map from `derp.paths` or `derp.urls` must meet the region rules Tailscale SaaS applies to a policy `derpMap`: each region's `regionid` matches its key, each node's `regionid` matches its region, and a region has at least one node. A `derp.paths` file that breaks one stops headscale from starting; a `derp.urls` map that breaks one fails to load. Clients count latency by `regionid`, so a mismatch made them pick a home region the map did not have [#2932](https://github.com/juanfont/headscale/pull/2932)
+- A `derp.paths` file that decodes to neither regions nor `homeparams` now fails to load instead of being silently ignored
+- A `derp.paths` file with a key `tailcfg.DERPMap` has no field for (e.g. a misspelt `regionscore`) fails to load instead of the key being ignored, as Tailscale SaaS rejects such a policy `derpMap` [#2932](https://github.com/juanfont/headscale/pull/2932)
+- A DERP map from `derp.paths` or `derp.urls` must meet the region rules Tailscale SaaS applies to a policy `derpMap`: each region's `regionid` matches its key, each node's `regionid` matches its region, and a region has at least one node. A map that breaks one fails to load. Clients count latency by `regionid`, so a mismatch made them pick a home region the map did not have [#2932](https://github.com/juanfont/headscale/pull/2932)
 - `unix_socket_permission` must be a quoted octal string no higher than `"0777"`, e.g. `"0770"`; an unquoted number or an invalid value now stops headscale from starting instead of silently using `0700` [#3540](https://github.com/juanfont/headscale/pull/3540)
 - `tls_cert_path`, `tls_key_path`, `tls_letsencrypt_*`, `acme_url` and `acme_email` are deprecated in favour of `tls.cert_path`, `tls.key_path` and `tls.acme.*` [#3554](https://github.com/juanfont/headscale/pull/3554)
   - The old keys continue to work, with a warning, but will be removed in a future release
@@ -190,6 +190,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 - A SIGHUP now reloads the certificate from `tls.cert_path` and `tls.key_path` without a restart; a certificate that cannot be loaded or is not valid now is logged as an error and the previous one keeps serving [#3027](https://github.com/juanfont/headscale/issues/3027)
 - The NixOS module's `headscale` service now supports `systemctl reload`
 - DERP map refreshes keep the node order. Clients keep their home relay. [#3649](https://github.com/juanfont/headscale/pull/3649)
+- A `derp.urls` or `derp.paths` source that fails to load (unreachable, an HTTP status other than 200, or an invalid map) is logged as a warning and skipped instead of stopping headscale from starting. Headscale still refuses to start when no DERP region remains; a refresh with a failing source keeps the previous map [#3142](https://github.com/juanfont/headscale/issues/3142)
 - Nodes with `disable-ipv4` get their peers over IPv6 only. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - A node name follows a new hostname at login, unless an administrator set the name. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - `AllowedIPs` list the node's own addresses first. `tailscale whois` reads them in this order. [#3649](https://github.com/juanfont/headscale/pull/3649)

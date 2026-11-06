@@ -110,7 +110,9 @@ derp:
     ipv4: 198.51.100.1
     ipv6: 2001:db8::1
 
-  # List of externally available DERP maps encoded in JSON
+  # List of externally available DERP maps encoded in JSON.
+  # A URL or path that fails to load is logged and skipped; headscale only
+  # refuses to start when no DERP region remains.
   urls:
     - https://controlplane.tailscale.com/derpmap/default
 
