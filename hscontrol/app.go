@@ -1094,8 +1094,6 @@ func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
 	acmeCfg := h.cfg.TLS.ACME
 	logger := zlog.Zap(log.Logger).Named("acme")
 
-	// An empty CA means Let's Encrypt, and certmagic then retries failures
-	// against Let's Encrypt staging to spare the production rate limits.
 	issuer := certmagic.ACMEIssuer{
 		CA:           acmeCfg.URL,
 		Email:        acmeCfg.Email,
@@ -1164,6 +1162,9 @@ func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
 	}
 
 	acmeIssuer := certmagic.NewACMEIssuer(magic, issuer)
+	// For Let's Encrypt, certmagic retries against Let's Encrypt staging,
+	// registering an account there; retries stay on tls.acme.url.
+	acmeIssuer.TestCA = ""
 	magic.Issuers = []certmagic.Issuer{acmeIssuer}
 
 	bundle.Config = magic.TLSConfig()

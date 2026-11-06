@@ -11,12 +11,14 @@ import (
 	"log"
 	"math/big"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -274,6 +276,77 @@ func TestACMETLSSettings(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestACMERetryStaysOnConfiguredCA pins that a failed issuance is retried
+// against tls.acme.url and nothing else. The default tls.acme.url is
+// certmagic's default CA, Let's Encrypt production, for which certmagic
+// retries against Let's Encrypt staging and registers an account there
+// (#3589). Pebble stands in for production, so the test waits for
+// certmagic's first retry interval.
+func TestACMERetryStaysOnConfiguredCA(t *testing.T) {
+	if testing.Short() {
+		t.Skip("waits for certmagic's first retry interval")
+	}
+
+	acme := startTestACME(t, freePort(t), freePort(t))
+
+	var stagingHits atomic.Int32
+
+	staging := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		stagingHits.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(staging.Close)
+
+	prevCA, prevTestCA := certmagic.DefaultACME.CA, certmagic.DefaultACME.TestCA
+	certmagic.DefaultACME.CA, certmagic.DefaultACME.TestCA = acme.directory, staging.URL
+
+	t.Cleanup(func() { certmagic.DefaultACME.CA, certmagic.DefaultACME.TestCA = prevCA, prevTestCA })
+
+	// The CA resolves TXT from acme.provider, so records published here are
+	// never seen and every validation fails, like a mistyped DNS delegation.
+	published := &dnstest.Provider{}
+
+	h := &Headscale{cfg: &types.Config{
+		ServerURL: "https://" + acmeTestHost,
+		Addr:      net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t))),
+		TLS: types.TLSConfig{ACME: types.ACMEConfig{
+			Hostname:      acmeTestHost,
+			ChallengeType: types.DNS01ChallengeType,
+			URL:           acme.directory,
+			CacheDir:      t.TempDir(),
+		}},
+		DNSChallenge: types.DNSChallengeConfig{
+			Provider:  published,
+			Resolvers: []string{acme.resolver},
+		},
+	}}
+
+	bundle, err := h.getTLSSettings(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(bundle.Stop)
+
+	require.NoError(t, bundle.Manage(t.Context()))
+
+	attempts := func() int {
+		n := 0
+
+		for _, c := range published.Calls() {
+			if c.Method == "append" {
+				n++
+			}
+		}
+
+		return n
+	}
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, attempts() >= 2 || stagingHits.Load() > 0)
+	}, 2*time.Minute, time.Second, "certmagic should retry the failed issuance")
+
+	assert.Zero(t, stagingHits.Load(), "retry must not leave tls.acme.url")
+	assert.GreaterOrEqual(t, attempts(), 2, "retry must reach tls.acme.url")
 }
 
 // testKeypair returns a new certificate as DER, and as PEM with its key.
