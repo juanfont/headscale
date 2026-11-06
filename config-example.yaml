@@ -397,6 +397,12 @@ dns:
     #       password: <password from /register>
     #       subdomain: <subdomain from /register>
     #       server_url: https://auth.acme-dns.io
+    #
+    # config_path reads the same config from a YAML or JSON file instead,
+    # keeping the passwords out of this file.
+    # provider:
+    #   name: acmedns
+    #   config_path: /run/credentials/headscale.service/acmedns.json
 
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:

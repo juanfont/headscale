@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/juanfont/headscale/hscontrol/util"
 	gigahost "github.com/kradalby/libdns-gigahost"
 	"github.com/libdns/acmedns"
 	"github.com/libdns/cloudflare"
@@ -84,9 +85,10 @@ func ProviderNames() []string {
 // settings holds the provider's keys as written in the configuration
 // file. get looks up a single key and is consulted for every field of
 // the provider, because environment variables only reach individual
-// keys, never a map. Any string field can instead be read from a file
-// named by "<field>_path". Unknown keys are an error so a typo does not
-// silently leave a credential empty.
+// keys, never a map. Any field can instead be read from a file named by
+// "<field>_path": a string as the file's trimmed contents, anything else
+// as YAML or JSON picked by the file's extension. Unknown keys are an
+// error so a typo does not silently leave a credential empty.
 func NewProvider(
 	name string,
 	settings map[string]any,
@@ -113,7 +115,7 @@ func NewProvider(
 		}
 
 		pathKey := tag + pathSuffix
-		if _, isField := fields[pathKey]; isField || kind != reflect.String {
+		if _, isField := fields[pathKey]; isField {
 			continue
 		}
 
@@ -130,12 +132,22 @@ func NewProvider(
 			return nil, fmt.Errorf("%w: %s and %s are mutually exclusive", ErrProviderConfig, tag, pathKey)
 		}
 
-		value, err := os.ReadFile(os.ExpandEnv(fmt.Sprint(path)))
+		file := os.ExpandEnv(fmt.Sprint(path))
+
+		value, err := os.ReadFile(file)
 		if err != nil {
 			return nil, fmt.Errorf("%w: reading %s: %w", ErrProviderConfig, pathKey, err)
 		}
 
-		input[tag] = strings.TrimSpace(string(value))
+		if kind == reflect.String {
+			input[tag] = strings.TrimSpace(string(value))
+		} else {
+			input[tag], err = util.UnmarshalByExt[any](file, value)
+			if err != nil {
+				return nil, fmt.Errorf("%w: reading %s: %w", ErrProviderConfig, pathKey, err)
+			}
+		}
+
 		delete(input, pathKey)
 	}
 
