@@ -8,7 +8,7 @@
 - To load the configuration from a different path, use:
     - the command line flag `-c`, `--config`
     - the environment variable `HEADSCALE_CONFIG`
-- Validate the configuration file with: `headscale configtest`
+- Validate the configuration file with: `headscale check config`
 
 !!! example "Get the [example configuration from the GitHub repository](https://github.com/juanfont/headscale/blob/main/config-example.yaml)"
 
