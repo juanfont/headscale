@@ -355,3 +355,102 @@ func compatChecksNotRun(t *testing.T, skips map[string]string, keys ...string) {
 		}
 	}
 }
+
+// knownStandInDivergences lists, keyed <test_id>/<check>, every check where
+// a tests or sshTests capture replayed against [standIns] differs from SaaS.
+// It replaces the captured-topology maps for that replay. A test from an
+// unregistered user passes the breakdown here: its stand-in is not reached,
+// as on SaaS.
+var knownStandInDivergences = map[string]string{
+	"policytest-accept-fail-proto-icmp-not-allowed/breakdown": testEntryErrors,
+	"policytest-proto-icmp/breakdown":                         testEntryErrors,
+
+	"policytest-dst-unknown-group/breakdown": testUnknownAlias,
+	"policytest-src-unknown-group/breakdown": testUnknownAlias,
+
+	"sshtest-host-alias-as-dst/verdict":       standInNoNodeAtIP,
+	"sshtest-ip-literal-src/verdict":          standInNoNodeAtIP,
+	"sshtest-malformed-dst-bare-ipv4/verdict": standInNoNodeAtIP,
+}
+
+const standInNoNodeAtIP = "STAND_IN_NO_NODE_AT_IP: the capture names a real node by IP; no stand-in holds a named address"
+
+// TestStandInsTesterCompat replays the tests and sshTests captures against
+// the stand-ins of an offline check instead of the captured topology.
+func TestStandInsTesterCompat(t *testing.T) {
+	t.Parallel()
+
+	for _, dir := range []string{"policytest_results", "sshtest_results"} {
+		files, err := filepath.Glob(filepath.Join("testdata", dir, "*.hujson"))
+		require.NoError(t, err)
+		require.NotEmpty(t, files, "no captures in %s", dir)
+
+		for _, file := range files {
+			c, err := testcapture.Read(file)
+			require.NoError(t, err, "reading %s", file)
+
+			t.Run(c.TestID, func(t *testing.T) {
+				t.Parallel()
+
+				var (
+					users types.Users
+					nodes types.Nodes
+				)
+
+				pol, err := ParsePolicy([]byte(c.Input.FullPolicy))
+				if err == nil && pol != nil {
+					users, nodes = standIns(pol)
+				}
+
+				_ = runTesterCompatFor(t, c, knownStandInDivergences, c.TestID+"/", users, nodes)
+			})
+		}
+	}
+}
+
+// knownStandInVerdictDivergences lists, keyed <test_id>/verdict, the
+// captures an offline check accepts or refuses differently from the same
+// check against the captured topology.
+var knownStandInVerdictDivergences = map[string]string{
+	"sshtest-host-alias-as-dst/verdict":       standInNoNodeAtIP,
+	"sshtest-ip-literal-src/verdict":          standInNoNodeAtIP,
+	"sshtest-malformed-dst-bare-ipv4/verdict": standInNoNodeAtIP,
+}
+
+// TestStandInsVerdict replays every capture: an offline check refuses a
+// policy exactly when the same check against the captured topology does.
+func TestStandInsVerdict(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(filepath.Join("testdata", "*_results", "*.hujson"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+
+	users := setupSSHDataCompatUsers()
+
+	for _, file := range files {
+		c, err := testcapture.Read(file)
+		require.NoError(t, err, "reading %s", file)
+
+		t.Run(c.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			b := []byte(c.Input.FullPolicy)
+
+			captured, err := ParsePolicy(b)
+			if err == nil && captured != nil {
+				err = checkPolicyWith(b, users, buildGrantsNodesFromCapture(users, c))
+			}
+
+			offline := CheckPolicy(b)
+
+			compatCheck(t, knownStandInVerdictDivergences, c.TestID+"/verdict", func() string {
+				if (err == nil) == (offline == nil) {
+					return ""
+				}
+
+				return fmt.Sprintf("captured topology: %v\nstand-ins: %v", err, offline)
+			})
+		})
+	}
+}
