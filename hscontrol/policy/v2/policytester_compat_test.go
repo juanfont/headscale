@@ -355,3 +355,99 @@ func compatChecksNotRun(t *testing.T, skips map[string]string, keys ...string) {
 		}
 	}
 }
+
+// standInTesterSkipReasons lists, keyed <test_id>/<check>, every check where
+// a tests or sshTests capture replayed against [standIns] differs from SaaS.
+// It replaces the captured-topology maps for that replay. A test from an
+// unregistered user passes the breakdown here: its stand-in is not reached,
+// as on SaaS.
+var standInTesterSkipReasons = map[string]string{
+	"policytest-accept-fail-proto-icmp-not-allowed/breakdown": testEntryErrors,
+	"policytest-proto-icmp/breakdown":                         testEntryErrors,
+
+	"policytest-dst-unknown-group/breakdown": testUnknownAlias,
+	"policytest-src-unknown-group/breakdown": testUnknownAlias,
+
+	"sshtest-host-alias-as-dst/verdict":       standInNoNodeAtIP,
+	"sshtest-ip-literal-src/verdict":          standInNoNodeAtIP,
+	"sshtest-malformed-dst-bare-ipv4/verdict": standInNoNodeAtIP,
+}
+
+const standInNoNodeAtIP = "STAND_IN_NO_NODE_AT_IP: the capture names a real node by IP; no stand-in holds a named address"
+
+// TestStandInsTesterCompat replays the tests and sshTests captures against
+// the stand-ins of [CheckPolicy] instead of the captured topology.
+func TestStandInsTesterCompat(t *testing.T) {
+	t.Parallel()
+
+	for _, dir := range []string{"policytest_results", "sshtest_results"} {
+		files, err := filepath.Glob(filepath.Join("testdata", dir, "*.hujson"))
+		require.NoError(t, err)
+		require.NotEmpty(t, files, "no captures in %s", dir)
+
+		for _, file := range files {
+			c, err := testcapture.Read(file)
+			require.NoError(t, err, "reading %s", file)
+
+			t.Run(c.TestID, func(t *testing.T) {
+				t.Parallel()
+
+				var (
+					users types.Users
+					nodes types.Nodes
+				)
+
+				pol, err := ParsePolicy([]byte(c.Input.FullPolicy))
+				if err == nil && pol != nil {
+					users, nodes = standIns(pol)
+				}
+
+				_ = runTesterCompatFor(t, c, standInTesterSkipReasons, c.TestID+"/", users, nodes)
+			})
+		}
+	}
+}
+
+// standInVerdictSkipReasons lists, keyed <test_id>/verdict, the captures
+// [CheckPolicy] accepts or refuses differently from [ValidatePolicy] against
+// the captured topology.
+var standInVerdictSkipReasons = map[string]string{
+	"sshtest-host-alias-as-dst/verdict":       standInNoNodeAtIP,
+	"sshtest-ip-literal-src/verdict":          standInNoNodeAtIP,
+	"sshtest-malformed-dst-bare-ipv4/verdict": standInNoNodeAtIP,
+}
+
+// TestStandInsVerdict replays every capture: [CheckPolicy] refuses a policy
+// exactly when [ValidatePolicy], which "headscale policy set" runs, refuses it
+// against the captured topology.
+func TestStandInsVerdict(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(filepath.Join("testdata", "*_results", "*.hujson"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+
+	users := setupSSHDataCompatUsers()
+
+	for _, file := range files {
+		c, err := testcapture.Read(file)
+		require.NoError(t, err, "reading %s", file)
+
+		t.Run(c.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			b := []byte(c.Input.FullPolicy)
+
+			err := ValidatePolicy(b, users, buildGrantsNodesFromCapture(users, c).ViewSlice())
+			standIn := CheckPolicy(b)
+
+			compatCheck(t, standInVerdictSkipReasons, c.TestID+"/verdict", func() string {
+				if (err == nil) == (standIn == nil) {
+					return ""
+				}
+
+				return fmt.Sprintf("captured topology: %v\nstand-ins: %v", err, standIn)
+			})
+		})
+	}
+}

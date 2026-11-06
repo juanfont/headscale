@@ -3,6 +3,7 @@ package v2
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 	"strings"
@@ -17,11 +18,13 @@ import (
 
 // Tailscale's policy file `tests` block validates a policy against operator
 // assertions: from a given src, named dst:port pairs must be accepted, and
-// (optionally) other dst:port pairs must be denied. They run at user-write
-// boundaries — `headscale policy set`, file-mode reload after a change,
-// `headscale policy check` — and reject the write if any assertion fails.
-// Boot-time reload of an already-stored policy does not run them, so a
-// stale referenced entity (e.g. a deleted user) cannot lock the server out.
+// (optionally) other dst:port pairs must be denied. `headscale policy set`
+// and file-mode reload after a change reject the write if any assertion
+// fails; `headscale check policy` runs them against stand-ins, see
+// [CheckPolicy].
+// Boot-time loading of an already-stored policy runs them too but only logs
+// failures, so a stale referenced entity (e.g. a deleted user) cannot lock
+// the server out.
 //
 // The tests evaluate against the compiled global filter rules, which fold in
 // both `acls` and `grants`, so the `tests` block validates the whole policy.
@@ -769,4 +772,258 @@ func portsAllowed(requested []tailcfg.PortRange, allowed tailcfg.PortRange) bool
 	}
 
 	return false
+}
+
+// Stand-in nodes take addresses from the ranges headscale allocates from
+// by default, so `*` and whole-tailnet ranges reach them as they reach real
+// nodes.
+var (
+	standInPrefix4 = netip.MustParsePrefix("100.64.0.0/10")
+	standInPrefix6 = netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+)
+
+// CheckPolicy runs [ValidatePolicy], the check `headscale policy set` runs,
+// against stand-ins from [standIns] instead of a tailnet.
+func CheckPolicy(b []byte) error {
+	pol, err := ParsePolicy(b)
+	if err != nil {
+		return fmt.Errorf("parsing policy: %w", err)
+	}
+
+	var (
+		users types.Users
+		nodes types.Nodes
+	)
+
+	// Empty input parses to no policy, which ValidatePolicy refuses.
+	if pol != nil {
+		users, nodes = standIns(pol)
+	}
+
+	return ValidatePolicy(b, users, nodes.ViewSlice())
+}
+
+// ValidatePolicy reports whether a policy write of b would be accepted
+// against users and nodes. It runs the [PolicyManager.SetPolicy] write
+// boundary, `tests` and `sshTests` included, on a throwaway manager.
+func ValidatePolicy(b []byte, users types.Users, nodes views.Slice[types.NodeView]) error {
+	pm, err := NewPolicyManager(nil, users, nodes)
+	if err != nil {
+		return fmt.Errorf("creating policy manager: %w", err)
+	}
+
+	_, err = pm.SetPolicy(b)
+	if err != nil {
+		return err
+	}
+
+	// SSH rules compile per node, so without nodes this cannot catch every
+	// case. The base URL only fills check-action URLs, which nothing reads.
+	if nodes.Len() > 0 {
+		_, err = pm.SSHPolicy("", nodes.At(0))
+		if err != nil {
+			return fmt.Errorf("verifying SSH rules: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// standIns returns the users and nodes [CheckPolicy] evaluates pol
+// against: a user, with one node, for every user pol names, one for each
+// `user:*@domain` in that domain, and a node for every tag pol declares.
+// Without a tailnet, every user pol names is taken to exist, an IP address
+// or host matches no stand-in, no user has two nodes, no node has two tags,
+// and `alice@` and `alice@example.com` are two users. The stand-ins skip
+// every address inside a prefix pol names, so a rule written with an IP
+// never reaches one by accident.
+func standIns(pol *Policy) (types.Users, types.Nodes) {
+	names := make(map[string]bool)
+
+	var free4, free6 netipx.IPSetBuilder
+
+	free4.AddPrefix(standInPrefix4)
+	free4.Remove(standInPrefix4.Addr())
+	free6.AddPrefix(standInPrefix6)
+	free6.Remove(standInPrefix6.Addr())
+
+	add := func(v any) {
+		switch a := v.(type) {
+		case *Username:
+			// The user: prefix is dropped: user:*@domain becomes a user
+			// named and mailed *@domain, user:alice@ the user alice.
+			names[strings.TrimSuffix(strings.TrimPrefix(string(*a), "user:"), "@")] = true
+		case *Prefix:
+			p := netip.Prefix(*a)
+			if p.Bits() > standInPrefix4.Bits() && p.Addr().Is4() ||
+				p.Bits() > standInPrefix6.Bits() && p.Addr().Is6() {
+				free4.RemovePrefix(p)
+				free6.RemovePrefix(p)
+			}
+		}
+	}
+
+	pol.walkNames(add)
+
+	// The builders hold only valid prefixes, so they cannot fail.
+	set4, _ := free4.IPSet()
+	set6, _ := free6.IPSet()
+	next4, next6 := standInAddrs(set4), standInAddrs(set6)
+
+	users := make(types.Users, 0, len(names))
+
+	for i, name := range slices.Sorted(maps.Keys(names)) {
+		u := types.User{ID: uint(i + 1), Name: name} //nolint:gosec // bounded by the policy's size
+
+		if strings.Contains(name, "@") {
+			u.Email = name
+		}
+
+		users = append(users, u)
+	}
+
+	tags := slices.Sorted(maps.Keys(pol.TagOwners))
+	nodes := make(types.Nodes, 0, len(users)+len(tags))
+
+	newNode := func(hostname string) *types.Node {
+		n := &types.Node{
+			ID:       types.NodeID(len(nodes) + 1), //nolint:gosec // bounded by the policy's size
+			Hostname: hostname,
+			IPv4:     next4(),
+			IPv6:     next6(),
+		}
+		nodes = append(nodes, n)
+
+		return n
+	}
+
+	for i := range users {
+		n := newNode(users[i].Name)
+		n.User = &users[i]
+		n.UserID = &users[i].ID
+	}
+
+	for _, tag := range tags {
+		newNode(string(tag)).Tags = []string{string(tag)}
+	}
+
+	return users, nodes
+}
+
+// standInAddrs returns a function yielding the addresses of set in order,
+// then nil once they run out.
+func standInAddrs(set *netipx.IPSet) func() *netip.Addr {
+	ranges := set.Ranges()
+
+	var next netip.Addr
+
+	return func() *netip.Addr {
+		for len(ranges) > 0 {
+			if !next.IsValid() || next.Compare(ranges[0].From()) < 0 {
+				next = ranges[0].From()
+			}
+
+			if next.Compare(ranges[0].To()) <= 0 {
+				a := next
+				next = next.Next()
+
+				return &a
+			}
+
+			ranges = ranges[1:]
+		}
+
+		return nil
+	}
+}
+
+// walkNames calls fn with every user, alias, owner, auto approver and
+// prefix pol names, test entries included.
+func (pol *Policy) walkNames(fn func(any)) {
+	for _, members := range pol.Groups {
+		for i := range members {
+			fn(&members[i])
+		}
+	}
+
+	for _, p := range pol.Hosts {
+		fn(&p)
+	}
+
+	for _, owners := range pol.TagOwners {
+		for _, o := range owners {
+			fn(o)
+		}
+	}
+
+	for route, approvers := range pol.AutoApprovers.Routes {
+		fn(new(Prefix(route)))
+
+		for _, a := range approvers {
+			fn(a)
+		}
+	}
+
+	for _, a := range pol.AutoApprovers.ExitNode {
+		fn(a)
+	}
+
+	for _, acl := range pol.ACLs {
+		for _, a := range acl.Sources {
+			fn(a)
+		}
+
+		for _, d := range acl.Destinations {
+			fn(d.Alias)
+		}
+	}
+
+	for _, g := range pol.Grants {
+		for _, a := range g.Sources {
+			fn(a)
+		}
+
+		for _, a := range g.Destinations {
+			fn(a)
+		}
+	}
+
+	for _, na := range pol.NodeAttrs {
+		for _, a := range na.Targets {
+			fn(a)
+		}
+	}
+
+	for _, ssh := range pol.SSHs {
+		for _, a := range ssh.Sources {
+			fn(a)
+		}
+
+		for _, a := range ssh.Destinations {
+			fn(a)
+		}
+	}
+
+	for _, test := range pol.Tests {
+		// A malformed entry names nothing here; running the tests reports it.
+		src, err := parseAlias(test.Src)
+		if err == nil {
+			fn(src)
+		}
+
+		for _, dst := range slices.Concat(test.Accept, test.Deny) {
+			awp, err := parseDestinationAlias(dst)
+			if err == nil {
+				fn(awp.Alias)
+			}
+		}
+	}
+
+	for _, test := range pol.SSHTests {
+		fn(test.Src)
+
+		for _, a := range test.Dst {
+			fn(a)
+		}
+	}
 }

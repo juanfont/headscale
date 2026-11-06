@@ -711,3 +711,132 @@ func TestFailureBreakdownIsBounded(t *testing.T) {
 		})
 	}
 }
+
+func TestStandIns(t *testing.T) {
+	pol, err := ParsePolicy([]byte(`{
+		"groups":    {"group:a": ["g@"]},
+		"hosts":     {"h": "100.64.0.1", "net": "100.64.0.8/30"},
+		"tagOwners": {"tag:t": ["o@"], "tag:u": ["group:a"]},
+		"autoApprovers": {
+			"routes":   {"10.0.0.0/8": ["r@"]},
+			"exitNode": ["e@example.com"]
+		},
+		"acls": [
+			{"action": "accept", "src": ["as@", "user:*@example.com"], "dst": ["ad@:22", "100.64.0.2:22", "100.64.0.0/10:80", "h:22", "net:22"]}
+		],
+		"grants":    [{"src": ["gs@"], "dst": ["gd@"], "ip": ["*"]}],
+		"nodeAttrs": [{"target": ["na@"], "attr": ["randomize-client-port"]}],
+		"ssh":       [{"action": "accept", "src": ["ss@"], "dst": ["autogroup:self"], "users": ["root"]}],
+		"tests":     [{"src": "ts@", "accept": ["td@:22", "100.64.0.3:22"], "deny": ["tn@:80"]}],
+		"sshTests":  [{"src": "xs@", "dst": ["tag:t"], "accept": ["root"]}]
+	}`))
+	require.NoError(t, err)
+
+	users, nodes := standIns(pol)
+
+	names := make([]string, 0, len(users))
+	for i, u := range users {
+		require.Equal(t, uint(i+1), u.ID)
+
+		names = append(names, u.Name)
+	}
+
+	require.Equal(t, []string{
+		"*@example.com", "ad", "as", "e@example.com", "g", "gd", "gs", "na", "o",
+		"r", "ss", "td", "tn", "ts", "xs",
+	}, names, "one user per user token and per user:*@ domain, sorted")
+	require.Equal(t, "e@example.com", users[3].Email)
+	require.Empty(t, users[1].Email)
+
+	require.Len(t, nodes, len(users)+2, "one node per user and per tag")
+
+	named := []netip.Prefix{
+		mp("100.64.0.0/32"), mp("100.64.0.1/32"), mp("100.64.0.2/32"),
+		mp("100.64.0.3/32"), mp("100.64.0.8/30"),
+	}
+	seen := map[netip.Addr]bool{}
+
+	for i, n := range nodes {
+		require.Equal(t, types.NodeID(i+1), n.ID)
+
+		if i < len(users) {
+			require.Empty(t, n.Tags)
+			require.Equal(t, users[i].ID, *n.UserID)
+			require.Equal(t, &users[i], n.User)
+		} else {
+			require.Equal(t, []string{[]string{"tag:t", "tag:u"}[i-len(users)]}, []string(n.Tags))
+			require.Nil(t, n.UserID, "tags own a tagged node")
+		}
+
+		require.True(t, mp("100.64.0.0/10").Contains(*n.IPv4))
+		require.True(t, mp("fd7a:115c:a1e0::/48").Contains(*n.IPv6))
+		require.NotEqual(t, mp("fd7a:115c:a1e0::/48").Addr(), *n.IPv6)
+
+		for _, p := range named {
+			require.False(t, p.Contains(*n.IPv4), "%s is named by the policy", n.IPv4)
+		}
+
+		require.False(t, seen[*n.IPv4] || seen[*n.IPv6], "addresses are unique")
+		seen[*n.IPv4], seen[*n.IPv6] = true, true
+	}
+
+	again, againNodes := standIns(pol)
+	require.Equal(t, users, again)
+	require.Len(t, againNodes, len(nodes))
+
+	for i := range nodes {
+		require.Equal(t, *nodes[i].IPv4, *againNodes[i].IPv4, "stable addresses")
+	}
+
+	t.Run("user:*@domain", func(t *testing.T) {
+		b := []byte(`{
+			"acls":  [{"action": "accept", "src": ["alice@"], "dst": ["user:*@example.com:22"]}],
+			"tests": [{"src": "alice@", "accept": ["user:*@example.com:22"]}]
+		}`)
+
+		pol, err := ParsePolicy(b)
+		require.NoError(t, err)
+
+		users, _ := standIns(pol)
+
+		var inDomain []string
+
+		for _, u := range users {
+			if strings.HasSuffix(u.Email, "@example.com") {
+				inDomain = append(inDomain, u.Email)
+			}
+		}
+
+		require.Len(t, inDomain, 1, "one stand-in in the domain")
+		require.NoError(t, CheckPolicy(b), "the test reaches the domain's stand-in")
+	})
+}
+
+func TestCheckPolicy(t *testing.T) {
+	const acl = `"acls": [{"action": "accept", "src": ["alice@"], "dst": ["tag:web:22"]}],
+		"tagOwners": {"tag:web": ["alice@"]}`
+
+	for _, tt := range []struct {
+		name    string
+		policy  string
+		wantErr error
+	}{
+		{"empty", ``, ErrPolicyEmpty},
+		{"no tests", `{` + acl + `}`, nil},
+		{"tests pass", `{` + acl + `, "tests": [{"src": "alice@", "accept": ["tag:web:22"], "deny": ["tag:web:80"]}]}`, nil},
+		{"tests fail", `{` + acl + `, "tests": [{"src": "bob@", "accept": ["tag:web:22"]}]}`, errPolicyTestsFailed},
+		{"sshTests pass", `{` + acl + `, "ssh": [{"action": "accept", "src": ["alice@"], "dst": ["tag:web"], "users": ["root"]}],
+			"sshTests": [{"src": "alice@", "dst": ["tag:web"], "accept": ["root"]}]}`, nil},
+		{"sshTests fail", `{` + acl + `, "sshTests": [{"src": "alice@", "dst": ["tag:web"], "accept": ["root"]}]}`, errSSHPolicyTestsFailed},
+		{"undefined group", `{"acls": [{"action": "accept", "src": ["group:x"], "dst": ["*:*"]}]}`, ErrGroupNotDefined},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := CheckPolicy([]byte(tt.policy))
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, tt.wantErr)
+			}
+		})
+	}
+}
