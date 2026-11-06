@@ -35,6 +35,7 @@ import (
 	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 	"github.com/juanfont/headscale/hscontrol/capver"
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
 	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
@@ -286,10 +287,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 
 		if derpServerKey.Equal(*noisePrivateKey) {
-			return nil, fmt.Errorf(
-				"DERP server private key and noise private key are the same: %w",
-				err,
-			)
+			return nil, config.ErrSameKey
 		}
 
 		if cfg.DERP.ServerVerifyClients {
@@ -1320,7 +1318,7 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 		return nil, fmt.Errorf("ensuring private key directory: %w", err)
 	}
 
-	privateKey, err := os.ReadFile(path)
+	machineKey, err := config.ReadPrivateKey(path)
 	if errors.Is(err, os.ErrNotExist) {
 		log.Info().Str("path", path).Msg("no private key file at path, creating...")
 
@@ -1344,18 +1342,9 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 		}
 
 		return &machineKey, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("reading private key file: %w", err)
 	}
 
-	trimmedPrivateKey := strings.TrimSpace(string(privateKey))
-
-	var machineKey key.MachinePrivate
-	if err = machineKey.UnmarshalText([]byte(trimmedPrivateKey)); err != nil { //nolint:noinlineerr
-		return nil, fmt.Errorf("parsing private key: %w", err)
-	}
-
-	return &machineKey, nil
+	return machineKey, err
 }
 
 // Change is used to send changes to nodes.
