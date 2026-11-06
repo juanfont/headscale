@@ -159,6 +159,11 @@ headscale/
   Performance-critical.
 - `policy/` — `policy/v2/` is **the** policy implementation. The
   top-level `policy.go` is thin wrappers. There is no v1 directory.
+- `config/` — home for config code outside the `types.Config` struct: the
+  checks behind `headscale check` (`Files` lists every file a config names,
+  with its validator) and `ReadPrivateKey`. The loader, defaults,
+  removed-keys table and `ConfigError` move here next. It imports `types`;
+  `types`, `derp`, `dns` and `policy` must never import it.
 - `routes/`, `dns/`, `derp/`, `types/`, `util/`, `templates/`, `capver/`
   — routing, MagicDNS, relay, core types, helpers, client templates,
   capability versioning.
