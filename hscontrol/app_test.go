@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -504,6 +505,25 @@ func serveTestConfig(t *testing.T, stunAddr string) *types.Config {
 	}
 
 	return &cfg
+}
+
+// A component that cannot start must hand its error back to Serve so the
+// deferred shutdown runs; log.Fatal used to exit the process and skip it.
+// https://github.com/juanfont/headscale/issues/3499
+func TestServeReturnsSTUNBindError(t *testing.T) {
+	taken, err := new(net.ListenConfig).ListenPacket(t.Context(), "udp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	defer taken.Close()
+
+	app, err := NewHeadscale(serveTestConfig(t, taken.LocalAddr().String()))
+	require.NoError(t, err)
+
+	err = app.Serve(t.Context())
+	require.ErrorIs(t, err, syscall.EADDRINUSE)
+
+	var bindErr *types.ListenerBindError
+	require.ErrorAs(t, err, &bindErr)
 }
 
 // Cancelling the context must run the graceful shutdown and return nil, so

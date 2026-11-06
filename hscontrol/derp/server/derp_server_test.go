@@ -109,7 +109,10 @@ func TestSTUNServerUnmapsIPv4(t *testing.T) {
 	}
 
 	d := &DERPServer{cfg: &types.DERPConfig{Server: types.DERPServerConfig{STUNAddr: types.ListenAddr(fmt.Sprintf("0.0.0.0:%d", local.Port))}}}
-	go d.ServeSTUN()
+	srv, err := d.ListenSTUN(t.Context())
+	require.NoError(t, err)
+
+	go srv.Serve() //nolint:errcheck // Serve returns nil once the test context ends
 
 	tests := []struct {
 		network string
@@ -132,7 +135,7 @@ func TestSTUNServerUnmapsIPv4(t *testing.T) {
 
 			var n int
 
-			// Retry until ServeSTUN has bound the port.
+			// Retry until Serve answers.
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				_, err := conn.Write(stun.Request(txid))
 				require.NoError(c, err)

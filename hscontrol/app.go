@@ -643,7 +643,12 @@ func (h *Headscale) Serve(ctx context.Context) error {
 			return errSTUNAddressNotSet
 		}
 
-		go h.DERPServer.ServeSTUN()
+		stunServer, err := h.DERPServer.ListenSTUN(ctx)
+		if err != nil {
+			return err
+		}
+
+		errorGroup.Go(stunServer.Serve)
 	}
 
 	// Start on the sources that loaded; only a map with no region at all,
