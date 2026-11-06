@@ -124,6 +124,12 @@ func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.No
 	return polMan, err
 }
 
+// ValidatePolicy reports whether a policy write of pol would be accepted
+// against users and nodes; see [policyv2.ValidatePolicy].
+func ValidatePolicy(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) error {
+	return policyv2.ValidatePolicy(pol, users, nodes)
+}
+
 // PolicyManagersForTest returns all available [PolicyManager] implementations to
 // be used in tests to validate them in tests that try to determine that they
 // behave the same.

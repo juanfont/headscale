@@ -36,9 +36,9 @@ func bypassDatabase() (*db.HSDatabase, error) {
 	return d, nil
 }
 
-// validateOfflinePolicy checks policyBytes against the database's users and
+// validateLocalPolicy checks policyBytes against the database's users and
 // nodes as a server-side policy write would.
-func validateOfflinePolicy(d *db.HSDatabase, policyBytes []byte) error {
+func validateLocalPolicy(d *db.HSDatabase, policyBytes []byte) error {
 	users, err := d.ListUsers(nil)
 	if err != nil {
 		return fmt.Errorf("loading users for policy validation: %w", err)
@@ -49,16 +49,7 @@ func validateOfflinePolicy(d *db.HSDatabase, policyBytes []byte) error {
 		return fmt.Errorf("loading nodes for policy validation: %w", err)
 	}
 
-	// SetPolicy enforces user references, tests, and sshTests for writes;
-	// the constructor permits stored policies whose tests no longer pass.
-	pm, err := policy.NewPolicyManager(policyBytes, users, nodes.ViewSlice())
-	if err != nil {
-		return fmt.Errorf("parsing policy file: %w", err)
-	}
-
-	_, err = pm.SetPolicy(policyBytes)
-
-	return err
+	return policy.ValidatePolicy(policyBytes, users, nodes.ViewSlice())
 }
 
 // openBypassDB confirms the destructive bypass action and opens the database
@@ -81,11 +72,6 @@ func init() {
 	setPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing the API and does not require the server to be running")
 	mustMarkRequired(setPolicy, "file")
 	policyCmd.AddCommand(setPolicy)
-
-	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-	checkPolicy.Flags().BoolP(bypassFlag, "", false, "Open the database directly (no running server required) to resolve user references and to evaluate the policy's tests and sshTests blocks. Required when those checks are needed.")
-	mustMarkRequired(checkPolicy, "file")
-	policyCmd.AddCommand(checkPolicy)
 }
 
 var policyCmd = &cobra.Command{
@@ -163,7 +149,7 @@ var setPolicy = &cobra.Command{
 			}
 			defer d.Close()
 
-			err = validateOfflinePolicy(d, policyBytes)
+			err = validateLocalPolicy(d, policyBytes)
 			if err != nil {
 				return err
 			}
@@ -195,65 +181,6 @@ var setPolicy = &cobra.Command{
 		}
 
 		fmt.Println("Policy updated.")
-
-		return nil
-	},
-}
-
-var checkPolicy = &cobra.Command{
-	Use:   "check",
-	Short: "Check the Policy file for errors",
-	Long: `
-	Check validates the policy against the server's live users and nodes,
-	running any "tests" or "sshTests" block. By default the command calls a
-	running headscale over its API; pass --` + bypassFlag + ` to
-	open the database directly when headscale is not running.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		policyPath, _ := cmd.Flags().GetString("file")
-
-		policyBytes, err := os.ReadFile(policyPath)
-		if err != nil {
-			return fmt.Errorf("reading policy file: %w", err)
-		}
-
-		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
-			d, err := openBypassDB(cmd)
-			if err != nil {
-				return err
-			}
-			defer d.Close()
-
-			err = validateOfflinePolicy(d, policyBytes)
-			if err != nil {
-				return err
-			}
-
-			fmt.Println("Policy is valid")
-
-			return nil
-		}
-
-		policyStr := string(policyBytes)
-
-		err = withClient(func(ctx context.Context, client *clientv1.ClientWithResponses) error {
-			resp, err := client.CheckPolicyWithResponse(ctx, clientv1.CheckPolicyJSONRequestBody{
-				Policy: &policyStr,
-			})
-			if err != nil {
-				return err
-			}
-
-			if resp.StatusCode() != http.StatusOK {
-				return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
-			}
-
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-
-		fmt.Println("Policy is valid")
 
 		return nil
 	},

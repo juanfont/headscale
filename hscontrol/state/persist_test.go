@@ -1667,6 +1667,22 @@ func TestReloadPolicyEmpty(t *testing.T) {
 	})
 }
 
+// TestNewStateEmptyPolicyFile: startup takes an empty policy file as no
+// policy, although a write, a reload and "headscale check policy" refuse it.
+func TestNewStateEmptyPolicyFile(t *testing.T) {
+	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+	cfg.Policy = types.PolicyConfig{
+		Mode: types.PolicyModeFile,
+		Path: filepath.Join(t.TempDir(), "policy.hujson"),
+	}
+
+	require.NoError(t, os.WriteFile(cfg.Policy.Path, nil, 0o600))
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+}
+
 // TestNodeWriteChangeWhenPolicyRefreshFails fails both the NodeStore
 // writer's SetNodes and the caller's. The write still reached the
 // NodeStore, so the change returned with the error must resend the node to

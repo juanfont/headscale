@@ -3176,7 +3176,7 @@ func TestSetPolicy_DuplicateUsername(t *testing.T) {
 	require.NotNil(t, filter, "filter must remain populated after rejected SetPolicy")
 }
 
-// Empty users → syntax-only check, used by `headscale policy check`.
+// Empty users → user-reference validation is skipped.
 func TestValidateUserReferences_EmptyUsersTolerant(t *testing.T) {
 	polB := []byte(`{
   "groups":    {"group:admins": ["yala@"]},
