@@ -11,8 +11,7 @@ let
   runDir = "/run/headscale";
 
   cliConfig = {
-    # Turn off update checks since the origin of our package
-    # is nixpkgs and not Github.
+    # Nix pins the package, so an update notice cannot be acted on.
     disable_check_updates = true;
 
     unix_socket = "${runDir}/headscale.sock";
@@ -20,6 +19,72 @@ let
 
   settingsFormat = pkgs.formats.yaml { };
   cliConfigFile = settingsFormat.generate "headscale.yaml" cliConfig;
+
+  # Interpolated, so a Nix path lands at the same store path the config names.
+  policyFile =
+    if cfg.settings.policy.mode == "file" && cfg.settings.policy.path != null then
+      "${cfg.settings.policy.path}"
+    else
+      null;
+  policyFileCheck = cfg.check.policy && policyFile != null;
+  # The build can read a store path, and must be able to run the binary.
+  buildTimePolicy =
+    policyFileCheck
+    && lib.hasPrefix "${builtins.storeDir}/" policyFile
+    && pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform;
+  preSwitchPolicy = policyFileCheck && !buildTimePolicy;
+
+  policyCheck = pkgs.runCommand "headscale-policy-check" { } ''
+    ${lib.getExe cfg.package} check policy -f ${lib.escapeShellArg policyFile}
+    touch $out
+  '';
+
+  # Its own process, so errexit holds: nixpkgs 25.11 and older run each
+  # pre-switch check inside `if ! (…)`, where bash ignores errexit.
+  preSwitchCheck =
+    let
+      user = lib.escapeShellArg cfg.user;
+      group = lib.escapeShellArg cfg.group;
+      unitEnv = lib.mapAttrsToList (n: v: "${n}=${toString v}") (
+        lib.filterAttrs (_: v: v != null) config.systemd.services.headscale.environment
+      );
+    in
+    pkgs.writeShellApplication {
+      name = "headscale-pre-switch-check";
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.util-linux
+      ];
+      text = ''
+        # An unchanged unit is not restarted, so there is nothing to protect.
+        unit=etc/systemd/system/headscale.service
+        if [ "$(readlink -f "/run/current-system/$unit")" = "$(readlink -f "$1/$unit")" ]; then
+          echo "headscale: unit unchanged, skipping checks"
+          exit 0
+        fi
+        # Activation creates users after this check runs.
+        if ! id -u ${user} >/dev/null 2>&1; then
+          echo "headscale: user" ${user} "does not exist yet, skipping checks"
+          exit 0
+        fi
+        trap '[ "$?" = 0 ] || echo "headscale: to skip, set services.headscale.check.config and check.policy to false, or run once with NIXOS_NO_CHECK=1"' EXIT
+
+        # As the unit's user, with the unit's environment rather than the caller's.
+        hs() {
+          setpriv --reuid=${user} --regid=${group} --init-groups -- \
+            env -i ${lib.escapeShellArgs unitEnv} ${lib.getExe cfg.package} "$@"
+        }
+
+        ${lib.optionalString cfg.check.config ''
+          echo "headscale: checking the new configuration"
+          hs check all -f ${cfg.configFile}
+        ''}
+        ${lib.optionalString preSwitchPolicy ''
+          echo "headscale: checking the new policy"
+          hs check policy -f ${lib.escapeShellArg policyFile}
+        ''}
+      '';
+    };
 
   assertRemovedOption = option: message: {
     assertion = !lib.hasAttrByPath option cfg;
@@ -44,6 +109,36 @@ in
         defaultText = lib.literalExpression ''(pkgs.formats.yaml { }).generate "headscale.yaml" config.services.headscale.settings'';
         description = ''
           Path to the configuration file of headscale.
+        '';
+      };
+
+      check.config = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Before a switch restarts headscale, run the new package's
+          `headscale check all` on the new configuration and abort the switch
+          if it fails. It checks the configuration and every file it names
+          (policy, DERP maps, extra records, TLS pair, existing noise and DERP
+          keys) as {option}`services.headscale.user`, offline: no database,
+          network or server. Keys are read, never created.
+
+          It runs outside the unit, and only when headscale's unit changes.
+          Settings that read {env}`CREDENTIALS_DIRECTORY` fail it. Skip all
+          checks once with `NIXOS_NO_CHECK=1`.
+        '';
+      };
+
+      check.policy = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          In file policy mode, run `headscale check policy -f` on the new
+          policy, including its `tests` and `sshTests` against stand-in users
+          and nodes. A policy in the Nix store is checked while building the
+          system (native builds only), so a bad policy fails
+          `nixos-rebuild build`. Any other policy is checked before a switch
+          restarts headscale.
         '';
       };
 
@@ -778,6 +873,21 @@ in
         "ephemeral_node_inactivity_timeout"
       ] "Use `node.ephemeral.inactivity_timeout` instead.")
     ];
+
+    warnings =
+      lib.optional
+        (cfg.check.config && lib.hasInfix "CREDENTIALS_DIRECTORY" (builtins.toJSON cfg.settings))
+        ''
+          services.headscale.settings read $CREDENTIALS_DIRECTORY, which is set
+          only inside the unit, so the check before a switch fails. Set
+          services.headscale.check.config to false.
+        '';
+
+    system.checks = lib.optional buildTimePolicy policyCheck;
+
+    system.preSwitchChecks.headscale = lib.mkIf (
+      cfg.check.config || preSwitchPolicy
+    ) ''${lib.getExe preSwitchCheck} "$@"'';
 
     services.headscale.settings = lib.mkMerge [
       cliConfig

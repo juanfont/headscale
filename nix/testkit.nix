@@ -35,7 +35,6 @@ in
 
   services.headscale = {
     enable = true;
-    package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.headscale;
     address = "[::]";
     port = 80;
     settings = {
