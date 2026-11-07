@@ -968,10 +968,27 @@ func validateServerConfigInto(v *configValidator) {
 
 	validateDERPConfig(v)
 	validateDatabaseConfig(v)
+	validatePolicyConfig(v)
 	validateMagicDNSConfig(v)
 	validateCertificatesConfig(v)
 
 	depr.Apply(v)
+}
+
+// validatePolicyConfig records a ConfigError for an unknown policy.mode:
+// startup would load no policy at all and allow all traffic.
+func validatePolicyConfig(v *configValidator) {
+	m := viper.GetString("policy.mode")
+	if m == PolicyModeFile || m == PolicyModeDB {
+		return
+	}
+
+	v.Add(&ConfigError{
+		Reason:  "policy.mode has an unsupported value",
+		Current: []KV{{"policy.mode", m}},
+		Allowed: []string{PolicyModeFile, PolicyModeDB},
+		See:     "https://headscale.net/stable/ref/policy/",
+	})
 }
 
 // validateDERPConfig records ConfigErrors when the embedded DERP server
