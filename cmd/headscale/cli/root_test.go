@@ -416,3 +416,8 @@ dns:
 		})
 	}
 }
+
+func TestRemovedPolicyCheck(t *testing.T) {
+	require.ErrorIs(t, removedPolicyCheckCmd.RunE(removedPolicyCheckCmd, nil), errPolicyCheckRemoved)
+	require.True(t, skipsInitConfig([]string{"policy", "check", "-f", "x"}))
+}

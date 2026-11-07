@@ -15,15 +15,15 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// TestPolicyCheckCommand exercises `headscale policy check` across the
+// TestPolicyCheckCommand exercises `headscale check policy` across the
 // matrix that nblock asked about on PR #3229:
 //
 //   - policyMode: server runs with policy_mode=file vs policy_mode=database.
 //     `check` reads from `--file`, so the server-side mode should not
 //     change the outcome; running both proves that.
 //   - fixture: ACL only, ACL with passing tests, ACL with failing tests.
-//   - bypass: no-bypass talks to the server over gRPC; bypass opens the
-//     database directly.
+//   - checkMode: offline parses only; database opens the database directly;
+//     server asks the running server. Only the last two run tests.
 //
 // Each policy mode shares one scenario across its sequential checks because
 // policy_mode is fixed at boot. The two users + two nodes give the tests
@@ -82,29 +82,24 @@ func TestPolicyCheckCommand(t *testing.T) {
 	type row struct {
 		name       string
 		fixture    fixture
-		bypass     bool
+		checkMode  string
 		wantErr    string
 		wantStdout string
 	}
 
 	modes := []types.PolicyMode{types.PolicyModeFile, types.PolicyModeDB}
-	bypasses := []bool{false, true}
-	rows := make([]row, 0, len(fixtures)*len(bypasses))
+	checkModes := []string{"offline", "database", "server"}
+	rows := make([]row, 0, len(fixtures)*len(checkModes))
 
 	for _, f := range fixtures {
-		for _, bypass := range bypasses {
-			suffix := "no-bypass"
-			if bypass {
-				suffix = "bypass"
-			}
-
+		for _, checkMode := range checkModes {
 			r := row{
-				name:       f.name + "-" + suffix,
+				name:       f.name + "-" + checkMode,
 				fixture:    f,
-				bypass:     bypass,
+				checkMode:  checkMode,
 				wantStdout: "Policy is valid",
 			}
-			if f.name == "acl-plus-failing-tests" {
+			if f.name == "acl-plus-failing-tests" && checkMode != "offline" {
 				r.wantErr = "test(s) failed"
 				r.wantStdout = ""
 			}
@@ -175,12 +170,16 @@ func TestPolicyCheckCommand(t *testing.T) {
 						}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "policy check must not alter the live policy")
 					})
 
-					cmd := []string{"headscale", "policy", "check", "-f", policyFilePath} //nolint:goconst // CLI invocation
-					if tt.bypass {
+					cmd := []string{"headscale", "check", "policy", "-f", policyFilePath} //nolint:goconst // CLI invocation
+
+					switch tt.checkMode {
+					case "database":
 						// --force suppresses the "is the server running?"
 						// confirmation prompt so the command can run
 						// non-interactively under the test harness.
-						cmd = append(cmd, "--bypass-server-and-access-database-directly", "--force")
+						cmd = append(cmd, "--database", "--force")
+					case "server":
+						cmd = append(cmd, "--server")
 					}
 
 					stdout, err := headscale.Execute(cmd)
