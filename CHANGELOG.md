@@ -173,6 +173,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 
 - Invalid booleans stop startup or CLI commands. Use `true` or `false`. Remove ignored `database.gorm.prepare_stmt`; Headscale logs a warning. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Debug hosts must be localhost, an IP, or the configured `server_url`/`metrics_listen_addr` host. `/metrics` accepts other hosts. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- `policy.mode` must be `file` or `database`. Any other value (e.g. a typo) now stops startup; before, headscale started with no policy and allowed all traffic.
 
 #### CLI
 

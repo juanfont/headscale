@@ -1897,3 +1897,46 @@ derp:
 		})
 	}
 }
+
+func TestPolicyMode(t *testing.T) {
+	for _, tt := range []struct {
+		mode    string
+		wantErr bool
+	}{
+		{"file", false},
+		{"database", false},
+		{"databse", true},
+		{"File", true},
+		{`""`, true},
+	} {
+		t.Run(tt.mode, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`---
+noise:
+  private_key_path: noise_private.key
+server_url: http://127.0.0.1:8080
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite3
+dns:
+  magic_dns: false
+  override_local_dns: false
+policy:
+  mode: `+tt.mode+"\n"), 0o600))
+			require.NoError(t, LoadConfig(dir, false))
+
+			err := validateServerConfig()
+			if !tt.wantErr {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorContains(t, err, "policy.mode has an unsupported value")
+		})
+	}
+}
