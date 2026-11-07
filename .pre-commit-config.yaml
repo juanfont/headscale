@@ -41,6 +41,8 @@ repos:
         name: treefmt
         entry: nix fmt --
         language: system
+        # Parallel batches time out on treefmt's cache lock.
+        require_serial: true
         exclude: ^docs/
         types_or: [javascript, jsx, ts, tsx, yaml, json, html, css, scss, sass, markdown, nix]
 
