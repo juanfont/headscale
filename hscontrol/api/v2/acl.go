@@ -16,7 +16,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/tailscale/hujson"
 )
 
@@ -221,7 +220,7 @@ func currentPolicy(b Backend) ([]byte, error) {
 		return []byte(p.Data), nil
 
 	case types.PolicyModeFile:
-		path := util.AbsolutePath(b.Cfg.ConfigDir, b.Cfg.Policy.Path)
+		path := b.Cfg.AbsPath(b.Cfg.Policy.Path)
 		if path == "" {
 			return []byte(defaultPolicy), nil
 		}

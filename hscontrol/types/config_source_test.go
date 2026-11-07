@@ -597,3 +597,104 @@ func TestConfigSourceProviderEnv(t *testing.T) {
 	assert.Equal(t, "x", got["api_token"])
 	assert.NotContains(t, got, "other")
 }
+
+// TestProviderEnvFold pins that HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>
+// reaches the settings of the provider named anywhere, and that a variable
+// no provider setting has is ignored without a word.
+func TestProviderEnvFold(t *testing.T) {
+	base := `---
+server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+dns:
+  magic_dns: true
+  override_local_dns: false
+  base_domain: ts.example.com
+`
+
+	tests := []struct {
+		name string
+		yaml string
+		env  map[string]string
+		want map[string]any
+	}{
+		{
+			name: "named in the file",
+			yaml: base + "  challenge:\n    provider:\n      name: cloudflare\n",
+			env:  map[string]string{"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN": "x"},
+			want: map[string]any{"name": "cloudflare", "api_token": "x"},
+		},
+		{
+			name: "named by its variable",
+			yaml: base,
+			env: map[string]string{
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME":      "cloudflare",
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN": "x",
+			},
+			want: map[string]any{"name": "cloudflare", "api_token": "x"},
+		},
+		{
+			name: "named in the json variable",
+			yaml: base,
+			env:  map[string]string{"HEADSCALE_DNS_CHALLENGE_PROVIDER": `{"name":"cloudflare","api_token":"json"}`},
+			want: map[string]any{"name": "cloudflare", "api_token": "json"},
+		},
+		{
+			name: "setting variable beats the json variable",
+			yaml: base,
+			env: map[string]string{
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER":           `{"name":"cloudflare","api_token":"json"}`,
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN": "env",
+			},
+			want: map[string]any{"name": "cloudflare", "api_token": "env"},
+		},
+		{
+			name: "name variable beats the json variable",
+			yaml: base + "  challenge:\n    provider:\n      name: powerdns\n",
+			env: map[string]string{
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER":      `{"name":"rfc2136","api_token":"json"}`,
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME": "cloudflare",
+			},
+			want: map[string]any{"name": "cloudflare", "api_token": "json"},
+		},
+		{
+			name: "variable for no setting of the provider",
+			yaml: base + "  challenge:\n    provider:\n      name: cloudflare\n      api_token: tok\n",
+			env:  map[string]string{"HEADSCALE_DNS_CHALLENGE_PROVIDER_BOGUS": "1"},
+			want: map[string]any{"name": "cloudflare", "api_token": "tok"},
+		},
+		{
+			name: "setting variable without a provider",
+			yaml: base,
+			env:  map[string]string{"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN": "x"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(tt.yaml), 0o600))
+			require.NoError(t, LoadConfig(dir, false))
+			assert.Empty(t, src.Warnings())
+
+			cfg, err := CheckServerConfig()
+			require.NoError(t, err)
+
+			if len(tt.want) == 0 {
+				assert.Empty(t, cfg.DNSChallenge.ProviderSettings)
+
+				return
+			}
+
+			assert.Equal(t, tt.want, cfg.DNSChallenge.ProviderSettings)
+		})
+	}
+}

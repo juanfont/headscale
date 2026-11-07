@@ -1117,7 +1117,8 @@ func TestOpenDBReturnsOpenError(t *testing.T) {
 			)
 
 			require.NotPanics(t, func() {
-				db, err = openDB(tt.cfg(t))
+				cfg := tt.cfg(t)
+				db, err = openDB(cfg, cfg.Sqlite.Path)
 			})
 			require.Error(t, err)
 			assert.Nil(t, db)

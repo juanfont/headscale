@@ -14,9 +14,10 @@ import (
 
 func TestNodeNameCannotShadowExtraRecord(t *testing.T) {
 	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
-	cfg.TailcfgDNSConfig = &tailcfg.DNSConfig{ExtraRecords: []tailcfg.DNSRecord{
+	cfg.DNSConfig.ExtraRecords = []tailcfg.DNSRecord{
 		{Name: "grafana." + cfg.BaseDomain, Type: "A", Value: "100.64.0.100"},
-	}}
+	}
+	cfg.StartDNS(nil) // as NewHeadscale does, so SetExtraRecords takes
 	s, err := NewState(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })

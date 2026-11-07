@@ -31,7 +31,7 @@ func TestResolveSecret(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveSecret("oidc.client_secret", tt.value)
+			got, err := ResolveSecret("oidc.client_secret", tt.value)
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				require.ErrorContains(t, err, "oidc.client_secret: ")

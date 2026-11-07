@@ -4,9 +4,15 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/dns"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/libdns/cloudflare"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSecurityHeaders(t *testing.T) {
@@ -76,6 +82,98 @@ func TestDebugHostGuard(t *testing.T) {
 			if tt.status == http.StatusForbidden {
 				assert.Contains(t, rec.Body.String(), "localhost")
 			}
+		})
+	}
+}
+
+// TestNewHeadscaleDNSProvider pins that startup builds the provider
+// dns.challenge.provider names, reading its secrets, unless Go set one, and
+// refuses one that cannot keep node certificates apart.
+func TestNewHeadscaleDNSProvider(t *testing.T) {
+	token := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(token, []byte("from-file\n"), 0o600))
+
+	oneAccount := map[string]any{
+		"name": "acmedns", "username": "u", "password": "p",
+		"subdomain": "s", "server_url": "https://auth.acme-dns.io",
+	}
+	goOnly := &cloudflare.Provider{APIToken: "go-only"}
+	goOnlyAcmeDNS, err := dns.NewProvider("acmedns", oneAccount,
+		func(string) (any, bool) { return nil, false },
+		func(_, v string) (string, error) { return v, nil })
+	require.NoError(t, err)
+
+	tests := []struct {
+		name         string
+		challenge    types.DNSChallengeConfig
+		certificates bool
+		wantToken    string
+		wantErr      string
+	}{
+		{
+			name:      "built from settings",
+			challenge: types.DNSChallengeConfig{ProviderSettings: map[string]any{"name": "cloudflare", "api_token": "file:" + token}},
+			wantToken: "from-file",
+		},
+		{
+			name: "go-only provider wins",
+			challenge: types.DNSChallengeConfig{
+				ProviderSettings: map[string]any{"name": "cloudflare", "api_token": "settings"},
+				Provider:         goOnly,
+			},
+			wantToken: "go-only",
+		},
+		{
+			name:      "unreadable secret",
+			challenge: types.DNSChallengeConfig{ProviderSettings: map[string]any{"name": "cloudflare", "api_token": "file:/nonexistent"}}, //nolint:gosec // a missing file, not a credential
+			wantErr:   "dns.challenge.provider.api_token: ",
+		},
+		{
+			name:         "one acme-dns account for node certificates",
+			challenge:    types.DNSChallengeConfig{ProviderSettings: oneAccount},
+			certificates: true,
+			wantErr:      "for acmedns: ",
+		},
+		{
+			name:         "go-only provider named by its type",
+			challenge:    types.DNSChallengeConfig{Provider: goOnlyAcmeDNS},
+			certificates: true,
+			wantErr:      "for *dns.acmeDNS: ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			cfg := types.Config{
+				ServerURL:           "http://localhost:8080",
+				NoisePrivateKeyPath: tmpDir + "/noise_private.key",
+				Database: types.DatabaseConfig{
+					Type:   "sqlite3",
+					Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db"},
+				},
+				Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
+				DNSConfig: types.DNSConfig{
+					MagicDNS:     true,
+					BaseDomain:   "ts.example.com",
+					Certificates: types.CertificatesConfig{Enabled: tt.certificates},
+				},
+				DNSChallenge: tt.challenge,
+			}
+
+			app, err := NewHeadscale(&cfg)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = app.state.Close() })
+
+			provider, ok := cfg.DNSProvider().(*cloudflare.Provider)
+			require.True(t, ok, "provider is %T", cfg.DNSProvider())
+			assert.Equal(t, tt.wantToken, provider.APIToken)
 		})
 	}
 }

@@ -14,7 +14,7 @@ func TestDerpConfigSkipsMalformedURL(t *testing.T) {
 		"://bad",
 	}})
 
-	cfg := derpConfig("")
+	cfg := derpConfig()
 
 	if len(cfg.URLs) != 1 {
 		t.Fatalf("expected the malformed derp.urls entry to be skipped, got %d urls: %v",

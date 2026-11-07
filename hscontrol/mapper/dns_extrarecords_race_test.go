@@ -14,13 +14,10 @@ import (
 // through the shared lock so the run is race-free under -race.
 func TestExtraRecordsConcurrentUpdateNoRace(t *testing.T) {
 	uid := uint(1)
-	cfg := &types.Config{
-		TailcfgDNSConfig: &tailcfg.DNSConfig{
-			ExtraRecords: []tailcfg.DNSRecord{
-				{Name: "initial.example.com", Type: "A", Value: "100.64.0.1"},
-			},
-		},
-	}
+	cfg := &types.Config{DNSConfig: types.DNSConfig{ExtraRecords: []tailcfg.DNSRecord{
+		{Name: "initial.example.com", Type: "A", Value: "100.64.0.1"},
+	}}}
+	cfg.StartDNS(nil)
 
 	node := (&types.Node{
 		Hostname: "race-node",

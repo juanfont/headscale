@@ -48,7 +48,7 @@ type HSDatabase struct {
 //
 //nolint:gocyclo // migration closures inflate the count; each is linear
 func NewHeadscaleDatabase(cfg *types.Config) (*HSDatabase, error) {
-	dbConn, err := openDB(cfg.Database)
+	dbConn, err := openDB(cfg.Database, cfg.SQLitePath())
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +457,7 @@ WHERE auth_key_id IN (
 	// This is currently only done on sqlite as squibble does not
 	// support Postgres and we use our sqlite schema as our source of
 	// truth.
-	if cfg.Database.Type == types.DatabaseSqlite {
+	if cfg.Database.IsSQLite() {
 		sqlConn, err := dbConn.DB()
 		if err != nil {
 			return nil, fmt.Errorf("getting DB from gorm: %w", err)
@@ -496,7 +496,9 @@ WHERE auth_key_id IN (
 	return &db, err
 }
 
-func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
+// openDB opens the database cfg names; sqlitePath is database.sqlite.path
+// resolved.
+func openDB(cfg types.DatabaseConfig, sqlitePath string) (*gorm.DB, error) {
 	// TODO(kradalby): Integrate this with zerolog
 	var dbLogger logger.Interface
 	if cfg.Debug {
@@ -505,9 +507,9 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		dbLogger = logger.Default.LogMode(logger.Silent)
 	}
 
-	switch cfg.Type {
-	case types.DatabaseSqlite:
-		dir := filepath.Dir(cfg.Sqlite.Path)
+	switch {
+	case cfg.IsSQLite():
+		dir := filepath.Dir(sqlitePath)
 
 		err := util.EnsureDir(dir)
 		if err != nil {
@@ -516,11 +518,11 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 
 		log.Info().
 			Str("database", types.DatabaseSqlite).
-			Str("path", cfg.Sqlite.Path).
+			Str("path", sqlitePath).
 			Msg("Opening database")
 
 		// Build SQLite configuration with pragmas set at connection time
-		sqliteConfig := sqliteconfig.Default(cfg.Sqlite.Path)
+		sqliteConfig := sqliteconfig.Default(sqlitePath)
 		if cfg.Sqlite.WriteAheadLog {
 			sqliteConfig.JournalMode = sqliteconfig.JournalModeWAL
 			sqliteConfig.WALAutocheckpoint = cfg.Sqlite.WALAutoCheckPoint
@@ -560,7 +562,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 
 		return db, nil
 
-	case types.DatabasePostgres:
+	case cfg.Type == types.DatabasePostgres:
 		// Log the DSN without the password.
 		redacted := cfg.Postgres
 		redacted.Pass = ""
@@ -599,7 +601,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 }
 
 func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormigrate.Gormigrate) error {
-	if cfg.Type == types.DatabaseSqlite {
+	if cfg.IsSQLite() {
 		if err := migrations.Migrate(); err != nil { //nolint:noinlineerr
 			return err
 		}
@@ -675,7 +677,7 @@ func (hsdb *HSDatabase) Close() error {
 		return err
 	}
 
-	if hsdb.cfg.Database.Type == types.DatabaseSqlite && hsdb.cfg.Database.Sqlite.WriteAheadLog {
+	if hsdb.cfg.Database.IsSQLite() && hsdb.cfg.Database.Sqlite.WriteAheadLog {
 		db.Exec("VACUUM") //nolint:errcheck,noctx
 	}
 

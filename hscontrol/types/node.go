@@ -944,7 +944,7 @@ func (nv NodeView) CertDomain(cfg *Config) (string, bool) {
 	// A node may publish only its own name's challenge, which keeps it from
 	// other names' certificates only where the provider answers each name's
 	// challenge apart.
-	if iso, ok := cfg.DNSChallenge.Provider.(hsdns.Isolator); ok && !iso.Isolates(domain) {
+	if iso, ok := cfg.DNSProvider().(hsdns.Isolator); ok && !iso.Isolates(domain) {
 		return "", false
 	}
 

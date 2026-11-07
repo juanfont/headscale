@@ -47,6 +47,13 @@ func TestIsProviderSetting(t *testing.T) {
 	assert.False(t, IsProviderSetting("api_token_path"))
 }
 
+func TestSettingNames(t *testing.T) {
+	assert.Subset(t, SettingNames("cloudflare"), []string{"api_token", "zone_token"})
+	assert.Subset(t, SettingNames("CloudFlare"), []string{"api_token"}, "named as NewProvider names it")
+	assert.Nil(t, SettingNames("route53"))
+	assert.Nil(t, SettingNames(""))
+}
+
 // unreadSecret stands in for a caller that checks without reading files.
 func unreadSecret(_, value string) (string, error) {
 	if strings.HasPrefix(value, "file:") {

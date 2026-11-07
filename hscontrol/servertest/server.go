@@ -23,7 +23,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"tailscale.com/net/memnet"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/dnstype"
 )
 
 // TestServer is an in-process Headscale control server suitable for
@@ -121,8 +120,7 @@ func WithTaildropEnabled(enabled bool) ServerOption {
 	return func(c *serverConfig) { c.taildropEnabled = enabled }
 }
 
-// WithMagicDNS enables MagicDNS under domain, so map responses carry a
-// [tailcfg.DNSConfig].
+// WithMagicDNS enables MagicDNS under domain.
 func WithMagicDNS(domain string) ServerOption {
 	return func(c *serverConfig) { c.magicDNSDomain = domain }
 }
@@ -139,8 +137,8 @@ func WithCertificates(provider hsdns.Provider) ServerOption {
 	return func(c *serverConfig) { c.certProvider = provider }
 }
 
-// WithDNSResolvers sets the global DNS resolvers, so map responses carry a
-// [tailcfg.DNSConfig].
+// WithDNSResolvers sets the global DNS resolvers, overriding the nodes'
+// local DNS.
 func WithDNSResolvers(addrs ...string) ServerOption {
 	return func(c *serverConfig) { c.dnsResolvers = addrs }
 }
@@ -199,14 +197,10 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		},
 	}
 
-	if sc.magicDNSDomain != "" || len(sc.dnsResolvers) > 0 {
-		cfg.TailcfgDNSConfig = &tailcfg.DNSConfig{}
-	}
-
 	if sc.magicDNSDomain != "" {
 		cfg.BaseDomain = sc.magicDNSDomain
-		cfg.TailcfgDNSConfig.Proxied = true
-		cfg.TailcfgDNSConfig.Domains = []string{sc.magicDNSDomain}
+		cfg.DNSConfig.MagicDNS = true
+		cfg.DNSConfig.BaseDomain = sc.magicDNSDomain
 	}
 
 	if sc.certProvider != nil {
@@ -214,8 +208,9 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		cfg.DNSChallenge.Provider = sc.certProvider
 	}
 
-	for _, addr := range sc.dnsResolvers {
-		cfg.TailcfgDNSConfig.Resolvers = append(cfg.TailcfgDNSConfig.Resolvers, &dnstype.Resolver{Addr: addr})
+	if len(sc.dnsResolvers) > 0 {
+		cfg.DNSConfig.OverrideLocalDNS = true
+		cfg.DNSConfig.Nameservers.Global = sc.dnsResolvers
 	}
 
 	app, err := hscontrol.NewHeadscale(&cfg)
@@ -323,9 +318,7 @@ func (s *TestServer) MemNet() *memnet.Network {
 }
 
 // SetExtraRecords replaces the extra DNS records and sends them to every
-// node, as a reload of dns.extra_records_path does. The server needs
-// [WithMagicDNS] or [WithDNSResolvers], which give it a DNS config to hold
-// them.
+// node, as a reload of dns.extra_records_path does.
 func (s *TestServer) SetExtraRecords(records []tailcfg.DNSRecord) {
 	s.cfg.SetExtraRecords(records)
 	s.App.Change(change.ExtraRecords())
