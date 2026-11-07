@@ -53,15 +53,18 @@ func skipsInitConfig(args []string) bool {
 	return err == nil && (cmd == checkCmd || cmd.HasParent() && cmd.Parent() == checkCmd)
 }
 
-func loadConfig() error {
-	if cfgFile == "" {
-		cfgFile = os.Getenv("HEADSCALE_CONFIG")
-	}
+// loadConfig loads path, else the file -c names, else $HEADSCALE_CONFIG,
+// else the first config.* in /etc/headscale, ~/.headscale or ".". Without a
+// file it loads defaults and environment only.
+func loadConfig(path string) error {
+	for _, p := range []string{path, cfgFile, os.Getenv("HEADSCALE_CONFIG")} {
+		if p == "" {
+			continue
+		}
 
-	if cfgFile != "" {
-		err := types.LoadConfig(cfgFile, true)
+		err := types.LoadConfig(p, true)
 		if err != nil {
-			return fmt.Errorf("loading config file %s: %w", cfgFile, err)
+			return fmt.Errorf("loading config file %s: %w", p, err)
 		}
 
 		return nil
@@ -83,7 +86,7 @@ func initConfig() {
 		return
 	}
 
-	err := loadConfig()
+	err := loadConfig("")
 	if err != nil {
 		log.Fatal().Caller().Err(err).Msg("error loading config")
 	}
