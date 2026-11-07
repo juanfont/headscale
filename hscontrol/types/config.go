@@ -197,7 +197,7 @@ type DNSChallengeConfig struct {
 	Resolvers          []string
 	ProviderName       string
 	// Provider is nil when no provider is configured. It is built while
-	// loading so `headscale configtest` reports bad provider settings,
+	// loading so `headscale check config` reports bad provider settings,
 	// and never serialised because it holds credentials.
 	Provider hsdns.Provider `json:"-"`
 }
@@ -988,7 +988,19 @@ func validateDERPConfig(v *configValidator) {
 				{"derp.server.stun_listen_addr", ""},
 			},
 			Hint: `set derp.server.stun_listen_addr (e.g. "0.0.0.0:3478"), or set derp.server.enabled: false`,
-			See:  "https://headscale.net/stable/ref/integration/derp/",
+			See:  "https://headscale.net/stable/ref/derp/",
+		})
+	}
+
+	if viper.GetString("derp.server.private_key_path") == "" {
+		v.Add(&ConfigError{
+			Reason: "derp.server.private_key_path is required when the embedded DERP server is enabled",
+			Current: []KV{
+				{"derp.server.enabled", true},
+				{"derp.server.private_key_path", ""},
+			},
+			Hint: `set derp.server.private_key_path (e.g. "/var/lib/headscale/derp_server_private.key"), or set derp.server.enabled: false`,
+			See:  "https://headscale.net/stable/ref/derp/",
 		})
 	}
 

@@ -1849,3 +1849,28 @@ func TestDNSDomainsCompat(t *testing.T) {
 		})
 	}
 }
+
+func TestDERPServerRequiresPrivateKeyPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := filepath.Join(tmpDir, "config.yaml")
+
+	write := func(derp string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(cfg, []byte(`---
+noise:
+  private_key_path: noise_private.key
+server_url: http://127.0.0.1:8080
+derp:
+  server:
+    enabled: true
+    stun_listen_addr: "0.0.0.0:3478"
+`+derp), 0o600))
+		require.NoError(t, LoadConfig(tmpDir, false))
+	}
+
+	write("")
+	require.ErrorContains(t, validateServerConfig(), "derp.server.private_key_path is required")
+
+	write("    private_key_path: derp_server_private.key\n")
+	require.NotContains(t, validateServerConfig().Error(), "derp.server.private_key_path")
+}

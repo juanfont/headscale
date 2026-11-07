@@ -1320,7 +1320,7 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 		return nil, fmt.Errorf("ensuring private key directory: %w", err)
 	}
 
-	privateKey, err := os.ReadFile(path)
+	machineKey, err := readPrivateKey(path)
 	if errors.Is(err, os.ErrNotExist) {
 		log.Info().Str("path", path).Msg("no private key file at path, creating...")
 
@@ -1344,14 +1344,20 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 		}
 
 		return &machineKey, nil
-	} else if err != nil {
+	}
+
+	return machineKey, err
+}
+
+// readPrivateKey reads and parses a key file without creating anything.
+func readPrivateKey(path string) (*key.MachinePrivate, error) {
+	privateKey, err := os.ReadFile(path)
+	if err != nil {
 		return nil, fmt.Errorf("reading private key file: %w", err)
 	}
 
-	trimmedPrivateKey := strings.TrimSpace(string(privateKey))
-
 	var machineKey key.MachinePrivate
-	if err = machineKey.UnmarshalText([]byte(trimmedPrivateKey)); err != nil { //nolint:noinlineerr
+	if err = machineKey.UnmarshalText([]byte(strings.TrimSpace(string(privateKey)))); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("parsing private key: %w", err)
 	}
 

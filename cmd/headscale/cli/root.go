@@ -47,7 +47,7 @@ func skipsInitConfig(args []string) bool {
 	cmd, _, err := rootCmd.Find(args)
 
 	return err == nil && (cmd == checkCmd || cmd.HasParent() && cmd.Parent() == checkCmd ||
-		cmd == removedPolicyCheckCmd)
+		cmd == removedPolicyCheckCmd || cmd == removedConfigtestCmd)
 }
 
 func loadConfig() error {
