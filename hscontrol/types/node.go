@@ -173,11 +173,6 @@ type Node struct {
 	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
 	AuthKey   *Credential
 
-	// Ephemeral is taken from the key the node was created with. Logging in
-	// again with another key keeps it, as Tailscale does; a user claiming a
-	// tagged node clears it.
-	Ephemeral bool `gorm:"default:false"`
-
 	Expiry *time.Time
 
 	// LastSeen is when the node was last in contact with
@@ -203,10 +198,6 @@ type Node struct {
 	// Every writer must derive it, so online means the same thing everywhere.
 	IsOnline *bool `gorm:"-"`
 
-	// Unhealthy excludes the node from primary route election while
-	// online. Written by the HA prober. Runtime-only.
-	Unhealthy bool `gorm:"-"`
-
 	// ActiveSessions counts live poll sessions for this node.
 	// [State.Connect] increments it and every session release
 	// ([State.Disconnect]) decrements it. Releasing the last session
@@ -228,6 +219,15 @@ type Node struct {
 	// overlapping reconnect keeps it. Primary election prefers the
 	// oldest. Runtime-only.
 	SessionStart time.Time `gorm:"-"`
+
+	// Ephemeral is taken from the key the node was created with. Logging in
+	// again with another key keeps it, as Tailscale does; a user claiming a
+	// tagged node clears it.
+	Ephemeral bool `gorm:"default:false"`
+
+	// Unhealthy excludes the node from primary route election while
+	// online. Written by the HA prober. Runtime-only.
+	Unhealthy bool `gorm:"-"`
 }
 
 type Nodes []*Node

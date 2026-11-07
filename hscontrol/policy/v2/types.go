@@ -3025,11 +3025,11 @@ func (p *Policy) validate() error {
 
 // SSHCheckPeriod represents the check period for SSH "check" mode rules.
 // nil means not specified (runtime default of 12h applies).
-// [SSHCheckPeriod.Always]=true means "always" (check on every request).
 // [SSHCheckPeriod.Duration] is an explicit period (min 1m, max 168h).
+// [SSHCheckPeriod.Always]=true means "always" (check on every request).
 type SSHCheckPeriod struct {
-	Always   bool
 	Duration time.Duration
+	Always   bool
 }
 
 // UnmarshalJSON implements JSON unmarshaling for [SSHCheckPeriod].

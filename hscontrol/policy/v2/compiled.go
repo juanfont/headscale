@@ -45,9 +45,6 @@ type compiledGrant struct {
 	// nonWildcardSrcs appended to match Tailscale SaaS behavior.
 	srcIPStrings []string
 
-	hasWildcard  bool
-	hasDangerAll bool
-
 	// rules are the pre-compiled filter rules for non-self, non-via
 	// destinations. For regular grants this is the complete output.
 	// For self grants with mixed destinations (self + other), this
@@ -59,6 +56,9 @@ type compiledGrant struct {
 
 	// via is non-nil when the grant has Via tags.
 	via *viaGrantData
+
+	hasWildcard  bool
+	hasDangerAll bool
 }
 
 // selfGrantData holds data needed for per-node autogroup:self
@@ -77,9 +77,9 @@ type selfGrantData struct {
 type viaGrantData struct {
 	viaTags              []Tag
 	resolvedDsts         []netip.Prefix
-	hasAutoGroupInternet bool
 	internetProtocols    []ProtocolPort
 	srcIPStrings         []string
+	hasAutoGroupInternet bool
 }
 
 // resolveViaDestinations splits a via grant's destinations into the
