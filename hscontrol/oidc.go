@@ -78,6 +78,10 @@ type AuthProviderOIDC struct {
 	authCacheRegistrations atomic.Int64
 	authCache              *expirable.LRU[string, AuthInfo]
 
+	// userMu makes the lookup and create in [AuthProviderOIDC.createOrUpdateUserFromClaim]
+	// atomic, so concurrent first logins of one identity share a single user.
+	userMu sync.Mutex
+
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
 }
@@ -647,6 +651,9 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 		newUser bool
 		c       change.Change
 	)
+
+	a.userMu.Lock()
+	defer a.userMu.Unlock()
 
 	user, err = a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
