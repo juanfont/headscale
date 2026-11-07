@@ -106,9 +106,6 @@ func generateDNSConfig(
 	capMap tailcfg.NodeCapMap,
 ) *tailcfg.DNSConfig {
 	dnsConfig := cfg.CloneTailcfgDNSConfig()
-	if dnsConfig == nil {
-		return nil
-	}
 
 	profile := nextDNSProfileFromCapMap(capMap)
 	if profile != "" {

@@ -237,8 +237,9 @@ func ApplyPolicy(base, pol *tailcfg.DERPMap) *tailcfg.DERPMap {
 // GetDERPMap merges every configured DERP map source. A source that fails to
 // load is skipped rather than failing the rest, as a derp.urls server is often
 // a third party's: the map always holds what did load, and the error joins
-// every failure for the caller to judge.
-func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
+// every failure for the caller to judge. shuffleSeed orders DERP nodes the
+// same on every server of a tailnet.
+func GetDERPMap(cfg types.DERPConfig, shuffleSeed string) (*tailcfg.DERPMap, error) {
 	var (
 		derpMaps []*tailcfg.DERPMap
 		errs     []error
@@ -269,7 +270,7 @@ func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 	}
 
 	derpMap := mergeDERPMaps(derpMaps)
-	shuffleDERPMap(derpMap, cfg.ShuffleSeed)
+	shuffleDERPMap(derpMap, shuffleSeed)
 
 	return derpMap, errors.Join(errs...)
 }

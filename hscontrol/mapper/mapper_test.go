@@ -58,8 +58,8 @@ func TestExitNodeFilteredSet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := generateDNSConfig(
 				&types.Config{
-					BaseDomain:       tt.baseDomain,
-					TailcfgDNSConfig: &tailcfg.DNSConfig{Proxied: tt.magicDNS},
+					BaseDomain: tt.baseDomain,
+					DNSConfig:  types.DNSConfig{MagicDNS: tt.magicDNS, BaseDomain: tt.baseDomain},
 				},
 				(&types.Node{}).View(),
 				nil,
@@ -86,11 +86,9 @@ func TestDNSConfigMapResponse(t *testing.T) {
 			},
 		},
 		{
+			// Only MagicDNS answers for the base domain.
 			magicDNS: false,
-			want: &tailcfg.DNSConfig{
-				Domains: []string{"foobar.headscale.net"},
-				Proxied: false,
-			},
+			want:     &tailcfg.DNSConfig{},
 		},
 	}
 
@@ -106,19 +104,11 @@ func TestDNSConfigMapResponse(t *testing.T) {
 				}
 			}
 
-			baseDomain := "foobar.headscale.net"
-
-			dnsConfigOrig := tailcfg.DNSConfig{
-				Routes:  make(map[string][]*dnstype.Resolver),
-				Domains: []string{baseDomain},
-				Proxied: tt.magicDNS,
-			}
-
 			nodeInShared1 := mach("test_get_shared_nodes_1", "shared1", 1)
 
 			got := generateDNSConfig(
 				&types.Config{
-					TailcfgDNSConfig: &dnsConfigOrig,
+					DNSConfig: types.DNSConfig{MagicDNS: tt.magicDNS, BaseDomain: "foobar.headscale.net"},
 				},
 				nodeInShared1.View(),
 				nil,
@@ -135,15 +125,8 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 	t.Parallel()
 
 	mkConfig := func(addrs ...string) *types.Config {
-		resolvers := make([]*dnstype.Resolver, len(addrs))
-		for i, a := range addrs {
-			resolvers[i] = &dnstype.Resolver{Addr: a}
-		}
-
 		return &types.Config{
-			TailcfgDNSConfig: &tailcfg.DNSConfig{
-				Resolvers: resolvers,
-			},
+			DNSConfig: types.DNSConfig{OverrideLocalDNS: true, Nameservers: types.Nameservers{Global: addrs}},
 		}
 	}
 
@@ -274,12 +257,10 @@ func TestNextDNSResolverCompat(t *testing.T) {
 			))
 			require.NoError(t, err)
 
-			resolvers := make([]*dnstype.Resolver, 0, len(c.Input.Tailnet.DNS.Nameservers))
-			for _, ns := range c.Input.Tailnet.DNS.Nameservers {
-				resolvers = append(resolvers, &dnstype.Resolver{Addr: ns})
-			}
-
-			cfg := &types.Config{TailcfgDNSConfig: &tailcfg.DNSConfig{Resolvers: resolvers}}
+			cfg := &types.Config{DNSConfig: types.DNSConfig{
+				OverrideLocalDNS: true,
+				Nameservers:      types.Nameservers{Global: c.Input.Tailnet.DNS.Nameservers},
+			}}
 
 			// Mismatches by check, one entry per node.
 			diffs := map[string][]string{}
@@ -849,11 +830,10 @@ func TestGenerateDNSConfigNilHostinfoNoPanic(t *testing.T) {
 		// Hostinfo intentionally nil, as a legacy NULL host_info row loads.
 	}).View()
 
-	cfg := &types.Config{
-		TailcfgDNSConfig: &tailcfg.DNSConfig{
-			Resolvers: []*dnstype.Resolver{{Addr: "https://dns.nextdns.io/abc"}},
-		},
-	}
+	cfg := &types.Config{DNSConfig: types.DNSConfig{
+		OverrideLocalDNS: true,
+		Nameservers:      types.Nameservers{Global: []string{"https://dns.nextdns.io/abc"}},
+	}}
 
 	require.NotPanics(t, func() {
 		generateDNSConfig(cfg, node, nil)
@@ -1215,7 +1195,7 @@ func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
 		},
 		// Without these the DERP map and DNS config renders carry
 		// nothing and no frame is generated at all.
-		TailcfgDNSConfig: &tailcfg.DNSConfig{Proxied: true},
+		DNSConfig: types.DNSConfig{MagicDNS: true},
 		Tuning: types.Tuning{
 			NodeStoreBatchSize:    state.TestBatchSize,
 			NodeStoreBatchTimeout: state.TestBatchTimeout,
@@ -1376,22 +1356,19 @@ func TestCertDomains(t *testing.T) {
 				baseDomain = "ts.example.com"
 			}
 
-			cfg := &types.Config{
-				BaseDomain:   baseDomain,
-				DNSConfig:    tt.dns,
-				DNSChallenge: types.DNSChallengeConfig{Provider: tt.provider},
-				TailcfgDNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-					ExtraRecords: []tailcfg.DNSRecord{
-						{Name: "Grafana.ts.example.com", Type: "A", Value: "100.64.0.3"},
-						{Name: "grafana.svc.ts.example.com.", Type: "A", Value: "100.64.0.4"},
-					},
-				},
+			dnsCfg := tt.dns
+			dnsCfg.MagicDNS = true
+			dnsCfg.ExtraRecords = []tailcfg.DNSRecord{
+				{Name: "Grafana.ts.example.com", Type: "A", Value: "100.64.0.3"},
+				{Name: "grafana.svc.ts.example.com.", Type: "A", Value: "100.64.0.4"},
 			}
+
+			cfg := &types.Config{BaseDomain: baseDomain, DNSConfig: dnsCfg}
+			cfg.StartDNS(tt.provider)
 
 			got := generateDNSConfig(cfg, tt.node.View(), nil)
 			assert.Equal(t, tt.want, got.CertDomains)
-			assert.Nil(t, cfg.TailcfgDNSConfig.CertDomains, "global DNS config must stay untouched")
+			assert.Nil(t, cfg.CloneTailcfgDNSConfig().CertDomains, "global DNS config must stay untouched")
 		})
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net"
 	"net/netip"
 	"net/url"
@@ -22,6 +23,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cast"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -145,10 +147,6 @@ type Config struct {
 	// not directly converted into a [tailcfg.DNSConfig].
 	DNSConfig DNSConfig
 
-	// TailcfgDNSConfig is the tailcfg representation of the DNS configuration,
-	// it can be used directly when sending Netmaps to clients.
-	TailcfgDNSConfig *tailcfg.DNSConfig
-
 	DNSChallenge DNSChallengeConfig
 
 	UnixSocket           string
@@ -166,12 +164,24 @@ type Config struct {
 
 	Tuning Tuning
 
-	// ConfigDir resolves relative paths such as policy.path.
+	// ConfigDir is where [Config.AbsPath] resolves relative paths.
 	ConfigDir string `json:"-"`
 
 	// UnreadSecrets are the file: secrets [CheckServerConfig] left unread,
 	// each as key and path.
 	UnreadSecrets []KV `json:"-"`
+
+	// dns is nil until [Config.StartDNS].
+	dns *liveDNS
+}
+
+// liveDNS is the DNS state of a running server: the tailcfg form, whose
+// extra records the extra-records watcher replaces while map builds clone
+// it, and the provider startup built.
+type liveDNS struct {
+	mu       sync.RWMutex
+	dns      *tailcfg.DNSConfig
+	provider hsdns.Provider
 }
 
 type DNSConfig struct {
@@ -190,9 +200,15 @@ type DNSConfig struct {
 // publishes its DNS-01 challenge through [DNSChallengeConfig].
 type CertificatesConfig struct {
 	Enabled bool
-	// Zone is the public DNS zone challenge records are written to. It is
-	// base_domain unless base_domain sits below the zone apex.
+	// Zone is the public DNS zone challenge records are written to, when
+	// base_domain sits below the zone apex. See [DNSConfig.CertificateZone].
 	Zone string
+}
+
+// CertificateZone is the zone challenge records are written to:
+// Certificates.Zone, else BaseDomain.
+func (d DNSConfig) CertificateZone() string {
+	return cmp.Or(d.Certificates.Zone, d.BaseDomain)
 }
 
 // DNSChallengeConfig is the DNS provider answering ACME DNS-01
@@ -200,11 +216,54 @@ type CertificatesConfig struct {
 type DNSChallengeConfig struct {
 	PropagationTimeout time.Duration
 	Resolvers          []string
-	ProviderName       string
-	// Provider is nil when no provider is configured. It is built while
-	// loading so `headscale check config` reports bad provider settings,
-	// and never serialised because it holds credentials.
+	// ProviderSettings is dns.challenge.provider, name included. Never
+	// serialised: its settings are credentials.
+	ProviderSettings map[string]any `json:"-"`
+	// Provider is set only from Go, by an embedder or a test, and wins
+	// over ProviderSettings. The loader never sets it.
 	Provider hsdns.Provider `json:"-"`
+}
+
+// ProviderName is the provider ProviderSettings names, or "".
+func (c DNSChallengeConfig) ProviderName() string {
+	return cast.ToString(c.ProviderSettings["name"])
+}
+
+// NewProvider builds the provider ProviderSettings names, handing secret
+// each string setting under its full config key.
+func (c DNSChallengeConfig) NewProvider(secret func(key, value string) (string, error)) (hsdns.Provider, error) {
+	return hsdns.NewProvider(
+		c.ProviderName(),
+		c.ProviderSettings,
+		func(key string) (any, bool) {
+			v, ok := c.ProviderSettings[key]
+
+			return v, ok
+		},
+		func(key, value string) (string, error) {
+			return secret(providerKey+"."+key, value)
+		},
+	)
+}
+
+// ResolverAddrs returns Resolvers as host:port, or the defaults when none
+// are set. Like dns.nameservers, a resolver may be a bare IP.
+func (c DNSChallengeConfig) ResolverAddrs() []string {
+	if len(c.Resolvers) == 0 {
+		return slices.Clone(defaultChallengeResolvers)
+	}
+
+	addrs := make([]string, len(c.Resolvers))
+	for i, r := range c.Resolvers {
+		addrs[i] = r
+
+		_, _, err := net.SplitHostPort(r)
+		if err != nil {
+			addrs[i] = net.JoinHostPort(r, "53")
+		}
+	}
+
+	return addrs
 }
 
 type Nameservers struct {
@@ -293,7 +352,7 @@ type GormConfig struct {
 }
 
 type DatabaseConfig struct {
-	// Type sets the database type, either "sqlite3" or "postgres"
+	// Type sets the database type: "sqlite", "sqlite3" or "postgres".
 	Type  string
 	Debug bool
 
@@ -302,6 +361,11 @@ type DatabaseConfig struct {
 
 	Sqlite   SqliteConfig
 	Postgres PostgresConfig
+}
+
+// IsSQLite reports whether Type names SQLite, in either spelling.
+func (d DatabaseConfig) IsSQLite() bool {
+	return d.Type == DatabaseSqlite || d.Type == "sqlite"
 }
 
 type TLSConfig struct {
@@ -358,8 +422,6 @@ type DERPConfig struct {
 	UpdateFrequency                    time.Duration
 	IPv4                               string
 	IPv6                               string
-	// ShuffleSeed orders DERP nodes the same on every server of a tailnet.
-	ShuffleSeed string `json:"-"`
 }
 
 type LogTailConfig struct {
@@ -419,7 +481,7 @@ type Tuning struct {
 	NodeMapSessionBufferedChanSize int
 
 	// BatcherWorkers controls the number of parallel workers processing map
-	// updates for connected clients.
+	// updates for connected clients. See [Tuning.BatcherWorkerCount].
 	BatcherWorkers int
 
 	// RegisterCacheExpiration is how long registration cache entries remain
@@ -459,6 +521,15 @@ type Tuning struct {
 	// but trigger more frequent (expensive) peer map rebuilds. Higher values
 	// optimize for bulk throughput at the cost of individual operation latency.
 	NodeStoreBatchTimeout time.Duration
+}
+
+// BatcherWorkerCount is BatcherWorkers, or [DefaultBatcherWorkers] when unset.
+func (t Tuning) BatcherWorkerCount() int {
+	if t.BatcherWorkers > 0 {
+		return t.BatcherWorkers
+	}
+
+	return DefaultBatcherWorkers()
 }
 
 func validatePKCEMethod(method string) error {
@@ -507,6 +578,21 @@ func (c *Config) Domain() string {
 	}
 
 	return u.Hostname()
+}
+
+// AbsPath resolves a path from the configuration against [Config.ConfigDir].
+func (c *Config) AbsPath(p string) string {
+	return util.AbsolutePath(c.ConfigDir, p)
+}
+
+// SQLitePath is database.sqlite.path resolved, keeping SQLite's in-memory
+// name, which is not a file.
+func (c *Config) SQLitePath() string {
+	if c.Database.Sqlite.Path == ":memory:" {
+		return c.Database.Sqlite.Path
+	}
+
+	return c.AbsPath(c.Database.Sqlite.Path)
 }
 
 // ServesRoute reports whether an approved route is handed to clients. A
@@ -999,49 +1085,20 @@ func validateCertificatesConfig(v *configValidator) {
 	}
 }
 
-// dnsChallengeConfig builds the DNS-01 provider. Provider keys are read
-// one by one, because environment variables never reach into a map.
+// dnsChallengeConfig reads dns.challenge and builds the provider it names
+// only to report bad settings; startup builds the one it uses.
 func dnsChallengeConfig(secret func(key, value string) (string, error)) (DNSChallengeConfig, error) {
 	cfg := DNSChallengeConfig{
 		PropagationTimeout: src.Duration("dns.challenge.propagation_timeout"),
 		Resolvers:          src.StringSlice("dns.challenge.resolvers"),
-		ProviderName:       src.String("dns.challenge.provider.name"),
+		ProviderSettings:   src.StringMap("dns.challenge.provider"),
 	}
 
-	if len(cfg.Resolvers) == 0 {
-		cfg.Resolvers = slices.Clone(defaultChallengeResolvers)
-	}
-
-	// Like dns.nameservers, a resolver may be a bare IP.
-	for i, r := range cfg.Resolvers {
-		_, _, err := net.SplitHostPort(r)
-		if err != nil {
-			cfg.Resolvers[i] = net.JoinHostPort(r, "53")
-		}
-	}
-
-	if cfg.ProviderName == "" {
+	if cfg.ProviderName() == "" {
 		return cfg, nil
 	}
 
-	provider, err := hsdns.NewProvider(
-		cfg.ProviderName,
-		src.StringMap("dns.challenge.provider"),
-		func(key string) (any, bool) {
-			key = "dns.challenge.provider." + key
-
-			// Provider fields are not in configKeys, so the source never
-			// maps their variables.
-			if v := os.Getenv(configEnvName(key)); v != "" {
-				return v, true
-			}
-
-			return src.Get(key), src.IsSet(key)
-		},
-		func(key, value string) (string, error) {
-			return secret("dns.challenge.provider."+key, value)
-		},
-	)
+	provider, err := cfg.NewProvider(secret)
 	if err != nil {
 		return cfg, err
 	}
@@ -1051,38 +1108,36 @@ func dnsChallengeConfig(secret func(key, value string) (string, error)) (DNSChal
 	if iso, ok := provider.(hsdns.Isolator); ok && src.Bool("dns.certificates.enabled") {
 		err = iso.CheckIsolation()
 		if err != nil {
-			return cfg, fmt.Errorf("%w for %s: %w", hsdns.ErrProviderConfig, cfg.ProviderName, err)
+			return cfg, fmt.Errorf("%w for %s: %w", hsdns.ErrProviderConfig, cfg.ProviderName(), err)
 		}
 	}
-
-	cfg.Provider = provider
 
 	return cfg, nil
 }
 
-func tlsConfig(dir string) TLSConfig {
+func tlsConfig() TLSConfig {
 	return TLSConfig{
-		CertPath: util.AbsolutePath(dir, src.String("tls.cert_path")),
-		KeyPath:  util.AbsolutePath(dir, src.String("tls.key_path")),
+		CertPath: src.String("tls.cert_path"),
+		KeyPath:  src.String("tls.key_path"),
 		ACME: ACMEConfig{
 			Hostname:      src.String("tls.acme.hostname"),
 			ChallengeType: src.String("tls.acme.challenge_type"),
 			HTTPListen:    src.String("tls.acme.http_listen"),
 			URL:           src.String("tls.acme.url"),
 			Email:         src.String("tls.acme.email"),
-			CacheDir:      util.AbsolutePath(dir, src.String("tls.acme.cache_dir")),
+			CacheDir:      src.String("tls.acme.cache_dir"),
 		},
 	}
 }
 
-func derpConfig(dir string) DERPConfig {
+func derpConfig() DERPConfig {
 	serverEnabled := src.Bool("derp.server.enabled")
 	serverRegionID := src.Int64("derp.server.region_id")
 	serverRegionCode := src.String("derp.server.region_code")
 	serverRegionName := src.String("derp.server.region_name")
 	serverVerifyClients := src.Bool("derp.server.verify_clients")
 	stunAddr := src.String("derp.server.stun_listen_addr")
-	privateKeyPath := util.AbsolutePath(dir, src.String("derp.server.private_key_path"))
+	privateKeyPath := src.String("derp.server.private_key_path")
 	ipv4 := src.String("derp.server.ipv4")
 	ipv6 := src.String("derp.server.ipv6")
 	automaticallyAddEmbeddedDerpRegion := src.Bool(
@@ -1127,7 +1182,6 @@ func derpConfig(dir string) DERPConfig {
 		IPv4:                               ipv4,
 		IPv6:                               ipv6,
 		AutomaticallyAddEmbeddedDerpRegion: automaticallyAddEmbeddedDerpRegion,
-		ShuffleSeed:                        src.String("dns.base_domain"),
 	}
 }
 
@@ -1181,18 +1235,7 @@ func logConfig() LogConfig {
 	}
 }
 
-// sqlitePath resolves database.sqlite.path, keeping SQLite's in-memory
-// name, which is not a file.
-func sqlitePath(dir string) string {
-	path := src.String("database.sqlite.path")
-	if path == ":memory:" {
-		return path
-	}
-
-	return util.AbsolutePath(dir, path)
-}
-
-func databaseConfig(v *configValidator, secret func(key, value string) (string, error), dir string) DatabaseConfig {
+func databaseConfig(v *configValidator, secret func(key, value string) (string, error)) DatabaseConfig {
 	debug := src.Bool("database.debug")
 
 	type_ := src.String("database.type")
@@ -1200,13 +1243,6 @@ func databaseConfig(v *configValidator, secret func(key, value string) (string, 
 	skipErrRecordNotFound := src.Bool("database.gorm.skip_err_record_not_found")
 	slowThreshold := time.Duration(src.Int64("database.gorm.slow_threshold")) * time.Millisecond
 	parameterizedQueries := src.Bool("database.gorm.parameterized_queries")
-
-	switch type_ {
-	case DatabaseSqlite, DatabasePostgres:
-		break
-	case "sqlite":
-		type_ = "sqlite3"
-	}
 
 	pass := src.String("database.postgres.pass")
 	if type_ == DatabasePostgres {
@@ -1223,7 +1259,7 @@ func databaseConfig(v *configValidator, secret func(key, value string) (string, 
 			ParameterizedQueries:  parameterizedQueries,
 		},
 		Sqlite: SqliteConfig{
-			Path:              sqlitePath(dir),
+			Path:              src.String("database.sqlite.path"),
 			WriteAheadLog:     src.Bool("database.sqlite.write_ahead_log"),
 			WALAutoCheckPoint: src.Int("database.sqlite.wal_autocheckpoint"),
 		},
@@ -1261,7 +1297,7 @@ func dns() (DNSConfig, error) {
 	dns.SearchDomains = src.StringSlice("dns.search_domains")
 	dns.ExtraRecordsPath = src.String("dns.extra_records_path")
 	dns.Certificates.Enabled = src.Bool("dns.certificates.enabled")
-	dns.Certificates.Zone = cmp.Or(src.String("dns.certificates.zone"), dns.BaseDomain)
+	dns.Certificates.Zone = src.String("dns.certificates.zone")
 
 	if src.IsSet("dns.extra_records") {
 		var extraRecords []tailcfg.DNSRecord
@@ -1277,54 +1313,62 @@ func dns() (DNSConfig, error) {
 	return dns, nil
 }
 
-// parseResolvers converts nameserver strings into DNS resolvers.
-// If a nameserver is a valid IP, it will be used as a regular resolver.
-// If a nameserver is a valid URL, it will be used as a DoH resolver.
-// If a nameserver is neither a valid URL nor a valid IP, it will be ignored.
-// When domain is non-empty, it is included in the warning for invalid entries.
-func parseResolvers(nameservers []string, domain string) []*dnstype.Resolver {
+// parseResolvers converts nameserver strings into DNS resolvers: an IP is a
+// plain resolver, a URL a DoH one. Anything else is skipped; the loader
+// warns about it, see [DNSConfig.nameserverWarnings].
+func parseResolvers(nameservers []string) []*dnstype.Resolver {
 	var resolvers []*dnstype.Resolver
 
-	for _, nsStr := range nameservers {
-		if _, err := netip.ParseAddr(nsStr); err == nil { //nolint:noinlineerr
-			resolvers = append(resolvers, &dnstype.Resolver{
-				Addr: nsStr,
-			})
-
-			continue
+	for _, ns := range nameservers {
+		if validNameserver(ns) {
+			resolvers = append(resolvers, &dnstype.Resolver{Addr: ns})
 		}
-
-		if _, err := url.Parse(nsStr); err == nil { //nolint:noinlineerr
-			resolvers = append(resolvers, &dnstype.Resolver{
-				Addr: nsStr,
-			})
-
-			continue
-		}
-
-		e := log.Warn().Str("nameserver", nsStr)
-		if domain != "" {
-			e = e.Str("domain", domain)
-		}
-
-		e.Msg("invalid nameserver, ignoring")
 	}
 
 	return resolvers
 }
 
+func validNameserver(ns string) bool {
+	_, addrErr := netip.ParseAddr(ns)
+	_, urlErr := url.Parse(ns)
+
+	return addrErr == nil || urlErr == nil
+}
+
+// nameserverWarnings lists each nameserver parseResolvers skips, so the
+// load that reads the config reports it rather than each build of it.
+func (d DNSConfig) nameserverWarnings() []string {
+	var warnings []string
+
+	check := func(key string, nameservers []string) {
+		for _, ns := range nameservers {
+			if !validNameserver(ns) {
+				warnings = append(warnings, fmt.Sprintf("invalid nameserver %q in %s, ignoring", ns, key))
+			}
+		}
+	}
+
+	check("dns.nameservers.global", d.Nameservers.Global)
+
+	for _, domain := range slices.Sorted(maps.Keys(d.Nameservers.Split)) {
+		check("dns.nameservers.split."+domain, d.Nameservers.Split[domain])
+	}
+
+	return warnings
+}
+
 // globalResolvers returns the global DNS resolvers
 // defined in the config file.
-func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
-	return parseResolvers(d.Nameservers.Global, "")
+func (d DNSConfig) globalResolvers() []*dnstype.Resolver {
+	return parseResolvers(d.Nameservers.Global)
 }
 
 // splitResolvers returns a map of domain to DNS resolvers.
-func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
+func (d DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 	routes := make(map[string][]*dnstype.Resolver)
 
 	for domain, nameservers := range d.Nameservers.Split {
-		routes[domain] = parseResolvers(nameservers, domain)
+		routes[domain] = parseResolvers(nameservers)
 	}
 
 	return routes
@@ -1355,6 +1399,48 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 	cfg.Domains = append(cfg.Domains, dns.SearchDomains...)
 
 	return &cfg
+}
+
+// TailcfgDNSConfig builds the DNS config clients get from DNSConfig and the
+// IP prefixes. It is never nil.
+func (c *Config) TailcfgDNSConfig() *tailcfg.DNSConfig {
+	cfg := dnsToTailcfgDNS(c.DNSConfig)
+	if !cfg.Proxied {
+		return cfg
+	}
+
+	// Clients route reverse lookups for the Tailscale ranges themselves
+	// (magicDNSRootDomains in tailscale.com/ipn/ipnlocal) and SaaS sends
+	// no reverse routes, so only a prefix outside those ranges needs them.
+	outside := func(p, r netip.Prefix) bool {
+		return p.Bits() < r.Bits() || !r.Contains(p.Addr())
+	}
+
+	var reverse []dnsname.FQDN
+	if c.PrefixV4 != nil && outside(*c.PrefixV4, tsaddr.CGNATRange()) {
+		reverse = append(reverse, util.GenerateIPv4DNSRootDomain(*c.PrefixV4)...)
+	}
+
+	if c.PrefixV6 != nil && outside(*c.PrefixV6, tsaddr.TailscaleULARange()) {
+		reverse = append(reverse, util.GenerateIPv6DNSRootDomain(*c.PrefixV6)...)
+	}
+
+	for _, d := range reverse {
+		// Empty non-nil slice rather than nil: tailcfg.DNSConfig.Clone
+		// and dns.Config.Clone in tailscale drop map entries whose
+		// value is nil (see tailscale.com/tailcfg/tailcfg_clone.go and
+		// tailscale.com/net/dns/dns_clone.go: `if sv == nil { continue }`).
+		// Sending nil here caused the client's wgengine LinkChange:major
+		// handler to clobber /etc/resolv.conf on every tunnel-IP rebind
+		// — the handler reapplies a Clone of lastDNSConfig and the magic
+		// DNS routes vanish, taking the resolver with them for ~6 min
+		// until the next route-changing netmap. Empty slice survives
+		// Clone and carries the same "resolve locally" semantics
+		// ([tailcfg.DNSConfig.Routes] documents the empty-resolver form).
+		cfg.Routes[d.WithoutTrailingDot()] = []*dnstype.Resolver{}
+	}
+
+	return cfg
 }
 
 // warnBanner prints a highly visible warning banner to the log output.
@@ -1443,7 +1529,7 @@ func LoadCLIConfig() (*Config, error) {
 	// Over the unix socket the CLI needs no key, so it is not read.
 	cliAPIKey := src.String("cli.api_key")
 	if src.String("cli.address") != "" {
-		cliAPIKey = configSecret(v, resolveSecret, "cli.api_key", cliAPIKey)
+		cliAPIKey = configSecret(v, ResolveSecret, "cli.api_key", cliAPIKey)
 	}
 
 	err := v.Err()
@@ -1470,7 +1556,7 @@ func LoadCLIConfig() (*Config, error) {
 // LoadServerConfig returns the full Headscale configuration to
 // host a Headscale server. This is called as part of `headscale serve`.
 func LoadServerConfig() (*Config, error) {
-	return loadServerConfig(resolveSecret)
+	return loadServerConfig(ResolveSecret)
 }
 
 // CheckServerConfig validates the server configuration as
@@ -1622,8 +1708,12 @@ func loadServerConfig(secret func(key, value string) (string, error)) (*Config, 
 		})
 	}
 
+	for _, w := range dnsConfig.nameserverWarnings() {
+		log.Warn().Msg(w)
+	}
+
 	dir := configDir()
-	derpConfig := derpConfig(dir)
+	derpConfig := derpConfig()
 	logTailConfig := logtailConfig()
 
 	dnsChallenge, err := dnsChallengeConfig(secret)
@@ -1636,7 +1726,7 @@ func loadServerConfig(secret func(key, value string) (string, error)) (*Config, 
 
 		v.Add(&ConfigError{
 			Reason:  "dns.challenge.provider is invalid",
-			Current: []KV{{"dns.challenge.provider.name", dnsChallenge.ProviderName}},
+			Current: []KV{{"dns.challenge.provider.name", dnsChallenge.ProviderName()}},
 			Detail:  err.Error(),
 			Allowed: allowed,
 			Hint:    `check the provider name and its settings; any string setting can be read from a file with "file:<path>"`,
@@ -1651,7 +1741,7 @@ func loadServerConfig(secret func(key, value string) (string, error)) (*Config, 
 		oidcClientSecret = configSecret(v, secret, "oidc.client_secret", oidcClientSecret)
 	}
 
-	database := databaseConfig(v, secret, dir)
+	database := databaseConfig(v, secret)
 
 	serverURL := strings.TrimRight(src.String("server_url"), "/")
 
@@ -1686,7 +1776,7 @@ func loadServerConfig(secret func(key, value string) (string, error)) (*Config, 
 		PrefixV6:     prefix6,
 		IPAllocation: alloc,
 
-		NoisePrivateKeyPath: util.AbsolutePath(dir, src.String("noise.private_key_path")),
+		NoisePrivateKeyPath: src.String("noise.private_key_path"),
 		BaseDomain:          dnsConfig.BaseDomain,
 
 		DERP: derpConfig,
@@ -1710,11 +1800,10 @@ func loadServerConfig(secret func(key, value string) (string, error)) (*Config, 
 
 		Database: database,
 
-		TLS: tlsConfig(dir),
+		TLS: tlsConfig(),
 
-		DNSConfig:        dnsConfig,
-		TailcfgDNSConfig: dnsToTailcfgDNS(dnsConfig),
-		DNSChallenge:     dnsChallenge,
+		DNSConfig:    dnsConfig,
+		DNSChallenge: dnsChallenge,
 
 		UnixSocket:           src.String("unix_socket"),
 		UnixSocketPermission: socketPerm,
@@ -1765,13 +1854,7 @@ func loadServerConfig(secret func(key, value string) (string, error)) (*Config, 
 			NodeMapSessionBufferedChanSize: src.Int(
 				"tuning.node_mapsession_buffered_chan_size",
 			),
-			BatcherWorkers: func() int {
-				if workers := src.Int("tuning.batcher_workers"); workers > 0 {
-					return workers
-				}
-
-				return DefaultBatcherWorkers()
-			}(),
+			BatcherWorkers:          src.Int("tuning.batcher_workers"),
 			RegisterCacheExpiration: src.Duration("tuning.register_cache_expiration"),
 			RegisterCacheMaxEntries: src.Int("tuning.register_cache_max_entries"),
 			NodeStoreBatchSize:      src.Int("tuning.node_store_batch_size"),
@@ -1843,23 +1926,35 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 	return nil
 }
 
-// tailcfgDNSMu guards concurrent access to the mutable ExtraRecords of
-// [Config.TailcfgDNSConfig] between the extra-records file watcher (writer)
-// and the per-client map builds that clone it (readers). It is a package-level
-// lock so [Config] stays freely copyable during construction.
-var tailcfgDNSMu sync.RWMutex
+// StartDNS builds the DNS config clients get, from here on changed only by
+// [Config.SetExtraRecords], and keeps provider for [Config.DNSProvider].
+// Call it before the config is shared.
+func (c *Config) StartDNS(provider hsdns.Provider) {
+	c.dns = &liveDNS{dns: c.TailcfgDNSConfig(), provider: provider}
+}
 
-// CloneTailcfgDNSConfig returns a deep copy of [Config.TailcfgDNSConfig], or
-// nil if none is set. Safe for concurrent use with [Config.SetExtraRecords].
-func (c *Config) CloneTailcfgDNSConfig() *tailcfg.DNSConfig {
-	tailcfgDNSMu.RLock()
-	defer tailcfgDNSMu.RUnlock()
-
-	if c.TailcfgDNSConfig == nil {
-		return nil
+// DNSProvider returns the provider [Config.StartDNS] was given, else the
+// Go-only DNSChallenge.Provider.
+func (c *Config) DNSProvider() hsdns.Provider {
+	if c.dns != nil {
+		return c.dns.provider
 	}
 
-	return c.TailcfgDNSConfig.Clone()
+	return c.DNSChallenge.Provider
+}
+
+// CloneTailcfgDNSConfig returns a deep copy of the started DNS config, or a
+// fresh [Config.TailcfgDNSConfig] before [Config.StartDNS]. Safe for
+// concurrent use with [Config.SetExtraRecords].
+func (c *Config) CloneTailcfgDNSConfig() *tailcfg.DNSConfig {
+	if c.dns == nil {
+		return c.TailcfgDNSConfig()
+	}
+
+	c.dns.mu.RLock()
+	defer c.dns.mu.RUnlock()
+
+	return c.dns.dns.Clone()
 }
 
 // HasExtraRecord reports whether an extra DNS record is exactly name,
@@ -1873,14 +1968,15 @@ func (c *Config) HasExtraRecord(name string) bool {
 // a subdomain of it. Case is ignored, as in TLS name matching; name is
 // lowercase.
 func (c *Config) extraRecordAt(name string, orBelow bool) bool {
-	tailcfgDNSMu.RLock()
-	defer tailcfgDNSMu.RUnlock()
+	records := c.DNSConfig.ExtraRecords
+	if c.dns != nil {
+		c.dns.mu.RLock()
+		defer c.dns.mu.RUnlock()
 
-	if c.TailcfgDNSConfig == nil {
-		return false
+		records = c.dns.dns.ExtraRecords
 	}
 
-	for _, r := range c.TailcfgDNSConfig.ExtraRecords {
+	for _, r := range records {
 		rn := strings.ToLower(strings.TrimSuffix(r.Name, "."))
 		if rn == name || (orBelow && strings.HasSuffix(rn, "."+name)) {
 			return true
@@ -1901,15 +1997,18 @@ func (c *Config) TailcfgDebug() *tailcfg.Debug {
 	return &tailcfg.Debug{DisableLogTail: true}
 }
 
-// SetExtraRecords replaces the ExtraRecords of [Config.TailcfgDNSConfig]. Safe
-// for concurrent use with [Config.CloneTailcfgDNSConfig].
+// SetExtraRecords replaces the extra records of the started DNS config; it
+// does nothing before [Config.StartDNS]. Safe for concurrent use with
+// [Config.CloneTailcfgDNSConfig].
 func (c *Config) SetExtraRecords(records []tailcfg.DNSRecord) {
-	tailcfgDNSMu.Lock()
-	defer tailcfgDNSMu.Unlock()
-
-	if c.TailcfgDNSConfig != nil {
-		c.TailcfgDNSConfig.ExtraRecords = lowercaseRecordNames(records)
+	if c.dns == nil {
+		return
 	}
+
+	c.dns.mu.Lock()
+	defer c.dns.mu.Unlock()
+
+	c.dns.dns.ExtraRecords = lowercaseRecordNames(records)
 }
 
 // lowercaseRecordNames normalizes DNS record names to lowercase, as DNS names

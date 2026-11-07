@@ -1,6 +1,7 @@
 package hscontrol
 
 import (
+	"cmp"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -13,7 +14,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -52,11 +52,8 @@ import (
 	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
-	"tailscale.com/util/dnsname"
 )
 
 var (
@@ -131,10 +128,32 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		runtime.SetBlockProfileRate(1)
 	}
 
-	noisePrivateKey, err := readOrCreatePrivateKey(cfg.NoisePrivateKeyPath)
+	noisePrivateKey, err := readOrCreatePrivateKey(cfg.AbsPath(cfg.NoisePrivateKeyPath))
 	if err != nil {
 		return nil, fmt.Errorf("reading or creating Noise protocol private key: %w", err)
 	}
+
+	provider := cfg.DNSChallenge.Provider
+	if provider == nil && cfg.DNSChallenge.ProviderName() != "" {
+		provider, err = cfg.DNSChallenge.NewProvider(types.ResolveSecret)
+		if err != nil {
+			return nil, fmt.Errorf("building dns.challenge.provider: %w", err)
+		}
+	}
+
+	// Only node certificates let a client pick what is published; a record
+	// shared by headscale's own certificate alone is harmless.
+	if iso, ok := provider.(dns.Isolator); ok && cfg.DNSConfig.Certificates.Enabled {
+		err = iso.CheckIsolation()
+		if err != nil {
+			// A Go-only provider may have no name.
+			name := cmp.Or(cfg.DNSChallenge.ProviderName(), fmt.Sprintf("%T", provider))
+
+			return nil, fmt.Errorf("%w for %s: %w", dns.ErrProviderConfig, name, err)
+		}
+	}
+
+	cfg.StartDNS(provider)
 
 	s, err := state.NewState(cfg)
 	if err != nil {
@@ -150,9 +169,9 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	if cfg.DNSConfig.Certificates.Enabled {
 		app.challenges = dns.NewChallenges(
-			cfg.DNSChallenge.Provider,
-			cfg.DNSConfig.Certificates.Zone,
-			cfg.DNSChallenge.Resolvers,
+			provider,
+			cfg.DNSConfig.CertificateZone(),
+			cfg.DNSChallenge.ResolverAddrs(),
 			cfg.DNSChallenge.PropagationTimeout,
 		)
 	}
@@ -235,53 +254,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	app.authProvider = authProvider
 
-	if app.cfg.TailcfgDNSConfig != nil && app.cfg.TailcfgDNSConfig.Proxied { // if MagicDNS
-		// Clients route reverse lookups for the Tailscale ranges themselves
-		// (magicDNSRootDomains in tailscale.com/ipn/ipnlocal) and SaaS sends
-		// no reverse routes, so only a prefix outside those ranges needs them.
-		outside := func(p, r netip.Prefix) bool {
-			return p.Bits() < r.Bits() || !r.Contains(p.Addr())
-		}
-
-		// TODO(kradalby): revisit why this takes a list.
-		var magicDNSDomains []dnsname.FQDN
-		if cfg.PrefixV4 != nil && outside(*cfg.PrefixV4, tsaddr.CGNATRange()) {
-			magicDNSDomains = append(
-				magicDNSDomains,
-				util.GenerateIPv4DNSRootDomain(*cfg.PrefixV4)...,
-			)
-		}
-
-		if cfg.PrefixV6 != nil && outside(*cfg.PrefixV6, tsaddr.TailscaleULARange()) {
-			magicDNSDomains = append(
-				magicDNSDomains,
-				util.GenerateIPv6DNSRootDomain(*cfg.PrefixV6)...,
-			)
-		}
-
-		// we might have routes already from Split DNS
-		if app.cfg.TailcfgDNSConfig.Routes == nil {
-			app.cfg.TailcfgDNSConfig.Routes = make(map[string][]*dnstype.Resolver)
-		}
-
-		for _, d := range magicDNSDomains {
-			// Empty non-nil slice rather than nil: tailcfg.DNSConfig.Clone
-			// and dns.Config.Clone in tailscale drop map entries whose
-			// value is nil (see tailscale.com/tailcfg/tailcfg_clone.go and
-			// tailscale.com/net/dns/dns_clone.go: `if sv == nil { continue }`).
-			// Sending nil here caused the client's wgengine LinkChange:major
-			// handler to clobber /etc/resolv.conf on every tunnel-IP rebind
-			// — the handler reapplies a Clone of lastDNSConfig and the magic
-			// DNS routes vanish, taking the resolver with them for ~6 min
-			// until the next route-changing netmap. Empty slice survives
-			// Clone and carries the same "resolve locally" semantics
-			// ([tailcfg.DNSConfig.Routes] documents the empty-resolver form).
-			app.cfg.TailcfgDNSConfig.Routes[d.WithoutTrailingDot()] = []*dnstype.Resolver{}
-		}
-	}
-
 	if cfg.DERP.ServerEnabled {
-		derpServerKey, err := readOrCreatePrivateKey(cfg.DERP.ServerPrivateKeyPath)
+		derpServerKey, err := readOrCreatePrivateKey(cfg.AbsPath(cfg.DERP.ServerPrivateKeyPath))
 		if err != nil {
 			return nil, fmt.Errorf("reading or creating DERP server private key: %w", err)
 		}
@@ -421,7 +395,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			log.Info().Msg("fetching DERPMap updates")
 
 			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) { //nolint:contextcheck
-				derpMap, err := derp.GetDERPMap(h.cfg.DERP)
+				derpMap, err := derp.GetDERPMap(h.cfg.DERP, h.cfg.BaseDomain)
 				if err != nil {
 					return nil, err
 				}
@@ -615,7 +589,7 @@ func (h *Headscale) Serve() error {
 
 	// Start on the sources that loaded; only a map with no region at all,
 	// after the embedded region and the policy's derpMap, is fatal.
-	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP)
+	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP, h.cfg.BaseDomain)
 	if derpErr != nil {
 		log.Warn().Err(derpErr).Msg("skipping DERP map sources that failed to load")
 	}
@@ -875,7 +849,7 @@ func (h *Headscale) Serve() error {
 	var tailsqlCancel context.CancelFunc
 
 	if tailsqlEnabled {
-		if h.cfg.Database.Type != types.DatabaseSqlite {
+		if !h.cfg.Database.IsSQLite() {
 			//nolint:gocritic // exitAfterDefer: Fatal exits during initialization before servers start
 			log.Fatal().
 				Str("type", h.cfg.Database.Type).
@@ -892,7 +866,7 @@ func (h *Headscale) Serve() error {
 		tailsqlCtx, tailsqlCancel = context.WithCancel(ctx)
 
 		errorGroup.Go(func() error {
-			return runTailSQLService(tailsqlCtx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.Database.Sqlite.Path)
+			return runTailSQLService(tailsqlCtx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.SQLitePath())
 		})
 	}
 
@@ -1106,14 +1080,15 @@ func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
 
 	switch acmeCfg.ChallengeType {
 	case types.DNS01ChallengeType:
+		resolvers := h.cfg.DNSChallenge.ResolverAddrs()
 		issuer.DNS01Solver = dns01Solver{
 			DNS01Solver: &certmagic.DNS01Solver{
-				DNSProvider: h.cfg.DNSChallenge.Provider,
+				DNSProvider: h.cfg.DNSProvider(),
 				TTL:         dns.ChallengeTTL,
-				Resolvers:   h.cfg.DNSChallenge.Resolvers,
+				Resolvers:   resolvers,
 				Logger:      logger,
 			},
-			wait: dns.AwaitTXT(h.cfg.DNSChallenge.Resolvers, h.cfg.DNSChallenge.PropagationTimeout),
+			wait: dns.AwaitTXT(resolvers, h.cfg.DNSChallenge.PropagationTimeout),
 		}
 
 	case types.TLSALPN01ChallengeType:
@@ -1152,7 +1127,7 @@ func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
 		Logger:           logger,
 	})
 	magic = certmagic.New(cache, certmagic.Config{
-		Storage: &certmagic.FileStorage{Path: acmeCfg.CacheDir},
+		Storage: &certmagic.FileStorage{Path: h.cfg.AbsPath(acmeCfg.CacheDir)},
 		Logger:  logger,
 	})
 
@@ -1225,11 +1200,13 @@ func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 		return &tlsBundle{}, nil
 	}
 
+	certPath, keyPath := h.cfg.AbsPath(h.cfg.TLS.CertPath), h.cfg.AbsPath(h.cfg.TLS.KeyPath)
+
 	load := func() (*tls.Certificate, error) {
-		cert, err := tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {
 			return nil, fmt.Errorf("loading TLS keypair (tls.cert_path=%q, tls.key_path=%q): %w",
-				h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath, err)
+				certPath, keyPath, err)
 		}
 
 		return &cert, nil
@@ -1263,14 +1240,14 @@ func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 		now, leaf := time.Now(), cert.Leaf
 		if now.Before(leaf.NotBefore) || now.After(leaf.NotAfter) {
 			return fmt.Errorf("%w (tls.cert_path=%q): valid from %s until %s",
-				errTLSCertificateNotValidNow, h.cfg.TLS.CertPath,
+				errTLSCertificateNotValidNow, certPath,
 				leaf.NotBefore.Format(time.RFC3339), leaf.NotAfter.Format(time.RFC3339))
 		}
 
 		current.Store(cert)
 
 		log.Info().
-			Str("cert_path", h.cfg.TLS.CertPath).
+			Str("cert_path", certPath).
 			Str("not_after", leaf.NotAfter.Format(time.RFC3339)).
 			Msg("TLS certificate reloaded")
 

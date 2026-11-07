@@ -13,7 +13,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/dns"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/types/key"
 )
 
@@ -43,7 +42,7 @@ func Files(cfg *types.Config) []File {
 	var files []File
 
 	if cfg.Policy.Mode == types.PolicyModeFile && cfg.Policy.Path != "" {
-		p := util.AbsolutePath(cfg.ConfigDir, cfg.Policy.Path)
+		p := cfg.AbsPath(cfg.Policy.Path)
 		files = append(files, File{Key: "policy.path", Path: p, Check: func() error { return CheckPolicyFile(p) }})
 	}
 
@@ -55,7 +54,7 @@ func Files(cfg *types.Config) []File {
 		files = append(files, File{Key: "dns.extra_records_path", Path: p, Check: func() error { return CheckExtraRecordsFile(p) }})
 	}
 
-	if c, k := cfg.TLS.CertPath, cfg.TLS.KeyPath; c != "" {
+	if c, k := cfg.AbsPath(cfg.TLS.CertPath), cfg.AbsPath(cfg.TLS.KeyPath); c != "" {
 		files = append(files, File{
 			Key:   "tls.cert_path, tls.key_path",
 			Path:  c + ", " + k,
@@ -63,7 +62,7 @@ func Files(cfg *types.Config) []File {
 		})
 	}
 
-	noise := cfg.NoisePrivateKeyPath
+	noise := cfg.AbsPath(cfg.NoisePrivateKeyPath)
 	if noise != "" {
 		files = append(files, File{
 			Key: "noise.private_key_path", Path: noise, CreatedAtStartup: true,
@@ -71,7 +70,7 @@ func Files(cfg *types.Config) []File {
 		})
 	}
 
-	if d := cfg.DERP.ServerPrivateKeyPath; cfg.DERP.ServerEnabled && d != "" {
+	if d := cfg.AbsPath(cfg.DERP.ServerPrivateKeyPath); cfg.DERP.ServerEnabled && d != "" {
 		files = append(files, File{
 			Key: "derp.server.private_key_path", Path: d, CreatedAtStartup: true,
 			Check: func() error { return checkDERPKey(d, noise) },
@@ -101,7 +100,7 @@ func CheckPolicyFile(path string) error {
 
 // CheckDERPMapFile parses a DERP map file as startup loads derp.paths.
 func CheckDERPMapFile(path string) error {
-	_, err := derp.GetDERPMap(types.DERPConfig{Paths: []string{path}})
+	_, err := derp.GetDERPMap(types.DERPConfig{Paths: []string{path}}, "")
 
 	return err
 }

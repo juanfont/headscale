@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -74,7 +75,6 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
-				Certificates:  CertificatesConfig{Zone: "example.com"},
 			},
 		},
 		{
@@ -141,7 +141,6 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
-				Certificates:  CertificatesConfig{Zone: "example.com"},
 			},
 		},
 		{
@@ -340,7 +339,6 @@ func TestReadConfigFromEnv(t *testing.T) {
 				// 	{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				// },
 				SearchDomains: []string{"test.com", "bar.com"},
-				Certificates:  CertificatesConfig{Zone: "example.com"},
 			},
 		},
 	}
@@ -1273,8 +1271,8 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 			APIKey: secretAPIKey,
 		},
 		DNSChallenge: DNSChallengeConfig{
-			ProviderName: "cloudflare",
-			Provider:     &cloudflare.Provider{APIToken: secretDNSToken},
+			ProviderSettings: map[string]any{"name": "cloudflare", "api_token": secretDNSToken},
+			Provider:         &cloudflare.Provider{APIToken: secretDNSToken},
 		},
 	}
 
@@ -1400,12 +1398,210 @@ func TestExtraRecordsAreLowercased(t *testing.T) {
 		t.Errorf("dnsToTailcfgDNS extra records mismatch (-want +got):\n%s", diff)
 	}
 
-	cfg := &Config{TailcfgDNSConfig: &tailcfg.DNSConfig{}}
+	cfg := &Config{}
+	cfg.StartDNS(nil)
 	cfg.SetExtraRecords(mixed)
 
-	if diff := cmp.Diff(want, cfg.TailcfgDNSConfig.ExtraRecords); diff != "" {
+	if diff := cmp.Diff(want, cfg.CloneTailcfgDNSConfig().ExtraRecords); diff != "" {
 		t.Errorf("SetExtraRecords mismatch (-want +got):\n%s", diff)
 	}
+}
+
+func TestTailcfgDNSConfig(t *testing.T) {
+	cgnat := netip.MustParsePrefix("100.64.0.0/10")
+	ten := netip.MustParsePrefix("10.0.0.0/8")
+	ula := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	fd00 := netip.MustParsePrefix("fd00::/48")
+
+	tests := []struct {
+		name string
+		cfg  Config
+		want *tailcfg.DNSConfig
+	}{
+		{
+			name: "empty",
+			want: &tailcfg.DNSConfig{Routes: map[string][]*dnstype.Resolver{}},
+		},
+		{
+			name: "magic dns with base domain",
+			cfg:  Config{DNSConfig: DNSConfig{MagicDNS: true, BaseDomain: "example.com", SearchDomains: []string{"corp.com"}}},
+			want: &tailcfg.DNSConfig{
+				Proxied: true,
+				Domains: []string{"example.com", "corp.com"},
+				Routes:  map[string][]*dnstype.Resolver{},
+			},
+		},
+		{
+			name: "override local dns",
+			cfg:  Config{DNSConfig: DNSConfig{OverrideLocalDNS: true, Nameservers: Nameservers{Global: []string{"1.1.1.1"}}}},
+			want: &tailcfg.DNSConfig{
+				Resolvers: []*dnstype.Resolver{{Addr: "1.1.1.1"}},
+				Routes:    map[string][]*dnstype.Resolver{},
+			},
+		},
+		{
+			name: "fallback resolvers",
+			cfg:  Config{DNSConfig: DNSConfig{Nameservers: Nameservers{Global: []string{"1.1.1.1"}}}},
+			want: &tailcfg.DNSConfig{
+				FallbackResolvers: []*dnstype.Resolver{{Addr: "1.1.1.1"}},
+				Routes:            map[string][]*dnstype.Resolver{},
+			},
+		},
+		{
+			name: "split dns",
+			cfg:  Config{DNSConfig: DNSConfig{Nameservers: Nameservers{Split: map[string][]string{"corp.com": {"10.0.0.1"}}}}},
+			want: &tailcfg.DNSConfig{
+				Routes: map[string][]*dnstype.Resolver{"corp.com": {{Addr: "10.0.0.1"}}},
+			},
+		},
+		{
+			name: "magic dns reverse routes outside cgnat",
+			cfg: Config{
+				PrefixV4:  &ten,
+				DNSConfig: DNSConfig{MagicDNS: true, BaseDomain: "example.com"},
+			},
+			want: &tailcfg.DNSConfig{
+				Proxied: true,
+				Domains: []string{"example.com"},
+				Routes:  map[string][]*dnstype.Resolver{"10.in-addr.arpa": {}},
+			},
+		},
+		{
+			name: "magic dns reverse routes outside ula",
+			cfg: Config{
+				PrefixV6:  &fd00,
+				DNSConfig: DNSConfig{MagicDNS: true, BaseDomain: "example.com"},
+			},
+			want: &tailcfg.DNSConfig{
+				Proxied: true,
+				Domains: []string{"example.com"},
+				Routes:  map[string][]*dnstype.Resolver{"0.0.0.0.0.0.0.0.0.0.d.f.ip6.arpa": {}},
+			},
+		},
+		{
+			name: "magic dns inside cgnat and ula",
+			cfg: Config{
+				PrefixV4:  &cgnat,
+				PrefixV6:  &ula,
+				DNSConfig: DNSConfig{MagicDNS: true, BaseDomain: "example.com"},
+			},
+			want: &tailcfg.DNSConfig{
+				Proxied: true,
+				Domains: []string{"example.com"},
+				Routes:  map[string][]*dnstype.Resolver{},
+			},
+		},
+		{
+			name: "no reverse routes without magic dns",
+			cfg:  Config{PrefixV4: &ten},
+			want: &tailcfg.DNSConfig{Routes: map[string][]*dnstype.Resolver{}},
+		},
+		{
+			name: "extra record names lowercased",
+			cfg: Config{DNSConfig: DNSConfig{ExtraRecords: []tailcfg.DNSRecord{
+				{Name: "Grafana.Example.com", Type: "A", Value: "100.64.0.3"},
+			}}},
+			want: &tailcfg.DNSConfig{
+				Routes:       map[string][]*dnstype.Resolver{},
+				ExtraRecords: []tailcfg.DNSRecord{{Name: "grafana.example.com", Type: "A", Value: "100.64.0.3"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// No EquateEmpty: a reverse route must be an empty, non-nil slice.
+			if diff := cmp.Diff(tt.want, tt.cfg.TailcfgDNSConfig()); diff != "" {
+				t.Errorf("TailcfgDNSConfig() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestLiveDNS(t *testing.T) {
+	goOnly := &cloudflare.Provider{APIToken: "go-only"}
+	cfg := &Config{
+		DNSConfig: DNSConfig{
+			MagicDNS:     true,
+			BaseDomain:   "example.com",
+			ExtraRecords: []tailcfg.DNSRecord{{Name: "Old.example.com", Type: "A", Value: "100.64.0.1"}},
+		},
+		DNSChallenge: DNSChallengeConfig{Provider: goOnly},
+	}
+
+	assert.Equal(t, cfg.TailcfgDNSConfig(), cfg.CloneTailcfgDNSConfig())
+	assert.Same(t, goOnly, cfg.DNSProvider())
+	assert.True(t, cfg.HasExtraRecord("old.example.com."))
+
+	// Nothing holds the records before StartDNS.
+	cfg.SetExtraRecords([]tailcfg.DNSRecord{{Name: "early.example.com", Type: "A", Value: "100.64.0.9"}})
+	assert.False(t, cfg.HasExtraRecord("early.example.com"))
+	assert.Equal(t, cfg.DNSConfig.ExtraRecords[0].Value, cfg.CloneTailcfgDNSConfig().ExtraRecords[0].Value)
+
+	started := &cloudflare.Provider{APIToken: "started"}
+	cfg.StartDNS(started)
+	cfg.SetExtraRecords([]tailcfg.DNSRecord{{Name: "A.Example.com", Type: "A", Value: "100.64.0.2"}})
+
+	clone := cfg.CloneTailcfgDNSConfig()
+	assert.Equal(t, []tailcfg.DNSRecord{{Name: "a.example.com", Type: "A", Value: "100.64.0.2"}}, clone.ExtraRecords)
+	assert.True(t, cfg.HasExtraRecord("A.Example.com."))
+	assert.False(t, cfg.HasExtraRecord("old.example.com"))
+	assert.Same(t, started, cfg.DNSProvider())
+
+	clone.ExtraRecords = nil
+
+	assert.Len(t, cfg.CloneTailcfgDNSConfig().ExtraRecords, 1, "a clone is a copy")
+}
+
+// TestNameserverWarnings pins that the config check reports a nameserver
+// clients will not get, and that building the DNS config does not report it
+// again.
+func TestNameserverWarnings(t *testing.T) {
+	yaml := `---
+server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+dns:
+  magic_dns: true
+  base_domain: ts.example.com
+  override_local_dns: true
+  nameservers:
+    global: ["1.1.1.1", "1.1.1.1:53"]
+    split:
+      corp.example.com: ["[2606:4700::1111]:53"]
+`
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(yaml), 0o600))
+	require.NoError(t, LoadConfig(dir, false))
+
+	var buf bytes.Buffer
+
+	oldLogger, oldLevel := log.Logger, zerolog.GlobalLevel()
+	log.Logger = zerolog.New(&buf)
+
+	t.Cleanup(func() {
+		log.Logger = oldLogger
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	cfg, err := CheckServerConfig()
+	require.NoError(t, err)
+
+	logged := buf.String()
+	assert.Contains(t, logged, `invalid nameserver \"1.1.1.1:53\" in dns.nameservers.global, ignoring`)
+	assert.Contains(t, logged, `invalid nameserver \"[2606:4700::1111]:53\" in dns.nameservers.split.corp.example.com, ignoring`)
+	assert.NotContains(t, logged, `\"1.1.1.1\" in`)
+
+	buf.Reset()
+	cfg.StartDNS(nil)
+
+	assert.Equal(t, []*dnstype.Resolver{{Addr: "1.1.1.1"}}, cfg.CloneTailcfgDNSConfig().Resolvers)
+	assert.Empty(t, buf.String(), "built once, reported once: by the load")
 }
 
 func TestDNSChallengeConfig(t *testing.T) {
@@ -1443,7 +1639,7 @@ dns:
 		{
 			name: "disabled by default",
 			yaml: base,
-			// Zone follows base_domain even when unused, so it is never empty.
+			// CertificateZone follows base_domain even when unused, so it is never empty.
 			wantZone:      "ts.example.com",
 			wantNoProv:    true,
 			wantResolvers: []string{"1.1.1.1:53", "8.8.8.8:53"},
@@ -1877,25 +2073,31 @@ tls:
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantZone, cfg.DNSConfig.Certificates.Zone)
+			assert.Equal(t, tt.wantZone, cfg.DNSConfig.CertificateZone())
 
 			if tt.wantResolvers != nil {
-				assert.Equal(t, tt.wantResolvers, cfg.DNSChallenge.Resolvers)
+				assert.Equal(t, tt.wantResolvers, cfg.DNSChallenge.ResolverAddrs())
 			}
+
+			// The loader only validates the provider; startup builds it.
+			assert.Nil(t, cfg.DNSChallenge.Provider)
 
 			if tt.wantNoProv {
-				assert.Nil(t, cfg.DNSChallenge.Provider)
+				assert.Empty(t, cfg.DNSChallenge.ProviderName())
 
 				return
 			}
+
+			built, err := cfg.DNSChallenge.NewProvider(ResolveSecret)
+			require.NoError(t, err)
 
 			if tt.wantProvider != "" {
-				assert.Equal(t, tt.wantProvider, fmt.Sprintf("%T", cfg.DNSChallenge.Provider))
+				assert.Equal(t, tt.wantProvider, fmt.Sprintf("%T", built))
 
 				return
 			}
 
-			if iso, ok := cfg.DNSChallenge.Provider.(hsdns.Isolator); ok {
+			if iso, ok := built.(hsdns.Isolator); ok {
 				if tt.wantIsolates != "" {
 					assert.True(t, iso.Isolates(tt.wantIsolates))
 				}
@@ -1903,8 +2105,8 @@ tls:
 				return
 			}
 
-			provider, ok := cfg.DNSChallenge.Provider.(*cloudflare.Provider)
-			require.True(t, ok, "provider is %T", cfg.DNSChallenge.Provider)
+			provider, ok := built.(*cloudflare.Provider)
+			require.True(t, ok, "provider is %T", built)
 			assert.Equal(t, tt.wantToken, provider.APIToken)
 		})
 	}
@@ -2455,6 +2657,328 @@ func TestConfigCompat(t *testing.T) {
 	}
 }
 
+// compatConfig is the JSON shape of Config the goldens were written in,
+// frozen so Config can change without a golden diff; compatView renders
+// into it.
+type compatConfig struct {
+	ServerURL            string
+	Addr                 string
+	MetricsAddr          string
+	TrustedProxies       []netip.Prefix
+	Node                 compatNodeConfig
+	PreAuthKeys          compatPreAuthKeysConfig
+	PrefixV4             *netip.Prefix
+	PrefixV6             *netip.Prefix
+	IPAllocation         string
+	NoisePrivateKeyPath  string
+	BaseDomain           string
+	Log                  compatLogConfig
+	DisableUpdateCheck   bool
+	Database             compatDatabaseConfig
+	DERP                 compatDERPConfig
+	TLS                  compatTLSConfig
+	DNSConfig            compatDNSConfig
+	TailcfgDNSConfig     *tailcfg.DNSConfig
+	DNSChallenge         compatDNSChallengeConfig
+	UnixSocket           string
+	UnixSocketPermission fs.FileMode
+	OIDC                 compatOIDCConfig
+	LogTail              compatLogTailConfig
+	Taildrop             compatTaildropConfig
+	AutoUpdate           compatAutoUpdateConfig
+	CLI                  compatCLIConfig
+	Policy               compatPolicyConfig
+	Tuning               compatTuning
+}
+
+type compatNodeConfig struct {
+	Expiry    time.Duration
+	Ephemeral compatEphemeralConfig
+	Routes    compatRouteConfig
+}
+
+type compatEphemeralConfig struct{ InactivityTimeout time.Duration }
+
+type compatRouteConfig struct{ HA compatHARouteConfig }
+
+type compatHARouteConfig struct{ ProbeInterval, ProbeTimeout time.Duration }
+
+type compatPreAuthKeysConfig struct{ RevokedRetention time.Duration }
+
+type compatLogConfig struct {
+	Format string
+	Level  zerolog.Level
+}
+
+type compatDatabaseConfig struct {
+	Type     string
+	Debug    bool
+	Gorm     compatGormConfig
+	Sqlite   compatSqliteConfig
+	Postgres compatPostgresConfig
+}
+
+type compatGormConfig struct {
+	Debug                 bool
+	SlowThreshold         time.Duration
+	SkipErrRecordNotFound bool
+	ParameterizedQueries  bool
+}
+
+type compatSqliteConfig struct {
+	Path              string
+	WriteAheadLog     bool
+	WALAutoCheckPoint int
+}
+
+type compatPostgresConfig struct {
+	Host                string
+	Port                int
+	Name                string
+	User                string
+	Ssl                 string
+	MaxOpenConnections  int
+	MaxIdleConnections  int
+	ConnMaxIdleTimeSecs int
+}
+
+type compatDERPConfig struct {
+	ServerEnabled                      bool
+	AutomaticallyAddEmbeddedDerpRegion bool
+	ServerRegionID                     tailcfg.DERPRegionID
+	ServerRegionCode                   string
+	ServerRegionName                   string
+	ServerPrivateKeyPath               string
+	ServerVerifyClients                bool
+	STUNAddr                           string
+	URLs                               []url.URL
+	Paths                              []string
+	DERPMap                            *tailcfg.DERPMap
+	AutoUpdate                         bool
+	UpdateFrequency                    time.Duration
+	IPv4                               string
+	IPv6                               string
+}
+
+type compatTLSConfig struct {
+	CertPath string
+	KeyPath  string
+	ACME     compatACMEConfig
+}
+
+type compatACMEConfig struct {
+	Hostname      string
+	ChallengeType string
+	HTTPListen    string
+	URL           string
+	Email         string
+	CacheDir      string
+}
+
+type compatDNSConfig struct {
+	MagicDNS         bool
+	BaseDomain       string
+	OverrideLocalDNS bool
+	Nameservers      compatNameservers
+	SearchDomains    []string
+	ExtraRecords     []tailcfg.DNSRecord
+	ExtraRecordsPath string
+	Certificates     compatCertificatesConfig
+}
+
+type compatNameservers struct {
+	Global []string
+	Split  map[string][]string
+}
+
+type compatCertificatesConfig struct {
+	Enabled bool
+	Zone    string
+}
+
+type compatDNSChallengeConfig struct {
+	PropagationTimeout time.Duration
+	Resolvers          []string
+	ProviderName       string
+}
+
+type compatOIDCConfig struct {
+	OnlyStartIfOIDCIsAvailable bool
+	Issuer                     string
+	ClientID                   string
+	Scope                      []string
+	ExtraParams                map[string]string
+	AllowedDomains             []string
+	AllowedUsers               []string
+	AllowedGroups              []string
+	EmailVerifiedRequired      bool
+	UseExpiryFromToken         bool
+	PKCE                       compatPKCEConfig
+}
+
+type compatPKCEConfig struct {
+	Enabled bool
+	Method  string
+}
+
+type compatLogTailConfig struct{ Enabled bool }
+
+type compatTaildropConfig struct{ Enabled bool }
+
+type compatAutoUpdateConfig struct{ Enabled bool }
+
+type compatCLIConfig struct {
+	Address  string
+	Timeout  time.Duration
+	Insecure bool
+}
+
+type compatPolicyConfig struct {
+	Path string
+	Mode string
+}
+
+type compatTuning struct {
+	NotifierSendTimeout            time.Duration
+	BatchChangeDelay               time.Duration
+	NodeMapSessionBufferedChanSize int
+	BatcherWorkers                 int
+	RegisterCacheExpiration        time.Duration
+	RegisterCacheMaxEntries        int
+	NodeStoreBatchSize             int
+	NodeStoreBatchTimeout          time.Duration
+}
+
+// compatView renders cfg in the golden shape, deriving the values the
+// loader used to store resolved.
+func compatView(cfg *Config) compatConfig {
+	pg := cfg.Database.Postgres
+	oidc := cfg.OIDC
+	ch := cfg.DNSChallenge
+	acme := cfg.TLS.ACME
+
+	dbType := cfg.Database.Type
+	if cfg.Database.IsSQLite() {
+		dbType = DatabaseSqlite
+	}
+
+	tuning := compatTuning(cfg.Tuning)
+	tuning.BatcherWorkers = cfg.Tuning.BatcherWorkerCount()
+
+	return compatConfig{
+		ServerURL:      cfg.ServerURL,
+		Addr:           cfg.Addr,
+		MetricsAddr:    cfg.MetricsAddr,
+		TrustedProxies: cfg.TrustedProxies,
+		Node: compatNodeConfig{
+			Expiry:    cfg.Node.Expiry,
+			Ephemeral: compatEphemeralConfig(cfg.Node.Ephemeral),
+			Routes:    compatRouteConfig{HA: compatHARouteConfig(cfg.Node.Routes.HA)},
+		},
+		PreAuthKeys:         compatPreAuthKeysConfig(cfg.PreAuthKeys),
+		PrefixV4:            cfg.PrefixV4,
+		PrefixV6:            cfg.PrefixV6,
+		IPAllocation:        string(cfg.IPAllocation),
+		NoisePrivateKeyPath: cfg.AbsPath(cfg.NoisePrivateKeyPath),
+		BaseDomain:          cfg.BaseDomain,
+		Log:                 compatLogConfig(cfg.Log),
+		DisableUpdateCheck:  cfg.DisableUpdateCheck,
+		Database: compatDatabaseConfig{
+			Type:  dbType,
+			Debug: cfg.Database.Debug,
+			Gorm:  compatGormConfig(cfg.Database.Gorm),
+			Sqlite: compatSqliteConfig{
+				Path:              cfg.SQLitePath(),
+				WriteAheadLog:     cfg.Database.Sqlite.WriteAheadLog,
+				WALAutoCheckPoint: cfg.Database.Sqlite.WALAutoCheckPoint,
+			},
+			Postgres: compatPostgresConfig{
+				Host:                pg.Host,
+				Port:                pg.Port,
+				Name:                pg.Name,
+				User:                pg.User,
+				Ssl:                 pg.Ssl,
+				MaxOpenConnections:  pg.MaxOpenConnections,
+				MaxIdleConnections:  pg.MaxIdleConnections,
+				ConnMaxIdleTimeSecs: pg.ConnMaxIdleTimeSecs,
+			},
+		},
+		DERP: compatDERPConfig{
+			ServerEnabled:                      cfg.DERP.ServerEnabled,
+			AutomaticallyAddEmbeddedDerpRegion: cfg.DERP.AutomaticallyAddEmbeddedDerpRegion,
+			ServerRegionID:                     cfg.DERP.ServerRegionID,
+			ServerRegionCode:                   cfg.DERP.ServerRegionCode,
+			ServerRegionName:                   cfg.DERP.ServerRegionName,
+			ServerPrivateKeyPath:               cfg.AbsPath(cfg.DERP.ServerPrivateKeyPath),
+			ServerVerifyClients:                cfg.DERP.ServerVerifyClients,
+			STUNAddr:                           cfg.DERP.STUNAddr,
+			URLs:                               cfg.DERP.URLs,
+			Paths:                              cfg.DERP.Paths,
+			DERPMap:                            cfg.DERP.DERPMap,
+			AutoUpdate:                         cfg.DERP.AutoUpdate,
+			UpdateFrequency:                    cfg.DERP.UpdateFrequency,
+			IPv4:                               cfg.DERP.IPv4,
+			IPv6:                               cfg.DERP.IPv6,
+		},
+		TLS: compatTLSConfig{
+			CertPath: cfg.AbsPath(cfg.TLS.CertPath),
+			KeyPath:  cfg.AbsPath(cfg.TLS.KeyPath),
+			ACME: compatACMEConfig{
+				Hostname:      acme.Hostname,
+				ChallengeType: acme.ChallengeType,
+				HTTPListen:    acme.HTTPListen,
+				URL:           acme.URL,
+				Email:         acme.Email,
+				CacheDir:      cfg.AbsPath(acme.CacheDir),
+			},
+		},
+		DNSConfig: compatDNSConfig{
+			MagicDNS:         cfg.DNSConfig.MagicDNS,
+			BaseDomain:       cfg.DNSConfig.BaseDomain,
+			OverrideLocalDNS: cfg.DNSConfig.OverrideLocalDNS,
+			Nameservers:      compatNameservers(cfg.DNSConfig.Nameservers),
+			SearchDomains:    cfg.DNSConfig.SearchDomains,
+			ExtraRecords:     cfg.DNSConfig.ExtraRecords,
+			ExtraRecordsPath: cfg.DNSConfig.ExtraRecordsPath,
+			Certificates: compatCertificatesConfig{
+				Enabled: cfg.DNSConfig.Certificates.Enabled,
+				Zone:    cfg.DNSConfig.CertificateZone(),
+			},
+		},
+		TailcfgDNSConfig: cfg.TailcfgDNSConfig(),
+		DNSChallenge: compatDNSChallengeConfig{
+			PropagationTimeout: ch.PropagationTimeout,
+			Resolvers:          ch.ResolverAddrs(),
+			ProviderName:       ch.ProviderName(),
+		},
+		UnixSocket:           cfg.UnixSocket,
+		UnixSocketPermission: cfg.UnixSocketPermission,
+		OIDC: compatOIDCConfig{
+			OnlyStartIfOIDCIsAvailable: oidc.OnlyStartIfOIDCIsAvailable,
+			Issuer:                     oidc.Issuer,
+			ClientID:                   oidc.ClientID,
+			Scope:                      oidc.Scope,
+			ExtraParams:                oidc.ExtraParams,
+			AllowedDomains:             oidc.AllowedDomains,
+			AllowedUsers:               oidc.AllowedUsers,
+			AllowedGroups:              oidc.AllowedGroups,
+			EmailVerifiedRequired:      oidc.EmailVerifiedRequired,
+			UseExpiryFromToken:         oidc.UseExpiryFromToken,
+			PKCE:                       compatPKCEConfig(oidc.PKCE),
+		},
+		LogTail:    compatLogTailConfig(cfg.LogTail),
+		Taildrop:   compatTaildropConfig(cfg.Taildrop),
+		AutoUpdate: compatAutoUpdateConfig(cfg.AutoUpdate),
+		CLI: compatCLIConfig{
+			Address:  cfg.CLI.Address,
+			Timeout:  cfg.CLI.Timeout,
+			Insecure: cfg.CLI.Insecure,
+		},
+		Policy: compatPolicyConfig{Path: cfg.Policy.Path, Mode: string(cfg.Policy.Mode)},
+		Tuning: tuning,
+	}
+}
+
 // loadCompat loads one fixture set the way headscale does, from a temp dir
 // so relative paths and the error text do not depend on the checkout.
 func loadCompat(t *testing.T, file, envFile string, cli bool) compatRecord {
@@ -2513,11 +3037,23 @@ func loadCompat(t *testing.T, file, envFile string, cli bool) compatRecord {
 	}
 
 	if cfg != nil {
-		if cfg.Tuning.BatcherWorkers == DefaultBatcherWorkers() {
-			cfg.Tuning.BatcherWorkers = 0 // depends on runtime.NumCPU
+		view := compatView(cfg)
+		if cli {
+			// The CLI loader sets only what client commands read; compatView
+			// would derive server values from the zero rest.
+			view = compatConfig{
+				Log:                view.Log,
+				DisableUpdateCheck: view.DisableUpdateCheck,
+				UnixSocket:         view.UnixSocket,
+				CLI:                view.CLI,
+			}
 		}
 
-		raw, err := json.Marshal(cfg)
+		if view.Tuning.BatcherWorkers == DefaultBatcherWorkers() {
+			view.Tuning.BatcherWorkers = 0 // depends on runtime.NumCPU
+		}
+
+		raw, err := json.Marshal(view)
 		require.NoError(t, err)
 
 		rec.Config = json.RawMessage(norm(string(raw)))
@@ -2708,9 +3244,10 @@ dns:
 	cfg, err := LoadServerConfig()
 	require.NoError(t, err)
 
-	assert.Equal(t, filepath.Join(dir, "noise.key"), cfg.NoisePrivateKeyPath)
+	assert.Equal(t, "./noise.key", cfg.NoisePrivateKeyPath)
+	assert.Equal(t, filepath.Join(dir, "noise.key"), cfg.AbsPath(cfg.NoisePrivateKeyPath))
 	assert.Equal(t, "./policy.hujson", cfg.Policy.Path)
-	assert.Equal(t, filepath.Join(dir, "policy.hujson"), util.AbsolutePath(cfg.ConfigDir, cfg.Policy.Path))
+	assert.Equal(t, filepath.Join(dir, "policy.hujson"), cfg.AbsPath(cfg.Policy.Path))
 }
 
 // TestSQLiteMemoryPath: ":memory:" names SQLite's in-memory database, not a
@@ -2739,8 +3276,52 @@ func TestSQLiteMemoryPath(t *testing.T) {
 
 			cfg, err := LoadServerConfig()
 			require.NoError(t, err)
-			assert.Equal(t, ":memory:", cfg.Database.Sqlite.Path)
-			assert.True(t, filepath.IsAbs(cfg.NoisePrivateKeyPath), cfg.NoisePrivateKeyPath)
+			assert.Equal(t, ":memory:", cfg.SQLitePath())
+			assert.True(t, filepath.IsAbs(cfg.AbsPath(cfg.NoisePrivateKeyPath)), cfg.AbsPath(cfg.NoisePrivateKeyPath))
 		})
 	}
+}
+
+// TestDerivedValues pins the values computed from what the configuration
+// says, which the loader stores as written.
+func TestDerivedValues(t *testing.T) {
+	etc := &Config{ConfigDir: "/etc/hs"}
+	sqlite := func(path string) *Config {
+		return &Config{ConfigDir: "/etc/hs", Database: DatabaseConfig{Sqlite: SqliteConfig{Path: path}}}
+	}
+	resolvers := func(r ...string) DNSChallengeConfig { return DNSChallengeConfig{Resolvers: r} }
+
+	tests := []struct {
+		name      string
+		got, want any
+	}{
+		{"relative path", etc.AbsPath("./noise.key"), "/etc/hs/noise.key"},
+		{"absolute path", etc.AbsPath("/var/lib/hs/noise.key"), "/var/lib/hs/noise.key"},
+		{"no config dir", (&Config{}).AbsPath("./noise.key"), "./noise.key"},
+		{"empty path", etc.AbsPath(""), ""},
+		{"sqlite relative", sqlite("db.sqlite").SQLitePath(), "/etc/hs/db.sqlite"},
+		{"sqlite memory", sqlite(":memory:").SQLitePath(), ":memory:"},
+		{"sqlite", DatabaseConfig{Type: "sqlite"}.IsSQLite(), true},
+		{"sqlite3", DatabaseConfig{Type: "sqlite3"}.IsSQLite(), true},
+		{"postgres", DatabaseConfig{Type: "postgres"}.IsSQLite(), false},
+		{"workers unset", Tuning{}.BatcherWorkerCount(), DefaultBatcherWorkers()},
+		{"workers set", Tuning{BatcherWorkers: 7}.BatcherWorkerCount(), 7},
+		{"zone unset", DNSConfig{BaseDomain: "ts.example.com"}.CertificateZone(), "ts.example.com"},
+		{"zone set", DNSConfig{BaseDomain: "ts.example.com", Certificates: CertificatesConfig{Zone: "example.com"}}.CertificateZone(), "example.com"},
+		{"resolvers unset", resolvers().ResolverAddrs(), []string{"1.1.1.1:53", "8.8.8.8:53"}},
+		{"resolver bare IPv4", resolvers("9.9.9.9").ResolverAddrs(), []string{"9.9.9.9:53"}},
+		{"resolver bare IPv6", resolvers("2620:fe::fe").ResolverAddrs(), []string{"[2620:fe::fe]:53"}},
+		{"resolver with port", resolvers("[::1]:5353").ResolverAddrs(), []string{"[::1]:5353"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.got)
+		})
+	}
+
+	// Callers share the config, so deriving must not write to it.
+	written := []string{"9.9.9.9"}
+	resolvers(written...).ResolverAddrs()
+	assert.Equal(t, []string{"9.9.9.9"}, written)
 }

@@ -103,9 +103,9 @@ func persistTestConfig(dbPath string) *types.Config {
 func TestLoadedDuplicateNamesAreResolvedInMemory(t *testing.T) {
 	dbPath := t.TempDir() + "/headscale.db"
 	cfg := persistTestConfig(dbPath)
-	cfg.TailcfgDNSConfig = &tailcfg.DNSConfig{ExtraRecords: []tailcfg.DNSRecord{
+	cfg.DNSConfig.ExtraRecords = []tailcfg.DNSRecord{
 		{Name: "grafana." + cfg.BaseDomain, Type: "A", Value: "100.64.0.100"},
-	}}
+	}
 	database, err := db.NewHeadscaleDatabase(cfg)
 	require.NoError(t, err)
 

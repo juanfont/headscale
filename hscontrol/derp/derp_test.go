@@ -277,11 +277,11 @@ func TestGetDERPMapKeepsOrderAcrossRefreshes(t *testing.T) {
 		source.Regions[id+1] = region
 	}
 
-	first, err := GetDERPMap(types.DERPConfig{DERPMap: source, ShuffleSeed: "stable.example.com"})
+	first, err := GetDERPMap(types.DERPConfig{DERPMap: source}, "stable.example.com")
 	require.NoError(t, err)
 
 	for range 5 {
-		next, err := GetDERPMap(types.DERPConfig{DERPMap: source, ShuffleSeed: "stable.example.com"})
+		next, err := GetDERPMap(types.DERPConfig{DERPMap: source}, "stable.example.com")
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(first, next); diff != "" {
@@ -524,7 +524,7 @@ regions:
 	dm, err := GetDERPMap(types.DERPConfig{
 		URLs:  []url.URL{*goodURL, *downURL},
 		Paths: []string{goodPath, brokenPath, filepath.Join(t.TempDir(), "missing.yaml")},
-	})
+	}, "")
 	require.ErrorIs(t, err, errDERPMapStatus)
 	require.ErrorContains(t, err, down.URL)
 	require.ErrorContains(t, err, brokenPath)

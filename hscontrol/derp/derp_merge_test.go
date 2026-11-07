@@ -68,11 +68,11 @@ func TestGetDERPMapCarriesHomeParams(t *testing.T) {
     999: 0.5
 `), 0o600))
 
-	got, err := GetDERPMap(types.DERPConfig{DERPMap: base})
+	got, err := GetDERPMap(types.DERPConfig{DERPMap: base}, "")
 	require.NoError(t, err)
 	assert.Nil(t, got.HomeParams)
 
-	got, err = GetDERPMap(types.DERPConfig{DERPMap: base, Paths: []string{path}})
+	got, err = GetDERPMap(types.DERPConfig{DERPMap: base, Paths: []string{path}}, "")
 	require.NoError(t, err)
 	require.NotNil(t, got.HomeParams)
 	assert.Equal(t,

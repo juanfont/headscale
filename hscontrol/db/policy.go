@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -76,7 +75,7 @@ func PolicyBytes(tx *gorm.DB, cfg *types.Config) ([]byte, error) {
 			return nil, nil
 		}
 
-		absPath := util.AbsolutePath(cfg.ConfigDir, path)
+		absPath := cfg.AbsPath(path)
 
 		return os.ReadFile(absPath)
 

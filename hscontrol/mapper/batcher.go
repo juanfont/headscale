@@ -62,7 +62,7 @@ func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *Batcher {
 // NewBatcherAndMapper creates a new [Batcher] with its [mapper].
 func NewBatcherAndMapper(cfg *types.Config, state *state.State) *Batcher {
 	m := newMapper(cfg, state)
-	b := NewBatcher(cfg.Tuning.BatchChangeDelay, cfg.Tuning.BatcherWorkers, m)
+	b := NewBatcher(cfg.Tuning.BatchChangeDelay, cfg.Tuning.BatcherWorkerCount(), m)
 	m.batcher = b
 
 	return b

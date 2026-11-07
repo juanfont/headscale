@@ -11,11 +11,11 @@ import (
 
 var errSecretEmpty = errors.New("file is empty")
 
-// resolveSecret returns value, or the trimmed contents of the file named
+// ResolveSecret returns value, or the trimmed contents of the file named
 // by "file:<path>" (Tailscale's form), which keeps the secret out of the
 // config and the environment. Variables in the path are expanded so a
 // systemd credential can be named by ${CREDENTIALS_DIRECTORY}.
-func resolveSecret(key, value string) (string, error) {
+func ResolveSecret(key, value string) (string, error) {
 	path, ok := strings.CutPrefix(value, "file:")
 	if !ok {
 		return value, nil

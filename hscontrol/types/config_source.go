@@ -22,7 +22,10 @@ import (
 	"github.com/tailscale/hujson"
 )
 
-const configEnvPrefix = "HEADSCALE_"
+const (
+	configEnvPrefix = "HEADSCALE_"
+	providerKey     = "dns.challenge.provider"
+)
 
 // configFileNames is the per-directory search order. TOML and .env are not
 // read, but still found, so an old file is rejected by name, not skipped.
@@ -586,7 +589,9 @@ func (s *configSource) loadEnv(environ []string) error {
 	// into it. The value stays a raw string, which the cast accessors parse as
 	// JSON, unless the JSON object held a removed form, dropped here, or a
 	// per-field variable (HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME) has to be
-	// layered on top: then the parsed object is set.
+	// layered on top: then the parsed object is set. The provider's is always
+	// parsed, as its name is looked up inside it; one that does not decode is
+	// no provider.
 	for _, key := range slices.Sorted(maps.Keys(openLayer)) {
 		val := openLayer[key]
 		s.k.Delete(key)
@@ -611,8 +616,12 @@ func (s *configSource) loadEnv(environ []string) error {
 		})
 
 		var v any = val
-		if decoded && (dropped || shared) {
+
+		switch {
+		case decoded && (dropped || shared || key == providerKey):
 			v = parsed
+		case key == providerKey:
+			continue
 		}
 
 		err := s.k.Set(key, v)
@@ -621,7 +630,34 @@ func (s *configSource) loadEnv(environ []string) error {
 		}
 	}
 
-	return s.k.Load(confmap.Provider(layer, "."), nil)
+	err := s.k.Load(confmap.Provider(layer, "."), nil)
+	if err != nil {
+		return err
+	}
+
+	return s.foldProviderEnv(env)
+}
+
+// foldProviderEnv sets each HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING> of
+// the provider named once the rest is loaded. Settings depend on the
+// provider, so configKeys cannot list them; a variable no setting of it has
+// is ignored, as the prefix is reserved.
+func (s *configSource) foldProviderEnv(env map[string]string) error {
+	settings := cast.ToStringMap(s.k.Get(providerKey))
+	folded := false
+
+	for _, setting := range hsdns.SettingNames(cast.ToString(settings["name"])) {
+		if v := env[configEnvName(providerKey+"."+setting)]; v != "" {
+			settings[setting] = v
+			folded = true
+		}
+	}
+
+	if !folded {
+		return nil
+	}
+
+	return s.k.Set(providerKey, settings)
 }
 
 func reservedEnv(name string) bool {

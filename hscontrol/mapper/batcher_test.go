@@ -201,7 +201,6 @@ func setupBatcherWithTestData(
 		},
 		Tuning: types.Tuning{
 			BatchChangeDelay:      10 * time.Millisecond,
-			BatcherWorkers:        types.DefaultBatcherWorkers(), // Use same logic as config.go
 			NodeStoreBatchSize:    state.TestBatchSize,
 			NodeStoreBatchTimeout: state.TestBatchTimeout,
 		},
@@ -233,7 +232,7 @@ func setupBatcherWithTestData(
 		tb.Fatalf("Failed to create state: %v", err)
 	}
 
-	derpMap, err := derp.GetDERPMap(cfg.DERP)
+	derpMap, err := derp.GetDERPMap(cfg.DERP, cfg.BaseDomain)
 	require.NoError(tb, err)
 	require.NotNil(tb, derpMap)
 
@@ -3142,11 +3141,6 @@ func TestAddNodeRemovalSurvivesPendingLoss(t *testing.T) {
 func TestDNSConfigOnlyWithSelfRefresh(t *testing.T) {
 	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
 	defer cleanup()
-
-	testData.Config.TailcfgDNSConfig = &tailcfg.DNSConfig{
-		Proxied: true,
-		Domains: []string{"headscale.test"},
-	}
 
 	self := testData.Nodes[0].n.ID
 	mc := newMockNodeConnection(self)

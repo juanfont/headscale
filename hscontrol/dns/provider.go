@@ -94,12 +94,23 @@ func ProviderNames() []string {
 	return slices.Sorted(maps.Keys(providers))
 }
 
+// SettingNames returns the names of the named provider's settings, or nil
+// for an unknown provider.
+func SettingNames(provider string) []string {
+	entry, ok := providers[strings.ToLower(provider)]
+	if !ok {
+		return nil
+	}
+
+	return slices.Sorted(maps.Keys(jsonFields(entry.build())))
+}
+
 // NewProvider builds the named provider from its settings.
 //
-// settings holds the provider's keys as written in the configuration
-// file. get looks up a single key and is consulted for every field of
-// the provider, because environment variables only reach individual
-// keys, never a map. secret resolves every string setting, nested ones
+// settings holds the provider's keys as written, in any case. get looks up
+// a single key as the provider spells it and is consulted for every field
+// of the provider, so it wins over a differently cased spelling in
+// settings. secret resolves every string setting, nested ones
 // included, so any of them can be read from a file. Unknown keys are an
 // error so a typo does not silently leave a credential empty.
 func NewProvider(

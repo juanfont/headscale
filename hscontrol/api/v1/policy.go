@@ -10,7 +10,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 func init() {
@@ -73,7 +72,7 @@ func registerPolicy(api huma.API, b Backend) {
 
 			return out, nil
 		case types.PolicyModeFile:
-			absPath := util.AbsolutePath(b.Cfg.ConfigDir, b.Cfg.Policy.Path)
+			absPath := b.Cfg.AbsPath(b.Cfg.Policy.Path)
 
 			f, err := os.Open(absPath)
 			if err != nil {

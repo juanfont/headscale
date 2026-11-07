@@ -54,7 +54,6 @@ func TestTailNode(t *testing.T) {
 	tests := []struct {
 		name       string
 		node       *types.Node
-		dnsConfig  *tailcfg.DNSConfig
 		baseDomain string
 		want       *tailcfg.Node
 		wantErr    bool
@@ -65,7 +64,6 @@ func TestTailNode(t *testing.T) {
 				GivenName: "empty",
 				Hostinfo:  &tailcfg.Hostinfo{},
 			},
-			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
 				Name:     "empty",
@@ -118,7 +116,6 @@ func TestTailNode(t *testing.T) {
 				ApprovedRoutes: []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6(), netip.MustParsePrefix("192.168.0.0/24")},
 				CreatedAt:      created,
 			},
-			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
 				ID:       0,
@@ -174,7 +171,6 @@ func TestTailNode(t *testing.T) {
 				GivenName: "minimal",
 				Hostinfo:  &tailcfg.Hostinfo{},
 			},
-			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "example.com",
 			want: &tailcfg.Node{
 				// a node name should have a dot appended
@@ -203,9 +199,8 @@ func TestTailNode(t *testing.T) {
 			t.Parallel()
 
 			cfg := &types.Config{
-				BaseDomain:       tt.baseDomain,
-				TailcfgDNSConfig: tt.dnsConfig,
-				Taildrop:         types.TaildropConfig{Enabled: true},
+				BaseDomain: tt.baseDomain,
+				Taildrop:   types.TaildropConfig{Enabled: true},
 			}
 
 			// Stub primary-route lookup: tt.node owns its SubnetRoutes,
