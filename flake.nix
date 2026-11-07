@@ -25,8 +25,20 @@
     {
       # NixOS module
       nixosModules = rec {
-        # A path, so importing it twice (directly and via testkit) dedupes.
-        headscale = ./nix/module.nix;
+        # Imports the module by path, so importing it twice (directly and via
+        # testkit) dedupes. The default package is this flake's, because the
+        # module's checks need `headscale check`, which older nixpkgs lack.
+        # Priority 1001 yields to testkit's mkDefault.
+        headscale =
+          { lib, pkgs, ... }:
+          {
+            # A stable key, so importing the wrapper twice dedupes.
+            key = "${toString ./flake.nix}#nixosModules.headscale";
+            imports = [ ./nix/module.nix ];
+            services.headscale.package =
+              lib.mkOverride 1001
+                self.packages.${pkgs.stdenv.hostPlatform.system}.headscale;
+          };
         default = headscale;
         # Control node for NixOS VM tests of Tailscale clients, and a peer
         # that joins it; nix/README.md.
@@ -313,6 +325,7 @@
           goChecks
           // {
             headscale = pkgs.testers.runNixOSTest (import ./nix/tests/headscale.nix self);
+            headscale-policy-check = pkgs.testers.runNixOSTest (import ./nix/tests/policy-check.nix self);
           }
         );
       }
