@@ -734,7 +734,7 @@ func validateDNSProvider(c *types.Config, v *configValidator) {
 		Current: []types.KV{{Key: "dns.challenge.provider.name", Value: ch.ProviderName()}},
 		Detail:  err.Error(),
 		Allowed: allowed,
-		Hint:    `check the provider name and its settings; any string setting can be read from a file with "file:<path>"`,
+		Hint:    `check the provider name and its settings; any setting can be read from a file with "file:<path>", a non-string one as JSON`,
 		See:     dnsDocsURL,
 		Cause:   err,
 	})

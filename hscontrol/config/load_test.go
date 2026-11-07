@@ -2051,6 +2051,11 @@ func TestRemovedKeysAreRejected(t *testing.T) {
 			want: []string{"dns.challenge.provider.api_token_path was removed", `dns.challenge.provider.api_token: "file:<path>"`},
 		},
 		{
+			name: "acme-dns registrations path key",
+			file: "dns:\n  challenge:\n    provider:\n      name: acmedns\n      config_path: /run/acmedns.json\n",
+			want: []string{"dns.challenge.provider.config_path was removed", `dns.challenge.provider.config: "file:<path>"`},
+		},
+		{
 			name: "provider path key without provider",
 			file: "dns:\n  challenge:\n    provider:\n      api_token_path: /run/secret\n",
 			want: []string{"dns.challenge.provider.api_token_path was removed", `dns.challenge.provider.api_token: "file:<path>"`},
@@ -2526,6 +2531,40 @@ func TestDNSChallengeConfig(t *testing.T) {
 	secret := filepath.Join(t.TempDir(), "token")
 	require.NoError(t, os.WriteFile(secret, []byte("file-token\n"), 0o600))
 
+	regsFile := func(regs string) string {
+		p := filepath.Join(t.TempDir(), "acmedns.json")
+		require.NoError(t, os.WriteFile(p, []byte(regs), 0o600))
+
+		return p
+	}
+	reg := func(name, username, password, subdomain string) string {
+		return `"` + name + `": {"username": ` + username + `, "password": "` + password + `", "subdomain": "` +
+			subdomain + `", "server_url": "https://auth.acme-dns.io"}`
+	}
+	regs := regsFile("{" + reg("laptop.ts.example.com", `"user"`, "pass", "reg-laptop") + "}")
+
+	// What these files hold must stay out of errors, marker- strings most of all.
+	unknownField := regsFile(`{"marker-name.ts.example.com": {"username": "user", "password": "pass", ` +
+		`"subdomain": "reg", "server_url": "https://auth.acme-dns.io", "marker-field": 1}}`)
+	wrongFieldType := regsFile("{" + reg("marker-name.ts.example.com", `{"marker-field": 1}`, "pass", "reg") + "}")
+	wrongType := regsFile(`"file:/nonexistent/marker-path"`)
+	nestedMissing := regsFile("{" + reg("marker-name.ts.example.com", `"user"`, "file:/nonexistent/marker-path", "reg") + "}")
+	shared := regsFile("{" + reg("marker-one.ts.example.com", `"user"`, "pass", "reg") + ", " +
+		reg("marker-two.ts.example.com", `"user"`, "pass", "reg") + "}")
+
+	empty := filepath.Join(t.TempDir(), "empty")
+	require.NoError(t, os.WriteFile(empty, []byte("\n"), 0o600))
+
+	acmeDNSFrom := func(config string) string {
+		return `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: acmedns
+      config: "file:` + config + `"
+`
+	}
+
 	base := `---
 server_url: https://headscale.example.com
 noise:
@@ -2621,6 +2660,87 @@ dns:
 `,
 			wantZone:     "ts.example.com",
 			wantIsolates: "laptop.ts.example.com",
+		},
+		{
+			name:         "acmedns registrations from file",
+			yaml:         base + acmeDNSFrom(regs),
+			wantZone:     "ts.example.com",
+			wantIsolates: "laptop.ts.example.com",
+		},
+		{
+			name: "acmedns registrations from file in env",
+			yaml: base,
+			env: map[string]string{
+				"HEADSCALE_DNS_CERTIFICATES_ENABLED":      "true",
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME":   "acmedns",
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_CONFIG": "file:" + regs,
+			},
+			wantZone:     "ts.example.com",
+			wantIsolates: "laptop.ts.example.com",
+		},
+		{
+			name: "acmedns registrations from file in env json",
+			yaml: base,
+			env: map[string]string{
+				"HEADSCALE_DNS_CERTIFICATES_ENABLED":    "true",
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME": "acmedns",
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER":      `{"config":"file:` + regs + `"}`,
+			},
+			wantZone:     "ts.example.com",
+			wantIsolates: "laptop.ts.example.com",
+		},
+		{
+			// Unread by the load, registrations from a file count as present.
+			name:    "acmedns registrations file missing",
+			yaml:    base + acmeDNSFrom("/nonexistent/acmedns.json"),
+			wantErr: "dns.challenge.provider.config: ",
+			fileErr: true,
+		},
+		{
+			name:    "acmedns registrations file empty",
+			yaml:    base + acmeDNSFrom(empty),
+			wantErr: "dns.challenge.provider.config: " + empty + ": file is empty",
+			fileErr: true,
+		},
+		{
+			name:    "acmedns registrations file with an unknown field",
+			yaml:    base + acmeDNSFrom(unknownField),
+			wantErr: "dns.challenge.provider.config: " + unknownField + ": file holds an invalid value",
+			fileErr: true,
+		},
+		{
+			name:    "acmedns registrations file with a field of the wrong type",
+			yaml:    base + acmeDNSFrom(wrongFieldType),
+			wantErr: "dns.challenge.provider.config: " + wrongFieldType + ": file holds an invalid value",
+			fileErr: true,
+		},
+		{
+			// Rejected as it is, not read as a file: secret.
+			name:    "acmedns registrations file of the wrong type",
+			yaml:    base + acmeDNSFrom(wrongType),
+			wantErr: "dns.challenge.provider.config: " + wrongType + ": file holds an invalid value",
+			fileErr: true,
+		},
+		{
+			name:    "acmedns registrations file with an unreadable secret",
+			yaml:    base + acmeDNSFrom(nestedMissing),
+			wantErr: "dns.challenge.provider.config: " + nestedMissing + ": file names a secret that cannot be read",
+			fileErr: true,
+		},
+		{
+			name:    "acmedns registrations file shared by node names",
+			yaml:    base + acmeDNSFrom(shared),
+			wantErr: "dns.challenge.provider.config: " + shared + ": acme-dns registration mapped to more than one name",
+			fileErr: true,
+		},
+		{
+			name: "provider settings without a name read nothing",
+			yaml: base + `  challenge:
+    provider:
+      config: "file:/nonexistent/acmedns.json"
+`,
+			wantZone:   "ts.example.com",
+			wantNoProv: true,
 		},
 		{
 			name: "acmedns registration password file missing",
@@ -2990,8 +3110,14 @@ tls:
 			require.NoError(t, err)
 
 			if tt.fileErr {
-				_, err = cfg.DNSConfig.Challenge.NewProvider(types.ResolveSecret)
+				// As startup does: read the files, then check isolation.
+				built, err := cfg.DNSConfig.Challenge.NewProvider(types.ResolveSecret)
+				if iso, ok := built.(hsdns.Isolator); ok && err == nil {
+					err = iso.CheckIsolation()
+				}
+
 				require.ErrorContains(t, err, tt.wantErr)
+				assert.NotContains(t, err.Error(), "marker-")
 
 				return
 			}

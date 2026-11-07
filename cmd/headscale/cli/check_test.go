@@ -377,6 +377,20 @@ func TestCheckSecretsUnread(t *testing.T) {
 		}
 	})
 
+	t.Run("acme-dns registrations from file", func(t *testing.T) {
+		dir := t.TempDir()
+		missing := filepath.Join(dir, "missing")
+		cfg := writeServerConfig(t, dir, acmeDNS+`      config: "file:`+missing+`"
+`)
+
+		_, err := runCheck(t, checkConfigCmd, cfg)
+		require.NoError(t, err)
+
+		out, err := runCheck(t, checkAllCmd, cfg)
+		require.NoError(t, err)
+		require.Contains(t, strings.Split(out, "\n"), "skip  dns.challenge.provider.config  "+missing+" (secret, not read)")
+	})
+
 	// A URL from a file cannot be validated unread.
 	for name, provider := range map[string]string{
 		"account": acmeDNS + `      username: user

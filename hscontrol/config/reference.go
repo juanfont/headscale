@@ -151,7 +151,8 @@ func (r *reference) secrets(keys []keyInfo) {
 	}
 
 	r.WriteString(referenceSecrets)
-	fmt.Fprintf(r, "The secrets are %s and every string setting of %s.\n\n", strings.Join(names, ", "), r.link(providerKey))
+	fmt.Fprintf(r, "The secrets are %s and every setting of %s, where a non-string one, such as acme-dns `config`, is the JSON in the file.\n\n",
+		strings.Join(names, ", "), r.link(providerKey))
 	r.WriteString(referenceNixSecret)
 }
 

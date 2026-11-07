@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -83,11 +84,17 @@ var (
 	errAcmeDNSOneAccount = errors.New("acme-dns with one account answers every name's challenge from one record; " +
 		"node certificates need a registration per name under config")
 	errAcmeDNSShared = errors.New("acme-dns registration mapped to more than one name")
+	errNotJSON       = errors.New("file is not JSON")
+	errFileValue     = errors.New("file holds an invalid value")
+	errFileSecret    = errors.New("file names a secret that cannot be read")
 
 	// ErrSecretUnread is returned, with the value as given, by a secret
 	// func that leaves a file: secret unread; checks of it are skipped.
 	ErrSecretUnread = errors.New("secret left unread")
 )
+
+// settingsKey is where the provider settings live in the configuration.
+const settingsKey = "dns.challenge.provider"
 
 // ProviderNames returns the names of the compiled-in providers.
 func ProviderNames() []string {
@@ -111,7 +118,8 @@ func SettingNames(provider string) []string {
 // a single key as the provider spells it and is consulted for every field
 // of the provider, so it wins over a differently cased spelling in
 // settings. secret resolves every string setting, nested ones
-// included, so any of them can be read from a file. Unknown keys are an
+// included, so any of them can be read from a file; a non-string setting
+// set to "file:<path>" is the JSON in that file. Unknown keys are an
 // error so a typo does not silently leave a credential empty.
 func NewProvider(
 	name string,
@@ -147,6 +155,9 @@ func NewProvider(
 		return s, err
 	}
 
+	// The origin, "<setting>: <path>", of each setting read from a file.
+	files := map[string]string{}
+
 	fields := jsonFields(provider)
 	for tag, kind := range fields {
 		if v, ok := get(tag); ok {
@@ -154,11 +165,19 @@ func NewProvider(
 		}
 
 		value, ok := input[tag]
-		if _, isMap := value.(map[string]any); !ok || (kind != reflect.String && !isMap) {
+		if !ok {
 			continue
 		}
 
-		value, err := resolveSecrets(tag, value, read)
+		var err error
+
+		if s, isString := value.(string); isString && kind != reflect.String && strings.HasPrefix(s, "file:") {
+			files[tag] = settingsKey + "." + tag + ": " + os.ExpandEnv(strings.TrimPrefix(s, "file:"))
+			value, err = settingFromFile(entry.build(), tag, s, files[tag], secret)
+		} else {
+			value, err = resolveSecrets(tag, value, read)
+		}
+
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrProviderConfig, err)
 		}
@@ -166,20 +185,13 @@ func NewProvider(
 		input[tag] = value
 	}
 
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		TagName:          "json",
-		WeaklyTypedInput: true,
-		ErrorUnused:      true,
-		Squash:           true,
-		Result:           provider,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating decoder: %w", err)
-	}
-
-	err = decoder.Decode(input)
+	err := decode(input, provider)
 	if err != nil {
 		return nil, fmt.Errorf("%w for %s: %w", ErrProviderConfig, name, err)
+	}
+
+	if p, ok := provider.(*acmeDNS); ok {
+		p.configFile = files["config"]
 	}
 
 	// After decoding, so a misspelt setting is reported as that. An unread
@@ -207,6 +219,63 @@ func NewProvider(
 	}
 
 	return provider, nil
+}
+
+// decode sets provider's fields from input by their json tags.
+func decode(input map[string]any, provider Provider) error {
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		TagName:          "json",
+		WeaklyTypedInput: true,
+		ErrorUnused:      true,
+		Squash:           true,
+		Result:           provider,
+	})
+	if err != nil {
+		return fmt.Errorf("creating decoder: %w", err)
+	}
+
+	return decoder.Decode(input)
+}
+
+// settingFromFile reads the non-string setting tag from the JSON in the
+// file value names, decoded into provider, a fresh one, before any secret
+// in it is read. Past reading the file, errors name only origin: decoder
+// paths, keys and nested paths all come from the file. Left unread, it is
+// an empty map: set, with nothing to check.
+func settingFromFile(
+	provider Provider,
+	tag, value, origin string,
+	secret func(key, value string) (string, error),
+) (any, error) {
+	s, err := secret(tag, value)
+	if errors.Is(err, ErrSecretUnread) {
+		// shortcut: fits map settings only, the one non-string kind any
+		// provider has (TestProviderSettingKinds); give another kind its
+		// own placeholder when a provider adds one.
+		return map[string]any{}, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	var v any
+
+	// json's errors quote the contents.
+	if json.Unmarshal([]byte(s), &v) != nil {
+		return nil, fmt.Errorf("%s: %w", origin, errNotJSON)
+	}
+
+	if decode(map[string]any{tag: v}, provider) != nil {
+		return nil, fmt.Errorf("%s: %w", origin, errFileValue)
+	}
+
+	v, err = resolveSecrets(tag, v, secret)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", origin, errFileSecret)
+	}
+
+	return v, nil
 }
 
 // resolveSecrets resolves every string in value, down through nested
@@ -317,6 +386,10 @@ const acmeDNSSpacing = time.Second + 100*time.Millisecond
 type acmeDNS struct {
 	acmedns.Provider
 
+	// configFile is the origin of Configs read from a file, which errors
+	// about Configs name instead of anything in it.
+	configFile string
+
 	mu sync.Mutex
 	// served is what each registration serves, oldest first.
 	served map[string][2]acmeDNSValue
@@ -347,6 +420,10 @@ func (p *acmeDNS) AppendRecords(
 		served := p.served[reg]
 
 		if served[0].live {
+			if p.configFile != "" {
+				reg = "from " + p.configFile
+			}
+
 			return appended, fmt.Errorf(
 				"%w: acme-dns registration %s would overwrite a value still in use",
 				ErrTooManyChallenges, reg,
@@ -370,12 +447,31 @@ func (p *acmeDNS) AppendRecords(
 		}
 
 		if err != nil {
-			return appended, err
+			return appended, p.redact(err)
 		}
 	}
 
 	return appended, nil
 }
+
+// redact hides err's text, which may quote registrations read from a
+// file, behind the file's name; errors.Is and errors.As still see err.
+func (p *acmeDNS) redact(err error) error {
+	if err == nil || p.configFile == "" {
+		return err
+	}
+
+	return &acmeDNSFileError{origin: p.configFile, err: err}
+}
+
+type acmeDNSFileError struct {
+	origin string
+	err    error
+}
+
+func (e *acmeDNSFileError) Error() string { return e.origin + ": acme-dns update failed" }
+
+func (e *acmeDNSFileError) Unwrap() error { return e.err }
 
 func (p *acmeDNS) DeleteRecords(
 	ctx context.Context,
@@ -403,7 +499,9 @@ func (p *acmeDNS) DeleteRecords(
 		p.served[reg] = served
 	}
 
-	return p.Provider.DeleteRecords(ctx, zone, recs)
+	deleted, err := p.Provider.DeleteRecords(ctx, zone, recs)
+
+	return deleted, p.redact(err)
 }
 
 // Isolates reports whether name has a registration of its own;
@@ -427,6 +525,10 @@ func (p *acmeDNS) CheckIsolation() error {
 		sub := p.Configs[name].Subdomain
 
 		if other, shared := names[sub]; shared {
+			if p.configFile != "" {
+				return fmt.Errorf("%s: %w", p.configFile, errAcmeDNSShared)
+			}
+
 			// The registration is not named: it may have been read from a file.
 			return fmt.Errorf("%w: %s and %s share a registration", errAcmeDNSShared, other, name)
 		}

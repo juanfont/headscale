@@ -3,10 +3,13 @@ package dns
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -54,6 +57,16 @@ func TestSettingNames(t *testing.T) {
 	assert.Nil(t, SettingNames(""))
 }
 
+// The unread placeholder settingFromFile returns is a map, so checks
+// without the files decode only while every setting is a string or a map.
+func TestProviderSettingKinds(t *testing.T) {
+	for name, entry := range providers {
+		for tag, kind := range jsonFields(entry.build()) {
+			assert.Contains(t, []reflect.Kind{reflect.String, reflect.Map}, kind, "%s %s", name, tag)
+		}
+	}
+}
+
 // unreadSecret stands in for a caller that checks without reading files.
 func unreadSecret(_, value string) (string, error) {
 	if strings.HasPrefix(value, "file:") {
@@ -79,6 +92,7 @@ func TestNewProviderUnreadSecrets(t *testing.T) {
 		{name: "registration server_url from file", settings: map[string]any{"config": map[string]any{"laptop.example.com": account("file:/url")}}},
 		{name: "literal server_url still checked", settings: account("auth.acme-dns.io"), wantErr: true},
 		{name: "literal registration server_url still checked", settings: map[string]any{"config": map[string]any{"laptop.example.com": account("auth.acme-dns.io")}}, wantErr: true},
+		{name: "registrations from file", settings: map[string]any{"config": "file:/acmedns.json"}},
 	}
 
 	for _, tt := range tests {
@@ -98,6 +112,15 @@ func TestNewProviderUnreadSecrets(t *testing.T) {
 func TestNewProvider(t *testing.T) {
 	secret := filepath.Join(t.TempDir(), "token")
 	require.NoError(t, os.WriteFile(secret, []byte("from-file\n"), 0o600))
+
+	// The registrations' JSON, its password a file: secret as if written inline.
+	regs := filepath.Join(t.TempDir(), "acmedns.json")
+	require.NoError(t, os.WriteFile(regs, []byte(`{"node.ts.example.com": {"username": "user", "password": "file:`+secret+
+		`", "subdomain": "reg", "server_url": "https://auth.acme-dns.io"}}`+"\n"), 0o600))
+
+	// json's error would quote the number.
+	notJSON := filepath.Join(t.TempDir(), "acmedns.json")
+	require.NoError(t, os.WriteFile(notJSON, []byte("1e1000\n"), 0o600))
 
 	tests := []struct {
 		name     string
@@ -258,6 +281,35 @@ func TestNewProvider(t *testing.T) {
 			wantErr: ErrProviderConfig,
 		},
 		{
+			name:     "acmedns registrations from file",
+			provider: "acmedns",
+			settings: map[string]any{"config": "file:" + regs},
+			want: &acmeDNS{
+				Configs: map[string]acmedns.DomainConfig{
+					"node.ts.example.com": {
+						Username:  "user",
+						Password:  "from-file",
+						Subdomain: "reg",
+						ServerURL: "https://auth.acme-dns.io",
+					},
+				},
+				configFile: "dns.challenge.provider.config: " + regs,
+				served:     map[string][2]acmeDNSValue{},
+			},
+		},
+		{
+			name:     "acmedns registrations file missing",
+			provider: "acmedns",
+			settings: map[string]any{"config": "file:" + filepath.Join(t.TempDir(), "missing")},
+			wantErr:  ErrProviderConfig,
+		},
+		{
+			name:     "acmedns registrations file not JSON",
+			provider: "acmedns",
+			settings: map[string]any{"config": "file:" + notJSON},
+			wantErr:  ErrProviderConfig,
+		},
+		{
 			name:     "acmedns server_url without scheme",
 			provider: "acmedns",
 			settings: map[string]any{
@@ -291,6 +343,7 @@ func TestNewProvider(t *testing.T) {
 			got, err := NewProvider(tt.provider, tt.settings, noEnv, readSecret)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
+				assert.NotContains(t, err.Error(), "1e1000", "a file's contents are secret")
 
 				return
 			}
@@ -383,6 +436,68 @@ func acmeTXT(node, value string) []libdns.Record {
 // validating it, however many values were deleted. Two updates within one
 // second carry the same stamp, leaving acme-dns free to overwrite either:
 // after a then b, with a freed, c could overwrite b.
+// Runtime errors reach the server log: they name registrations written
+// inline, but only the file that holds them otherwise.
+func TestAcmeDNSRuntimeErrorsFromFile(t *testing.T) {
+	t.Parallel()
+
+	// Refuses connections, so an update fails in transport, quoting its URL.
+	closed := httptest.NewServer(nil)
+	closed.Close()
+
+	regs := map[string]any{"node.ts.example.com": map[string]any{
+		"username":   "user",
+		"password":   "pass",
+		"subdomain":  "marker-subdomain",
+		"server_url": closed.URL + "/marker-url",
+	}}
+
+	b, err := json.Marshal(regs)
+	require.NoError(t, err)
+
+	file := filepath.Join(t.TempDir(), "acmedns.json")
+	require.NoError(t, os.WriteFile(file, b, 0o600))
+
+	for name, config := range map[string]any{"inline": regs, "file": "file:" + file} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			named := func(err error, marker string) {
+				t.Helper()
+
+				if name == "inline" {
+					assert.Contains(t, err.Error(), marker)
+				} else {
+					assert.NotContains(t, err.Error(), "marker-")
+					assert.Contains(t, err.Error(), "dns.challenge.provider.config: "+file)
+				}
+			}
+
+			p, err := NewProvider("acmedns", map[string]any{"config": config}, noEnv, readSecret)
+			require.NoError(t, err)
+
+			ctx := context.Background()
+
+			_, err = p.AppendRecords(ctx, testZone, acmeTXT("node", "value"))
+			require.Error(t, err)
+
+			_, isURL := errors.AsType[*url.Error](err)
+			assert.True(t, isURL, "a transport failure keeps its type")
+			named(err, "marker-url")
+
+			a, ok := p.(*acmeDNS)
+			require.True(t, ok)
+
+			// Both values the registration serves are in use.
+			a.served["marker-subdomain"] = [2]acmeDNSValue{{live: true}, {live: true}}
+
+			_, err = p.AppendRecords(ctx, testZone, acmeTXT("node", "value"))
+			require.ErrorIs(t, err, ErrTooManyChallenges)
+			named(err, "marker-subdomain")
+		})
+	}
+}
+
 func TestAcmeDNSRefusesEviction(t *testing.T) {
 	t.Parallel()
 
