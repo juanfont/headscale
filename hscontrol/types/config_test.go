@@ -1860,6 +1860,67 @@ type compatRecord struct {
 	Error     string            `json:"error,omitempty"`      // an error-only golden pins today's rejection
 }
 
+type compatRow struct{ name, file, envFile string }
+
+var compatDir = filepath.Join("testdata", "compat")
+
+// compatRows lists every compat/<name>.{yaml,json,env} set and every
+// testdata/*.yaml file.
+func compatRows(t *testing.T) []compatRow {
+	t.Helper()
+
+	entries, err := os.ReadDir(compatDir)
+	require.NoError(t, err)
+
+	var rows []compatRow
+
+	byName := map[string]int{}
+
+	for _, e := range entries {
+		f, ext := e.Name(), filepath.Ext(e.Name())
+		if strings.HasSuffix(f, ".golden.json") || (ext != ".yaml" && ext != ".json" && ext != ".env") {
+			continue
+		}
+
+		name := strings.TrimSuffix(f, ext)
+
+		i, ok := byName[name]
+		if !ok {
+			i = len(rows)
+			byName[name] = i
+			rows = append(rows, compatRow{name: name})
+		}
+
+		if ext == ".env" {
+			rows[i].envFile = filepath.Join(compatDir, f)
+		} else {
+			rows[i].file = filepath.Join(compatDir, f)
+		}
+	}
+
+	legacy, err := filepath.Glob(filepath.Join("testdata", "*.yaml"))
+	require.NoError(t, err)
+
+	for _, f := range legacy {
+		rows = append(rows, compatRow{name: "testdata-" + strings.TrimSuffix(filepath.Base(f), ".yaml"), file: f})
+	}
+
+	return rows
+}
+
+// unsetHeadscaleEnv removes ambient HEADSCALE_* for the test, which would
+// leak into the goldens.
+func unsetHeadscaleEnv(t *testing.T) {
+	t.Helper()
+
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "HEADSCALE_") {
+			t.Setenv(k, "") // registers the restore
+			require.NoError(t, os.Unsetenv(k))
+		}
+	}
+}
+
 // TestConfigCompat pins what real-world config inputs load to, so a loader
 // change shows up as a golden diff, and each such diff needs a BREAKING
 // CHANGELOG entry. Every compat/<name>.{yaml,json,env} set is one row; a name
@@ -1874,52 +1935,10 @@ type compatRecord struct {
 // dns.nameservers.global set; hsic-* mirror integration/hsic's
 // MinimumConfigYAML and DefaultConfigEnv.
 func TestConfigCompat(t *testing.T) {
-	type row struct{ name, file, envFile string }
-
-	compatDir := filepath.Join("testdata", "compat")
-
-	entries, err := os.ReadDir(compatDir)
-	require.NoError(t, err)
-
-	var rows []*row
-
-	byName := map[string]*row{}
-
-	for _, e := range entries {
-		f, ext := e.Name(), filepath.Ext(e.Name())
-		if strings.HasSuffix(f, ".golden.json") || (ext != ".yaml" && ext != ".json" && ext != ".env") {
-			continue
-		}
-
-		name := strings.TrimSuffix(f, ext)
-		if byName[name] == nil {
-			byName[name] = &row{name: name}
-			rows = append(rows, byName[name])
-		}
-
-		if ext == ".env" {
-			byName[name].envFile = filepath.Join(compatDir, f)
-		} else {
-			byName[name].file = filepath.Join(compatDir, f)
-		}
-	}
-
-	legacy, err := filepath.Glob(filepath.Join("testdata", "*.yaml"))
-	require.NoError(t, err)
-
-	for _, f := range legacy {
-		rows = append(rows, &row{name: "testdata-" + strings.TrimSuffix(filepath.Base(f), ".yaml"), file: f})
-	}
-
+	rows := compatRows(t)
 	update := os.Getenv("HEADSCALE_UPDATE_GOLDEN") != ""
 
-	// Ambient HEADSCALE_* would leak into the goldens.
-	for _, kv := range os.Environ() {
-		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "HEADSCALE_") {
-			t.Setenv(k, "") // registers the restore
-			require.NoError(t, os.Unsetenv(k))
-		}
-	}
+	unsetHeadscaleEnv(t)
 
 	for _, tt := range rows {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1955,30 +1974,7 @@ func loadCompat(t *testing.T, file, envFile string, cli bool) compatRecord {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
 
-	dir := t.TempDir()
-
-	if file != "" {
-		data, err := os.ReadFile(file)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "config"+filepath.Ext(file)), data, 0o600)) //nolint:gosec // dir is t.TempDir()
-	}
-
-	if envFile != "" {
-		raw, err := os.ReadFile(envFile)
-		require.NoError(t, err)
-
-		// docker --env-file syntax: no quoting, # comments.
-		for line := range strings.SplitSeq(string(raw), "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-
-			k, v, ok := strings.Cut(line, "=")
-			require.Truef(t, ok, "%s: %q is not KEY=VALUE", envFile, line)
-			t.Setenv(k, v)
-		}
-	}
+	dir := stageCompat(t, file, envFile)
 
 	var buf bytes.Buffer
 
@@ -2048,6 +2044,39 @@ func loadCompat(t *testing.T, file, envFile string, cli bool) compatRecord {
 	}
 
 	return rec
+}
+
+// stageCompat copies file into a temp dir as config.<ext> and sets the
+// variables of envFile, returning the dir.
+func stageCompat(t *testing.T, file, envFile string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+
+	if file != "" {
+		data, err := os.ReadFile(file)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config"+filepath.Ext(file)), data, 0o600)) //nolint:gosec // dir is t.TempDir()
+	}
+
+	if envFile != "" {
+		raw, err := os.ReadFile(envFile)
+		require.NoError(t, err)
+
+		// docker --env-file syntax: no quoting, # comments.
+		for line := range strings.SplitSeq(string(raw), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+
+			k, v, ok := strings.Cut(line, "=")
+			require.Truef(t, ok, "%s: %q is not KEY=VALUE", envFile, line)
+			t.Setenv(k, v)
+		}
+	}
+
+	return dir
 }
 
 func TestDERPServerPrivateKeyPath(t *testing.T) {
