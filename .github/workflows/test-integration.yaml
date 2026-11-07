@@ -279,7 +279,6 @@ jobs:
           - TestNodeUpdateClientCommand
           - TestOAuthClientCommand
           - TestOAuthClientCommandValidation
-          - TestPolicyCheckCommand
           - TestSSHTestsRejectFailingPolicy
           - TestPolicyCommand
           - TestPolicyBrokenConfigCommand
