@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"maps"
 	"net/netip"
 	"net/url"
 	"os"
@@ -1848,6 +1849,205 @@ func TestDNSDomainsCompat(t *testing.T) {
 			}
 		})
 	}
+}
+
+// compatRecord is the golden for one config input: what the loader produced.
+type compatRecord struct {
+	Config    json.RawMessage   `json:"config,omitempty"`
+	Secrets   map[string]string `json:"secrets,omitempty"` // secret strings the JSON form hides
+	Warnings  []string          `json:"warnings,omitempty"`
+	LogErrors []string          `json:"log_errors,omitempty"` // input the loader logged and dropped
+	Error     string            `json:"error,omitempty"`      // an error-only golden pins today's rejection
+}
+
+// TestConfigCompat pins what real-world config inputs load to, so a loader
+// change shows up as a golden diff, and each such diff needs a BREAKING
+// CHANGELOG entry. Every compat/<name>.{yaml,json,env} set is one row; a name
+// ending in -cli uses the CLI loader. Fixtures are frozen inputs: to change
+// one, add a new fixture. Refresh with HEADSCALE_UPDATE_GOLDEN=1.
+//
+// Sources: example-<tag>.yaml is `git show <tag>:config-example.yaml`;
+// example-main.yaml is a frozen copy of the root file; nixos-*.yaml are the
+// files `nix build` writes for the flake module with nix/example-configuration.nix
+// (services.headscale.configFile, environment.etc."headscale/config.yaml") and
+// for the nixpkgs module with only server_url, dns.base_domain and
+// dns.nameservers.global set; hsic-* mirror integration/hsic's
+// MinimumConfigYAML and DefaultConfigEnv.
+func TestConfigCompat(t *testing.T) {
+	type row struct{ name, file, envFile string }
+
+	compatDir := filepath.Join("testdata", "compat")
+
+	entries, err := os.ReadDir(compatDir)
+	require.NoError(t, err)
+
+	var rows []*row
+
+	byName := map[string]*row{}
+
+	for _, e := range entries {
+		f, ext := e.Name(), filepath.Ext(e.Name())
+		if strings.HasSuffix(f, ".golden.json") || (ext != ".yaml" && ext != ".json" && ext != ".env") {
+			continue
+		}
+
+		name := strings.TrimSuffix(f, ext)
+		if byName[name] == nil {
+			byName[name] = &row{name: name}
+			rows = append(rows, byName[name])
+		}
+
+		if ext == ".env" {
+			byName[name].envFile = filepath.Join(compatDir, f)
+		} else {
+			byName[name].file = filepath.Join(compatDir, f)
+		}
+	}
+
+	legacy, err := filepath.Glob(filepath.Join("testdata", "*.yaml"))
+	require.NoError(t, err)
+
+	for _, f := range legacy {
+		rows = append(rows, &row{name: "testdata-" + strings.TrimSuffix(filepath.Base(f), ".yaml"), file: f})
+	}
+
+	update := os.Getenv("HEADSCALE_UPDATE_GOLDEN") != ""
+
+	// Ambient HEADSCALE_* would leak into the goldens.
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "HEADSCALE_") {
+			t.Setenv(k, "") // registers the restore
+			require.NoError(t, os.Unsetenv(k))
+		}
+	}
+
+	for _, tt := range rows {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := loadCompat(t, tt.file, tt.envFile, strings.HasSuffix(tt.name, "-cli"))
+
+			out, err := json.MarshalIndent(rec, "", "  ")
+			require.NoError(t, err)
+
+			out = append(out, '\n')
+			gpath := filepath.Join(compatDir, tt.name+".golden.json")
+
+			if update {
+				require.NoError(t, os.WriteFile(gpath, out, 0o600))
+
+				return
+			}
+
+			want, err := os.ReadFile(gpath)
+			require.NoErrorf(t, err, "missing golden %s: run with HEADSCALE_UPDATE_GOLDEN=1", gpath)
+
+			if d := cmp.Diff(string(want), string(out)); d != "" {
+				t.Errorf("config compat mismatch (-golden +got):\n%s", d)
+			}
+		})
+	}
+}
+
+// loadCompat loads one fixture set the way headscale does, from a temp dir
+// so relative paths and the error text do not depend on the checkout.
+func loadCompat(t *testing.T, file, envFile string, cli bool) compatRecord {
+	t.Helper()
+
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	dir := t.TempDir()
+
+	if file != "" {
+		data, err := os.ReadFile(file)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config"+filepath.Ext(file)), data, 0o600)) //nolint:gosec // dir is t.TempDir()
+	}
+
+	if envFile != "" {
+		raw, err := os.ReadFile(envFile)
+		require.NoError(t, err)
+
+		// docker --env-file syntax: no quoting, # comments.
+		for line := range strings.SplitSeq(string(raw), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+
+			k, v, ok := strings.Cut(line, "=")
+			require.Truef(t, ok, "%s: %q is not KEY=VALUE", envFile, line)
+			t.Setenv(k, v)
+		}
+	}
+
+	var buf bytes.Buffer
+
+	oldLogger, oldLevel := log.Logger, zerolog.GlobalLevel()
+	log.Logger = zerolog.New(&buf)
+
+	// Tests run at ErrorLevel (testlog.go); the loaders then set the level
+	// from log.level, as in production.
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() {
+		log.Logger = oldLogger
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	var cfg *Config
+
+	err := LoadConfig(dir, false)
+	if err == nil {
+		if cli {
+			cfg, err = LoadCLIConfig()
+		} else {
+			cfg, err = LoadServerConfig()
+		}
+	}
+
+	norm := func(s string) string { return strings.ReplaceAll(s, dir, "$DIR") }
+
+	var rec compatRecord
+
+	for line := range strings.SplitSeq(buf.String(), "\n") {
+		if line == "" {
+			continue
+		}
+
+		var entry struct{ Level, Message string }
+
+		require.NoError(t, json.Unmarshal([]byte(line), &entry))
+
+		switch entry.Level {
+		case zerolog.LevelWarnValue:
+			rec.Warnings = append(rec.Warnings, norm(entry.Message))
+		case zerolog.LevelErrorValue:
+			rec.LogErrors = append(rec.LogErrors, norm(entry.Message))
+		}
+	}
+
+	if err != nil {
+		rec.Error = norm(err.Error())
+	}
+
+	if cfg != nil {
+		if cfg.Tuning.BatcherWorkers == DefaultBatcherWorkers() {
+			cfg.Tuning.BatcherWorkers = 0 // depends on runtime.NumCPU
+		}
+
+		raw, err := json.Marshal(cfg)
+		require.NoError(t, err)
+
+		rec.Config = json.RawMessage(norm(string(raw)))
+		rec.Secrets = map[string]string{
+			"database.postgres.pass": cfg.Database.Postgres.Pass,
+			"oidc.client_secret":     cfg.OIDC.ClientSecret,
+			"cli.api_key":            cfg.CLI.APIKey,
+		}
+		maps.DeleteFunc(rec.Secrets, func(_, v string) bool { return v == "" })
+	}
+
+	return rec
 }
 
 func TestDERPServerPrivateKeyPath(t *testing.T) {

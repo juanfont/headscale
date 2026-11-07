@@ -1,0 +1,6 @@
+{
+  "warnings": [
+    "no config file found, using defaults"
+  ],
+  "error": "Fatal config error: configuration key acl_policy_path has been removed; use policy.path instead\n  current: acl_policy_path: \"/etc/headscale/acl.hujson\"\n  hint: remove acl_policy_path and set policy.path\n\nFatal config error: configuration key randomize_client_port has been removed\n  current: randomize_client_port: \"true\"\n  hint: Set \"randomizeClientPort\": true at the top level of your policy file (see policy.path / policy.mode), or grant the cap per-node via a \"nodeAttrs\" entry. See CHANGELOG.md (BREAKING / Configuration).\n\nFatal config error: configuration key oidc.expiry has been removed; use node.expiry instead\n  current: oidc.expiry: \"1d\"\n  hint: remove oidc.expiry and set node.expiry\n"
+}

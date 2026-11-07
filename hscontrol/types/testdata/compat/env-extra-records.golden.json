@@ -1,0 +1,6 @@
+{
+  "warnings": [
+    "no config file found, using defaults"
+  ],
+  "error": "Fatal config error: dns.extra_records cannot be parsed\n  current: dns.extra_records: \"\u003cinline records\u003e\"\n  why: unmarshalling dns extra records: decoding failed due to the following error(s):\n\n'[0]' expected a map or struct, got \"string\"\n'[1]' expected a map or struct, got \"string\"\n'[2]' expected a map or struct, got \"string\"\n  hint: check the YAML syntax; see config-example.yaml for the expected shape\n"
+}

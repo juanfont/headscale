@@ -1,0 +1,3 @@
+{
+  "error": "Fatal config error: policy.mode has an unsupported value\n  current: policy.mode: \"databse\"\n  allowed: \"file\", \"database\"\n  see: https://headscale.net/stable/ref/policy/\n"
+}
