@@ -1849,3 +1849,51 @@ func TestDNSDomainsCompat(t *testing.T) {
 		})
 	}
 }
+
+func TestDERPServerPrivateKeyPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		derpKey string // derp.server.private_key_path line, if any
+		wantErr string
+	}{
+		{"missing", "", "derp.server.private_key_path is required"},
+		{"distinct", "    private_key_path: derp_server_private.key\n", ""},
+		{"same as noise", "    private_key_path: noise_private.key\n", "must differ from noise.private_key_path"},
+		{"same as noise after cleaning", "    private_key_path: ./noise_private.key\n", "must differ from noise.private_key_path"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`---
+noise:
+  private_key_path: noise_private.key
+server_url: http://127.0.0.1:8080
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite3
+dns:
+  magic_dns: false
+  override_local_dns: false
+derp:
+  server:
+    enabled: true
+    stun_listen_addr: "0.0.0.0:3478"
+`+tt.derpKey), 0o600))
+			require.NoError(t, LoadConfig(dir, false))
+
+			err := validateServerConfig()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}

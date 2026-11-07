@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -197,7 +198,7 @@ type DNSChallengeConfig struct {
 	Resolvers          []string
 	ProviderName       string
 	// Provider is nil when no provider is configured. It is built while
-	// loading so `headscale configtest` reports bad provider settings,
+	// loading so `headscale check config` reports bad provider settings,
 	// and never serialised because it holds credentials.
 	Provider hsdns.Provider `json:"-"`
 }
@@ -988,7 +989,32 @@ func validateDERPConfig(v *configValidator) {
 				{"derp.server.stun_listen_addr", ""},
 			},
 			Hint: `set derp.server.stun_listen_addr (e.g. "0.0.0.0:3478"), or set derp.server.enabled: false`,
-			See:  "https://headscale.net/stable/ref/integration/derp/",
+			See:  "https://headscale.net/stable/ref/derp/",
+		})
+	}
+
+	derpKey, noiseKey := viper.GetString("derp.server.private_key_path"), viper.GetString("noise.private_key_path")
+	switch {
+	case derpKey == "":
+		v.Add(&ConfigError{
+			Reason: "derp.server.private_key_path is required when the embedded DERP server is enabled",
+			Current: []KV{
+				{"derp.server.enabled", true},
+				{"derp.server.private_key_path", ""},
+			},
+			Hint: `set derp.server.private_key_path (e.g. "/var/lib/headscale/derp_server_private.key"), or set derp.server.enabled: false`,
+			See:  "https://headscale.net/stable/ref/derp/",
+		})
+	case filepath.Clean(derpKey) == filepath.Clean(noiseKey):
+		// Startup would create one key and then refuse it for both uses.
+		v.Add(&ConfigError{
+			Reason: "derp.server.private_key_path must differ from noise.private_key_path",
+			Current: []KV{
+				{"derp.server.private_key_path", derpKey},
+				{"noise.private_key_path", noiseKey},
+			},
+			Hint: `set derp.server.private_key_path to its own file (e.g. "/var/lib/headscale/derp_server_private.key")`,
+			See:  "https://headscale.net/stable/ref/derp/",
 		})
 	}
 
