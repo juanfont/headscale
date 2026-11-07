@@ -2,3 +2,4 @@
 hscontrol/policy/v2/testdata/*_results/** linguist-generated
 hscontrol/servertest/testdata/steps/** linguist-generated
 hscontrol/testdata/apiv1_golden/** linguist-generated
+hscontrol/types/testdata/compat/*.golden.json linguist-generated

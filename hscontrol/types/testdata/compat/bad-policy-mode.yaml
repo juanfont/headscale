@@ -1,0 +1,15 @@
+# An unknown policy.mode loads today and runs with no policy.
+server_url: https://hs.example.com
+noise:
+  private_key_path: /var/lib/headscale/noise.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+dns:
+  magic_dns: false
+  override_local_dns: false
+policy:
+  mode: databse

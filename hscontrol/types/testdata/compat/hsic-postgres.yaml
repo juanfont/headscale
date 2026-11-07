@@ -1,0 +1,3 @@
+private_key_path: /tmp/private.key
+noise:
+  private_key_path: /tmp/noise_private.key
