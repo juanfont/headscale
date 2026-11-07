@@ -1,0 +1,21 @@
+server_url: https://hs.example.com
+noise:
+  private_key_path: /var/lib/headscale/noise.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+dns:
+  magic_dns: false
+  override_local_dns: false
+  nameservers:
+    split:
+      a.example.com: [10.0.0.1]
+  search_domains: [x.example.com]
+log:
+  level: debug
+oidc:
+  extra_params:
+    a: b

@@ -1,0 +1,143 @@
+# Every key the loader reads, set to a valid non-default value.
+server_url: https://headscale.example.com
+listen_addr: 0.0.0.0:8443
+metrics_listen_addr: 127.0.0.1:9091
+trusted_proxies: [10.0.0.0/8, 192.168.0.0/16]
+disable_check_updates: true
+unix_socket: /run/headscale/headscale.sock
+unix_socket_permission: "0700"
+
+noise:
+  private_key_path: ./noise_private.key
+
+prefixes:
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
+  allocation: random
+
+derp:
+  server:
+    enabled: true
+    region_id: 900
+    region_code: hs
+    region_name: Headscale Embedded DERP
+    verify_clients: false
+    stun_listen_addr: 0.0.0.0:3479
+    private_key_path: ./derp_server_private.key
+    automatically_add_embedded_derp_region: false
+    ipv4: 198.51.100.1
+    ipv6: 2001:db8::1
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+    - https://derp.example.com/map.json
+  paths:
+    - /etc/headscale/derp.yaml
+  auto_update_enabled: false
+  update_frequency: 1h
+
+node:
+  expiry: 90d
+  ephemeral:
+    inactivity_timeout: 45m
+  routes:
+    ha:
+      probe_interval: 20s
+      probe_timeout: 7s
+
+preauth_keys:
+  revoked_retention: 72h
+
+database:
+  type: postgres
+  debug: true
+  gorm:
+    parameterized_queries: true
+    skip_err_record_not_found: false
+    slow_threshold: 2000
+  postgres:
+    host: db.example.com
+    port: 5433
+    name: headscale
+    user: headscale
+    pass: marker-postgres-pass
+    max_open_conns: 20
+    max_idle_conns: 5
+    conn_max_idle_time_secs: 1800
+    ssl: true
+
+tls:
+  acme:
+    hostname: headscale.example.com
+    challenge_type: TLS-ALPN-01
+    http_listen: :8081
+    url: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: admin@example.com
+    cache_dir: ./acme-cache
+
+log:
+  format: json
+  level: debug
+
+policy:
+  mode: database
+
+dns:
+  magic_dns: true
+  base_domain: tailnet.example.net
+  override_local_dns: true
+  nameservers:
+    global:
+      - 1.1.1.1
+      - https://dns.nextdns.io/abc123
+    split:
+      Corp.Example.COM:
+        - 10.0.0.1
+  search_domains: [corp.example.com]
+  extra_records:
+    - name: grafana.tailnet.example.net
+      type: A
+      value: 100.64.0.3
+  challenge:
+    propagation_timeout: 3m
+    resolvers: [9.9.9.9]
+
+oidc:
+  only_start_if_oidc_is_available: false
+  issuer: https://idp.example.com
+  client_id: headscale
+  # os.ExpandEnv, then read relative to the test's working directory.
+  client_secret_path: ${COMPAT_SECRETS}/oidc-secret.txt
+  scope: [openid, profile, email, groups]
+  extra_params:
+    Login_Hint: file
+  allowed_domains: [example.com]
+  allowed_users: [alice@example.com]
+  allowed_groups: [/headscale]
+  email_verified_required: false
+  use_expiry_from_token: true
+  pkce:
+    enabled: true
+    method: plain
+
+logtail:
+  enabled: true
+taildrop:
+  enabled: false
+auto_update:
+  enabled: true
+
+cli:
+  address: headscale.example.com:443
+  api_key: marker-cli-api-key
+  timeout: 15s
+  insecure: true
+
+tuning:
+  notifier_send_timeout: 1s
+  batch_change_delay: 500ms
+  node_mapsession_buffered_chan_size: 50
+  batcher_workers: 4096
+  register_cache_expiration: 20m
+  register_cache_max_entries: 2000
+  node_store_batch_size: 50
+  node_store_batch_timeout: 250ms

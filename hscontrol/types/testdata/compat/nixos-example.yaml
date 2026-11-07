@@ -1,0 +1,78 @@
+%YAML 1.1
+---
+database:
+  postgres:
+    host: null
+    name: null
+    password_file: null
+    port: null
+    user: null
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+    write_ahead_log: true
+  type: sqlite
+derp:
+  auto_update_enabled: true
+  paths: []
+  server:
+    private_key_path: /var/lib/headscale/derp_server_private.key
+  update_frequency: 24h
+  urls:
+  - https://controlplane.tailscale.com/derpmap/default
+disable_check_updates: true
+dns:
+  base_domain: tailnet.example.com
+  certificates:
+    enabled: false
+    zone: ''
+  challenge:
+    provider: null
+  extra_records: null
+  magic_dns: true
+  nameservers:
+    global:
+    - 1.1.1.1
+    - 8.8.8.8
+    split: {}
+  override_local_dns: true
+  search_domains: []
+listen_addr: 0.0.0.0:8080
+log:
+  format: text
+  level: info
+node:
+  ephemeral:
+    inactivity_timeout: 30m
+  expiry: '0'
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+oidc:
+  allowed_domains: []
+  allowed_users: []
+  client_id: ''
+  client_secret_path: null
+  extra_params: {}
+  issuer: ''
+  pkce:
+    enabled: false
+    method: S256
+  scope:
+  - openid
+  - profile
+  - email
+policy:
+  mode: file
+  path: /var/lib/headscale/policy.hujson
+prefixes:
+  allocation: sequential
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
+server_url: https://headscale.example.com
+tls:
+  acme:
+    challenge_type: null
+    hostname: ''
+    http_listen: null
+  cert_path: null
+  key_path: null
+unix_socket: /run/headscale/headscale.sock
