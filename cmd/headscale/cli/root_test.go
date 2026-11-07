@@ -433,3 +433,40 @@ func TestInitConfigSkippedLogLevel(t *testing.T) {
 	initConfig()
 	require.Equal(t, zerolog.InfoLevel, zerolog.GlobalLevel(), "log.level's default, as with a config")
 }
+
+func TestLoadConfig(t *testing.T) {
+	dir := t.TempDir()
+	conf := func(name string) string {
+		p := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(p, []byte("server_url: https://"+name+"\n"), 0o600))
+
+		return p
+	}
+	flag, global, env := conf("flag.yaml"), conf("global.yaml"), conf("env.yaml")
+
+	tests := []struct {
+		name               string
+		path, cfgFile, env string
+		want               string
+	}{
+		{"path wins", flag, global, env, flag},
+		{"then -c", "", global, env, global},
+		{"then HEADSCALE_CONFIG", "", "", env, env},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			t.Setenv("HEADSCALE_CONFIG", tt.env)
+
+			old := cfgFile
+			cfgFile = tt.cfgFile
+
+			t.Cleanup(func() { cfgFile = old })
+
+			require.NoError(t, loadConfig(tt.path))
+			require.Equal(t, tt.want, viper.ConfigFileUsed())
+		})
+	}
+}

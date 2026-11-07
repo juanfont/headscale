@@ -8,7 +8,9 @@
 - To load the configuration from a different path, use:
     - the command line flag `-c`, `--config`
     - the environment variable `HEADSCALE_CONFIG`
-- Validate the configuration file with: `headscale configtest`
+- Validate the configuration file with: `headscale check config`. Use `headscale check all` to also check every file it
+  names (policy, DERP map, extra records, TLS pair, keys), one line per file. Both run offline and write nothing; pass
+  `-f <path>` to check a file other than the one `headscale serve` would load.
 
 !!! example "Get the [example configuration from the GitHub repository](https://github.com/juanfont/headscale/blob/main/config-example.yaml)"
 
