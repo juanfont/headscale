@@ -44,10 +44,17 @@ var reauthSkipReasons = map[string]string{
 	"ephemeral-lifecycle/late-revoked/late/legacy-text":     refusalText,
 	"ephemeral-lifecycle/late-expired/late-exp/text":        refusalText,
 	"ephemeral-lifecycle/late-expired/late-exp/legacy-text": refusalText,
+
+	"reauth-user/a8-convert/u-convert/owner": tagsAwake,
+	"reauth-user/a8-convert/obs/filter":      tagsAwake,
+	"reauth-user/a8-convert/t-server/filter": tagsAwake,
 }
 
 const (
 	refusalText = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
+	tagsAwake   = "TAGS_AWAKE: SaaS takes the tags a node asks for under its own node key, with any key or none " +
+		"(reauth-wake-tags), and expires its node key when they are not its to take; headscale applies " +
+		"requested tags only at login"
 )
 
 // reauthNotCompared lists, by key prefix, checks left out: SaaS's answer
