@@ -1,7 +1,10 @@
 package types
 
 import (
+	"maps"
 	"reflect"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -197,5 +200,307 @@ func TestConfigFields(t *testing.T) {
 		}
 
 		check(reflect.TypeFor[Config](), "Config")
+	})
+}
+
+func TestConfigTree(t *testing.T) {
+	wantSections := []string{
+		"noise",
+		"prefixes",
+		"policy",
+		"log",
+		"node",
+		"node.ephemeral",
+		"node.routes",
+		"node.routes.ha",
+		"preauth_keys",
+		"derp",
+		"derp.server",
+		"database",
+		"database.gorm",
+		"database.sqlite",
+		"database.postgres",
+		"dns",
+		"dns.nameservers",
+		"dns.certificates",
+		"dns.challenge",
+		"tls",
+		"tls.acme",
+		"oidc",
+		"oidc.pkce",
+		"logtail",
+		"taildrop",
+		"auto_update",
+		"cli",
+		"tuning",
+	}
+
+	var cfg Config
+
+	tree := ConfigTree(&cfg)
+
+	var gotSections []string
+
+	for i, f := range tree {
+		if f.Doc == "" {
+			t.Errorf("%s has no doc", f.Path)
+		}
+
+		if !f.Section {
+			continue
+		}
+
+		gotSections = append(gotSections, f.Path)
+
+		if i+1 == len(tree) || !strings.HasPrefix(tree[i+1].Path, f.Path+".") {
+			t.Errorf("section %s is not directly before its first key", f.Path)
+		}
+	}
+
+	if diff := cmp.Diff(wantSections, gotSections); diff != "" {
+		t.Errorf("ConfigTree sections (-want +got):\n%s", diff)
+	}
+}
+
+var (
+	goDocLink   = regexp.MustCompile(`\[[A-Za-z][\w.]*\](\(?)`)
+	codeSpan    = regexp.MustCompile("`([^`]*)`")
+	linkTarget  = regexp.MustCompile(`\]\([^)]*\)`)
+	docWord     = regexp.MustCompile(`[A-Za-z0-9_.]+`)
+	keyLike     = regexp.MustCompile(`^[a-z0-9_]+(\.[a-z0-9_<>]+)+$`)
+	placeholder = regexp.MustCompile(`^<[a-z_]+>$`)
+	angleWord   = regexp.MustCompile(`<[A-Za-z][\w-]*>`)
+	snakeCase   = regexp.MustCompile(`^[a-z0-9]+(_[a-z0-9]+)+$`)
+	camelCase   = regexp.MustCompile(`[a-z][A-Z]`)
+)
+
+// docSchema is what the doc style rules check a doc against.
+type docSchema struct {
+	paths, open, top, lastSegments, goNames map[string]bool
+}
+
+func newDocSchema(tree []ConfigField) docSchema {
+	s := docSchema{
+		paths: map[string]bool{}, open: map[string]bool{}, top: map[string]bool{},
+		lastSegments: map[string]bool{}, goNames: map[string]bool{},
+	}
+	structs := []reflect.Type{reflect.TypeFor[Config]()}
+
+	for _, f := range tree {
+		s.paths[f.Path] = true
+		s.open[f.Path] = f.Open
+
+		first, _, nested := strings.Cut(f.Path, ".")
+		s.top[first] = true
+
+		if last := f.Path[strings.LastIndex(f.Path, ".")+1:]; nested && snakeCase.MatchString(last) {
+			s.lastSegments[last] = true
+		}
+
+		if f.Section {
+			structs = append(structs, f.Field.Type)
+		}
+	}
+
+	for _, typ := range structs {
+		for f := range typ.Fields() {
+			if f.IsExported() && camelCase.MatchString(f.Name) && f.Name != "MagicDNS" {
+				s.goNames[f.Name] = true
+			}
+		}
+	}
+
+	return s
+}
+
+// bare is text outside code spans and link targets.
+func bare(text string) string {
+	return linkTarget.ReplaceAllString(codeSpan.ReplaceAllString(text, " "), "]")
+}
+
+func bareWords(text string) []string {
+	words := docWord.FindAllString(bare(text), -1)
+	for i, w := range words {
+		words[i] = strings.TrimRight(w, ".")
+	}
+
+	return words
+}
+
+// goDocLinks are [Name] links a Markdown renderer leaves as text.
+func (docSchema) goDocLinks(text string) []string {
+	var bad []string
+
+	for _, m := range goDocLink.FindAllStringSubmatch(text, -1) {
+		if m[1] == "" {
+			bad = append(bad, m[0])
+		}
+	}
+
+	return bad
+}
+
+// bareKeys are keys written outside backticks: a dotted or snake_case
+// path, or the snake_case leaf of a nested one.
+func (s docSchema) bareKeys(text string) []string {
+	var bad []string
+
+	for _, w := range bareWords(text) {
+		if (strings.ContainsAny(w, "._") && s.paths[w]) || s.lastSegments[w] {
+			bad = append(bad, w)
+		}
+	}
+
+	return bad
+}
+
+// unknownKeys are backticked keys under a top-level key that name no key,
+// nor an open map's entry placeholder.
+func (s docSchema) unknownKeys(text string) []string {
+	var bad []string
+
+	for _, m := range codeSpan.FindAllStringSubmatch(text, -1) {
+		key := m[1]
+		first, _, _ := strings.Cut(key, ".")
+
+		if !keyLike.MatchString(key) || !s.top[first] || s.paths[key] {
+			continue
+		}
+
+		i := strings.LastIndex(key, ".")
+		if !s.open[key[:i]] || !placeholder.MatchString(key[i+1:]) {
+			bad = append(bad, key)
+		}
+	}
+
+	return bad
+}
+
+func (s docSchema) goFieldNames(text string) []string {
+	return slices.DeleteFunc(bareWords(text), func(w string) bool { return !s.goNames[w] })
+}
+
+// markup is what Markdown swallows as HTML, or a template engine runs.
+func (docSchema) markup(text string) []string {
+	bad := angleWord.FindAllString(bare(text), -1)
+
+	for _, s := range []string{"{{", "{%", "{#"} {
+		if strings.Contains(text, s) {
+			bad = append(bad, s)
+		}
+	}
+
+	return bad
+}
+
+// undocumentedValues lists the values of each enum in tree that has a
+// documented value but not all of them.
+func undocumentedValues(tree []ConfigField) []string {
+	type enum interface{ Allowed() []string }
+
+	var bad []string
+
+	for _, f := range tree {
+		e, ok := reflect.TypeAssert[enum](f.Value)
+		prefix := f.Field.Type.Name() + "="
+
+		if !ok || !slices.ContainsFunc(slices.Collect(maps.Keys(configValueDocs)), func(k string) bool {
+			return strings.HasPrefix(k, prefix)
+		}) {
+			continue
+		}
+
+		for _, v := range e.Allowed() {
+			if ConfigValueDoc(f.Field.Type, v) == "" {
+				bad = append(bad, f.Path+": "+v)
+			}
+		}
+	}
+
+	return bad
+}
+
+// TestConfigDocsStyle keeps the field and value docs readable where they
+// are printed: YAML comments, the reference page and NixOS descriptions.
+func TestConfigDocsStyle(t *testing.T) {
+	tree := ConfigTree(new(Config))
+	schema := newDocSchema(tree)
+
+	type doc struct{ at, text string }
+
+	docs := make([]doc, 0, len(tree)+len(configValueDocs))
+	for _, f := range tree {
+		docs = append(docs, doc{f.Path, f.Doc})
+	}
+
+	for _, k := range slices.Sorted(maps.Keys(configValueDocs)) {
+		docs = append(docs, doc{k, configValueDocs[k]})
+	}
+
+	// Each rule has docs it must reject, one per clause, so it cannot pass
+	// vacuously, and docs it must accept, so it does not flag good prose.
+	rules := []struct {
+		name    string
+		check   func(text string) []string
+		rejects []string
+		accepts []string
+	}{
+		{
+			name:    "no Go doc links",
+			check:   schema.goDocLinks,
+			rejects: []string{"With TLS as [Config.TLS] sets it up."},
+			accepts: []string{"See [DNS](https://headscale.net/stable/ref/dns/)."},
+		},
+		{
+			name:    "keys in backticks",
+			check:   schema.bareKeys,
+			rejects: []string{"Requires dns.base_domain.", "Applied only when write_ahead_log is true."},
+			accepts: []string{"Each node below `dns.base_domain`, as the policy allows; see [DNS](https://headscale.net/stable/ref/dns/)."},
+		},
+		{
+			name:    "backticked keys exist",
+			check:   schema.unknownKeys,
+			rejects: []string{"Set `dns.challenge.provider.name`."},
+			accepts: []string{"Set `dns.challenge.provider.<setting>` or `dns.base_domain`, e.g. `1.1.1.1:53` in `config.yaml`."},
+		},
+		{
+			name:    "no Go field names",
+			check:   schema.goFieldNames,
+			rejects: []string{"Reloads every UpdateFrequency."},
+			accepts: []string{"Requires MagicDNS and an IPv4 address."},
+		},
+		{
+			name:    "no markup Markdown or templates eat",
+			check:   schema.markup,
+			rejects: []string{"Reads file:<path>.", "Shows {{ .Name }}.", "Shows {% raw %}.", "Shows {# note #}."},
+			accepts: []string{"Reads `file:<path>`; shows `<redacted>`."},
+		},
+	}
+
+	for _, rule := range rules {
+		t.Run(rule.name, func(t *testing.T) {
+			for _, text := range rule.rejects {
+				assert.NotEmpty(t, rule.check(text), "rejects %q", text)
+			}
+
+			for _, text := range rule.accepts {
+				assert.Empty(t, rule.check(text), "accepts %q", text)
+			}
+
+			var offenders []string
+
+			for _, d := range docs {
+				for _, bad := range rule.check(d.text) {
+					offenders = append(offenders, d.at+": "+bad)
+				}
+			}
+
+			assert.Empty(t, offenders)
+		})
+	}
+
+	t.Run("enums document every value", func(t *testing.T) {
+		assert.Empty(t, undocumentedValues(tree))
+		assert.NotEmpty(t, ConfigValueDoc(reflect.TypeFor[PolicyMode](), "database"))
 	})
 }
