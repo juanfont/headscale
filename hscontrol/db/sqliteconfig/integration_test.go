@@ -3,10 +3,12 @@ package sqliteconfig
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -277,4 +279,36 @@ func TestJournalModeValidation(t *testing.T) {
 // contains checks if a string contains a substring (helper function).
 func contains(str, substr string) bool {
 	return strings.Contains(str, substr)
+}
+
+// TestToURLOpensExactPath guards against URI metacharacters in the path: SQLite
+// ends a file: URI path at '?' or '#' and decodes '%', so an unescaped path
+// opens a different file than the one configured.
+func TestToURLOpensExactPath(t *testing.T) {
+	for _, name := range []string{"q?x", "h#00", "pct%41", "pct%zz", "sp ace"} {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), name)
+			require.NoError(t, os.Mkdir(dir, 0o700))
+
+			dbPath := filepath.Join(dir, name+".db")
+
+			url, err := Default(dbPath).ToURL()
+			require.NoError(t, err)
+
+			db, err := sql.Open("sqlite", url)
+			require.NoError(t, err)
+
+			defer db.Close()
+
+			_, err = db.ExecContext(t.Context(), "CREATE TABLE t (id INTEGER)")
+			require.NoError(t, err)
+
+			_, err = os.Stat(dbPath)
+			require.NoError(t, err, "database not created at configured path")
+
+			var mode string
+			require.NoError(t, db.QueryRowContext(t.Context(), "PRAGMA journal_mode").Scan(&mode))
+			require.Equal(t, "wal", mode)
+		})
+	}
 }
