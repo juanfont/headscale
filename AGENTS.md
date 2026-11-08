@@ -359,6 +359,10 @@ a broken one.
 - **Do not edit `gen/`** — it is regenerated from `proto/` by
   `make generate`.
 - **Proto changes + code changes should be two commits**, not one.
+- **`services.headscale.settings` options come only from
+  `nix/options.generated.nix`**, generated from `hscontrol/types/config.go`
+  by `go generate ./hscontrol/types/`. Never declare one in `nix/module.nix`:
+  the module only sets values, below `lib.mkDefault`.
 - **Do not edit the generated config files** —
   `hscontrol/types/config_docs_generated.go`, `nix/options.generated.nix`,
   `docs/ref/configuration-options.md` and `docs/ref/config-example.yaml`

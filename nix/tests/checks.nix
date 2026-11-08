@@ -63,8 +63,6 @@ let
 
   # Outside the store, so only the switch can check it.
   mutablePolicy = "/var/lib/headscale/policy.json";
-  # Readable only through the group headscale.
-  oldGroupPolicy = "/var/lib/hsold/policy.json";
   # Readable only through hshand, a group made by hand.
   handGroupPolicy = "/var/lib/hshand/policy.json";
   # Readable only through the group hsread.
@@ -82,10 +80,6 @@ in
       {
         specialisation = lib.mapAttrs (_: c: { configuration = c; }) {
           unitEnv.systemd.services.headscale.environment.HEADSCALE_SERVER_URL = "ftp://headscale";
-          newGroup = {
-            services.headscale.group = "hs3";
-            users.groups.hs3 = { };
-          };
           # hsnew is created by this switch, so the check leaves it out.
           supplementaryGroup = {
             services.headscale.settings.policy.path = lib.mkForce groupPolicy;
@@ -106,9 +100,13 @@ in
         };
       }
     ];
-    services.headscale.settings.policy = {
-      mode = "file";
-      path = valid;
+    services.headscale.settings = {
+      policy = {
+        mode = "file";
+        path = valid;
+      };
+      # The CLI calls below find it through HEADSCALE_UNIX_SOCKET.
+      unix_socket = "/run/headscale/moved.sock";
     };
     users.groups.hsread = { };
     specialisation = lib.mapAttrs (_: c: { configuration.services.headscale = c; }) {
@@ -125,16 +123,7 @@ in
           policy = false;
         };
       };
-      newUser = {
-        user = "hs2";
-        group = "hs2";
-      };
       testsPass.settings.policy.path = lib.mkForce testsPass;
-      # After activation the user is no longer in its old primary group headscale.
-      newPrimaryGroup = {
-        group = "hsread";
-        settings.policy.path = lib.mkForce oldGroupPolicy;
-      };
       # Activation keeps a membership of a group NixOS does not declare.
       handGroup.settings.policy.path = lib.mkForce handGroupPolicy;
       credential.settings.dns = {
@@ -188,6 +177,9 @@ in
 
       headscale.wait_for_unit("headscale.service")
       headscale.wait_until_succeeds("headscale health", timeout=timedelta(seconds=60))
+      headscale.fail("test -e /etc/headscale/config.yaml")
+      # sudo resets the environment; PAM sets HEADSCALE_UNIX_SOCKET again.
+      headscale.succeed("env -u HEADSCALE_UNIX_SOCKET sudo -u headscale headscale health")
 
       with subtest("rejected switches leave the running headscale alone"):
           pid = main_pid()
@@ -222,9 +214,6 @@ in
           headscale.succeed("install -d -m 750 -g hshand ${builtins.dirOf handGroupPolicy}")
           headscale.succeed("install -m 640 -g hshand ${valid} ${handGroupPolicy}")
           headscale.succeed(stc("handGroup", "check"))
-          headscale.succeed("install -d -m 750 -g headscale ${builtins.dirOf oldGroupPolicy}")
-          headscale.succeed("install -m 640 -g headscale ${valid} ${oldGroupPolicy}")
-          assert_rejected("newPrimaryGroup", "permission denied")
 
       with subtest("a file: secret is skipped, not read"):
           out = headscale.succeed(stc("credential", "check"))
@@ -233,10 +222,6 @@ in
       with subtest("skips"):
           out = headscale.succeed("${toplevel}/bin/switch-to-configuration check 2>&1")
           assert "unit unchanged" in out, out
-          out = headscale.succeed(stc("newUser", "check"))
-          assert "does not exist yet" in out, out
-          out = headscale.succeed(stc("newGroup", "check"))
-          assert 'group hs3 does not exist yet' in out, out
 
       with subtest("escape hatches"):
           headscale.succeed(stc("unchecked", "check"))
@@ -249,5 +234,15 @@ in
           assert main_pid() != pid, "headscale was not restarted"
           want = headscale.succeed("${jq} -S . ${testsPass}")
           assert served_policy() == want, "new policy not served"
+
+      # Last: it takes headscale's account away.
+      with subtest("an account activation has yet to create skips the checks"):
+          headscale.succeed("systemctl stop headscale.service")
+          headscale.succeed("groupmod -n hsgone headscale")
+          out = headscale.succeed(stc("mutable", "check"))
+          assert "group headscale does not exist yet" in out, out
+          headscale.succeed("usermod -l hsgone headscale")
+          out = headscale.succeed(stc("mutable", "check"))
+          assert "user headscale does not exist yet" in out, out
     '';
 }

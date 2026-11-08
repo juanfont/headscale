@@ -484,9 +484,9 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
-// TestCLIOnlyConfig: a file with only what client commands read, as the
-// NixOS module writes to /etc/headscale/config.yaml, serves them; check
-// config reports what the server lacks.
+// TestCLIOnlyConfig: a file with only what client commands read, such as
+// ~/.config/headscale/config.yaml, serves them; check config reports what
+// the server lacks.
 func TestCLIOnlyConfig(t *testing.T) {
 	path := writeFile(t, t.TempDir(), "config.yaml", `cli:
   address: headscale.example.com:443

@@ -72,6 +72,11 @@ in
     )
 
     headscale.succeed("headscale policy set -f ${policy}")
+    # The default socket needs neither a config file nor a variable.
+    headscale.succeed("env -u HEADSCALE_UNIX_SOCKET headscale nodes list")
+    # sudo resets the environment; PAM sets the module's variables again.
+    out = headscale.succeed("env -u HEADSCALE_DISABLE_CHECK_UPDATES sudo printenv HEADSCALE_DISABLE_CHECK_UPDATES")
+    assert out.strip() == "true", out
 
     # The docs tell operators to run this; it needs ExecReload in the unit.
     headscale.succeed("systemctl reload headscale.service")
