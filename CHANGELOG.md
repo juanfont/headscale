@@ -381,6 +381,7 @@ Custom builds must be rebuilt with Go 1.27.3 or newer to receive the certificate
 - Fix `#`-prefixed metadata fields being rejected outside `acls`, so policy editors can store metadata in grants, SSH rules and `nodeAttrs` [#3481](https://github.com/juanfont/headscale/pull/3481)
 - Fix exit nodes not offered by recent macOS and iOS clients, which read the `suggest-exit-node` peer attribute rather than the advertised `0.0.0.0/0` routes [#3487](https://github.com/juanfont/headscale/pull/3487)
 - Fix exit node not offered to viewers whose only matching rule is a `via` grant; peer visibility now comes from the peer map alone [#3409](https://github.com/juanfont/headscale/pull/3409)
+- Fix a known node going offline on restart when its tsnet program, container or `--config` sends an auth key other than the one it joined with. As on Tailscale SaaS, a node under its own unexpired node key only wakes up: the key it sends is not checked, not spent and changes nothing. Tags and owner change only with a new node key, such as `tailscale up --force-reauth`. Refused registrations are now logged [#3681](https://github.com/juanfont/headscale/pull/3681)
 
 ## 0.29.3 (2026-07-29)
 
