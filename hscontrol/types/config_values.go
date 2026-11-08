@@ -221,7 +221,7 @@ func (f *LogFormat) UnmarshalText(text []byte) error {
 type DatabaseType string //nolint:recvcheck // UnmarshalText needs a pointer; the rest read the value
 
 func (DatabaseType) Allowed() []string {
-	return []string{"sqlite", string(DatabaseSqlite), string(DatabasePostgres)}
+	return []string{string(DatabaseSqliteShort), string(DatabaseSqlite), string(DatabasePostgres)}
 }
 
 func (d *DatabaseType) UnmarshalText(text []byte) error {

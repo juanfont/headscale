@@ -1,0 +1,70 @@
+package fixture
+
+// Mode has an Allowed method, so its documented constants are values.
+type Mode string
+
+func (Mode) Allowed() []string { return []string{string(ModeFast), string(ModeSlow)} }
+
+const (
+	// ModeFast is the quick path.
+	ModeFast Mode = "fast"
+
+	// ModeSlow takes its time.
+	ModeSlow Mode = "slow"
+
+	ModeOff Mode = "off"
+
+	// ModeParen has its type in parentheses.
+	ModeParen (Mode) = ("paren")
+)
+
+// Other has no Allowed method.
+type Other string
+
+const (
+	// OtherValue is not a value of an enum.
+	OtherValue Other = "value"
+
+	// OtherConverted is not a value of an enum either.
+	OtherConverted = Other("converted")
+)
+
+type Server struct {
+	// Addr is the host:port the server listens on.
+	Addr string `koanf:"addr"`
+
+	// Enabled lets nodes connect.
+	Enabled bool `koanf:"enabled"`
+
+	// Notes are two paragraphs,
+	// still the first.
+	//
+	// The second paragraph.
+	Notes []string `koanf:"notes"`
+
+	// Choices are listed:
+	//
+	//   - first choice
+	//   - second choice
+	//
+	// Run:
+	//
+	//	first command
+	//	  indented more
+	Choices string `koanf:"choices"`
+
+	// Commands are run in order:
+	//
+	//	first command
+	//	second command
+	Commands []string `koanf:"commands"`
+
+	// How often to retry; Retries is not the first word.
+	Retries int `koanf:"retries"`
+
+	// Untagged has no koanf tag.
+	Untagged string
+
+	// Skipped is tagged out.
+	Skipped string `koanf:"-"`
+}

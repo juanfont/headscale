@@ -13,13 +13,14 @@ import (
 // outside it means a generator reached further than expected, and the area is
 // dropped rather than committed.
 var generatedPaths = map[string]bool{
-	"hscontrol/types/types_clone.go":          true,
-	"hscontrol/types/types_view.go":           true,
-	"hscontrol/capver/capver_generated.go":    true,
-	"hscontrol/capver/capver_test_data.go":    true,
-	"gen/client/v1/client.gen.go":             true,
-	"gen/client/v2/client.gen.go":             true,
-	".github/workflows/test-integration.yaml": true,
+	"hscontrol/types/types_clone.go":           true,
+	"hscontrol/types/types_view.go":            true,
+	"hscontrol/types/config_docs_generated.go": true,
+	"hscontrol/capver/capver_generated.go":     true,
+	"hscontrol/capver/capver_test_data.go":     true,
+	"gen/client/v1/client.gen.go":              true,
+	"gen/client/v2/client.gen.go":              true,
+	".github/workflows/test-integration.yaml":  true,
 }
 
 // oapiPin finds the oapi-codegen version the Makefile pins, so the clients are
