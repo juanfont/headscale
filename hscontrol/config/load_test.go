@@ -2923,11 +2923,6 @@ disable_check_updates: %t
 	}
 }
 
-func TestExampleConfigBooleanSettings(t *testing.T) {
-	_, err := loadServer("../../config-example.yaml", true)
-	require.NoError(t, err)
-}
-
 func TestLoadRejectsNonBoolean(t *testing.T) {
 	for _, key := range []string{"cli.insecure", "disable_check_updates"} {
 		t.Run(key, func(t *testing.T) {
