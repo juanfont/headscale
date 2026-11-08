@@ -5,6 +5,7 @@ package sqliteconfig
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 )
@@ -354,7 +355,9 @@ func (c *Config) ToURL() (string, error) {
 	if c.Path == ":memory:" {
 		baseURL = ":memory:"
 	} else {
-		baseURL = "file:" + c.Path
+		// SQLite ends a URI path at '?' or '#' and decodes '%'; escape so the
+		// configured path names the file literally.
+		baseURL = "file:" + (&url.URL{Path: c.Path}).EscapedPath()
 	}
 
 	// Build query parameters
