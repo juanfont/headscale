@@ -357,6 +357,7 @@ jobs:
           - TestTagsAuthKeyWithTagAdminOverrideReauthPreserves
           - TestTagsReauthDifferentKeyRetagsNode
           - TestTagsReauthDifferentKeyRemovesTag
+          - TestTagsRestartWithAnotherSpentKeyStaysOnline
           - TestTagsAuthKeyWithTagCLICannotModifyAdminTags
           - TestTagsAuthKeyWithoutTagCanRequestOwnedTag
           - TestTagsAuthKeyWithoutTagRegisterNoTags
