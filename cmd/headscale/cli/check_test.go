@@ -35,6 +35,8 @@ func TestSkipsInitConfig(t *testing.T) {
 		{"generate config with config flag", []string{"-c", "x.yaml", "generate", "config"}, true},
 		{"gen config", []string{"gen", "config"}, true},
 		{"help generate config", []string{"help", "generate", "config"}, true},
+		{"generate nixos-options", []string{"generate", "nixos-options"}, true},
+		{"generate nixos-options release", []string{"generate", "nixos-options", "--release"}, true},
 		{"generate private-key", []string{"generate", "private-key"}, false},
 		{"policy get", []string{"policy", "get"}, false},
 		{"help nodes", []string{"help", "nodes"}, false},

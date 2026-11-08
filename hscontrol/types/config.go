@@ -1,6 +1,7 @@
 package types
 
 //go:generate go run ../../tools/configgen table . config_docs_generated.go
+//go:generate go run ../../tools/configgen/files ../..
 
 import (
 	"cmp"

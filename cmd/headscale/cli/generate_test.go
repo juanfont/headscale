@@ -363,3 +363,64 @@ func TestGenerateConfigCommand(t *testing.T) {
 		})
 	}
 }
+
+// TestGenerateNixOSOptionsCommand: generate nixos-options prints the
+// options and only them, whatever config is around.
+func TestGenerateNixOSOptionsCommand(t *testing.T) {
+	broken := writeFile(t, t.TempDir(), "broken.yaml", "bogus_key: 1\n")
+
+	want, err := config.GenerateNixOptions(nil)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name       string
+		args       []string
+		wantStdout string
+		wantStderr string // "" when stderr must be empty
+	}{
+		{name: "development", args: []string{"generate", "nixos-options"}, wantStdout: string(want)},
+		// A test binary has no VCS stamp: commit unknown.
+		{name: "release from a dev build", args: []string{"generate", "nixos-options", "--release"}, wantStderr: "commit unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, err := runHeadscale(t, []string{"HEADSCALE_BOGUS=1"}, append([]string{"-c", broken}, tt.args...)...)
+			if tt.wantStderr == "" {
+				require.NoError(t, err, stderr)
+				assert.Empty(t, stderr)
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, stderr, tt.wantStderr)
+			}
+
+			assert.Equal(t, tt.wantStdout, stdout)
+		})
+	}
+}
+
+func TestReleaseStamp(t *testing.T) {
+	tests := []struct {
+		name    string
+		info    types.VersionInfo
+		wantErr bool
+	}{
+		{name: "release", info: types.VersionInfo{Version: "v1.2.3", Commit: "abc"}},
+		{name: "dirty", info: types.VersionInfo{Version: "v1.2.3", Commit: "abc", Dirty: true}, wantErr: true},
+		{name: "unknown commit", info: types.VersionInfo{Version: "dev", Commit: "unknown"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := releaseStamp(&tt.info)
+			if tt.wantErr {
+				require.ErrorIs(t, err, errNotRelease)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, &tt.info, got)
+		})
+	}
+}
