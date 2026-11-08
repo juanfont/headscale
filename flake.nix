@@ -313,6 +313,21 @@
               ];
               "oidc.client_secret" = [ "hunter2" ];
               "database.postgres.pass" = [ "hunter2" ];
+              # Relative to the config, which is in the store.
+              "policy.path" = [
+                "policy.hujson"
+                42
+              ];
+              "tls.cert_path" = [ "cert.pem" ];
+              "derp.paths" = [ [ "derp.yaml" ] ];
+              # A key in the store is world-readable.
+              "noise.private_key_path" = [
+                ./flake.nix
+                "${./flake.nix}"
+                "noise_private.key"
+              ];
+              "tls.key_path" = [ "${./flake.nix}" ];
+              "database.sqlite.path" = [ "db.sqlite" ];
               "dns.extra_records" = map (r: [ ({ name = "grafana.example.com"; } // r) ]) [
                 { value = "grafana"; }
                 { value = "256.1.1.1"; }
