@@ -88,7 +88,7 @@ func (h *Headscale) debugHostGuard(next http.Handler) http.Handler {
 		return strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".")
 	}
 
-	allowed := []string{"localhost", normalize(h.cfg.MetricsAddr)}
+	allowed := []string{"localhost", normalize(string(h.cfg.MetricsAddr))}
 
 	serverURL, err := url.Parse(h.cfg.ServerURL)
 	if err == nil {
@@ -274,7 +274,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 	debugMux.Handle("/metrics", promhttp.Handler())
 
 	debugHTTPServer := &http.Server{
-		Addr:         h.cfg.MetricsAddr,
+		Addr:         string(h.cfg.MetricsAddr),
 		Handler:      securityHeaders(h.debugHostGuard(debugMux)),
 		ReadTimeout:  types.HTTPTimeout,
 		WriteTimeout: 0,

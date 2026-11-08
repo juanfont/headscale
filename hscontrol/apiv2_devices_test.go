@@ -187,7 +187,7 @@ func TestAPIv2Device_EmptyRouteLists(t *testing.T) {
 // MagicDNS FQDN, in a read and in the list.
 func TestAPIv2Device_NameIsFQDN(t *testing.T) {
 	e := newDeviceTestEnv(t)
-	e.app.cfg.BaseDomain = "tailnet.example.com"
+	e.app.cfg.DNSConfig.BaseDomain = "tailnet.example.com"
 
 	assert.Equal(t, "contract-dut.tailnet.example.com", getDevice(t, e.api, e.deviceID).Name)
 

@@ -99,7 +99,7 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	if types.LogFormat() == types.JSONLogFormat {
+	if types.LogFormatSetting() == types.JSONLogFormat {
 		log.Logger = log.Output(os.Stdout)
 	}
 

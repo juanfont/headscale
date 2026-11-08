@@ -87,17 +87,18 @@ func NewAuthProviderOIDC(
 	h *Headscale,
 	serverURL string,
 	cfg *types.OIDCConfig,
+	clientSecret string, // cfg.ClientSecret, resolved
 ) (*AuthProviderOIDC, error) {
 	// Use the caller's context (bounded, see app.go) so a slow or unreachable
 	// issuer fails discovery within the timeout instead of hanging startup.
-	oidcProvider, err := oidc.NewProvider(ctx, cfg.Issuer)
+	oidcProvider, err := oidc.NewProvider(ctx, string(cfg.Issuer))
 	if err != nil {
 		return nil, fmt.Errorf("creating OIDC provider from issuer config: %w", err)
 	}
 
 	oauth2Config := &oauth2.Config{
 		ClientID:     cfg.ClientID,
-		ClientSecret: cfg.ClientSecret,
+		ClientSecret: clientSecret,
 		Endpoint:     oidcProvider.Endpoint(),
 		RedirectURL:  oidcCallbackURL(serverURL),
 		Scopes:       cfg.Scope,

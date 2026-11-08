@@ -502,7 +502,7 @@ func openDB(cfg types.DatabaseConfig, sqlitePath string) (*gorm.DB, error) {
 	// TODO(kradalby): Integrate this with zerolog
 	var dbLogger logger.Interface
 	if cfg.Debug {
-		dbLogger = util.NewDBLogWrapper(&log.Logger, cfg.Gorm.SlowThreshold, cfg.Gorm.SkipErrRecordNotFound, cfg.Gorm.ParameterizedQueries)
+		dbLogger = util.NewDBLogWrapper(&log.Logger, time.Duration(cfg.Gorm.SlowThreshold)*time.Millisecond, cfg.Gorm.SkipErrRecordNotFound, cfg.Gorm.ParameterizedQueries)
 	} else {
 		dbLogger = logger.Default.LogMode(logger.Silent)
 	}
@@ -517,7 +517,7 @@ func openDB(cfg types.DatabaseConfig, sqlitePath string) (*gorm.DB, error) {
 		}
 
 		log.Info().
-			Str("database", types.DatabaseSqlite).
+			Str("database", string(types.DatabaseSqlite)).
 			Str("path", sqlitePath).
 			Msg("Opening database")
 
@@ -564,15 +564,22 @@ func openDB(cfg types.DatabaseConfig, sqlitePath string) (*gorm.DB, error) {
 
 	case cfg.Type == types.DatabasePostgres:
 		// Log the DSN without the password.
-		redacted := cfg.Postgres
-		redacted.Pass = ""
+		pg := cfg.Postgres
+		pg.Pass = ""
 
 		log.Info().
-			Str(zf.Database, types.DatabasePostgres).
-			Str(zf.Path, redacted.DSN()).
+			Str(zf.Database, string(types.DatabasePostgres)).
+			Str(zf.Path, pg.DSN()).
 			Msg("Opening database")
 
-		db, err := gorm.Open(postgres.Open(cfg.Postgres.DSN()), &gorm.Config{
+		pass, err := types.ResolveSecret("database.postgres.pass", string(cfg.Postgres.Pass))
+		if err != nil {
+			return nil, err
+		}
+
+		pg.Pass = types.Secret(pass)
+
+		db, err := gorm.Open(postgres.Open(pg.DSN()), &gorm.Config{
 			Logger: dbLogger,
 		})
 		if err != nil {

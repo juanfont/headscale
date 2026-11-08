@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	SelfUpdateIdentifier = "self-update"
-	DatabasePostgres     = "postgres"
-	DatabaseSqlite       = "sqlite3"
+	SelfUpdateIdentifier              = "self-update"
+	DatabasePostgres     DatabaseType = "postgres"
+	DatabaseSqlite       DatabaseType = "sqlite3"
 )
 
 // Common errors.

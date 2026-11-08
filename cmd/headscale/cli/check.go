@@ -189,7 +189,7 @@ func loadCheckedConfig(cmd *cobra.Command) (*types.Config, string, error) {
 		return nil, src, err
 	}
 
-	cfg, err := types.CheckServerConfig()
+	cfg, err := types.LoadServerConfig()
 
 	return cfg, src, err
 }

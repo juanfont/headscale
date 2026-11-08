@@ -199,8 +199,8 @@ func TestTailNode(t *testing.T) {
 			t.Parallel()
 
 			cfg := &types.Config{
-				BaseDomain: tt.baseDomain,
-				Taildrop:   types.TaildropConfig{Enabled: true},
+				DNSConfig: types.DNSConfig{BaseDomain: tt.baseDomain},
+				Taildrop:  types.TaildropConfig{Enabled: true},
 			}
 
 			// Stub primary-route lookup: tt.node owns its SubnetRoutes,

@@ -685,16 +685,16 @@ dns:
 			require.NoError(t, LoadConfig(dir, false))
 			assert.Empty(t, src.Warnings())
 
-			cfg, err := CheckServerConfig()
+			cfg, err := LoadServerConfig()
 			require.NoError(t, err)
 
 			if len(tt.want) == 0 {
-				assert.Empty(t, cfg.DNSChallenge.ProviderSettings)
+				assert.Empty(t, cfg.DNSConfig.Challenge.ProviderSettings)
 
 				return
 			}
 
-			assert.Equal(t, tt.want, cfg.DNSChallenge.ProviderSettings)
+			assert.Equal(t, tt.want, cfg.DNSConfig.Challenge.ProviderSettings)
 		})
 	}
 }

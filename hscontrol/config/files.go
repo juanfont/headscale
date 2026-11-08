@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/derp"
@@ -26,7 +27,7 @@ var (
 // File is one file the configuration names.
 type File struct {
 	Key  string // config key, e.g. "policy.path"
-	Path string // as startup resolves it
+	Path string // as startup resolves it; a secret's as written
 
 	// CreatedAtStartup marks key files: startup creates them when missing,
 	// so a missing one is not an error.
@@ -62,7 +63,7 @@ func Files(cfg *types.Config) []File {
 		})
 	}
 
-	noise := cfg.AbsPath(cfg.NoisePrivateKeyPath)
+	noise := cfg.AbsPath(cfg.Noise.PrivateKeyPath)
 	if noise != "" {
 		files = append(files, File{
 			Key: "noise.private_key_path", Path: noise, CreatedAtStartup: true,
@@ -70,19 +71,52 @@ func Files(cfg *types.Config) []File {
 		})
 	}
 
-	if d := cfg.AbsPath(cfg.DERP.ServerPrivateKeyPath); cfg.DERP.ServerEnabled && d != "" {
+	if d := cfg.AbsPath(cfg.DERP.Server.PrivateKeyPath); cfg.DERP.Server.Enabled && d != "" {
 		files = append(files, File{
 			Key: "derp.server.private_key_path", Path: d, CreatedAtStartup: true,
 			Check: func() error { return checkDERPKey(d, noise) },
 		})
 	}
 
-	for _, kv := range cfg.UnreadSecrets {
-		files = append(files, File{
-			Key: kv.Key, Path: fmt.Sprint(kv.Value),
-			Check: func() error { return ErrSecretNotRead },
+	return append(files, secretFiles(cfg)...)
+}
+
+// secretFiles lists, by key, each file: secret startup reads, unread.
+func secretFiles(cfg *types.Config) []File {
+	var files []File
+
+	add := func(key string, s types.Secret) {
+		if s.IsFile() {
+			files = append(files, File{
+				Key: key, Path: strings.TrimPrefix(string(s), "file:"),
+				Check: func() error { return ErrSecretNotRead },
+			})
+		}
+	}
+
+	if cfg.Database.Type == types.DatabasePostgres {
+		add("database.postgres.pass", cfg.Database.Postgres.Pass)
+	}
+
+	if cfg.OIDC.Issuer != "" {
+		add("oidc.client_secret", cfg.OIDC.ClientSecret)
+	}
+
+	// Startup builds the provider from its settings only without a Go-only
+	// one. Bad settings are the loader's to report; this only collects keys.
+	if cfg.DNSConfig.Challenge.Provider == nil && cfg.DNSConfig.Challenge.ProviderName() != "" {
+		_, _ = cfg.DNSConfig.Challenge.NewProvider(func(key, value string) (string, error) {
+			add(key, types.Secret(value))
+
+			if types.Secret(value).IsFile() {
+				return value, dns.ErrSecretUnread
+			}
+
+			return value, nil
 		})
 	}
+
+	slices.SortFunc(files, func(a, b File) int { return strings.Compare(a.Key, b.Key) })
 
 	return files
 }

@@ -73,11 +73,9 @@ func TestVerifyHandler_SuccessSetsJSONContentType(t *testing.T) {
 	prefixV6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
 
 	cfg := &types.Config{
-		ServerURL:           "http://localhost:0",
-		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
-		PrefixV4:            &prefixV4,
-		PrefixV6:            &prefixV6,
-		IPAllocation:        types.IPAllocationStrategySequential,
+		ServerURL: "http://localhost:0",
+		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
+		Prefixes:  types.PrefixesConfig{V4: &prefixV4, V6: &prefixV6, Allocation: types.IPAllocationStrategySequential},
 		Database: types.DatabaseConfig{
 			Type: "sqlite3",
 			Sqlite: types.SqliteConfig{

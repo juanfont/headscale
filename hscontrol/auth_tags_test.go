@@ -20,8 +20,8 @@ func createTestAppWithNodeExpiry(t *testing.T, nodeExpiry time.Duration) *Headsc
 	tmpDir := t.TempDir()
 
 	cfg := types.Config{
-		ServerURL:           "http://localhost:8080",
-		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
+		ServerURL: "http://localhost:8080",
+		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
 		Node: types.NodeConfig{
 			Expiry: nodeExpiry,
 		},

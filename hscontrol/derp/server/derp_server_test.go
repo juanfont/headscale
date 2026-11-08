@@ -40,9 +40,7 @@ func TestGenerateRegionInsecureTLS(t *testing.T) {
 			d := &DERPServer{
 				serverURL: "http://headscale",
 				cfg: &types.DERPConfig{
-					ServerRegionID:   999,
-					ServerRegionCode: "headscale",
-					STUNAddr:         "[::]:3478",
+					Server: types.DERPServerConfig{RegionID: 999, RegionCode: "headscale", STUNAddr: "[::]:3478"},
 				},
 			}
 

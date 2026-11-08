@@ -1565,7 +1565,7 @@ func (o *scenarioOIDC) Issuer() string {
 		panic("OIDC has not been created")
 	}
 
-	return o.cfg.Issuer
+	return string(o.cfg.Issuer)
 }
 
 func (o *scenarioOIDC) ClientSecret() string {
@@ -1573,7 +1573,7 @@ func (o *scenarioOIDC) ClientSecret() string {
 		panic("OIDC has not been created")
 	}
 
-	return o.cfg.ClientSecret
+	return string(o.cfg.ClientSecret)
 }
 
 func (o *scenarioOIDC) ClientID() string {
@@ -1708,10 +1708,10 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 	}
 
 	s.mockOIDC.cfg = &types.OIDCConfig{
-		Issuer: fmt.Sprintf(
+		Issuer: types.HTTPURL(fmt.Sprintf(
 			"http://%s/oidc",
 			hostEndpoint,
-		),
+		)),
 		ClientID:                   "superclient",
 		ClientSecret:               "supersecret",
 		OnlyStartIfOIDCIsAvailable: true,

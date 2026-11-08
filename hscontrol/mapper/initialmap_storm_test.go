@@ -41,13 +41,11 @@ func setupStormBatcher(tb testing.TB, nodeCount, workers int, policy string) (*T
 			Type:   types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db"},
 		},
-		PrefixV4:     &prefixV4,
-		PrefixV6:     &prefixV6,
-		IPAllocation: types.IPAllocationStrategySequential,
-		BaseDomain:   "headscale.test",
-		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		Prefixes:  types.PrefixesConfig{V4: &prefixV4, V6: &prefixV6, Allocation: types.IPAllocationStrategySequential},
+		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
+		Policy:    types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
-			ServerEnabled: false,
+			Server: types.DERPServerConfig{Enabled: false},
 			DERPMap: &tailcfg.DERPMap{
 				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
 			},
@@ -79,7 +77,7 @@ func setupStormBatcher(tb testing.TB, nodeCount, workers int, policy string) (*T
 	st, err := state.NewState(cfg)
 	require.NoError(tb, err)
 
-	derpMap, err := derp.GetDERPMap(cfg.DERP, cfg.BaseDomain)
+	derpMap, err := derp.GetDERPMap(cfg.DERP, cfg.DNSConfig.BaseDomain)
 	require.NoError(tb, err)
 	st.SetDERPMap(derpMap)
 

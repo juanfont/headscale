@@ -76,7 +76,7 @@ func TestNoiseRouter_DoesNotExposeAdministrativeEndpoints(t *testing.T) {
 
 			serverKey := key.NewMachine()
 			app := &Headscale{
-				cfg:             &types.Config{MetricsAddr: metricsAddr},
+				cfg:             &types.Config{MetricsAddr: types.ListenAddr(metricsAddr)},
 				noisePrivateKey: &serverKey,
 			}
 			server := httptest.NewServer(http.HandlerFunc(app.NoiseUpgradeHandler))
@@ -1665,7 +1665,7 @@ func setDNSTestApp(t *testing.T) (*Headscale, *dnstest.Provider) {
 	t.Helper()
 
 	app := createTestApp(t)
-	app.cfg.BaseDomain = setDNSZone
+	app.cfg.DNSConfig.BaseDomain = setDNSZone
 	app.cfg.DNSConfig.Certificates = types.CertificatesConfig{Enabled: true, Zone: setDNSZone}
 
 	provider := &dnstest.Provider{}

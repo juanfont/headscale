@@ -377,7 +377,7 @@ func TestBackfillNodeIPsKeepsLiveSessions(t *testing.T) {
 
 	// Dropping the IPv6 prefix gives the backfill work to do.
 	cfg := persistTestConfig(dbPath)
-	cfg.PrefixV6 = nil
+	cfg.Prefixes.V6 = nil
 
 	s, err := NewState(cfg)
 	require.NoError(t, err)

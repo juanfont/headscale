@@ -138,8 +138,8 @@ func generateDNSConfig(
 	// MagicDNS, base_domain can be a public domain whose names clients ask the
 	// exit node for, so node names stay readable. Reverse lookups stay open, as
 	// on Tailscale SaaS.
-	if dnsConfig.Proxied && cfg.BaseDomain != "" {
-		dnsConfig.ExitNodeFilteredSet = []string{"." + strings.ToLower(cfg.BaseDomain)}
+	if dnsConfig.Proxied && cfg.DNSConfig.BaseDomain != "" {
+		dnsConfig.ExitNodeFilteredSet = []string{"." + strings.ToLower(cfg.DNSConfig.BaseDomain)}
 	}
 
 	return dnsConfig

@@ -210,7 +210,7 @@ func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView])
 	b.resp.UserProfiles = generateUserProfiles(node, peers)
 
 	if node.IsTagged() {
-		fqdn, err := node.GetFQDN(b.mapper.cfg.BaseDomain)
+		fqdn, err := node.GetFQDN(b.mapper.cfg.DNSConfig.BaseDomain)
 		if err != nil {
 			b.addError(err)
 			return b

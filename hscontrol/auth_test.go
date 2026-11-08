@@ -3365,8 +3365,8 @@ func createTestApp(t *testing.T, options ...func(*types.Config)) *Headscale {
 	tmpDir := t.TempDir()
 
 	cfg := types.Config{
-		ServerURL:           "http://localhost:8080",
-		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
+		ServerURL: "http://localhost:8080",
+		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
 		Database: types.DatabaseConfig{
 			Type: "sqlite3",
 			Sqlite: types.SqliteConfig{

@@ -68,7 +68,7 @@ func NewDERPServer(
 	log.Trace().Caller().Msg("creating new embedded DERP server")
 	server := derpserver.New(derpKey, util.TSLogfWrapper()) // nolint // zerolinter complains
 
-	if cfg.ServerVerifyClients {
+	if cfg.Server.VerifyClients {
 		server.SetVerifyClientURL(DerpVerifyScheme + "://verify")
 		server.SetVerifyClientURLFailOpen(false)
 	}
@@ -136,24 +136,24 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 	}
 
 	localDERPregion := tailcfg.DERPRegion{
-		RegionID:   d.cfg.ServerRegionID,
-		RegionCode: d.cfg.ServerRegionCode,
-		RegionName: d.cfg.ServerRegionName,
+		RegionID:   d.cfg.Server.RegionID,
+		RegionCode: d.cfg.Server.RegionCode,
+		RegionName: d.cfg.Server.RegionName,
 		Nodes: []*tailcfg.DERPNode{
 			{
-				Name:     d.cfg.ServerRegionID.String(),
-				RegionID: d.cfg.ServerRegionID,
+				Name:     d.cfg.Server.RegionID.String(),
+				RegionID: d.cfg.Server.RegionID,
 				HostName: host,
 				DERPPort: port,
-				IPv4:     d.cfg.IPv4,
-				IPv6:     d.cfg.IPv6,
+				IPv4:     d.cfg.Server.IPv4,
+				IPv6:     d.cfg.Server.IPv6,
 
 				InsecureForTests: insecure,
 			},
 		},
 	}
 
-	_, portSTUNStr, err := net.SplitHostPort(d.cfg.STUNAddr)
+	_, portSTUNStr, err := net.SplitHostPort(string(d.cfg.Server.STUNAddr))
 	if err != nil {
 		return tailcfg.DERPRegion{}, err
 	}
@@ -380,7 +380,7 @@ func DERPBootstrapDNSHandler(
 
 // ServeSTUN starts a STUN server on the configured addr.
 func (d *DERPServer) ServeSTUN() {
-	packetConn, err := new(net.ListenConfig).ListenPacket(context.Background(), "udp", d.cfg.STUNAddr)
+	packetConn, err := new(net.ListenConfig).ListenPacket(context.Background(), "udp", string(d.cfg.Server.STUNAddr))
 	if err != nil {
 		log.Fatal().Msgf("failed to open STUN listener: %v", err)
 	}

@@ -522,7 +522,7 @@ regions:
 	require.NoError(t, os.WriteFile(brokenPath, []byte("regions: [\n"), 0o600))
 
 	dm, err := GetDERPMap(types.DERPConfig{
-		URLs:  []url.URL{*goodURL, *downURL},
+		URLs:  []types.HTTPURL{types.HTTPURL(goodURL.String()), types.HTTPURL(downURL.String())},
 		Paths: []string{goodPath, brokenPath, filepath.Join(t.TempDir(), "missing.yaml")},
 	}, "")
 	require.ErrorIs(t, err, errDERPMapStatus)
@@ -531,6 +531,25 @@ regions:
 	require.ErrorContains(t, err, "missing.yaml")
 	require.Contains(t, dm.Regions, tailcfg.DERPRegionID(1))
 	require.Contains(t, dm.Regions, tailcfg.DERPRegionID(2))
+}
+
+// TestGetDERPMapURLParseError: url.Parse errors quote the URL or parts of
+// it, credentials included, so the error names only the setting.
+func TestGetDERPMapURLParseError(t *testing.T) {
+	const marker = "derp-parse-password-marker" //nolint:gosec // test marker, not a real credential
+
+	for _, u := range []string{
+		"https://alice:" + marker + "@derp.example/%zz",
+		"https://alice:" + marker + "?@derp.example/map",
+		"https://alice:" + marker + "#@derp.example/map",
+		"https://alice:" + marker,
+	} {
+		t.Run(u, func(t *testing.T) {
+			_, err := GetDERPMap(types.DERPConfig{URLs: []types.HTTPURL{types.HTTPURL(u)}}, "")
+			require.EqualError(t, err, "derp.urls[0]: invalid URL syntax")
+			require.NotContains(t, err.Error(), marker)
+		})
+	}
 }
 
 // TestLoadDERPMapFromURLRejectsHTTPError: an error page that happens to be

@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
@@ -128,14 +129,25 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		runtime.SetBlockProfileRate(1)
 	}
 
-	noisePrivateKey, err := readOrCreatePrivateKey(cfg.AbsPath(cfg.NoisePrivateKeyPath))
+	// Unreadable is a config error, not an unavailable provider: it stops
+	// startup, before anything is written, whatever
+	// only_start_if_oidc_is_available says.
+	var oidcClientSecret string
+	if cfg.OIDC.Issuer != "" {
+		oidcClientSecret, err = types.ResolveSecret("oidc.client_secret", string(cfg.OIDC.ClientSecret))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	noisePrivateKey, err := readOrCreatePrivateKey(cfg.AbsPath(cfg.Noise.PrivateKeyPath))
 	if err != nil {
 		return nil, fmt.Errorf("reading or creating Noise protocol private key: %w", err)
 	}
 
-	provider := cfg.DNSChallenge.Provider
-	if provider == nil && cfg.DNSChallenge.ProviderName() != "" {
-		provider, err = cfg.DNSChallenge.NewProvider(types.ResolveSecret)
+	provider := cfg.DNSConfig.Challenge.Provider
+	if provider == nil && cfg.DNSConfig.Challenge.ProviderName() != "" {
+		provider, err = cfg.DNSConfig.Challenge.NewProvider(types.ResolveSecret)
 		if err != nil {
 			return nil, fmt.Errorf("building dns.challenge.provider: %w", err)
 		}
@@ -147,7 +159,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		err = iso.CheckIsolation()
 		if err != nil {
 			// A Go-only provider may have no name.
-			name := cmp.Or(cfg.DNSChallenge.ProviderName(), fmt.Sprintf("%T", provider))
+			name := cmp.Or(cfg.DNSConfig.Challenge.ProviderName(), fmt.Sprintf("%T", provider))
 
 			return nil, fmt.Errorf("%w for %s: %w", dns.ErrProviderConfig, name, err)
 		}
@@ -171,8 +183,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		app.challenges = dns.NewChallenges(
 			provider,
 			cfg.DNSConfig.CertificateZone(),
-			cfg.DNSChallenge.ResolverAddrs(),
-			cfg.DNSChallenge.PropagationTimeout,
+			cfg.DNSConfig.Challenge.ResolverAddrs(),
+			cfg.DNSConfig.Challenge.PropagationTimeout,
 		)
 	}
 
@@ -240,6 +252,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			&app,
 			cfg.ServerURL,
 			&cfg.OIDC,
+			oidcClientSecret,
 		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
@@ -254,8 +267,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	app.authProvider = authProvider
 
-	if cfg.DERP.ServerEnabled {
-		derpServerKey, err := readOrCreatePrivateKey(cfg.AbsPath(cfg.DERP.ServerPrivateKeyPath))
+	if cfg.DERP.Server.Enabled {
+		derpServerKey, err := readOrCreatePrivateKey(cfg.AbsPath(cfg.DERP.Server.PrivateKeyPath))
 		if err != nil {
 			return nil, fmt.Errorf("reading or creating DERP server private key: %w", err)
 		}
@@ -264,7 +277,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			return nil, config.ErrSameKey
 		}
 
-		if cfg.DERP.ServerVerifyClients {
+		if cfg.DERP.Server.VerifyClients {
 			t := http.DefaultTransport.(*http.Transport) //nolint:forcetypeassert
 			t.RegisterProtocol(
 				derpServer.DerpVerifyScheme,
@@ -395,12 +408,12 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			log.Info().Msg("fetching DERPMap updates")
 
 			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) { //nolint:contextcheck
-				derpMap, err := derp.GetDERPMap(h.cfg.DERP, h.cfg.BaseDomain)
+				derpMap, err := derp.GetDERPMap(h.cfg.DERP, h.cfg.DNSConfig.BaseDomain)
 				if err != nil {
 					return nil, err
 				}
 
-				if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
+				if h.cfg.DERP.Server.Enabled && h.cfg.DERP.Server.AutomaticallyAddEmbeddedDerpRegion {
 					region, err := h.DERPServer.GenerateRegion()
 					if err != nil {
 						return nil, fmt.Errorf("generating embedded DERP region: %w", err)
@@ -517,7 +530,7 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 
 	r.Post("/verify", h.VerifyHandler)
 
-	if h.cfg.DERP.ServerEnabled {
+	if h.cfg.DERP.Server.Enabled {
 		r.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		r.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
 		r.HandleFunc("/derp/latency-check", derpServer.DERPProbeHandler)
@@ -578,9 +591,9 @@ func (h *Headscale) Serve() error {
 	h.mapBatcher.Start()
 	defer h.mapBatcher.Close()
 
-	if h.cfg.DERP.ServerEnabled {
+	if h.cfg.DERP.Server.Enabled {
 		// When embedded DERP is enabled we always need a STUN server
-		if h.cfg.DERP.STUNAddr == "" {
+		if h.cfg.DERP.Server.STUNAddr == "" {
 			return errSTUNAddressNotSet
 		}
 
@@ -589,12 +602,12 @@ func (h *Headscale) Serve() error {
 
 	// Start on the sources that loaded; only a map with no region at all,
 	// after the embedded region and the policy's derpMap, is fatal.
-	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP, h.cfg.BaseDomain)
+	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP, h.cfg.DNSConfig.BaseDomain)
 	if derpErr != nil {
 		log.Warn().Err(derpErr).Msg("skipping DERP map sources that failed to load")
 	}
 
-	if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
+	if h.cfg.DERP.Server.Enabled && h.cfg.DERP.Server.AutomaticallyAddEmbeddedDerpRegion {
 		region, err := h.DERPServer.GenerateRegion()
 		if err != nil {
 			return fmt.Errorf("generating embedded DERP region: %w", err)
@@ -673,7 +686,7 @@ func (h *Headscale) Serve() error {
 	}
 
 	// Change socket permissions
-	if err := os.Chmod(h.cfg.UnixSocket, h.cfg.UnixSocketPermission); err != nil { //nolint:noinlineerr
+	if err := os.Chmod(h.cfg.UnixSocket, fs.FileMode(h.cfg.UnixSocketPermission)); err != nil { //nolint:noinlineerr
 		return fmt.Errorf("changing socket permission: %w", err)
 	}
 
@@ -733,7 +746,7 @@ func (h *Headscale) Serve() error {
 	router := h.createRouter(humaMux, humaV2Mux)
 
 	httpServer := &http.Server{
-		Addr:        h.cfg.Addr,
+		Addr:        string(h.cfg.Addr),
 		Handler:     router,
 		ReadTimeout: types.HTTPTimeout,
 
@@ -746,16 +759,16 @@ func (h *Headscale) Serve() error {
 
 	if tlsConfig != nil {
 		httpServer.TLSConfig = tlsConfig
-		httpListener, err = tls.Listen("tcp", h.cfg.Addr, tlsConfig)
+		httpListener, err = tls.Listen("tcp", string(h.cfg.Addr), tlsConfig)
 	} else {
-		httpListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", h.cfg.Addr)
+		httpListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", string(h.cfg.Addr))
 	}
 
 	if err != nil {
 		return &types.ListenerBindError{
 			Listener: "main HTTP",
 			YAMLKey:  "listen_addr",
-			Addr:     h.cfg.Addr,
+			Addr:     string(h.cfg.Addr),
 			Err:      err,
 		}
 	}
@@ -826,12 +839,12 @@ func (h *Headscale) Serve() error {
 	var debugHTTPListener net.Listener
 
 	if h.cfg.MetricsAddr != "" {
-		debugHTTPListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", h.cfg.MetricsAddr)
+		debugHTTPListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", string(h.cfg.MetricsAddr))
 		if err != nil {
 			return &types.ListenerBindError{
 				Listener: "metrics",
 				YAMLKey:  "metrics_listen_addr",
-				Addr:     h.cfg.MetricsAddr,
+				Addr:     string(h.cfg.MetricsAddr),
 				Err:      err,
 			}
 		}
@@ -852,7 +865,7 @@ func (h *Headscale) Serve() error {
 		if !h.cfg.Database.IsSQLite() {
 			//nolint:gocritic // exitAfterDefer: Fatal exits during initialization before servers start
 			log.Fatal().
-				Str("type", h.cfg.Database.Type).
+				Str("type", string(h.cfg.Database.Type)).
 				Msgf("tailsql only support %q", types.DatabaseSqlite)
 		}
 
@@ -1069,7 +1082,7 @@ func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
 	logger := zlog.Zap(log.Logger).Named("acme")
 
 	issuer := certmagic.ACMEIssuer{
-		CA:           acmeCfg.URL,
+		CA:           string(acmeCfg.URL),
 		Email:        acmeCfg.Email,
 		Agreed:       true,
 		TrustedRoots: acmeTrustedRoots,
@@ -1080,7 +1093,7 @@ func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
 
 	switch acmeCfg.ChallengeType {
 	case types.DNS01ChallengeType:
-		resolvers := h.cfg.DNSChallenge.ResolverAddrs()
+		resolvers := h.cfg.DNSConfig.Challenge.ResolverAddrs()
 		issuer.DNS01Solver = dns01Solver{
 			DNS01Solver: &certmagic.DNS01Solver{
 				DNSProvider: h.cfg.DNSProvider(),
@@ -1088,15 +1101,15 @@ func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
 				Resolvers:   resolvers,
 				Logger:      logger,
 			},
-			wait: dns.AwaitTXT(resolvers, h.cfg.DNSChallenge.PropagationTimeout),
+			wait: dns.AwaitTXT(resolvers, h.cfg.DNSConfig.Challenge.PropagationTimeout),
 		}
 
 	case types.TLSALPN01ChallengeType:
 		// Validated on the main listener, which must be reachable on port 443.
 		issuer.DisableHTTPChallenge = true
-		issuer.ListenHost, _, _ = net.SplitHostPort(h.cfg.Addr)
+		issuer.ListenHost, _, _ = net.SplitHostPort(string(h.cfg.Addr))
 
-		issuer.AltTLSALPNPort, err = types.PortFromAddr(h.cfg.Addr)
+		issuer.AltTLSALPNPort, err = types.PortFromAddr(string(h.cfg.Addr))
 		if err != nil {
 			return nil, fmt.Errorf("parsing listen_addr: %w", err)
 		}
@@ -1104,14 +1117,14 @@ func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
 	case types.HTTP01ChallengeType:
 		// TLS-ALPN-01 stays on, as with autocert: setups that only open
 		// port 443 have always been validated that way.
-		issuer.AltTLSALPNPort, err = types.PortFromAddr(h.cfg.Addr)
+		issuer.AltTLSALPNPort, err = types.PortFromAddr(string(h.cfg.Addr))
 		if err != nil {
 			return nil, fmt.Errorf("parsing listen_addr: %w", err)
 		}
 
-		issuer.ListenHost, _, _ = net.SplitHostPort(acmeCfg.HTTPListen)
+		issuer.ListenHost, _, _ = net.SplitHostPort(string(acmeCfg.HTTPListen))
 
-		issuer.AltHTTPPort, err = types.PortFromAddr(acmeCfg.HTTPListen)
+		issuer.AltHTTPPort, err = types.PortFromAddr(string(acmeCfg.HTTPListen))
 		if err != nil {
 			return nil, fmt.Errorf("parsing tls.acme.http_listen: %w", err)
 		}
@@ -1148,19 +1161,19 @@ func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
 
 	if acmeCfg.ChallengeType == types.HTTP01ChallengeType {
 		bundle.ACMEServer = &http.Server{
-			Addr:        acmeCfg.HTTPListen,
+			Addr:        string(acmeCfg.HTTPListen),
 			Handler:     acmeIssuer.HTTPChallengeHandler(http.HandlerFunc(h.redirect)),
 			ReadTimeout: types.HTTPTimeout,
 		}
 
-		bundle.ACMEListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", acmeCfg.HTTPListen)
+		bundle.ACMEListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", string(acmeCfg.HTTPListen))
 		if err != nil {
 			cache.Stop()
 
 			return nil, &types.ListenerBindError{
 				Listener: "ACME HTTP-01 challenge",
 				YAMLKey:  "tls.acme.http_listen",
-				Addr:     acmeCfg.HTTPListen,
+				Addr:     string(acmeCfg.HTTPListen),
 				Err:      err,
 			}
 		}

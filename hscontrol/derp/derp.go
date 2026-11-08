@@ -27,6 +27,7 @@ import (
 var (
 	errEmptyDERPMapFile = errors.New("DERP map file has no regions or homeparams")
 	errDERPMapStatus    = errors.New("unexpected HTTP status")
+	errDERPURLSyntax    = errors.New("invalid URL syntax")
 
 	ErrRegionIDKey    = errors.New("doesn't match its key")
 	ErrRegionNoNodes  = errors.New("must specify at least one node in DERP Region")
@@ -249,8 +250,17 @@ func GetDERPMap(cfg types.DERPConfig, shuffleSeed string) (*tailcfg.DERPMap, err
 		derpMaps = append(derpMaps, cfg.DERPMap)
 	}
 
-	for _, addr := range cfg.URLs {
-		derpMap, err := loadDERPMapFromURL(addr)
+	for i, u := range cfg.URLs {
+		addr, err := url.Parse(string(u))
+		if err != nil {
+			// The parser's error quotes the URL or parts of it, credentials
+			// included.
+			errs = append(errs, fmt.Errorf("derp.urls[%d]: %w", i, errDERPURLSyntax))
+
+			continue
+		}
+
+		derpMap, err := loadDERPMapFromURL(*addr)
 		if err != nil {
 			errs = append(errs, err)
 			continue

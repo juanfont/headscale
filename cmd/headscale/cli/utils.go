@@ -173,11 +173,11 @@ func newHeadscaleCLIWithConfig() (context.Context, *clientv1.ClientWithResponses
 	}
 
 	// Remote connections require an API key for authentication.
-	apiKey := cfg.CLI.APIKey
-	if apiKey == "" {
+	apiKey, err := cliAPIKey(cfg.CLI)
+	if err != nil {
 		cancel()
 
-		return nil, nil, nil, errAPIKeyNotSet
+		return nil, nil, nil, err
 	}
 
 	client, err := newRemoteClient(address, apiKey, cfg.CLI.Insecure)
@@ -190,6 +190,21 @@ func newHeadscaleCLIWithConfig() (context.Context, *clientv1.ClientWithResponses
 	log.Trace().Caller().Str(zf.Address, address).Msg("connecting via HTTPS")
 
 	return ctx, client, cancel, nil
+}
+
+// cliAPIKey reads the key a remote CLI sends; over the unix socket the CLI
+// needs none, so it must not call this.
+func cliAPIKey(cfg types.CLIConfig) (string, error) {
+	key, err := types.ResolveSecret("cli.api_key", string(cfg.APIKey))
+	if err != nil {
+		return "", err
+	}
+
+	if key == "" {
+		return "", errAPIKeyNotSet
+	}
+
+	return key, nil
 }
 
 // newSocketClient builds an API client that dials the local unix socket. The

@@ -74,7 +74,7 @@ func TestSSHTestsRejectFailingPolicy(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithTestName("cli-policyset-sshtests"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_POLICY_MODE": types.PolicyModeDB,
+			"HEADSCALE_POLICY_MODE": string(types.PolicyModeDB),
 		}),
 	)
 	require.NoError(t, err)

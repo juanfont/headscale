@@ -297,11 +297,9 @@ func newAddressedTestApp(t *testing.T) *Headscale {
 	prefixV6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
 
 	cfg := types.Config{
-		ServerURL:           "http://localhost:8080",
-		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
-		PrefixV4:            &prefixV4,
-		PrefixV6:            &prefixV6,
-		IPAllocation:        types.IPAllocationStrategySequential,
+		ServerURL: "http://localhost:8080",
+		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
+		Prefixes:  types.PrefixesConfig{V4: &prefixV4, V6: &prefixV6, Allocation: types.IPAllocationStrategySequential},
 		Database: types.DatabaseConfig{
 			Type:   "sqlite3",
 			Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db"},
