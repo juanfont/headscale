@@ -1,0 +1,458 @@
+# Generated from hscontrol/types/config.go by go generate; do not edit.
+# Every key: https://headscale.net/stable/ref/configuration-options/
+
+# The URL clients connect to, with its `http://` or `https://` scheme, e.g.
+# `https://headscale.example.com:443`. A trailing slash is trimmed on load. Its
+# host must not be `dns.base_domain` or a name below it.
+# Required. Example: https://headscale.example.com
+server_url: ""
+
+# The host:port the server listens on for clients, the API and the web pages. It
+# serves HTTPS when `tls.cert_path` or `tls.acme.hostname` is set, plain HTTP
+# otherwise.
+listen_addr: ""
+
+# The host:port serving `/metrics` and `/debug`; keep it private. Empty disables
+# this listener.
+metrics_listen_addr: ""
+
+# Where the server serves the API without authentication, for the CLI on the
+# same host. The CLI connects to it when `cli.address` is empty.
+unix_socket: /var/run/headscale/headscale.sock
+
+# The file mode of `unix_socket`, in quoted octal (`"0770"`): unquoted, YAML
+# reads `0770` as the number 504.
+unix_socket_permission: "0770"
+
+# The CIDRs of reverse proxies whose `True-Client-IP`, `X-Real-IP` and
+# `X-Forwarded-For` headers are honoured. Empty ignores those headers. Set
+# without a proxy in front, clients can spoof their source IP in logs and the v2
+# API.
+trusted_proxies: []
+
+# Skips the check for a newer headscale release that commands make at start.
+disable_check_updates: false
+
+# The Noise protocol (TS2021) clients connect over.
+noise:
+  # The file holding the Noise private key, which encrypts traffic between
+  # headscale and clients, relative to the configuration file. A missing file is
+  # created with a new key.
+  # Required. Example: /var/lib/headscale/noise_private.key
+  private_key_path: ""
+
+# The IP ranges node addresses are allocated from. Set at least one of
+# `prefixes.v4` and `prefixes.v6`. Use the Tailscale ranges, `100.64.0.0/10` and
+# `fd7a:115c:a1e0::/48`, or ranges inside them: the client assumes them, and
+# other ranges are unsupported.
+prefixes:
+  # The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address.
+  v4: ""
+  # The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6
+  # address.
+  v6: ""
+  # How a new node's addresses are picked.
+  # One of: `sequential`, `random`.
+  allocation: sequential
+
+# Where the access control policy is kept: in a file headscale reads, or in the
+# database. See [Policy](https://headscale.net/stable/ref/policy/).
+policy:
+  # The HuJSON policy file read when `policy.mode` is `file`, relative to the
+  # configuration file. Empty starts without a policy, which allows all traffic.
+  path: ""
+  # Where the policy is kept: in the file `policy.path`, or in the database,
+  # edited through the CLI or API.
+  # One of: `file`, `database`.
+  mode: file
+
+# Headscale's own log output. See
+# [Debugging](https://headscale.net/stable/ref/debug/#application-logging).
+log:
+  # The lowest level logged.
+  # One of: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `panic`,
+  # `disabled`.
+  level: info
+  # How log lines are written.
+  # One of: `text`, `json`.
+  format: text
+
+# Covers node key expiry, ephemeral nodes and subnet routes.
+node:
+  # The key expiry given to a non-tagged node that registers without one,
+  # whatever the method (auth key, CLI, web, OIDC). An expiry the client asks
+  # for, `oidc.use_expiry_from_token` and an admin's `headscale nodes expire`
+  # still apply. Tagged nodes never get this default. Zero or negative disables
+  # the default.
+  expiry: 0s
+  # Covers ephemeral nodes, which register with an ephemeral auth key and are
+  # deleted once they have been offline for `node.ephemeral.inactivity_timeout`.
+  ephemeral:
+    # How long an ephemeral node can be offline before it is automatically
+    # deleted. It must exceed 65s, the client keepalive plus a margin.
+    inactivity_timeout: 2m
+  # Covers the routes nodes advertise. See
+  # [Routes](https://headscale.net/stable/ref/routes/).
+  routes:
+    # Health probing of HA subnet routers. When two or more nodes advertise the
+    # same route, headscale pings each over Noise and moves the route away from
+    # one that does not answer in time. See [High
+    # availability](https://headscale.net/stable/ref/routes/#high-availability).
+    ha:
+      # How often HA subnet routers are probed; a positive interval must be at
+      # least 2s. Zero or negative disables probing, and with it the
+      # `node.routes.ha.probe_timeout` rules.
+      probe_interval: 10s
+      # The maximum time to wait for a probe response before declaring a node
+      # unhealthy; at least 1s and less than `node.routes.ha.probe_interval`.
+      probe_timeout: 5s
+
+# Covers the cleanup of revoked pre-auth keys. See [Pre authenticated
+# key](https://headscale.net/stable/ref/registration/#pre-authenticated-key).
+preauth_keys:
+  # How long a soft-revoked pre-auth key (revoked via the v2 API's DELETE) is
+  # kept retrievable before the background collector hard-deletes it. Keys still
+  # backing a node are kept until the node is deleted. A zero or negative
+  # duration disables the collector.
+  revoked_retention: 168h
+
+# The DERP map: the relay servers clients use when they cannot connect directly,
+# from `derp.urls`, `derp.paths` and the embedded server in `derp.server`. A
+# region replaces an earlier one with the same ID. See
+# [DERP](https://headscale.net/stable/ref/derp/).
+derp:
+  # The embedded DERP server, a relay and STUN server run by headscale itself.
+  # See [Enable embedded
+  # DERP](https://headscale.net/stable/ref/derp/#enable-embedded-derp).
+  server:
+    # Runs the embedded DERP server. DERP needs TLS, so `server_url` must be
+    # `https://`.
+    enabled: false
+    # The embedded server's region ID. It replaces a region with the same ID
+    # from the other sources.
+    region_id: 0
+    # The region's short code, shown by Tailscale clients.
+    region_code: ""
+    # The region's name, shown by Tailscale clients.
+    region_name: ""
+    # Admits only nodes registered with this server.
+    verify_clients: true
+    # The UDP host:port of the STUN server, which helps clients with NAT
+    # traversal; required when `derp.server.enabled` is true.
+    stun_listen_addr: ""
+    # The file holding the DERP server's private key, relative to the
+    # configuration file; required when `derp.server.enabled` is true. A missing
+    # file is created with a new key. It must differ from
+    # `noise.private_key_path`.
+    private_key_path: ""
+    # The server's public IPv4 address, published in the DERP map so clients
+    # reach it without DNS. Empty publishes none.
+    ipv4: ""
+    # The server's public IPv6 address, published in the DERP map so clients
+    # reach it without DNS. Empty publishes none.
+    ipv6: ""
+    # Adds the embedded server's region to the DERP map. When it is false and
+    # `derp.server.enabled` is true, `derp.paths` is required: write the region
+    # there yourself.
+    automatically_add_embedded_derp_region: true
+  # DERP maps in JSON to fetch. One that fails to load is logged and skipped;
+  # startup fails only when no region remains.
+  urls: []
+  # DERP map files. The extension picks the format: `.yaml` or `.yml`, or
+  # Tailscale JSON as `.json` or `.hujson`, both accepting comments and trailing
+  # commas.
+  paths: []
+  # Reloads `derp.urls` and `derp.paths` every `derp.update_frequency`.
+  auto_update_enabled: false
+  # How often `derp.auto_update_enabled` reloads the DERP map. Zero disables
+  # reloading.
+  update_frequency: 3h
+
+# Where headscale stores nodes, users and keys. SQLite is recommended;
+# PostgreSQL is supported for legacy deployments only. `database.sqlite` is read
+# only for SQLite, `database.postgres` only for PostgreSQL.
+database:
+  # The database backend. SQLite is recommended; PostgreSQL is supported for
+  # legacy deployments only.
+  # One of: `sqlite`, `sqlite3`, `postgres`.
+  # Required. Example: sqlite
+  type: ""
+  # Turns on query logging: ordinary queries at log level debug, shown only when
+  # `log.level` is `debug` or `trace`, slow ones at warn and failed ones at
+  # error. Off, no query is logged. `database.gorm` shapes the query log. See
+  # [Database
+  # logging](https://headscale.net/stable/ref/debug/#database-logging).
+  debug: false
+  # Query logging, applied only when `database.debug` is true.
+  gorm:
+    # The query time, in milliseconds, above which a query is logged as a
+    # warning. Zero disables the warning.
+    slow_threshold: 0
+    # Logs a query that finds no record as an ordinary query, not as an error.
+    skip_err_record_not_found: false
+    # Logs queries without their parameter values.
+    parameterized_queries: false
+  # SQLite, read only when `database.type` is `sqlite` or `sqlite3`.
+  sqlite:
+    # The database file, relative to the configuration file; `:memory:` keeps
+    # the database in memory.
+    path: ""
+    # Applies `database.sqlite.wal_autocheckpoint` and compacts the database
+    # (`VACUUM`) on shutdown. SQLite runs in WAL mode either way; false keeps
+    # SQLite's default checkpoint of 1000 frames.
+    write_ahead_log: true
+    # The number of WAL frames after which the WAL is checkpointed
+    # automatically; zero disables automatic checkpoints. Applied only when
+    # `database.sqlite.write_ahead_log` is true.
+    wal_autocheckpoint: 1000
+  # PostgreSQL, read only when `database.type` is `postgres`.
+  postgres:
+    # The server's host name or IP, or the directory of its Unix socket (a path
+    # starting with `/`).
+    host: ""
+    # The server's port or, with a Unix socket directory in
+    # `database.postgres.host`, the port in the socket's file name. Zero uses
+    # the driver's default.
+    port: 0
+    # The database name.
+    name: ""
+    # The user to connect as.
+    user: ""
+    # The password, or `file:<path>` to read it from a file, read only when
+    # `database.type` is `postgres`. `headscale generate config --running` and
+    # `/debug/config` show a literal password as `<redacted>` and a `file:`
+    # reference as written.
+    pass: ""
+    # The TLS mode: `true` keeps the driver's default `sslmode`, `false`
+    # disables TLS, any other value is passed as `sslmode` (`require`,
+    # `verify-full`, ...).
+    ssl: "false"
+    # Caps open connections to the database.
+    max_open_conns: 10
+    # Caps idle connections kept in the pool.
+    max_idle_conns: 10
+    # How long, in seconds, a connection may stay idle before it is closed.
+    conn_max_idle_time_secs: 3600
+
+# The DNS configuration sent to clients, MagicDNS included, and TLS certificates
+# for nodes. Clients apply it only with `--accept-dns`, their default. See
+# [DNS](https://headscale.net/stable/ref/dns/).
+dns:
+  # Gives each node a name below `dns.base_domain`, e.g. `laptop.example.com`,
+  # resolved by the client. It requires `dns.base_domain`.
+  magic_dns: true
+  # The domain MagicDNS names live under, without a trailing dot, e.g.
+  # `example.com`. The host of `server_url` must not be this domain or a name
+  # below it: clients take the domain over.
+  # Required when `dns.magic_dns` is true.
+  base_domain: ""
+  # Makes clients use `dns.nameservers.global` instead of their local DNS
+  # settings, which then requires at least one global nameserver. False sends
+  # them only as fallback resolvers.
+  override_local_dns: true
+  # The upstream DNS servers sent to clients. An entry that is neither an IP
+  # address nor a URL is skipped with a warning.
+  nameservers:
+    # The nameservers for names `dns.nameservers.split` does not cover: IP
+    # addresses, or DNS-over-HTTPS URLs such as `https://dns.nextdns.io/<id>`.
+    # Required when `dns.override_local_dns` is true.
+    global: []
+    # Maps a domain to the nameservers that answer for it (split DNS). Domains
+    # are lowercased on load; two that differ only in case are an error.
+    split: {}
+  # DNS search domains sent to clients. With MagicDNS, `dns.base_domain` comes
+  # first.
+  search_domains: []
+  # DNS records served to clients, each with a `name`, `type` and `value`.
+  # Clients support `A` and `AAAA`. Mutually exclusive with
+  # `dns.extra_records_path`. See [Setting extra DNS
+  # records](https://headscale.net/stable/ref/dns/#setting-extra-dns-records).
+  extra_records: []
+  # A file of extra records, reloaded when it changes. The extension picks the
+  # format: `.json`, `.hujson`, `.yaml` or `.yml`. Mutually exclusive with
+  # `dns.extra_records`.
+  extra_records_path: ""
+  # Lets nodes get TLS certificates for their MagicDNS names with `tailscale
+  # cert`. The node runs ACME itself; headscale publishes its DNS-01 challenge
+  # through `dns.challenge.provider`.
+  certificates:
+    # Lets nodes run `tailscale cert`. It requires `dns.magic_dns`, a lowercase
+    # `dns.base_domain` and `dns.challenge.provider`.
+    enabled: false
+    # The public DNS zone challenge records are written to, when
+    # `dns.base_domain` sits below the zone apex. It must contain
+    # `dns.base_domain`. Empty uses `dns.base_domain`.
+    zone: ""
+  # The DNS provider answering ACME DNS-01 challenges, for node certificates and
+  # for headscale's own certificate when `tls.acme.challenge_type` is `DNS-01`.
+  # See [DNS-01 challenge
+  # provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider).
+  challenge:
+    # How long to wait for a challenge record to show up on every authoritative
+    # nameserver. Zero skips the check.
+    propagation_timeout: 2m
+    # The servers asked for the zone's nameservers, each an IP or host with an
+    # optional port (53 if omitted). Empty uses the default public resolvers.
+    # The system resolver is never used: on a host running MagicDNS it answers
+    # for `dns.base_domain` itself.
+    resolvers:
+      - 9.9.9.9:53
+      - 149.112.112.112:53
+    # The DNS provider that writes challenge records: `name` selects it, the
+    # other keys are its settings. Keys are lowercased on load, at every depth;
+    # two that differ only in case are an error. A string setting may be
+    # `file:<path>` to read it from a file. `headscale generate config
+    # --running` and `/debug/config` show `name` and `file:` references; every
+    # other setting is `<redacted>`, as any may be a credential. See [DNS-01
+    # challenge
+    # provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider)
+    # to set a provider up, acme-dns included, and to set it from environment
+    # variables.
+    provider: {}
+
+# Headscale's own HTTPS certificate on `listen_addr`: from the files
+# `tls.cert_path` and `tls.key_path`, or from ACME in `tls.acme`, not both.
+# Without either, the server speaks plain HTTP. See
+# [TLS](https://headscale.net/stable/ref/tls/).
+tls:
+  # The PEM certificate file, relative to the configuration file. Setting it
+  # turns TLS on.
+  cert_path: ""
+  # The PEM private key file of `tls.cert_path`, relative to the configuration
+  # file.
+  key_path: ""
+  # Gets the certificate from an ACME CA such as Let's Encrypt, and renews it.
+  # Setting `tls.acme.hostname` turns it on.
+  acme:
+    # The domain to request a certificate for. Setting it turns ACME on.
+    hostname: ""
+    # How the CA verifies that headscale controls `tls.acme.hostname`.
+    # One of: `HTTP-01`, `TLS-ALPN-01`, `DNS-01`.
+    challenge_type: HTTP-01
+    # The host:port serving HTTP-01 challenges; the port may be a name, as in
+    # `:http` for port 80. Other requests to it are redirected to `server_url`.
+    http_listen: :http
+    # The CA's ACME directory. Empty uses Let's Encrypt.
+    url: ""
+    # The contact address registered with the CA.
+    email: ""
+    # Where certificates and ACME account data are stored, relative to the
+    # configuration file.
+    cache_dir: /var/lib/headscale/cache
+
+# Login through an OpenID Connect provider. Setting `oidc.issuer` turns it on
+# and requires `oidc.client_id` and `oidc.client_secret`. See [OpenID
+# Connect](https://headscale.net/stable/ref/oidc/).
+oidc:
+  # Stops startup when the provider cannot be reached. False starts without
+  # OIDC, with CLI-based registration.
+  only_start_if_oidc_is_available: true
+  # The provider's issuer URL. Setting it turns OIDC on.
+  issuer: ""
+  # The client ID from the provider; required when `oidc.issuer` is set.
+  client_id: ""
+  # The client secret from the provider, or `file:<path>` to read it from a
+  # file; required when `oidc.issuer` is set. `headscale generate config
+  # --running` and `/debug/config` show a literal secret as `<redacted>` and a
+  # `file:` reference as written.
+  client_secret: ""
+  # The scopes requested; include `openid`.
+  scope:
+    - openid
+    - profile
+    - email
+  # Sent as is to the provider's authorization endpoint, e.g. `domain_hint`;
+  # names keep their case.
+  extra_params: {}
+  # Admits only users whose email domain is listed. Empty admits any domain.
+  allowed_domains: []
+  # Admits only users whose email address is listed. Empty admits any user.
+  allowed_users: []
+  # Admits only members of at least one listed group, from the provider's
+  # `groups` claim: UserInfo first, the ID token as fallback. Empty admits any
+  # group.
+  allowed_groups: []
+  # Trusts an email only when the provider marks it verified: an unverified one
+  # fails `oidc.allowed_domains` and `oidc.allowed_users` and is not copied to
+  # the user. Turn it off for a provider that does not send `email_verified`.
+  email_verified_required: true
+  # Expires an OIDC-registered node with its token, instead of `node.expiry`.
+  # Tokens are often short-lived, forcing frequent logins.
+  use_expiry_from_token: false
+  # Proof Key for Code Exchange (RFC 7636), which protects the authorization
+  # code from interception. See [Enable
+  # PKCE](https://headscale.net/stable/ref/oidc/#enable-pkce-recommended).
+  pkce:
+    # Sends a PKCE challenge with each login.
+    enabled: false
+    # How the code challenge is derived from the verifier. The verifier is sent
+    # as is in the token exchange.
+    # One of: `plain`, `S256`.
+    method: S256
+
+# Whether nodes send their logs to Tailscale.
+logtail:
+  # Lets nodes send their logs to Tailscale Inc.; headscale cannot point them at
+  # another log server. False tells nodes not to.
+  enabled: false
+
+# Taildrop, Tailscale's file sharing between nodes.
+taildrop:
+  # Gives every node the file-sharing capability. False omits it from the
+  # baseline; a policy `nodeAttrs` grant can still give it.
+  enabled: true
+
+# The tailnet-wide default for client auto-updates.
+auto_update:
+  # Makes auto-update the default for clients that have not chosen locally.
+  # Clients store the default they first see, so a later change reaches only new
+  # clients.
+  enabled: false
+
+# How the headscale CLI reaches the server: the local `unix_socket` without
+# authentication, or a remote `cli.address` with `cli.api_key`. The CLI reads
+# these keys from its own configuration, such as
+# `~/.config/headscale/config.yaml`, or from `HEADSCALE_CLI_*` variables; the
+# server does not read them, so on NixOS they do not belong in
+# `services.headscale.settings`. See [Remote
+# control](https://headscale.net/stable/ref/api/#remote-control).
+cli:
+  # The remote server's host:port or URL; `https://` is assumed without a
+  # scheme. Empty uses `unix_socket`.
+  address: ""
+  # The API key the CLI sends to `cli.address`, or `file:<path>` to read it from
+  # a file. Read only by the CLI.
+  api_key: ""
+  # Bounds each CLI command's requests to the server.
+  timeout: 5s
+  # Skips TLS certificate verification of `cli.address`.
+  insecure: false
+
+# Holds performance settings that rarely need changing.
+tuning:
+  # How often queued changes are sent to clients as one update; must be
+  # positive.
+  batch_change_delay: 800ms
+  # How many map updates are queued per connected client.
+  node_mapsession_buffered_chan_size: 30
+  # The number of workers building map updates for connected clients. Zero picks
+  # the number from the CPU count.
+  # Default: three quarters of the CPU cores, at least one.
+  batcher_workers: 0
+  # How long a pending registration waits to be completed. Zero uses the
+  # default.
+  register_cache_expiration: 15m
+  # Bounds pending registrations. At capacity, new registrations are refused
+  # without evicting pending ones; SSH checks have a small reserve beyond it.
+  # Zero uses the default. See [Pending authentication
+  # limits](https://headscale.net/stable/ref/registration/#pending-authentication-limits).
+  register_cache_max_entries: 1024
+  # How many node changes are batched before the in-memory node state, peer
+  # relationships included, is rebuilt; must be positive. Higher values save CPU
+  # on bulk changes but delay each change until its batch is full or
+  # `tuning.node_store_batch_timeout` passes.
+  node_store_batch_size: 100
+  # The longest a partial batch of node changes waits before the rebuild; must
+  # be positive. Lower values answer single changes faster at the cost of more
+  # rebuilds.
+  node_store_batch_timeout: 500ms

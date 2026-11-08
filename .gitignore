@@ -27,6 +27,7 @@ dist/
 config.yaml
 config*.yaml
 !config-example.yaml
+!docs/ref/config-example.yaml
 derp.yaml
 *.hujson
 !hscontrol/policy/v2/testdata/**/*.hujson
