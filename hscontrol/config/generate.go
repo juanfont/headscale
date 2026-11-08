@@ -40,6 +40,13 @@ func exampleYAML(cfg *types.Config, opts ExampleOptions, root string) ([]byte, e
 		return nil, err
 	}
 
+	return exampleOf(keys, cfg, opts, root)
+}
+
+// exampleOf is [exampleYAML] from keys, the result of schema.
+func exampleOf(keys []keyInfo, cfg *types.Config, opts ExampleOptions, root string) ([]byte, error) {
+	var err error
+
 	values := plainFields(cfg, opts.Redact)
 	top := &yaml.Node{Kind: yaml.MappingNode}
 	mappings := map[string]*yaml.Node{"": top}

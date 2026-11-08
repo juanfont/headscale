@@ -1,8 +1,9 @@
 // Command files writes the files generated from the configuration schema
-// of hscontrol/config: `files <root>` writes nix/options.generated.nix
-// below the repository root. It is not part of configgen, which stays
-// standard library only so its table regenerates when the committed one
-// does not compile.
+// of hscontrol/config: `files <root>` writes nix/options.generated.nix,
+// docs/ref/configuration-options.md and docs/ref/config-example.yaml below
+// the repository root. It is not part of configgen, which stays standard
+// library only so its table regenerates when the committed one does not
+// compile.
 //
 // `files -load <file>` prints the file as config.Load reads it, for the
 // NixOS options check to compare with the values it was written from.
@@ -16,6 +17,10 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/config"
 )
+
+// exampleHeader marks the committed example; generate config output is
+// the user's to edit, so it carries none.
+const exampleHeader = "# Generated from hscontrol/types/config.go by go generate; do not edit.\n"
 
 func main() {
 	var err error
@@ -63,5 +68,28 @@ func write(root string) error {
 		return err
 	}
 
-	return os.WriteFile(filepath.Join(root, "nix", "options.generated.nix"), nix, 0o600)
+	page, err := config.GenerateReference()
+	if err != nil {
+		return err
+	}
+
+	d := config.Default()
+
+	example, err := config.GenerateExample(&d, config.ExampleOptions{Docs: true})
+	if err != nil {
+		return err
+	}
+
+	for path, b := range map[string][]byte{
+		"nix/options.generated.nix":         nix,
+		"docs/ref/configuration-options.md": page,
+		"docs/ref/config-example.yaml":      append([]byte(exampleHeader), example...),
+	} {
+		err := os.WriteFile(filepath.Join(root, path), b, 0o600)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

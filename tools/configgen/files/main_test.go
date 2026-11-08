@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -14,19 +15,43 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-func TestWrite(t *testing.T) {
+// generatedFiles are the files write writes, below the repository root.
+var generatedFiles = []string{"nix/options.generated.nix", "docs/ref/configuration-options.md", "docs/ref/config-example.yaml"}
+
+// writeTree runs write into a new repository root.
+func writeTree(t *testing.T) string {
+	t.Helper()
+
 	root := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(root, "nix"), 0o755))
+	for _, dir := range []string{"nix", "docs/ref"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, dir), 0o755))
+	}
+
 	require.NoError(t, write(root))
 
-	want, err := config.GenerateNixOptions(nil)
+	return root
+}
+
+func TestWrite(t *testing.T) {
+	root := writeTree(t)
+
+	nix, err := config.GenerateNixOptions(nil)
+	require.NoError(t, err)
+
+	page, err := config.GenerateReference()
+	require.NoError(t, err)
+
+	d := config.Default()
+	example, err := config.GenerateExample(&d, config.ExampleOptions{Docs: true})
 	require.NoError(t, err)
 
 	tests := []struct {
 		path string
 		want []byte
 	}{
-		{path: "nix/options.generated.nix", want: want},
+		{path: "nix/options.generated.nix", want: nix},
+		{path: "docs/ref/configuration-options.md", want: page},
+		{path: "docs/ref/config-example.yaml", want: append([]byte("# Generated from hscontrol/types/config.go by go generate; do not edit.\n"), example...)},
 	}
 
 	for _, tt := range tests {
@@ -37,6 +62,28 @@ func TestWrite(t *testing.T) {
 			if diff := cmp.Diff(string(tt.want), string(got)); diff != "" {
 				t.Errorf("(-want +got):\n%s", diff)
 			}
+		})
+	}
+}
+
+// TestGeneratedFiles: each file is the same on every run, ends in one
+// newline and has no trailing whitespace, so the repository's hooks leave
+// it alone.
+func TestGeneratedFiles(t *testing.T) {
+	first, second := writeTree(t), writeTree(t)
+	trailing := regexp.MustCompile(`(?m)[ \t]$`)
+
+	for _, path := range generatedFiles {
+		t.Run(path, func(t *testing.T) {
+			a, err := os.ReadFile(filepath.Join(first, path))
+			require.NoError(t, err)
+
+			b, err := os.ReadFile(filepath.Join(second, path))
+			require.NoError(t, err)
+
+			require.Equal(t, a, b)
+			require.True(t, bytes.HasSuffix(a, []byte("\n")) && !bytes.HasSuffix(a, []byte("\n\n")), "must end in one newline")
+			require.Empty(t, trailing.FindAll(a, -1), "trailing whitespace")
 		})
 	}
 }
