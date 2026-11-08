@@ -153,8 +153,5 @@
   },
   "secrets": {
     "cli.api_key": "marker-cli-api-key"
-  },
-  "warnings": [
-    "no config file found, using defaults"
-  ]
+  }
 }

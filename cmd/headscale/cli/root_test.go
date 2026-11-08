@@ -614,3 +614,20 @@ func TestInitConfigWarnings(t *testing.T) {
 		})
 	}
 }
+
+// TestClientCommandWithoutConfigFile: configuration from the environment
+// alone is complete, so a client command does not ask for a file.
+func TestClientCommandWithoutConfigFile(t *testing.T) {
+	env := []string{
+		"HOME=" + t.TempDir(),
+		"HEADSCALE_UNIX_SOCKET=" + filepath.Join(t.TempDir(), "absent.sock"),
+		"HEADSCALE_CLI_TIMEOUT=1s",
+		"HEADSCALE_DISABLE_CHECK_UPDATES=true",
+	}
+
+	_, stderr, err := runHeadscale(t, env, "users", "list")
+	require.Error(t, err, "no server listens on the socket")
+	assert.Contains(t, stderr, "listing users")
+	assert.NotContains(t, stderr, "error loading config")
+	assert.NotContains(t, stderr, "no config file")
+}
