@@ -201,10 +201,11 @@ func newV2Client() (context.Context, *clientv2.ClientWithResponses, context.Canc
 		return ctx, client, cancel, nil
 	}
 
-	if cfg.CLI.APIKey == "" {
+	apiKey, err := cliAPIKey(cfg.CLI)
+	if err != nil {
 		cancel()
 
-		return nil, nil, nil, errAPIKeyNotSet
+		return nil, nil, nil, err
 	}
 
 	transport := &http.Transport{}
@@ -212,8 +213,6 @@ func newV2Client() (context.Context, *clientv2.ClientWithResponses, context.Canc
 		//nolint:gosec // intentionally honouring the insecure flag
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-
-	apiKey := cfg.CLI.APIKey
 
 	client, err := clientv2.NewClientWithResponses(
 		clientBaseURL(cfg.CLI.Address),

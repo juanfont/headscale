@@ -167,17 +167,19 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 
 	cfg := types.Config{
 		// Placeholder; updated below once the in-memory server starts.
-		ServerURL:           "http://localhost:0",
-		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
+		ServerURL: "http://localhost:0",
+		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
 		Node: types.NodeConfig{
 			Expiry: sc.nodeExpiry,
 			Ephemeral: types.EphemeralConfig{
 				InactivityTimeout: sc.ephemeralTimeout,
 			},
 		},
-		PrefixV4:     &prefixV4,
-		PrefixV6:     &prefixV6,
-		IPAllocation: types.IPAllocationStrategySequential,
+		Prefixes: types.PrefixesConfig{
+			V4:         &prefixV4,
+			V6:         &prefixV6,
+			Allocation: types.IPAllocationStrategySequential,
+		},
 		Database: types.DatabaseConfig{
 			Type: "sqlite3",
 			Sqlite: types.SqliteConfig{
@@ -198,14 +200,13 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 	}
 
 	if sc.magicDNSDomain != "" {
-		cfg.BaseDomain = sc.magicDNSDomain
 		cfg.DNSConfig.MagicDNS = true
 		cfg.DNSConfig.BaseDomain = sc.magicDNSDomain
 	}
 
 	if sc.certProvider != nil {
-		cfg.DNSConfig.Certificates = types.CertificatesConfig{Enabled: true, Zone: cfg.BaseDomain}
-		cfg.DNSChallenge.Provider = sc.certProvider
+		cfg.DNSConfig.Certificates = types.CertificatesConfig{Enabled: true, Zone: cfg.DNSConfig.BaseDomain}
+		cfg.DNSConfig.Challenge.Provider = sc.certProvider
 	}
 
 	if len(sc.dnsResolvers) > 0 {

@@ -369,7 +369,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("initializing database: %w", err)
 	}
 
-	ipAlloc, err := hsdb.NewIPAllocator(db, cfg.PrefixV4, cfg.PrefixV6, cfg.IPAllocation)
+	ipAlloc, err := hsdb.NewIPAllocator(db, cfg.Prefixes.V4, cfg.Prefixes.V6, cfg.Prefixes.Allocation)
 	if err != nil {
 		return nil, fmt.Errorf("initializing IP allocator: %w", err)
 	}
@@ -449,7 +449,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
 	polMan.SetRouterSession(nodeStore.RouterSession)
 	nodeStore.reservedLabel = func(label string) bool {
-		return cfg.BaseDomain != "" && cfg.HasExtraRecord(label+"."+cfg.BaseDomain)
+		return cfg.DNSConfig.BaseDomain != "" && cfg.HasExtraRecord(label+"."+cfg.DNSConfig.BaseDomain)
 	}
 	nodeStore.Start()
 
@@ -1555,7 +1555,7 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	// Validate the label AND that the resulting FQDN fits MaxHostnameLength:
 	// a valid 63-char label can still overflow under a long base_domain, and
 	// an unmappable name would break this node and its peers (issue #3346).
-	err := types.ValidateGivenName(newName, s.cfg.BaseDomain)
+	err := types.ValidateGivenName(newName, s.cfg.DNSConfig.BaseDomain)
 	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %w", ErrGivenNameInvalid, err)
 	}
@@ -1607,7 +1607,7 @@ func (s *State) WarnNodesHoldingExtraRecords() []types.NodeID {
 		ids = append(ids, n.ID())
 		log.Warn().
 			Uint64(zf.NodeID, n.ID().Uint64()).
-			Str("record", n.GivenName()+"."+s.cfg.BaseDomain).
+			Str("record", n.GivenName()+"."+s.cfg.DNSConfig.BaseDomain).
 			Msg("node keeps a name that is also an extra DNS record")
 	}
 

@@ -86,10 +86,8 @@ func persistTestConfig(dbPath string) *types.Config {
 				Path: dbPath,
 			},
 		},
-		PrefixV4:     &prefixV4,
-		PrefixV6:     &prefixV6,
-		IPAllocation: types.IPAllocationStrategySequential,
-		BaseDomain:   "headscale.test",
+		Prefixes:  types.PrefixesConfig{V4: &prefixV4, V6: &prefixV6, Allocation: types.IPAllocationStrategySequential},
+		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
 		Policy: types.PolicyConfig{
 			Mode: types.PolicyModeDB,
 		},
@@ -104,7 +102,7 @@ func TestLoadedDuplicateNamesAreResolvedInMemory(t *testing.T) {
 	dbPath := t.TempDir() + "/headscale.db"
 	cfg := persistTestConfig(dbPath)
 	cfg.DNSConfig.ExtraRecords = []tailcfg.DNSRecord{
-		{Name: "grafana." + cfg.BaseDomain, Type: "A", Value: "100.64.0.100"},
+		{Name: "grafana." + cfg.DNSConfig.BaseDomain, Type: "A", Value: "100.64.0.100"},
 	}
 	database, err := db.NewHeadscaleDatabase(cfg)
 	require.NoError(t, err)
@@ -737,9 +735,9 @@ func (failingSetNodesPolicyManager) SetNodes(views.Slice[types.NodeView]) (bool,
 func TestDeleteNodeTwiceReleasesAddressOnce(t *testing.T) {
 	prefix := netip.MustParsePrefix("100.64.0.0/30")
 	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
-	cfg.PrefixV4 = &prefix
-	cfg.PrefixV6 = nil
-	cfg.IPAllocation = types.IPAllocationStrategyRandom
+	cfg.Prefixes.V4 = &prefix
+	cfg.Prefixes.V6 = nil
+	cfg.Prefixes.Allocation = types.IPAllocationStrategyRandom
 
 	s, err := NewState(cfg)
 	require.NoError(t, err)
@@ -1555,7 +1553,7 @@ func TestPostgresUpdatePolicyConcurrentWrites(t *testing.T) {
 			Port: port,
 			Name: strings.TrimLeft(u.Path, "/"),
 			User: u.User.Username(),
-			Pass: pass,
+			Pass: types.Secret(pass),
 			Ssl:  "disable",
 		},
 	}
@@ -1744,7 +1742,7 @@ func TestBackfillNodeIPsSurvivesConcurrentPersist(t *testing.T) {
 
 	// Dropping the IPv6 prefix gives the backfill work to do.
 	cfg := persistTestConfig(dbPath)
-	cfg.PrefixV6 = nil
+	cfg.Prefixes.V6 = nil
 
 	s, err := NewState(cfg)
 	require.NoError(t, err)

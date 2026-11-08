@@ -14,7 +14,7 @@ import (
 
 func TestMapResponseBuilder_Basic(t *testing.T) {
 	cfg := &types.Config{
-		BaseDomain: "example.com",
+		DNSConfig: types.DNSConfig{BaseDomain: "example.com"},
 		LogTail: types.LogTailConfig{
 			Enabled: true,
 		},
@@ -60,8 +60,8 @@ func TestMapResponseBuilder_WithCapabilityVersion(t *testing.T) {
 func TestMapResponseBuilder_WithDomain(t *testing.T) {
 	domain := "test.example.com"
 	cfg := &types.Config{
-		ServerURL:  "https://test.example.com",
-		BaseDomain: domain,
+		ServerURL: "https://test.example.com",
+		DNSConfig: types.DNSConfig{BaseDomain: domain},
 	}
 
 	mockState := &state.State{}
@@ -245,8 +245,8 @@ func TestMapResponseBuilder_ErrorHandling(t *testing.T) {
 func TestMapResponseBuilder_ChainedCalls(t *testing.T) {
 	domain := "chained.example.com"
 	cfg := &types.Config{
-		ServerURL:  "https://chained.example.com",
-		BaseDomain: domain,
+		ServerURL: "https://chained.example.com",
+		DNSConfig: types.DNSConfig{BaseDomain: domain},
 		LogTail: types.LogTailConfig{
 			Enabled: false,
 		},

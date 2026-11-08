@@ -896,8 +896,8 @@ func TestOIDCPendingCallbackCookieBinding(t *testing.T) {
 }
 
 func TestOIDCPendingCallbackPKCEFlow(t *testing.T) {
-	for _, method := range []string{"", types.PKCEMethodPlain, types.PKCEMethodS256} {
-		t.Run("method="+method, func(t *testing.T) {
+	for _, method := range []types.PKCEMethod{"", types.PKCEMethodPlain, types.PKCEMethodS256} {
+		t.Run("method="+string(method), func(t *testing.T) {
 			b := newOIDCBrowser(t)
 			a, ok := b.app.authProvider.(*AuthProviderOIDC)
 			require.True(t, ok)
@@ -1103,11 +1103,11 @@ func newOIDCBrowserWithPrefix(t *testing.T, prefix string) *oidcBrowser {
 		app,
 		publicURL,
 		&types.OIDCConfig{
-			Issuer:       idp.Issuer(),
-			ClientID:     idp.ClientID,
-			ClientSecret: idp.ClientSecret,
-			Scope:        []string{"openid", "profile", "email"},
+			Issuer:   types.HTTPURL(idp.Issuer()),
+			ClientID: idp.ClientID,
+			Scope:    []string{"openid", "profile", "email"},
 		},
+		idp.ClientSecret,
 	)
 	require.NoError(t, err)
 	t.Cleanup(provider.authCache.Close)

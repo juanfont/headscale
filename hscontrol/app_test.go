@@ -35,7 +35,7 @@ func TestDebugHostGuard(t *testing.T) {
 	app := createTestApp(t)
 	app.cfg.ServerURL = "https://Control.Example.COM:443/headscale"
 	app.cfg.MetricsAddr = "Debug.Internal:9090"
-	app.cfg.BaseDomain = "tailnet.invalid"
+	app.cfg.DNSConfig.BaseDomain = "tailnet.invalid"
 	handler := app.debugHTTPServer().Handler
 
 	for _, tt := range []struct {
@@ -146,8 +146,8 @@ func TestNewHeadscaleDNSProvider(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			cfg := types.Config{
-				ServerURL:           "http://localhost:8080",
-				NoisePrivateKeyPath: tmpDir + "/noise_private.key",
+				ServerURL: "http://localhost:8080",
+				Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
 				Database: types.DatabaseConfig{
 					Type:   "sqlite3",
 					Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db"},
@@ -157,8 +157,8 @@ func TestNewHeadscaleDNSProvider(t *testing.T) {
 					MagicDNS:     true,
 					BaseDomain:   "ts.example.com",
 					Certificates: types.CertificatesConfig{Enabled: tt.certificates},
+					Challenge:    tt.challenge,
 				},
-				DNSChallenge: tt.challenge,
 			}
 
 			app, err := NewHeadscale(&cfg)
@@ -174,6 +174,83 @@ func TestNewHeadscaleDNSProvider(t *testing.T) {
 			provider, ok := cfg.DNSProvider().(*cloudflare.Provider)
 			require.True(t, ok, "provider is %T", cfg.DNSProvider())
 			assert.Equal(t, tt.wantToken, provider.APIToken)
+		})
+	}
+}
+
+// TestNewHeadscaleSecrets pins that startup reads a file: secret only where
+// it is used, and that one it cannot read stops startup, even when OIDC may
+// be unavailable.
+func TestNewHeadscaleSecrets(t *testing.T) {
+	missing := types.Secret("file:" + filepath.Join(t.TempDir(), "missing"))
+
+	tests := []struct {
+		name    string
+		set     func(*types.Config)
+		wantErr string
+		noFiles bool // fails before startup writes anything
+	}{
+		{
+			name: "oidc client secret file missing",
+			set: func(c *types.Config) {
+				// Unreachable, so discovery would fail and fall back, were the
+				// secret read only there.
+				c.OIDC = types.OIDCConfig{Issuer: "http://127.0.0.1:1", ClientID: "headscale", ClientSecret: missing}
+			},
+			wantErr: "oidc.client_secret: ",
+			noFiles: true,
+		},
+		{
+			name: "postgres pass file missing",
+			set: func(c *types.Config) {
+				c.Database = types.DatabaseConfig{
+					Type:     types.DatabasePostgres,
+					Postgres: types.PostgresConfig{Host: "127.0.0.1", Port: 1, Name: "headscale", Pass: missing},
+				}
+			},
+			wantErr: "database.postgres.pass: ",
+		},
+		{
+			name: "inactive consumers read nothing",
+			set: func(c *types.Config) {
+				c.Database.Postgres.Pass = missing
+				c.OIDC.ClientSecret = missing
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			cfg := types.Config{
+				ServerURL: "http://localhost:8080",
+				Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
+				Database: types.DatabaseConfig{
+					Type:   "sqlite3",
+					Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db"},
+				},
+				Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
+			}
+			tt.set(&cfg)
+
+			app, err := NewHeadscale(&cfg)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				require.ErrorContains(t, err, "readable by the user running headscale")
+				// Read before connecting: a connection error would not name the key.
+				assert.NotContains(t, err.Error(), "connect")
+
+				if tt.noFiles {
+					entries, err := os.ReadDir(tmpDir)
+					require.NoError(t, err)
+					assert.Empty(t, entries, "no noise key or database before the secret is read")
+				}
+
+				return
+			}
+
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = app.state.Close() })
 		})
 	}
 }

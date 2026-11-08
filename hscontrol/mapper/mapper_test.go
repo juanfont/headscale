@@ -58,8 +58,7 @@ func TestExitNodeFilteredSet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := generateDNSConfig(
 				&types.Config{
-					BaseDomain: tt.baseDomain,
-					DNSConfig:  types.DNSConfig{MagicDNS: tt.magicDNS, BaseDomain: tt.baseDomain},
+					DNSConfig: types.DNSConfig{MagicDNS: tt.magicDNS, BaseDomain: tt.baseDomain},
 				},
 				(&types.Node{}).View(),
 				nil,
@@ -82,7 +81,8 @@ func TestDNSConfigMapResponse(t *testing.T) {
 				Domains: []string{
 					"foobar.headscale.net",
 				},
-				Proxied: true,
+				Proxied:             true,
+				ExitNodeFilteredSet: []string{".foobar.headscale.net"},
 			},
 		},
 		{
@@ -370,11 +370,9 @@ func TestBuildFromChangeFiltersPeerPatchesByVisibility(t *testing.T) {
 			Type:   types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
 		},
-		PrefixV4:     &p4,
-		PrefixV6:     &p6,
-		IPAllocation: types.IPAllocationStrategySequential,
-		BaseDomain:   "headscale.test",
-		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
+		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
+		Policy:    types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
 			DERPMap: &tailcfg.DERPMap{
 				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
@@ -456,11 +454,9 @@ func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
 			Type:   types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
 		},
-		PrefixV4:     &p4,
-		PrefixV6:     &p6,
-		IPAllocation: types.IPAllocationStrategySequential,
-		BaseDomain:   "headscale.test",
-		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
+		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
+		Policy:    types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
 			DERPMap: &tailcfg.DERPMap{
 				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
@@ -541,11 +537,9 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 			Type:   types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
 		},
-		PrefixV4:     &p4,
-		PrefixV6:     &p6,
-		IPAllocation: types.IPAllocationStrategySequential,
-		BaseDomain:   "headscale.test",
-		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
+		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
+		Policy:    types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
 			DERPMap: &tailcfg.DERPMap{
 				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
@@ -753,11 +747,9 @@ func TestFullMapResponseSurvivesPeerWithInvalidData(t *testing.T) {
 					Type:   types.DatabaseSqlite,
 					Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
 				},
-				PrefixV4:     &p4,
-				PrefixV6:     &p6,
-				IPAllocation: types.IPAllocationStrategySequential,
-				BaseDomain:   "headscale.test",
-				Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+				Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
+				DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
+				Policy:    types.PolicyConfig{Mode: types.PolicyModeDB},
 				DERP: types.DERPConfig{
 					DERPMap: &tailcfg.DERPMap{
 						Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
@@ -1016,11 +1008,9 @@ func TestBackfillNodeIPsReachesBackfilledNode(t *testing.T) {
 			Type:   types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
 		},
-		PrefixV4:     &p4,
-		PrefixV6:     &p6,
-		IPAllocation: types.IPAllocationStrategySequential,
-		BaseDomain:   "headscale.test",
-		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
+		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
+		Policy:    types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
 			DERPMap: &tailcfg.DERPMap{
 				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
@@ -1091,11 +1081,9 @@ func TestFailedExpiryOfPrimaryAnnouncesBackup(t *testing.T) {
 			Type:   types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
 		},
-		PrefixV4:     &p4,
-		PrefixV6:     &p6,
-		IPAllocation: types.IPAllocationStrategySequential,
-		BaseDomain:   "headscale.test",
-		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
+		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
+		Policy:    types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
 			DERPMap: &tailcfg.DERPMap{
 				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
@@ -1183,11 +1171,8 @@ func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
 			Type:   types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
 		},
-		PrefixV4:     &p4,
-		PrefixV6:     &p6,
-		IPAllocation: types.IPAllocationStrategySequential,
-		BaseDomain:   "headscale.test",
-		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		Prefixes: types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
+		Policy:   types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
 			DERPMap: &tailcfg.DERPMap{
 				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
@@ -1195,7 +1180,7 @@ func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
 		},
 		// Without these the DERP map and DNS config renders carry
 		// nothing and no frame is generated at all.
-		DNSConfig: types.DNSConfig{MagicDNS: true},
+		DNSConfig: types.DNSConfig{MagicDNS: true, BaseDomain: "headscale.test"},
 		Tuning: types.Tuning{
 			NodeStoreBatchSize:    state.TestBatchSize,
 			NodeStoreBatchTimeout: state.TestBatchTimeout,
@@ -1358,12 +1343,13 @@ func TestCertDomains(t *testing.T) {
 
 			dnsCfg := tt.dns
 			dnsCfg.MagicDNS = true
+			dnsCfg.BaseDomain = baseDomain
 			dnsCfg.ExtraRecords = []tailcfg.DNSRecord{
 				{Name: "Grafana.ts.example.com", Type: "A", Value: "100.64.0.3"},
 				{Name: "grafana.svc.ts.example.com.", Type: "A", Value: "100.64.0.4"},
 			}
 
-			cfg := &types.Config{BaseDomain: baseDomain, DNSConfig: dnsCfg}
+			cfg := &types.Config{DNSConfig: dnsCfg}
 			cfg.StartDNS(tt.provider)
 
 			got := generateDNSConfig(cfg, tt.node.View(), nil)
@@ -1862,10 +1848,9 @@ func capMapsMapperFixture(tb testing.TB, n int, attrs string) (*mapper, []types.
 			Type:   types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{Path: tb.TempDir() + "/caps.db"},
 		},
-		PrefixV4: &p4, PrefixV6: &p6,
-		IPAllocation: types.IPAllocationStrategySequential,
-		BaseDomain:   "headscale.test",
-		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
+		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
+		Policy:    types.PolicyConfig{Mode: types.PolicyModeDB},
 		Tuning: types.Tuning{
 			NodeStoreBatchSize:    state.TestBatchSize,
 			NodeStoreBatchTimeout: state.TestBatchTimeout,

@@ -30,7 +30,7 @@ var nodeHealthChecks = []nodeHealthCheck{givenNameMapsToValidFQDN, expiryIsEncod
 var givenNameMapsToValidFQDN = nodeHealthCheck{
 	name: "given-name-maps-to-valid-fqdn",
 	check: func(nv types.NodeView, cfg *types.Config) (string, string, bool) {
-		err := types.ValidateGivenName(nv.GivenName(), cfg.BaseDomain)
+		err := types.ValidateGivenName(nv.GivenName(), cfg.DNSConfig.BaseDomain)
 		if err != nil {
 			return err.Error(), fmt.Sprintf("headscale nodes rename %d <name>", nv.ID()), false
 		}

@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/libdns/cloudflare"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/types/key"
 )
@@ -33,12 +34,11 @@ const badGroup = `{"acls":[{"action":"accept","src":["group:missing"],"dst":["*:
 func TestFiles(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &types.Config{
-		NoisePrivateKeyPath: filepath.Join(dir, "noise.key"),
-		Policy:              types.PolicyConfig{Mode: types.PolicyModeFile, Path: filepath.Join(dir, "policy.hujson")},
+		Noise:  types.NoiseConfig{PrivateKeyPath: filepath.Join(dir, "noise.key")},
+		Policy: types.PolicyConfig{Mode: types.PolicyModeFile, Path: filepath.Join(dir, "policy.hujson")},
 		DERP: types.DERPConfig{
-			Paths:                []string{"a.yaml", "b.yaml"},
-			ServerEnabled:        true,
-			ServerPrivateKeyPath: filepath.Join(dir, "derp.key"),
+			Paths:  []string{"a.yaml", "b.yaml"},
+			Server: types.DERPServerConfig{Enabled: true, PrivateKeyPath: filepath.Join(dir, "derp.key")},
 		},
 		DNSConfig: types.DNSConfig{ExtraRecordsPath: "records.json"},
 		TLS:       types.TLSConfig{CertPath: "c.pem", KeyPath: "k.pem"},
@@ -71,10 +71,67 @@ func TestFiles(t *testing.T) {
 
 	// A policy in the database and a disabled DERP server name no file.
 	cfg.Policy.Mode = types.PolicyModeDB
-	cfg.DERP.ServerEnabled = false
+	cfg.DERP.Server.Enabled = false
 
 	for _, f := range Files(cfg) {
 		require.NotContains(t, []string{"policy.path", "derp.server.private_key_path"}, f.Key)
+	}
+
+	// A file: secret is listed, unread, only where startup reads it.
+	missing := types.Secret("file:" + filepath.Join(dir, "missing"))
+	postgres := types.DatabaseConfig{Type: types.DatabasePostgres, Postgres: types.PostgresConfig{Pass: missing}}
+	oidc := types.OIDCConfig{Issuer: "https://idp.example.com", ClientSecret: missing}
+	provider := types.DNSChallengeConfig{ProviderSettings: map[string]any{
+		"name": "cloudflare", "zone_token": string(missing), "api_token": string(missing),
+	}}
+
+	for _, tt := range []struct {
+		name string
+		cfg  types.Config
+		want []string
+	}{
+		{name: "postgres pass", cfg: types.Config{Database: postgres}, want: []string{"database.postgres.pass"}},
+		{name: "sqlite reads no postgres pass", cfg: types.Config{Database: types.DatabaseConfig{Type: types.DatabaseSqlite, Postgres: postgres.Postgres}}},
+		{name: "oidc with an issuer", cfg: types.Config{OIDC: oidc}, want: []string{"oidc.client_secret"}},
+		{name: "oidc without an issuer", cfg: types.Config{OIDC: types.OIDCConfig{ClientSecret: missing}}},
+		{name: "literal secrets", cfg: types.Config{
+			Database: types.DatabaseConfig{Type: types.DatabasePostgres, Postgres: types.PostgresConfig{Pass: "literal"}},
+			OIDC:     types.OIDCConfig{Issuer: oidc.Issuer, ClientSecret: "literal"},
+		}},
+		{
+			name: "provider settings",
+			cfg:  types.Config{DNSConfig: types.DNSConfig{Challenge: provider}},
+			want: []string{"dns.challenge.provider.api_token", "dns.challenge.provider.zone_token"},
+		},
+		{
+			name: "go-only provider reads no settings",
+			cfg: types.Config{
+				DNSConfig: types.DNSConfig{Challenge: types.DNSChallengeConfig{
+					ProviderSettings: provider.ProviderSettings, Provider: &cloudflare.Provider{},
+				}},
+			},
+		},
+		{
+			name: "sorted by key",
+			cfg:  types.Config{Database: postgres, OIDC: oidc, DNSConfig: types.DNSConfig{Challenge: provider}},
+			want: []string{
+				"database.postgres.pass", "dns.challenge.provider.api_token",
+				"dns.challenge.provider.zone_token", "oidc.client_secret",
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var keys []string
+
+			for _, f := range Files(&tt.cfg) {
+				require.ErrorIs(t, f.Check(), ErrSecretNotRead, f.Key)
+				require.Equal(t, filepath.Join(dir, "missing"), f.Path, f.Key)
+
+				keys = append(keys, f.Key)
+			}
+
+			require.Equal(t, tt.want, keys)
+		})
 	}
 }
 
@@ -183,7 +240,7 @@ func TestFilesChecks(t *testing.T) {
 		{
 			name: "noise key missing",
 			build: func(_ *testing.T, dir string) *types.Config {
-				return &types.Config{NoisePrivateKeyPath: filepath.Join(dir, "sub", "noise.key")}
+				return &types.Config{Noise: types.NoiseConfig{PrivateKeyPath: filepath.Join(dir, "sub", "noise.key")}}
 			},
 			key:     "noise.private_key_path",
 			wantErr: os.ErrNotExist,
@@ -193,7 +250,7 @@ func TestFilesChecks(t *testing.T) {
 			build: func(t *testing.T, dir string) *types.Config {
 				t.Helper()
 
-				return &types.Config{NoisePrivateKeyPath: write(t, filepath.Join(dir, "noise.key"), "garbage")}
+				return &types.Config{Noise: types.NoiseConfig{PrivateKeyPath: write(t, filepath.Join(dir, "noise.key"), "garbage")}}
 			},
 			key:     "noise.private_key_path",
 			wantMsg: "parsing private key",
@@ -206,10 +263,9 @@ func TestFilesChecks(t *testing.T) {
 				k := keyText(t)
 
 				return &types.Config{
-					NoisePrivateKeyPath: write(t, filepath.Join(dir, "noise.key"), k),
+					Noise: types.NoiseConfig{PrivateKeyPath: write(t, filepath.Join(dir, "noise.key"), k)},
 					DERP: types.DERPConfig{
-						ServerEnabled:        true,
-						ServerPrivateKeyPath: write(t, filepath.Join(dir, "derp.key"), k+"\n"),
+						Server: types.DERPServerConfig{Enabled: true, PrivateKeyPath: write(t, filepath.Join(dir, "derp.key"), k+"\n")},
 					},
 				}
 			},
@@ -222,10 +278,9 @@ func TestFilesChecks(t *testing.T) {
 				t.Helper()
 
 				return &types.Config{
-					NoisePrivateKeyPath: write(t, filepath.Join(dir, "noise.key"), keyText(t)),
+					Noise: types.NoiseConfig{PrivateKeyPath: write(t, filepath.Join(dir, "noise.key"), keyText(t))},
 					DERP: types.DERPConfig{
-						ServerEnabled:        true,
-						ServerPrivateKeyPath: write(t, filepath.Join(dir, "derp.key"), keyText(t)),
+						Server: types.DERPServerConfig{Enabled: true, PrivateKeyPath: write(t, filepath.Join(dir, "derp.key"), keyText(t))},
 					},
 				}
 			},

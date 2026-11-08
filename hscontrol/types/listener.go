@@ -116,7 +116,7 @@ func validateListenerCollisions(v *configValidator) {
 			addr: acmeAddr,
 			active: acmeAddr != "" &&
 				src.String("tls.acme.hostname") != "" &&
-				src.String("tls.acme.challenge_type") == HTTP01ChallengeType,
+				ACMEChallenge(src.String("tls.acme.challenge_type")) == HTTP01ChallengeType,
 		},
 	}
 

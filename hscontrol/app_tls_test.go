@@ -200,29 +200,29 @@ func TestDNS01SolverWait(t *testing.T) {
 // TestACMETLSSettings obtains headscale's own certificate from Pebble with
 // each challenge type, serving it the way [Headscale.Serve] does.
 func TestACMETLSSettings(t *testing.T) {
-	for _, challenge := range []string{
+	for _, challenge := range []types.ACMEChallenge{
 		types.DNS01ChallengeType,
 		types.HTTP01ChallengeType,
 		types.TLSALPN01ChallengeType,
 	} {
-		t.Run(challenge, func(t *testing.T) {
+		t.Run(string(challenge), func(t *testing.T) {
 			httpPort, tlsPort := freePort(t), freePort(t)
 			acme := startTestACME(t, httpPort, tlsPort)
 
 			h := &Headscale{cfg: &types.Config{
 				ServerURL: "https://" + acmeTestHost,
-				Addr:      net.JoinHostPort("127.0.0.1", strconv.Itoa(tlsPort)),
+				Addr:      types.ListenAddr(net.JoinHostPort("127.0.0.1", strconv.Itoa(tlsPort))),
 				TLS: types.TLSConfig{ACME: types.ACMEConfig{
 					Hostname:      acmeTestHost,
 					ChallengeType: challenge,
-					HTTPListen:    net.JoinHostPort("127.0.0.1", strconv.Itoa(httpPort)),
-					URL:           acme.directory,
+					HTTPListen:    types.ListenAddr(net.JoinHostPort("127.0.0.1", strconv.Itoa(httpPort))),
+					URL:           types.HTTPURL(acme.directory),
 					CacheDir:      t.TempDir(),
 				}},
-				DNSChallenge: types.DNSChallengeConfig{
+				DNSConfig: types.DNSConfig{Challenge: types.DNSChallengeConfig{
 					Provider:  acme.provider,
 					Resolvers: []string{acme.resolver},
-				},
+				}},
 			}}
 
 			bundle, err := h.getTLSSettings(t.Context())
@@ -230,7 +230,7 @@ func TestACMETLSSettings(t *testing.T) {
 			t.Cleanup(bundle.Stop)
 			assert.Nil(t, bundle.Reload, "certmagic renews the certificate itself")
 
-			ln, err := tls.Listen("tcp", h.cfg.Addr, bundle.Config)
+			ln, err := tls.Listen("tcp", string(h.cfg.Addr), bundle.Config)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = ln.Close() })
 
@@ -262,7 +262,7 @@ func TestACMETLSSettings(t *testing.T) {
 
 				d.Config = &tls.Config{ServerName: acmeTestHost, RootCAs: acme.roots, MinVersion: tls.VersionTLS12}
 
-				conn, err := d.DialContext(t.Context(), "tcp", h.cfg.Addr)
+				conn, err := d.DialContext(t.Context(), "tcp", string(h.cfg.Addr))
 				if assert.NoError(c, err) {
 					_ = conn.Close()
 				}
@@ -310,17 +310,17 @@ func TestACMERetryStaysOnConfiguredCA(t *testing.T) {
 
 	h := &Headscale{cfg: &types.Config{
 		ServerURL: "https://" + acmeTestHost,
-		Addr:      net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t))),
+		Addr:      types.ListenAddr(net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t)))),
 		TLS: types.TLSConfig{ACME: types.ACMEConfig{
 			Hostname:      acmeTestHost,
 			ChallengeType: types.DNS01ChallengeType,
-			URL:           acme.directory,
+			URL:           types.HTTPURL(acme.directory),
 			CacheDir:      t.TempDir(),
 		}},
-		DNSChallenge: types.DNSChallengeConfig{
+		DNSConfig: types.DNSConfig{Challenge: types.DNSChallengeConfig{
 			Provider:  published,
 			Resolvers: []string{acme.resolver},
-		},
+		}},
 	}}
 
 	bundle, err := h.getTLSSettings(t.Context())

@@ -15,7 +15,7 @@ import (
 func TestNodeNameCannotShadowExtraRecord(t *testing.T) {
 	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
 	cfg.DNSConfig.ExtraRecords = []tailcfg.DNSRecord{
-		{Name: "grafana." + cfg.BaseDomain, Type: "A", Value: "100.64.0.100"},
+		{Name: "grafana." + cfg.DNSConfig.BaseDomain, Type: "A", Value: "100.64.0.100"},
 	}
 	cfg.StartDNS(nil) // as NewHeadscale does, so SetExtraRecords takes
 	s, err := NewState(cfg)
@@ -44,9 +44,9 @@ func TestNodeNameCannotShadowExtraRecord(t *testing.T) {
 	existing := register("existing")
 
 	cfg.SetExtraRecords([]tailcfg.DNSRecord{
-		{Name: "SVC." + cfg.BaseDomain + ".", Type: "A", Value: "100.64.0.101"},
-		{Name: "existing." + cfg.BaseDomain, Type: "A", Value: "100.64.0.102"},
-		{Name: "child.parent." + cfg.BaseDomain, Type: "A", Value: "100.64.0.103"},
+		{Name: "SVC." + cfg.DNSConfig.BaseDomain + ".", Type: "A", Value: "100.64.0.101"},
+		{Name: "existing." + cfg.DNSConfig.BaseDomain, Type: "A", Value: "100.64.0.102"},
+		{Name: "child.parent." + cfg.DNSConfig.BaseDomain, Type: "A", Value: "100.64.0.103"},
 	})
 
 	fresh, _ := s.GetNodeByID(existing.ID())
@@ -95,7 +95,7 @@ func TestRenameNodeRejectsNameExceedingFQDNLimit(t *testing.T) {
 	dbPath := t.TempDir() + "/headscale.db"
 	cfg := persistTestConfig(dbPath)
 	// A long base domain so a 63-char label overflows the 255-char FQDN bound.
-	cfg.BaseDomain = strings.Repeat("b", 200) + ".example.com"
+	cfg.DNSConfig.BaseDomain = strings.Repeat("b", 200) + ".example.com"
 
 	database, err := db.NewHeadscaleDatabase(cfg)
 	require.NoError(t, err)

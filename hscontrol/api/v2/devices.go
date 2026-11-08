@@ -212,7 +212,7 @@ func registerDevices(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		return &deviceOutput{Body: deviceFromView(node, in.Fields == "all", b.Cfg.BaseDomain)}, nil
+		return &deviceOutput{Body: deviceFromView(node, in.Fields == "all", b.Cfg.DNSConfig.BaseDomain)}, nil
 	})
 
 	huma.Register(api, requireScope(huma.Operation{
@@ -253,7 +253,7 @@ func registerDevices(api huma.API, b Backend) {
 		out.Body.Devices = make([]Device, 0, nodes.Len())
 
 		for _, node := range nodes.All() {
-			out.Body.Devices = append(out.Body.Devices, deviceFromView(node, allFields, b.Cfg.BaseDomain))
+			out.Body.Devices = append(out.Body.Devices, deviceFromView(node, allFields, b.Cfg.DNSConfig.BaseDomain))
 		}
 
 		// The NodeStore holds no order, and Tailscale lists devices by name.

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -62,13 +61,13 @@ func assertExampleConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "http://127.0.0.1:8080", cfg.ServerURL)
-	assert.Equal(t, "127.0.0.1:8080", cfg.Addr)
-	assert.Equal(t, "127.0.0.1:9090", cfg.MetricsAddr)
+	assert.Equal(t, types.ListenAddr("127.0.0.1:8080"), cfg.Addr)
+	assert.Equal(t, types.ListenAddr("127.0.0.1:9090"), cfg.MetricsAddr)
 	assert.True(t, cfg.Database.IsSQLite(), cfg.Database.Type)
 	assert.Equal(t, "/var/lib/headscale/db.sqlite", cfg.SQLitePath())
 	assert.Empty(t, cfg.TLS.ACME.Hostname)
-	assert.Equal(t, ":http", cfg.TLS.ACME.HTTPListen)
-	assert.Equal(t, "HTTP-01", cfg.TLS.ACME.ChallengeType)
-	assert.Equal(t, fs.FileMode(0o770), cfg.UnixSocketPermission)
+	assert.Equal(t, types.ListenAddr(":http"), cfg.TLS.ACME.HTTPListen)
+	assert.Equal(t, types.HTTP01ChallengeType, cfg.TLS.ACME.ChallengeType)
+	assert.Equal(t, types.FileMode(0o770), cfg.UnixSocketPermission)
 	assert.False(t, cfg.LogTail.Enabled)
 }

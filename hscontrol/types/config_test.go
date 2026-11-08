@@ -194,7 +194,7 @@ func TestReadConfig(t *testing.T) {
 
 				return map[string]string{
 					"server_url":  cfg.ServerURL,
-					"base_domain": cfg.BaseDomain,
+					"base_domain": cfg.DNSConfig.BaseDomain,
 				}, err
 			},
 			want: map[string]string{
@@ -589,10 +589,6 @@ prefixes:
   v4: not-a-cidr
   v6: also-not-a-cidr
   allocation: bogus
-oidc:
-  issuer: https://idp.example.com
-  client_id: headscale
-  client_secret: file:/nonexistent/secret
 noise:
   private_key_path: noise_private.key
 database:
@@ -617,8 +613,6 @@ dns:
 	// Sentinels stay reachable through ConfigError.Cause.
 	require.ErrorIs(t, err, ErrInvalidAllocationStrategy,
 		"wrapped ErrInvalidAllocationStrategy not in chain")
-	require.ErrorIs(t, err, os.ErrNotExist,
-		"wrapped secret read error not in chain")
 
 	// Each sub-builder failure surfaces its YAML key in the rendered output.
 	rendered := err.Error()
@@ -626,7 +620,6 @@ dns:
 		"prefixes.v4",
 		"prefixes.v6",
 		"prefixes.allocation",
-		"oidc.client_secret",
 	} {
 		assert.Contains(t, rendered, want,
 			"expected rendered error to mention %q", want)
@@ -898,17 +891,11 @@ func TestRemovedKeysAreRejected(t *testing.T) {
 	}
 }
 
-// TestConfigSecrets pins that the secret settings take a value or file:<path>,
-// read only by the consumer that uses the secret.
+// TestConfigSecrets pins that the loaders keep each secret as written, a
+// value or file:<path>, and read no file: its consumer does
+// (TestNewHeadscaleSecrets, TestCLIAPIKey).
 func TestConfigSecrets(t *testing.T) {
-	dir := t.TempDir()
-	for _, name := range []string{"oidc", "pg", "api"} {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(name+"-from-file\n"), 0o600))
-	}
-
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty"), []byte(" \n"), 0o600))
-
-	missing := "file:" + filepath.Join(dir, "missing")
+	missing := "file:" + filepath.Join(t.TempDir(), "missing")
 
 	base := `---
 server_url: https://headscale.example.com
@@ -917,121 +904,36 @@ noise:
 prefixes:
   v4: 100.64.0.0/10
 database:
-  type: sqlite
+  type: postgres
 dns:
   magic_dns: false
   override_local_dns: false
+cli:
+  address: headscale.example.com:443
 oidc:
   issuer: https://idp.example.com
   client_id: headscale
 `
-	// Postgres and a remote CLI are the consumers of the other two secrets.
-	active := map[string]string{
-		"HEADSCALE_DATABASE_TYPE": "postgres",
-		"HEADSCALE_CLI_ADDRESS":   "headscale.example.com:443",
-	}
 
-	tests := []struct {
-		name       string
-		yaml       string
-		env        map[string]string
-		want       [3]string // server oidc.client_secret, server database.postgres.pass, CLI cli.api_key
-		wantErr    string    // from LoadServerConfig
-		wantCLIErr string
-	}{
-		{
-			name: "literal values",
-			yaml: base + "  client_secret: oidc\n",
-			env:  map[string]string{"HEADSCALE_DATABASE_POSTGRES_PASS": "pg", "HEADSCALE_CLI_API_KEY": "api"},
-			want: [3]string{"oidc", "pg", "api"},
-		},
-		{
-			name: "file values for active consumers",
-			yaml: base + "  client_secret: file:" + filepath.Join(dir, "oidc") + "\n",
-			//nolint:gosec // paths to test files, not credentials
-			env: map[string]string{
-				"HEADSCALE_DATABASE_TYPE":          active["HEADSCALE_DATABASE_TYPE"],
-				"HEADSCALE_CLI_ADDRESS":            active["HEADSCALE_CLI_ADDRESS"],
-				"SECRET_DIR":                       dir,
-				"HEADSCALE_DATABASE_POSTGRES_PASS": "file:$SECRET_DIR/pg",
-				"HEADSCALE_CLI_API_KEY":            "file:${SECRET_DIR}/api",
-			},
-			want: [3]string{"oidc-from-file", "pg-from-file", "api-from-file"},
-		},
-		{
-			// sqlite and the unix socket use neither secret.
-			name: "inactive consumers read nothing",
-			yaml: base + "  client_secret: oidc\n",
-			env:  map[string]string{"HEADSCALE_DATABASE_POSTGRES_PASS": missing, "HEADSCALE_CLI_API_KEY": missing},
-			want: [3]string{"oidc", missing, missing},
-		},
-		{
-			// OIDC is active only with an issuer.
-			name: "inactive oidc reads nothing",
-			yaml: strings.Replace(base, "  issuer: https://idp.example.com\n", "", 1) + "  client_secret: " + missing + "\n",
-			want: [3]string{missing, "", ""},
-		},
-		{
-			name:    "missing oidc file",
-			yaml:    base + "  client_secret: " + missing + "\n",
-			wantErr: "oidc.client_secret cannot be read",
-		},
-		{
-			name:    "empty oidc file",
-			yaml:    base + "  client_secret: file:" + filepath.Join(dir, "empty") + "\n",
-			wantErr: "oidc.client_secret",
-		},
-		{
-			name: "missing postgres file",
-			yaml: base + "  client_secret: oidc\n",
-			env: map[string]string{
-				"HEADSCALE_DATABASE_TYPE":          active["HEADSCALE_DATABASE_TYPE"],
-				"HEADSCALE_DATABASE_POSTGRES_PASS": missing,
-			},
-			wantErr: "database.postgres.pass cannot be read",
-		},
-		{
-			name: "missing api key file for a remote CLI",
-			yaml: base + "  client_secret: oidc\n",
-			env: map[string]string{
-				"HEADSCALE_CLI_ADDRESS": active["HEADSCALE_CLI_ADDRESS"],
-				"HEADSCALE_CLI_API_KEY": missing,
-			},
-			wantCLIErr: "cli.api_key cannot be read",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for k, v := range tt.env {
-				t.Setenv(k, v)
-			}
+	for name, value := range map[string]string{"literal": "literal", "missing file": missing} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("HEADSCALE_DATABASE_POSTGRES_PASS", value)
+			t.Setenv("HEADSCALE_CLI_API_KEY", value)
 
 			tmpDir := t.TempDir()
-			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(tt.yaml), 0o600))
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(base+"  client_secret: "+value+"\n"), 0o600))
 			require.NoError(t, LoadConfig(tmpDir, false))
 
 			cfg, err := LoadServerConfig()
-			if tt.wantErr != "" {
-				require.ErrorContains(t, err, tt.wantErr)
-
-				return
-			}
-
 			require.NoError(t, err)
-
-			// The server never uses the CLI's key, so never reads it.
+			assert.Equal(t, Secret(value), cfg.OIDC.ClientSecret)
+			assert.Equal(t, Secret(value), cfg.Database.Postgres.Pass)
+			// The server never uses the CLI's key.
 			assert.Empty(t, cfg.CLI.APIKey)
 
 			cli, err := LoadCLIConfig()
-			if tt.wantCLIErr != "" {
-				require.ErrorContains(t, err, tt.wantCLIErr)
-
-				return
-			}
-
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, [3]string{cfg.OIDC.ClientSecret, cfg.Database.Postgres.Pass, cli.CLI.APIKey})
+			assert.Equal(t, Secret(value), cli.CLI.APIKey)
 		})
 	}
 }
@@ -1044,7 +946,7 @@ func TestUnixSocketPermission(t *testing.T) {
 		name    string
 		yaml    string
 		env     string
-		want    fs.FileMode
+		want    FileMode
 		wantErr bool
 	}{
 		{name: "unset-uses-default", want: 0o770},
@@ -1245,9 +1147,9 @@ func TestSafeServerURLWithPort(t *testing.T) {
 }
 
 // TestConfigJSONOmitsSecrets verifies that marshalling a [Config] to JSON
-// (as /debug/config does via [state.State.DebugConfig]) does not leak the
-// Postgres password, the OIDC client secret, or the headscale admin
-// API key. Operators who widen metrics_listen_addr to 0.0.0.0 should
+// (as /debug/config does via [state.State.DebugConfig]) or logging it does
+// not leak the Postgres password, the OIDC client secret, or the headscale
+// admin API key. Operators who widen metrics_listen_addr to 0.0.0.0 should
 // not be able to read these back via debug endpoints reachable over
 // CGNAT/loopback.
 func TestConfigJSONOmitsSecrets(t *testing.T) {
@@ -1256,6 +1158,10 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 		secretClientSecret = "oidc-client-secret-marker"    //nolint:gosec // test marker, not a real credential
 		secretAPIKey       = "headscale-cli-api-key-marker" //nolint:gosec // test marker, not a real credential
 		secretDNSToken     = "dns-provider-token-marker"    //nolint:gosec // test marker, not a real credential
+		secretDERPUser     = "derp-url-username-marker"     //nolint:gosec // test marker, not a real credential
+		secretDERPPass     = "derp-url-password-marker"     //nolint:gosec // test marker, not a real credential
+		secretDERPToken    = "derp-url-token-marker"        //nolint:gosec // test marker, not a real credential
+		derpMapMarker      = "go-only-derp-map-marker"
 	)
 
 	cfg := &Config{
@@ -1270,19 +1176,58 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 		CLI: CLIConfig{
 			APIKey: secretAPIKey,
 		},
-		DNSChallenge: DNSChallengeConfig{
+		DNSConfig: DNSConfig{Challenge: DNSChallengeConfig{
 			ProviderSettings: map[string]any{"name": "cloudflare", "api_token": secretDNSToken},
 			Provider:         &cloudflare.Provider{APIToken: secretDNSToken},
+		}},
+		DERP: DERPConfig{
+			URLs: []HTTPURL{
+				"https://" + secretDERPUser + ":" + secretDERPPass + "@derp.example/map",
+				"https://" + secretDERPToken + "@derp.example/token-map",
+			},
+			DERPMap: &tailcfg.DERPMap{Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
+				900: {RegionCode: derpMapMarker},
+			}},
 		},
+	}
+
+	secrets := []string{
+		secretPostgresPass, secretClientSecret, secretAPIKey, secretDNSToken,
+		secretDERPUser, secretDERPPass, secretDERPToken,
 	}
 
 	out, err := json.Marshal(cfg)
 	require.NoError(t, err)
 
-	body := string(out)
-	for _, secret := range []string{secretPostgresPass, secretClientSecret, secretAPIKey, secretDNSToken} {
-		assert.NotContains(t, body, secret,
+	for _, secret := range secrets {
+		assert.NotContains(t, string(out), secret,
 			"marshalled Config must not contain secret %q", secret)
+	}
+
+	// The URLs are still shown, without userinfo; the request keeps it.
+	assert.Contains(t, string(out), `"https://derp.example/map"`)
+	assert.Contains(t, string(out), `"https://derp.example/token-map"`)
+	assert.Contains(t, string(cfg.DERP.URLs[0]), secretDERPUser+":"+secretDERPPass)
+	assert.Contains(t, string(cfg.DERP.URLs[1]), secretDERPToken)
+	// DERPMap is Go-only.
+	assert.NotContains(t, string(out), derpMapMarker)
+
+	// Secret redacts only through fmt's String; zerolog marshals it. Test
+	// binaries log at Error (testlog.go), which would drop this record.
+	oldLevel := zerolog.GlobalLevel()
+
+	t.Cleanup(func() { zerolog.SetGlobalLevel(oldLevel) })
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	var logged bytes.Buffer
+
+	logger := zerolog.New(&logged)
+	logger.Info().Interface("config", cfg).Send()
+	require.Contains(t, logged.String(), `"config":{`)
+
+	for _, secret := range secrets {
+		assert.NotContains(t, logged.String(), secret,
+			"logged Config must not contain secret %q", secret)
 	}
 }
 
@@ -1457,7 +1402,7 @@ func TestTailcfgDNSConfig(t *testing.T) {
 		{
 			name: "magic dns reverse routes outside cgnat",
 			cfg: Config{
-				PrefixV4:  &ten,
+				Prefixes:  PrefixesConfig{V4: &ten},
 				DNSConfig: DNSConfig{MagicDNS: true, BaseDomain: "example.com"},
 			},
 			want: &tailcfg.DNSConfig{
@@ -1469,7 +1414,7 @@ func TestTailcfgDNSConfig(t *testing.T) {
 		{
 			name: "magic dns reverse routes outside ula",
 			cfg: Config{
-				PrefixV6:  &fd00,
+				Prefixes:  PrefixesConfig{V6: &fd00},
 				DNSConfig: DNSConfig{MagicDNS: true, BaseDomain: "example.com"},
 			},
 			want: &tailcfg.DNSConfig{
@@ -1481,8 +1426,7 @@ func TestTailcfgDNSConfig(t *testing.T) {
 		{
 			name: "magic dns inside cgnat and ula",
 			cfg: Config{
-				PrefixV4:  &cgnat,
-				PrefixV6:  &ula,
+				Prefixes:  PrefixesConfig{V4: &cgnat, V6: &ula},
 				DNSConfig: DNSConfig{MagicDNS: true, BaseDomain: "example.com"},
 			},
 			want: &tailcfg.DNSConfig{
@@ -1493,7 +1437,7 @@ func TestTailcfgDNSConfig(t *testing.T) {
 		},
 		{
 			name: "no reverse routes without magic dns",
-			cfg:  Config{PrefixV4: &ten},
+			cfg:  Config{Prefixes: PrefixesConfig{V4: &ten}},
 			want: &tailcfg.DNSConfig{Routes: map[string][]*dnstype.Resolver{}},
 		},
 		{
@@ -1525,8 +1469,8 @@ func TestLiveDNS(t *testing.T) {
 			MagicDNS:     true,
 			BaseDomain:   "example.com",
 			ExtraRecords: []tailcfg.DNSRecord{{Name: "Old.example.com", Type: "A", Value: "100.64.0.1"}},
+			Challenge:    DNSChallengeConfig{Provider: goOnly},
 		},
-		DNSChallenge: DNSChallengeConfig{Provider: goOnly},
 	}
 
 	assert.Equal(t, cfg.TailcfgDNSConfig(), cfg.CloneTailcfgDNSConfig())
@@ -1589,7 +1533,7 @@ dns:
 		zerolog.SetGlobalLevel(oldLevel)
 	})
 
-	cfg, err := CheckServerConfig()
+	cfg, err := LoadServerConfig()
 	require.NoError(t, err)
 
 	logged := buf.String()
@@ -1627,7 +1571,7 @@ dns:
 		yaml          string
 		env           map[string]string
 		wantErr       string
-		fileErr       bool // only reading a file: secret fails, so CheckServerConfig passes
+		fileErr       bool // only reading a file: secret fails, so the load passes
 		wantWarns     []string
 		wantZone      string
 		wantToken     string
@@ -1722,7 +1666,7 @@ dns:
 			fileErr: true,
 		},
 		{
-			// Unread by CheckServerConfig, a file: setting counts as present.
+			// Unread by the load, a file: setting counts as present.
 			name: "token file missing",
 			yaml: base + `  challenge:
     provider:
@@ -2057,38 +2001,39 @@ tls:
 				assert.Contains(t, src.Warnings()[i], w)
 			}
 
-			_, checkErr := CheckServerConfig()
-			if tt.wantErr != "" && !tt.fileErr {
-				require.ErrorContains(t, checkErr, tt.wantErr)
-				assert.NotContains(t, checkErr.Error(), "marker-")
-			} else {
-				require.NoError(t, checkErr)
-			}
-
 			cfg, err := LoadServerConfig()
-			if tt.wantErr != "" {
+			if tt.wantErr != "" && !tt.fileErr {
 				require.ErrorContains(t, err, tt.wantErr)
+				assert.NotContains(t, err.Error(), "marker-")
 
 				return
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantZone, cfg.DNSConfig.CertificateZone())
 
-			if tt.wantResolvers != nil {
-				assert.Equal(t, tt.wantResolvers, cfg.DNSChallenge.ResolverAddrs())
-			}
-
-			// The loader only validates the provider; startup builds it.
-			assert.Nil(t, cfg.DNSChallenge.Provider)
-
-			if tt.wantNoProv {
-				assert.Empty(t, cfg.DNSChallenge.ProviderName())
+			if tt.fileErr {
+				_, err = cfg.DNSConfig.Challenge.NewProvider(ResolveSecret)
+				require.ErrorContains(t, err, tt.wantErr)
 
 				return
 			}
 
-			built, err := cfg.DNSChallenge.NewProvider(ResolveSecret)
+			assert.Equal(t, tt.wantZone, cfg.DNSConfig.CertificateZone())
+
+			if tt.wantResolvers != nil {
+				assert.Equal(t, tt.wantResolvers, cfg.DNSConfig.Challenge.ResolverAddrs())
+			}
+
+			// The loader only validates the provider; startup builds it.
+			assert.Nil(t, cfg.DNSConfig.Challenge.Provider)
+
+			if tt.wantNoProv {
+				assert.Empty(t, cfg.DNSConfig.Challenge.ProviderName())
+
+				return
+			}
+
+			built, err := cfg.DNSConfig.Challenge.NewProvider(ResolveSecret)
 			require.NoError(t, err)
 
 			if tt.wantProvider != "" {
@@ -2324,7 +2269,7 @@ func TestPostgresConfigDSN(t *testing.T) {
 func TestServesRoute(t *testing.T) {
 	v4 := netip.MustParsePrefix("100.64.0.0/10")
 	v6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
-	cfg := &Config{PrefixV4: &v4, PrefixV6: &v6}
+	cfg := &Config{Prefixes: PrefixesConfig{V4: &v4, V6: &v6}}
 
 	for route, want := range map[string]bool{
 		"100.64.0.11/32":                   false,
@@ -2348,7 +2293,7 @@ func TestServesRoute(t *testing.T) {
 
 	// Only the configured ranges hold nodes.
 	narrow := netip.MustParsePrefix("100.64.0.0/24")
-	assert.True(t, (&Config{PrefixV4: &narrow}).ServesRoute(netip.MustParsePrefix("100.100.0.1/32")))
+	assert.True(t, (&Config{Prefixes: PrefixesConfig{V4: &narrow}}).ServesRoute(netip.MustParsePrefix("100.100.0.1/32")))
 }
 
 func TestBoolConfigValidation(t *testing.T) {
@@ -2854,12 +2799,21 @@ type compatTuning struct {
 func compatView(cfg *Config) compatConfig {
 	pg := cfg.Database.Postgres
 	oidc := cfg.OIDC
-	ch := cfg.DNSChallenge
+	ch := cfg.DNSConfig.Challenge
 	acme := cfg.TLS.ACME
+	derp := cfg.DERP.Server
 
 	dbType := cfg.Database.Type
 	if cfg.Database.IsSQLite() {
 		dbType = DatabaseSqlite
+	}
+
+	derpURLs := make([]url.URL, 0, len(cfg.DERP.URLs))
+	for _, s := range cfg.DERP.URLs {
+		u, err := url.Parse(string(s))
+		if err == nil {
+			derpURLs = append(derpURLs, *u)
+		}
 	}
 
 	tuning := compatTuning(cfg.Tuning)
@@ -2867,8 +2821,8 @@ func compatView(cfg *Config) compatConfig {
 
 	return compatConfig{
 		ServerURL:      cfg.ServerURL,
-		Addr:           cfg.Addr,
-		MetricsAddr:    cfg.MetricsAddr,
+		Addr:           string(cfg.Addr),
+		MetricsAddr:    string(cfg.MetricsAddr),
 		TrustedProxies: cfg.TrustedProxies,
 		Node: compatNodeConfig{
 			Expiry:    cfg.Node.Expiry,
@@ -2876,17 +2830,25 @@ func compatView(cfg *Config) compatConfig {
 			Routes:    compatRouteConfig{HA: compatHARouteConfig(cfg.Node.Routes.HA)},
 		},
 		PreAuthKeys:         compatPreAuthKeysConfig(cfg.PreAuthKeys),
-		PrefixV4:            cfg.PrefixV4,
-		PrefixV6:            cfg.PrefixV6,
-		IPAllocation:        string(cfg.IPAllocation),
-		NoisePrivateKeyPath: cfg.AbsPath(cfg.NoisePrivateKeyPath),
-		BaseDomain:          cfg.BaseDomain,
-		Log:                 compatLogConfig(cfg.Log),
-		DisableUpdateCheck:  cfg.DisableUpdateCheck,
+		PrefixV4:            cfg.Prefixes.V4,
+		PrefixV6:            cfg.Prefixes.V6,
+		IPAllocation:        string(cfg.Prefixes.Allocation),
+		NoisePrivateKeyPath: cfg.AbsPath(cfg.Noise.PrivateKeyPath),
+		BaseDomain:          cfg.DNSConfig.BaseDomain,
+		Log: compatLogConfig{
+			Format: string(cfg.Log.Format),
+			Level:  cfg.Log.Level.Zerolog(),
+		},
+		DisableUpdateCheck: cfg.DisableUpdateCheck,
 		Database: compatDatabaseConfig{
-			Type:  dbType,
+			Type:  string(dbType),
 			Debug: cfg.Database.Debug,
-			Gorm:  compatGormConfig(cfg.Database.Gorm),
+			Gorm: compatGormConfig{
+				Debug:                 cfg.Database.Debug,
+				SlowThreshold:         time.Duration(cfg.Database.Gorm.SlowThreshold) * time.Millisecond,
+				SkipErrRecordNotFound: cfg.Database.Gorm.SkipErrRecordNotFound,
+				ParameterizedQueries:  cfg.Database.Gorm.ParameterizedQueries,
+			},
 			Sqlite: compatSqliteConfig{
 				Path:              cfg.SQLitePath(),
 				WriteAheadLog:     cfg.Database.Sqlite.WriteAheadLog,
@@ -2904,30 +2866,30 @@ func compatView(cfg *Config) compatConfig {
 			},
 		},
 		DERP: compatDERPConfig{
-			ServerEnabled:                      cfg.DERP.ServerEnabled,
-			AutomaticallyAddEmbeddedDerpRegion: cfg.DERP.AutomaticallyAddEmbeddedDerpRegion,
-			ServerRegionID:                     cfg.DERP.ServerRegionID,
-			ServerRegionCode:                   cfg.DERP.ServerRegionCode,
-			ServerRegionName:                   cfg.DERP.ServerRegionName,
-			ServerPrivateKeyPath:               cfg.AbsPath(cfg.DERP.ServerPrivateKeyPath),
-			ServerVerifyClients:                cfg.DERP.ServerVerifyClients,
-			STUNAddr:                           cfg.DERP.STUNAddr,
-			URLs:                               cfg.DERP.URLs,
+			ServerEnabled:                      derp.Enabled,
+			AutomaticallyAddEmbeddedDerpRegion: derp.AutomaticallyAddEmbeddedDerpRegion,
+			ServerRegionID:                     derp.RegionID,
+			ServerRegionCode:                   derp.RegionCode,
+			ServerRegionName:                   derp.RegionName,
+			ServerPrivateKeyPath:               cfg.AbsPath(derp.PrivateKeyPath),
+			ServerVerifyClients:                derp.VerifyClients,
+			STUNAddr:                           string(derp.STUNAddr),
+			URLs:                               derpURLs,
 			Paths:                              cfg.DERP.Paths,
 			DERPMap:                            cfg.DERP.DERPMap,
 			AutoUpdate:                         cfg.DERP.AutoUpdate,
 			UpdateFrequency:                    cfg.DERP.UpdateFrequency,
-			IPv4:                               cfg.DERP.IPv4,
-			IPv6:                               cfg.DERP.IPv6,
+			IPv4:                               derp.IPv4,
+			IPv6:                               derp.IPv6,
 		},
 		TLS: compatTLSConfig{
 			CertPath: cfg.AbsPath(cfg.TLS.CertPath),
 			KeyPath:  cfg.AbsPath(cfg.TLS.KeyPath),
 			ACME: compatACMEConfig{
 				Hostname:      acme.Hostname,
-				ChallengeType: acme.ChallengeType,
-				HTTPListen:    acme.HTTPListen,
-				URL:           acme.URL,
+				ChallengeType: string(acme.ChallengeType),
+				HTTPListen:    string(acme.HTTPListen),
+				URL:           string(acme.URL),
 				Email:         acme.Email,
 				CacheDir:      cfg.AbsPath(acme.CacheDir),
 			},
@@ -2952,10 +2914,10 @@ func compatView(cfg *Config) compatConfig {
 			ProviderName:       ch.ProviderName(),
 		},
 		UnixSocket:           cfg.UnixSocket,
-		UnixSocketPermission: cfg.UnixSocketPermission,
+		UnixSocketPermission: fs.FileMode(cfg.UnixSocketPermission),
 		OIDC: compatOIDCConfig{
 			OnlyStartIfOIDCIsAvailable: oidc.OnlyStartIfOIDCIsAvailable,
-			Issuer:                     oidc.Issuer,
+			Issuer:                     string(oidc.Issuer),
 			ClientID:                   oidc.ClientID,
 			Scope:                      oidc.Scope,
 			ExtraParams:                oidc.ExtraParams,
@@ -2964,7 +2926,7 @@ func compatView(cfg *Config) compatConfig {
 			AllowedGroups:              oidc.AllowedGroups,
 			EmailVerifiedRequired:      oidc.EmailVerifiedRequired,
 			UseExpiryFromToken:         oidc.UseExpiryFromToken,
-			PKCE:                       compatPKCEConfig(oidc.PKCE),
+			PKCE:                       compatPKCEConfig{Enabled: oidc.PKCE.Enabled, Method: string(oidc.PKCE.Method)},
 		},
 		LogTail:    compatLogTailConfig(cfg.LogTail),
 		Taildrop:   compatTaildropConfig(cfg.Taildrop),
@@ -3057,10 +3019,21 @@ func loadCompat(t *testing.T, file, envFile string, cli bool) compatRecord {
 		require.NoError(t, err)
 
 		rec.Config = json.RawMessage(norm(string(raw)))
+		// As its consumer reads it; one no consumer reads stays as written.
+		secret := func(s Secret, active bool) string {
+			if !active {
+				return string(s)
+			}
+
+			v, err := s.Resolve()
+			require.NoError(t, err)
+
+			return v
+		}
 		rec.Secrets = map[string]string{
-			"database.postgres.pass": cfg.Database.Postgres.Pass,
-			"oidc.client_secret":     cfg.OIDC.ClientSecret,
-			"cli.api_key":            cfg.CLI.APIKey,
+			"database.postgres.pass": secret(cfg.Database.Postgres.Pass, cfg.Database.Type == DatabasePostgres),
+			"oidc.client_secret":     secret(cfg.OIDC.ClientSecret, cfg.OIDC.Issuer != ""),
+			"cli.api_key":            secret(cfg.CLI.APIKey, cfg.CLI.Address != ""),
 		}
 		maps.DeleteFunc(rec.Secrets, func(_, v string) bool { return v == "" })
 	}
@@ -3195,8 +3168,6 @@ func TestConfigNotLoaded(t *testing.T) {
 
 	_, err := LoadServerConfig()
 	require.ErrorIs(t, err, errConfigNotLoaded)
-	_, err = CheckServerConfig()
-	require.ErrorIs(t, err, errConfigNotLoaded)
 
 	_, err = LoadCLIConfig()
 	require.ErrorIs(t, err, errConfigNotLoaded)
@@ -3244,8 +3215,8 @@ dns:
 	cfg, err := LoadServerConfig()
 	require.NoError(t, err)
 
-	assert.Equal(t, "./noise.key", cfg.NoisePrivateKeyPath)
-	assert.Equal(t, filepath.Join(dir, "noise.key"), cfg.AbsPath(cfg.NoisePrivateKeyPath))
+	assert.Equal(t, "./noise.key", cfg.Noise.PrivateKeyPath)
+	assert.Equal(t, filepath.Join(dir, "noise.key"), cfg.AbsPath(cfg.Noise.PrivateKeyPath))
 	assert.Equal(t, "./policy.hujson", cfg.Policy.Path)
 	assert.Equal(t, filepath.Join(dir, "policy.hujson"), cfg.AbsPath(cfg.Policy.Path))
 }
@@ -3277,7 +3248,7 @@ func TestSQLiteMemoryPath(t *testing.T) {
 			cfg, err := LoadServerConfig()
 			require.NoError(t, err)
 			assert.Equal(t, ":memory:", cfg.SQLitePath())
-			assert.True(t, filepath.IsAbs(cfg.AbsPath(cfg.NoisePrivateKeyPath)), cfg.AbsPath(cfg.NoisePrivateKeyPath))
+			assert.True(t, filepath.IsAbs(cfg.AbsPath(cfg.Noise.PrivateKeyPath)), cfg.AbsPath(cfg.Noise.PrivateKeyPath))
 		})
 	}
 }

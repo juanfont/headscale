@@ -10,7 +10,7 @@ import (
 )
 
 func TestGivenNameMapsToValidFQDNCheck(t *testing.T) {
-	cfg := &types.Config{BaseDomain: "example.com"}
+	cfg := &types.Config{DNSConfig: types.DNSConfig{BaseDomain: "example.com"}}
 
 	_, _, ok := givenNameMapsToValidFQDN.check((&types.Node{ID: 1, GivenName: "valid"}).View(), cfg)
 	require.True(t, ok, "a valid given name must pass the check")

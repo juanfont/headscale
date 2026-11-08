@@ -3,14 +3,14 @@ package types
 import "time"
 
 const (
-	HTTPTimeout            = 30 * time.Second
-	HTTPShutdownTimeout    = 3 * time.Second
-	TLSALPN01ChallengeType = "TLS-ALPN-01"
-	HTTP01ChallengeType    = "HTTP-01"
-	DNS01ChallengeType     = "DNS-01"
+	HTTPTimeout                          = 30 * time.Second
+	HTTPShutdownTimeout                  = 3 * time.Second
+	TLSALPN01ChallengeType ACMEChallenge = "TLS-ALPN-01"
+	HTTP01ChallengeType    ACMEChallenge = "HTTP-01"
+	DNS01ChallengeType     ACMEChallenge = "DNS-01"
 
-	JSONLogFormat = "json"
-	TextLogFormat = "text"
+	JSONLogFormat LogFormat = "json"
+	TextLogFormat LogFormat = "text"
 
 	MaxHostnameLength = 255
 )

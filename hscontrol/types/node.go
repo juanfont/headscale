@@ -920,7 +920,7 @@ func (nv NodeView) CertDomain(cfg *Config) (string, bool) {
 		return "", false
 	}
 
-	fqdn, err := nv.GetFQDN(cfg.BaseDomain)
+	fqdn, err := nv.GetFQDN(cfg.DNSConfig.BaseDomain)
 	if err != nil {
 		return "", false
 	}
@@ -1380,7 +1380,7 @@ func (nv NodeView) TailNode(
 		return nil, ErrInvalidNodeView
 	}
 
-	hostname, err := nv.GetFQDN(cfg.BaseDomain)
+	hostname, err := nv.GetFQDN(cfg.DNSConfig.BaseDomain)
 	if err != nil {
 		return nil, err
 	}

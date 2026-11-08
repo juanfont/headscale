@@ -83,7 +83,7 @@ func newHeadscaleDBFromPostgresURL(t *testing.T, pu *url.URL) *HSDatabase {
 					Host: pu.Hostname(),
 					User: pu.User.Username(),
 					Name: strings.TrimLeft(pu.Path, "/"),
-					Pass: pass,
+					Pass: types.Secret(pass),
 					Port: port,
 					Ssl:  "disable",
 				},
