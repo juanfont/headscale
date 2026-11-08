@@ -3355,59 +3355,37 @@ func canClaimTaggedNode(node types.NodeView, userID types.UserID) bool {
 	return node.IsTagged() && (node.ClaimableBy(userID) || node.RegisterMethod() != util.RegisterMethodAuthKey)
 }
 
-// pakSkipsValidation reports whether re-registering n with pak may skip key
-// validation at now. The machine key proves identity and a pre-auth key only
-// authorises the initial join, so a plain restart (container "tailscale up
-// --authkey=KEY") re-presents a spent key legitimately. Anything that
-// authorises something new must present a valid key:
-//   - a node key rotation;
-//   - an expired node. Tagged nodes expire at logout, by an administrative
-//     expiry, or keep the expiry they had when an admin tagged them;
-//   - a tagged key converting a user-owned node to tagged;
-//   - a tagged key other than the one the node last authed with, which retags
-//     it.
+// pakReregister reports whether re-registering n with pak at now logs it in
+// (true) or only wakes it (false). As on Tailscale SaaS, the machine and node
+// keys prove a node's identity and a pre-auth key only authorises a new node
+// key. Under its own, unexpired node key the node only wakes, whatever key it
+// sends: tsnet programs, containerboot and a --config auth key send theirs on
+// every start, and it may be spent, expired, revoked, another node's or carry
+// other tags. That key is not judged, not spent and changes nothing (see
+// reregisterNodeWithPAK). A new node key needs a valid key that speaks for
+// the node; an expired node is asked for one first.
 //
 // It is a pure function of the node so the NodeStore writer can decide again
 // on the node it actually replaces.
-func pakSkipsValidation(n types.NodeView, pak *types.PreAuthKey, nodeKey key.NodePublic, now time.Time) bool {
-	if !n.Valid() {
-		return false
-	}
-
-	isNodeKeyRotation := n.NodeKey() != nodeKey
-	isExpired := n.IsExpiredAt(now)
-	isOwnershipConversion := pak.ConvertsNodeToTagged(n)
-	isRetag := pak.RetagsNode(n)
-	ownershipMatches := n.IsTagged() ||
-		(pak.User != nil && n.UserID().Valid() && n.UserID().Get() == pak.User.ID)
-
-	return ownershipMatches && !isNodeKeyRotation && !isExpired &&
-		!isOwnershipConversion && !isRetag
-}
-
-// pakReregister distinguishes re-authentication with a valid key from a
-// wake-up that only refreshes a live node's reported metadata.
 func pakReregister(n types.NodeView, pak *types.PreAuthKey, nodeKey key.NodePublic, now time.Time) (bool, error) {
-	// As on Tailscale SaaS, an expired node is asked for a new node key before
-	// any key is judged.
-	if n.NodeKey() == nodeKey && n.IsExpiredAt(now) {
-		return false, ErrNodeKeyExpired
-	}
-
-	err := pak.ValidAt(now)
-	if err == nil {
-		if pak.CanReauthenticate(n) {
-			return true, nil
+	if n.NodeKey() == nodeKey {
+		if n.IsExpiredAt(now) {
+			return false, ErrNodeKeyExpired
 		}
 
-		err = types.PAKError("authkey cannot re-authenticate this node")
-	}
-
-	if pakSkipsValidation(n, pak, nodeKey, now) {
 		return false, nil
 	}
 
-	return false, err
+	err := pak.ValidAt(now)
+	if err != nil {
+		return false, err
+	}
+
+	if !pak.CanReauthenticate(n) {
+		return false, types.PAKError("authkey cannot re-authenticate this node")
+	}
+
+	return true, nil
 }
 
 // requestedTagsForPreAuthKey returns an authorised replacement set, or nil
@@ -3770,11 +3748,11 @@ func (s *State) reregisterNodeWithPAK(
 		node.RegisterMethod = util.RegisterMethodAuthKey
 
 		// Tags from a PreAuthKey are applied on initial registration and
-		// re-applied whenever a *different* key is presented on
-		// re-registration: re-keying is Tailscale's documented way to change
-		// an auth-key device's tags, replacing its existing ones. Presenting
-		// the SAME key again (a container restart) preserves the node's
-		// current tags and any admin override. A tagged key presented for a
+		// re-applied when a login with a new node key (--force-reauth)
+		// presents a *different* key: re-keying is Tailscale's documented way
+		// to change an auth-key device's tags, replacing its existing ones.
+		// Logging in with the SAME key again preserves the node's current
+		// tags and any admin override. A tagged key presented for a
 		// user-owned node also converts it, dropping user ownership.
 		// See https://tailscale.com/kb/1068/tags#apply-a-tag-to-a-device-with-the-cli.
 		//
