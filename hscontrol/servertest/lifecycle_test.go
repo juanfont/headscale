@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"tailscale.com/control/controlclient"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tsnet"
+	"tailscale.com/types/key"
+	"tailscale.com/types/logger"
 	"tailscale.com/types/netmap"
 	"tailscale.com/types/persist"
 )
@@ -1088,4 +1092,122 @@ func TestServerStateCleanup(t *testing.T) {
 	database, err := srv.State().DB().DB.DB()
 	require.NoError(t, err)
 	require.ErrorContains(t, database.Ping(), "database is closed")
+}
+
+// TestTsnetRestartWithAnotherKey drives a real tsnet program that joins and
+// then restarts with TS_AUTHKEY holding a key it did not join with, under the
+// node key it already has. As on SaaS (testdata/steps/reauth-wake-tsnet.hujson)
+// the restart only wakes it: the node comes back unchanged, and the key is
+// neither judged nor spent.
+func TestTsnetRestartWithAnotherKey(t *testing.T) {
+	t.Parallel()
+
+	prod, cache := []string{"tag:prod"}, []string{"tag:cache"}
+
+	for _, tt := range []struct {
+		name     string
+		joinTags []string // nil joins as the user's device
+		keyTags  []string
+		keyState string // unused, spent, expired or revoked
+	}{
+		{"same tags, spent", prod, prod, "spent"},
+		{"same tags, expired", prod, prod, "expired"},
+		{"same tags, revoked", prod, prod, "revoked"},
+		{"same tags, unused", prod, prod, "unused"},
+		{"other tags, unused", prod, cache, "unused"},
+		{"tagged key on user device, unused", nil, prod, "unused"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := servertest.NewServer(t, servertest.WithRealListener())
+			st := srv.State()
+
+			var joinUser *types.UserID
+			if tt.joinTags == nil {
+				joinUser = srv.CreateUser(t, "owner").TypedID()
+			}
+
+			joinKey, err := st.CreatePreAuthKey(joinUser, true, false, nil, tt.joinTags)
+			require.NoError(t, err)
+
+			dir := t.TempDir()
+			up := func(authKey string, logf logger.Logf) (*tsnet.Server, error) {
+				ts := &tsnet.Server{Dir: dir, Hostname: "wake", ControlURL: srv.URL, AuthKey: authKey, Logf: logf}
+
+				ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+				defer cancel()
+
+				_, err := ts.Up(ctx)
+
+				return ts, err
+			}
+
+			first, err := up(joinKey.Key, logger.Discard)
+			require.NoError(t, err)
+
+			nodes := st.ListNodes()
+			require.Equal(t, 1, nodes.Len())
+			before := nodes.At(0)
+
+			presented, err := st.CreatePreAuthKey(nil, false, false, nil, tt.keyTags)
+			require.NoError(t, err)
+
+			switch tt.keyState {
+			case "spent":
+				_, _, err = st.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+					Auth:     &tailcfg.RegisterResponseAuth{AuthKey: presented.Key},
+					NodeKey:  key.NewNode().Public(),
+					Hostinfo: &tailcfg.Hostinfo{Hostname: "sibling"},
+				}, key.NewMachine().Public())
+			case "expired":
+				err = st.ExpirePreAuthKey(presented.ID)
+			case "revoked":
+				err = st.RevokePreAuthKey(presented.ID)
+			}
+
+			require.NoError(t, err)
+			require.NoError(t, first.Close())
+
+			// Up returns once the node polls on its saved login; the login that
+			// sends the key is answered after, and a refusal logs it out.
+			var (
+				mu      sync.Mutex
+				answers []string
+			)
+
+			second, err := up(presented.Key, func(format string, args ...any) {
+				if line := fmt.Sprintf(format, args...); strings.Contains(line, "RegisterReq: got response") {
+					mu.Lock()
+					defer mu.Unlock()
+
+					answers = append(answers, line)
+				}
+			})
+
+			t.Cleanup(func() { second.Close() })
+			require.NoError(t, err)
+
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				mu.Lock()
+				defer mu.Unlock()
+
+				if assert.NotEmpty(c, answers, "the login that sends the key is answered") {
+					assert.Contains(c, answers[0], "machineAuthorized=true",
+						"a restart under the node's own node key must not judge the key it sends")
+				}
+			}, 10*time.Second, 50*time.Millisecond)
+
+			after, ok := st.GetNodeByID(before.ID())
+			require.True(t, ok)
+			assert.Equal(t, before.NodeKey(), after.NodeKey())
+			assert.Equal(t, before.Tags().AsSlice(), after.Tags().AsSlice())
+			assert.Equal(t, before.UserID(), after.UserID())
+			assert.Equal(t, before.AuthKeyID(), after.AuthKeyID())
+
+			stored, err := st.GetPreAuthKeyByID(presented.ID)
+			require.NoError(t, err)
+			assert.Equal(t, tt.keyState == "spent", stored.Used, "a restart must not spend the key it sends")
+		})
+	}
 }
