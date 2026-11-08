@@ -2486,6 +2486,10 @@ var tailscaleCapAllowlist = map[peercap.Cap]bool{
 	// tailscale.com/cap/secrets is the capability used by setec
 	// (github.com/tailscale/setec); allow it so it can be granted via policy.
 	peercap.Cap("tailscale.com/cap/secrets"): true,
+
+	// tailscale.com/cap/tailsql is the capability tailsql
+	// (github.com/tailscale/tailsql) checks; headscale embeds tailsql.
+	peercap.Cap("tailscale.com/cap/tailsql"): true,
 }
 
 // validateGrantSrcDstCombination validates [Grant]-specific source/destination
