@@ -121,8 +121,19 @@ var (
 	dumpConfig       = envknob.Bool("HEADSCALE_DEBUG_DUMP_CONFIG")
 )
 
+// NewHeadscale logs cfg's advisories, validates it and builds the server.
+// An invalid cfg is returned as Validate's error before anything is read
+// or written.
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {
-	var err error
+	// First: an advisory can explain the error.
+	for _, w := range config.Warnings(cfg) {
+		log.Warn().Msg(w)
+	}
+
+	err := config.Validate(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	if profilingEnabled {
 		runtime.SetBlockProfileRate(1)

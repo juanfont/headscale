@@ -159,9 +159,9 @@ func TestListenersOverlap(t *testing.T) {
 	}
 }
 
-// TestValidateListenerCollisions_BlamesParseFailure pins each parse
-// error to the listener whose address is malformed, even when paired
-// with a well-formed sibling.
+// TestValidateListenerCollisions_BlamesParseFailure pins one error per
+// malformed address, on its own key, even when paired with a well-formed
+// sibling.
 func TestValidateListenerCollisions_BlamesParseFailure(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -185,18 +185,19 @@ func TestValidateListenerCollisions_BlamesParseFailure(t *testing.T) {
 				}
 			}
 
-			v := &configValidator{}
-			validateListenerCollisions(cfg, v)
+			var blamed []*types.ConfigError
 
-			err := v.Err()
-			require.Error(t, err)
+			for _, e := range types.ConfigErrors(Validate(cfg)) {
+				if len(e.Current) > 0 && (e.Current[0].Key == tt.bad || e.Current[0].Key == tt.good) {
+					blamed = append(blamed, e)
+				}
+			}
 
-			errs := types.ConfigErrors(err)
-			require.Len(t, errs, 1, "expected exactly one parse error")
-			assert.Equal(t, "cannot parse "+tt.bad, errs[0].Reason)
-			require.Len(t, errs[0].Current, 1)
-			assert.Equal(t, tt.bad, errs[0].Current[0].Key)
-			assert.Equal(t, tt.badAddr, errs[0].Current[0].Value)
+			require.Len(t, blamed, 1, "expected exactly one parse error")
+			assert.Equal(t, tt.bad+" is not a host:port address", blamed[0].Reason)
+			require.Len(t, blamed[0].Current, 1)
+			assert.Equal(t, tt.bad, blamed[0].Current[0].Key)
+			assert.Equal(t, tt.badAddr, blamed[0].Current[0].Value)
 		})
 	}
 }

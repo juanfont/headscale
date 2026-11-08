@@ -1,12 +1,14 @@
 package config
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -19,19 +21,21 @@ import (
 const dnsDocsURL = "https://headscale.net/stable/ref/dns/"
 
 var (
-	errOIDCIssuerInvalid        = errors.New("oidc.issuer must be a valid http(s) URL")
 	errOIDCClientIDRequired     = errors.New("oidc.client_id is required when oidc.issuer is set")
 	errOIDCClientSecretRequired = errors.New("oidc.client_secret is required when oidc.issuer is set")
 	errServerURLSuffix          = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
 	errServerURLSame            = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
 	errInvalidPKCEMethod        = errors.New("pkce.method must be either 'plain' or 'S256'")
 	errTrustedProxyZeroRange    = errors.New("0.0.0.0/0 and ::/0 are not allowed")
+	errURLSyntax                = errors.New("invalid URL syntax")
 )
 
 // Validate reports every rule c breaks, in one error. It reads no file and
 // logs nothing; [Warnings] holds the advisories.
 func Validate(c *types.Config) error {
 	v := &configValidator{}
+
+	validateValues(c, v)
 
 	// OIDC is activated by setting oidc.issuer (see app.go), not by a
 	// dedicated oidc.enabled key. Gate validation on the real activation
@@ -83,8 +87,9 @@ func Validate(c *types.Config) error {
 
 	validateListenerCollisions(c, v)
 
-	if ct := acme.ChallengeType; ct != types.HTTP01ChallengeType &&
-		ct != types.TLSALPN01ChallengeType && ct != types.DNS01ChallengeType {
+	// Unset only: validateValues reports an unknown value, here and in the
+	// other enum rules.
+	if ct := acme.ChallengeType; ct == "" {
 		v.Add(&types.ConfigError{
 			Reason:  "tls.acme.challenge_type has an unsupported value",
 			Current: []types.KV{{Key: "tls.acme.challenge_type", Value: string(ct)}},
@@ -93,11 +98,30 @@ func Validate(c *types.Config) error {
 		})
 	}
 
+	// Shown without userinfo, which may be a credential.
+	serverURL := types.HTTPURL(c.ServerURL).Redacted()
+
 	if !strings.HasPrefix(c.ServerURL, "http://") && !strings.HasPrefix(c.ServerURL, "https://") {
+		// Without an @ it holds no userinfo; shown, the common mistake
+		// (headscale.example.com) is plain to see.
+		shown := c.ServerURL
+		if strings.Contains(shown, "@") {
+			shown = serverURL
+		}
+
 		v.Add(&types.ConfigError{
 			Reason:  "server_url is missing a scheme",
-			Current: []types.KV{{Key: "server_url", Value: c.ServerURL}},
+			Current: []types.KV{{Key: "server_url", Value: shown}},
 			Hint:    "prefix the URL with https:// (recommended) or http://",
+		})
+	}
+
+	// The loader trims it; clients would get URLs with a double slash.
+	if strings.HasSuffix(c.ServerURL, "/") {
+		v.Add(&types.ConfigError{
+			Reason:  "server_url must not end in /",
+			Current: []types.KV{{Key: "server_url", Value: serverURL}},
+			Hint:    "remove the trailing slash",
 		})
 	}
 
@@ -159,6 +183,15 @@ func Validate(c *types.Config) error {
 	}
 
 	// Validate tuning parameters
+	// The batcher's ticker panics on a non-positive interval.
+	if delay := c.Tuning.BatchChangeDelay; delay <= 0 {
+		v.Add(&types.ConfigError{
+			Reason:  "tuning.batch_change_delay must be positive",
+			Current: []types.KV{{Key: "tuning.batch_change_delay", Value: delay.String()}},
+			Hint:    "set to a positive duration (default: 800ms)",
+		})
+	}
+
 	if size := c.Tuning.NodeStoreBatchSize; size <= 0 {
 		v.Add(&types.ConfigError{
 			Reason:  "tuning.node_store_batch_size must be positive",
@@ -193,18 +226,98 @@ func Validate(c *types.Config) error {
 	if base := c.DNSConfig.BaseDomain; base != "" {
 		err := isSafeServerURL(c.ServerURL, base)
 		if err != nil {
-			addServerURLConfigError(v, c.ServerURL, base, err)
+			addServerURLConfigError(v, serverURL, base, err)
 		}
 	}
 
 	return v.Err()
 }
 
-// validatePolicy records a ConfigError for an unknown policy.mode:
-// startup would load no policy at all and allow all traffic.
+// validateValues parses every value whose type parses text, and each
+// element of a list of them, from its own text, as the loader did: a
+// Config built in Go was never parsed.
+func validateValues(c *types.Config, v *configValidator) {
+	for _, f := range types.ConfigFields(c) {
+		if f.Value.Kind() != reflect.Slice {
+			validateValue(v, f.Path, f.Value)
+
+			continue
+		}
+
+		for i := range f.Value.Len() {
+			validateValue(v, fmt.Sprintf("%s[%d]", f.Path, i), f.Value.Index(i))
+		}
+	}
+}
+
+func validateValue(v *configValidator, key string, val reflect.Value) {
+	if val.Kind() == reflect.Pointer {
+		if val.IsNil() {
+			return
+		}
+
+		val = val.Elem()
+	}
+
+	// The zero Prefix prints as "" and parses back.
+	if p, ok := reflect.TypeAssert[netip.Prefix](val); ok {
+		if !p.IsValid() {
+			v.Add(&types.ConfigError{
+				Reason: key + " is not a valid CIDR",
+				Hint:   `use CIDR form, e.g. "100.64.0.0/10"`,
+			})
+		}
+
+		return
+	}
+
+	if !reflect.PointerTo(val.Type()).Implements(textUnmarshalerType) {
+		return
+	}
+
+	var (
+		text []byte
+		err  error
+	)
+
+	switch m, ok := reflect.TypeAssert[encoding.TextMarshaler](val); {
+	case ok:
+		text, err = m.MarshalText()
+	case val.Kind() == reflect.String:
+		text = []byte(val.String())
+	default:
+		return
+	}
+
+	if err == nil {
+		err = reflect.New(val.Type()).Interface().(encoding.TextUnmarshaler).UnmarshalText(text) //nolint:forcetypeassert // checked above
+	}
+
+	if err == nil {
+		return
+	}
+
+	// As the loader reports it: the key first, a URL's value hidden.
+	var leaf *types.ConfigError
+	if !errors.As(err, &leaf) {
+		leaf = &types.ConfigError{Reason: err.Error(), Cause: err}
+	}
+
+	ce := *leaf
+	ce.Reason = key + " " + leaf.Reason
+
+	if val.Type() != reflect.TypeFor[types.HTTPURL]() {
+		ce.Current = []types.KV{{Key: key, Value: string(text)}}
+	}
+
+	v.Add(&ce)
+}
+
+// validatePolicy records a ConfigError for an unset policy.mode: startup
+// would load no policy at all and allow all traffic.
 func validatePolicy(c *types.Config, v *configValidator) {
 	m := c.Policy.Mode
-	if m == types.PolicyModeFile || m == types.PolicyModeDB {
+	if m != "" {
 		return
 	}
 
@@ -248,8 +361,9 @@ func validateDERP(c *types.Config, v *configValidator) {
 			Hint: `set derp.server.private_key_path (e.g. "/var/lib/headscale/derp_server_private.key"), or set derp.server.enabled: false`,
 			See:  "https://headscale.net/stable/ref/derp/",
 		})
-	case filepath.Clean(derpKey) == filepath.Clean(noiseKey):
-		// Startup would create one key and then refuse it for both uses.
+	case keyFile(c.AbsPath(derpKey)) == keyFile(c.AbsPath(noiseKey)):
+		// Resolved, as startup opens them: it would create one key file and
+		// then refuse it for both uses.
 		v.Add(&types.ConfigError{
 			Reason: "derp.server.private_key_path must differ from noise.private_key_path",
 			Current: []types.KV{
@@ -273,12 +387,21 @@ func validateDERP(c *types.Config, v *configValidator) {
 	}
 }
 
-// validateDatabase records a ConfigError when database.type is not one of
-// the supported backends.
+// keyFile is p as startup opens it, a relative path from the working
+// directory (an embedder's Config has no ConfigDir).
+func keyFile(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+
+	return abs
+}
+
+// validateDatabase records a ConfigError when database.type is unset.
 func validateDatabase(c *types.Config, v *configValidator) {
 	t := c.Database.Type
-	switch t {
-	case types.DatabaseSqlite, types.DatabasePostgres, "sqlite":
+	if t != "" {
 		return
 	}
 
@@ -400,9 +523,7 @@ func validatePrefixes(c *types.Config, v *configValidator) {
 		})
 	}
 
-	switch alloc := c.Prefixes.Allocation; alloc {
-	case types.IPAllocationStrategySequential, types.IPAllocationStrategyRandom:
-	default:
+	if alloc := c.Prefixes.Allocation; alloc == "" {
 		v.Add(&types.ConfigError{
 			Reason:  "prefixes.allocation has an unsupported value",
 			Current: []types.KV{{Key: "prefixes.allocation", Value: string(alloc)}},
@@ -509,8 +630,10 @@ func outsideRange(p, r netip.Prefix) bool {
 	return p.Bits() < r.Bits() || !r.Contains(p.Addr())
 }
 
+// validatePKCEMethod rejects an unset method; validateValues reports an
+// unknown one.
 func validatePKCEMethod(method types.PKCEMethod) error {
-	if method != types.PKCEMethodPlain && method != types.PKCEMethodS256 {
+	if method == "" {
 		return errInvalidPKCEMethod
 	}
 
@@ -518,19 +641,13 @@ func validatePKCEMethod(method types.PKCEMethod) error {
 }
 
 // validateOIDC checks the OIDC settings, called when oidc.issuer is set. It
-// fails fast on a setup that cannot work: an invalid PKCE method, a
-// malformed issuer URL (which would otherwise surface as an opaque discovery
-// error or, worse, resolve to an unintended provider), or a missing client
-// id/secret.
+// fails fast on a setup that cannot work: an invalid PKCE method or a
+// missing client id/secret. The issuer's form is its type's, checked with
+// every other value's.
 func validateOIDC(o types.OIDCConfig) error {
 	err := validatePKCEMethod(o.PKCE.Method)
 	if err != nil {
 		return err
-	}
-
-	u, err := url.Parse(string(o.Issuer))
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return fmt.Errorf("%w: got %q", errOIDCIssuerInvalid, string(o.Issuer))
 	}
 
 	if o.ClientID == "" {
@@ -574,12 +691,8 @@ func isWildcardHost(h string) bool {
 // validateListenerCollisions records a *ConfigError for each pair of
 // configured TCP listeners that would bind the same kernel socket. The
 // ACME HTTP-01 challenge listener is only considered when a hostname is
-// set and the HTTP-01 challenge is selected.
-//
-// Parsing happens up-front, once per listener: a malformed address
-// produces a ConfigError tied to its own YAML key, so an operator can
-// see exactly which value to fix instead of guessing from a paired
-// comparison.
+// set and the HTTP-01 challenge is selected. A malformed address is
+// skipped: validateValues reports it on its own key.
 func validateListenerCollisions(c *types.Config, v *configValidator) {
 	type spec struct {
 		key, addr string
@@ -613,13 +726,6 @@ func validateListenerCollisions(c *types.Config, v *configValidator) {
 
 		port, err := types.PortFromAddr(l.addr)
 		if err != nil {
-			v.Add(&types.ConfigError{
-				Reason:  "cannot parse " + l.key,
-				Current: []types.KV{{Key: l.key, Value: l.addr}},
-				Detail:  err.Error(),
-				Hint:    `use host:port form, e.g. "0.0.0.0:8080"`,
-			})
-
 			continue
 		}
 
@@ -708,12 +814,14 @@ func addServerURLConfigError(v *configValidator, serverURL, baseDomain string, e
 		})
 
 	default:
+		// Not the parser's error: it quotes the URL, or a part of it
+		// (invalid port ":<password>"), userinfo included.
 		v.Add(&types.ConfigError{
 			Reason:  "server_url cannot be parsed",
 			Current: []types.KV{{Key: "server_url", Value: serverURL}},
-			Detail:  err.Error(),
+			Detail:  errURLSyntax.Error(),
 			Hint:    "set server_url to an absolute URL, e.g. https://headscale.example.com",
-			Cause:   err,
+			Cause:   errURLSyntax,
 		})
 	}
 }

@@ -4,13 +4,17 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/libdns/cloudflare"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -169,22 +173,11 @@ func TestNewHeadscaleDNSProvider(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			cfg := types.Config{
-				ServerURL: "http://localhost:8080",
-				Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
-				Database: types.DatabaseConfig{
-					Type:   "sqlite3",
-					Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db"},
-				},
-				Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
-				DNSConfig: types.DNSConfig{
-					MagicDNS:     true,
-					BaseDomain:   "ts.example.com",
-					Certificates: types.CertificatesConfig{Enabled: tt.certificates},
-					Challenge:    tt.challenge,
-				},
-			}
+			cfg := validConfig(t)
+			cfg.DNSConfig.MagicDNS = true
+			cfg.DNSConfig.BaseDomain = "ts.example.com"
+			cfg.DNSConfig.Certificates.Enabled = tt.certificates
+			cfg.DNSConfig.Challenge = tt.challenge
 
 			app, err := NewHeadscale(&cfg)
 			if tt.wantErr != "" {
@@ -216,11 +209,25 @@ func TestNewHeadscaleSecrets(t *testing.T) {
 		noFiles bool // fails before startup writes anything
 	}{
 		{
-			name: "oidc client secret file missing",
+			name: "oidc client secret file missing, fallback allowed",
 			set: func(c *types.Config) {
 				// Unreachable, so discovery would fail and fall back, were the
 				// secret read only there.
-				c.OIDC = types.OIDCConfig{Issuer: "http://127.0.0.1:1", ClientID: "headscale", ClientSecret: missing}
+				c.OIDC.Issuer = "http://127.0.0.1:1"
+				c.OIDC.ClientID = "headscale"
+				c.OIDC.ClientSecret = missing
+				c.OIDC.OnlyStartIfOIDCIsAvailable = false
+			},
+			wantErr: "oidc.client_secret: ",
+			noFiles: true,
+		},
+		{
+			name: "oidc client secret file missing, oidc required",
+			set: func(c *types.Config) {
+				c.OIDC.Issuer = "http://127.0.0.1:1"
+				c.OIDC.ClientID = "headscale"
+				c.OIDC.ClientSecret = missing
+				c.OIDC.OnlyStartIfOIDCIsAvailable = true
 			},
 			wantErr: "oidc.client_secret: ",
 			noFiles: true,
@@ -228,10 +235,8 @@ func TestNewHeadscaleSecrets(t *testing.T) {
 		{
 			name: "postgres pass file missing",
 			set: func(c *types.Config) {
-				c.Database = types.DatabaseConfig{
-					Type:     types.DatabasePostgres,
-					Postgres: types.PostgresConfig{Host: "127.0.0.1", Port: 1, Name: "headscale", Pass: missing},
-				}
+				c.Database.Type = types.DatabasePostgres
+				c.Database.Postgres = types.PostgresConfig{Host: "127.0.0.1", Port: 1, Name: "headscale", Pass: missing}
 			},
 			wantErr: "database.postgres.pass: ",
 		},
@@ -246,16 +251,8 @@ func TestNewHeadscaleSecrets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			cfg := types.Config{
-				ServerURL: "http://localhost:8080",
-				Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
-				Database: types.DatabaseConfig{
-					Type:   "sqlite3",
-					Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db"},
-				},
-				Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
-			}
+			cfg := validConfig(t)
+			tmpDir := filepath.Dir(cfg.Noise.PrivateKeyPath)
 			tt.set(&cfg)
 
 			app, err := NewHeadscale(&cfg)
@@ -278,4 +275,155 @@ func TestNewHeadscaleSecrets(t *testing.T) {
 			t.Cleanup(func() { _ = app.state.Close() })
 		})
 	}
+}
+
+// validConfig is config.Default with what an operator must set, its files
+// under a fresh temp dir, and the batcher quick and single-threaded for
+// tests.
+func validConfig(t *testing.T) types.Config {
+	t.Helper()
+
+	dir := t.TempDir()
+	v4 := netip.MustParsePrefix("100.64.0.0/10")
+	v6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+
+	cfg := config.Default()
+	cfg.ServerURL = "http://localhost:8080"
+	cfg.Noise.PrivateKeyPath = filepath.Join(dir, "noise_private.key")
+	cfg.Database.Type = types.DatabaseSqlite
+	cfg.Database.Sqlite.Path = filepath.Join(dir, "headscale_test.db")
+	cfg.Prefixes.V4 = &v4
+	cfg.Prefixes.V6 = &v6
+	cfg.Policy.Mode = types.PolicyModeDB
+	cfg.DNSConfig.MagicDNS = false
+	cfg.DNSConfig.OverrideLocalDNS = false
+	cfg.Tuning.BatchChangeDelay = 100 * time.Millisecond
+	cfg.Tuning.BatcherWorkers = 1
+
+	return cfg
+}
+
+// TestNewHeadscaleRejectsInvalidConfig: a configuration Validate rejects
+// stops startup before anything is written.
+func TestNewHeadscaleRejectsInvalidConfig(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		set  func(*types.Config)
+		key  string
+	}{
+		{name: "derp url", set: func(c *types.Config) { c.DERP.URLs = []types.HTTPURL{"ftp://h/map"} }, key: "derp.urls[0]"},
+		{name: "zero prefix", set: func(c *types.Config) { c.Prefixes.V4 = &netip.Prefix{} }, key: "prefixes.v4"},
+		{name: "zero trusted proxy", set: func(c *types.Config) { c.TrustedProxies = []netip.Prefix{{}} }, key: "trusted_proxies[0]"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig(t)
+			tt.set(&cfg)
+
+			_, err := NewHeadscale(&cfg)
+			require.ErrorContains(t, err, tt.key)
+			require.ErrorIs(t, err, types.ErrConfig)
+
+			entries, err := os.ReadDir(filepath.Dir(cfg.Noise.PrivateKeyPath))
+			require.NoError(t, err)
+			assert.Empty(t, entries, "no noise key or database")
+		})
+	}
+}
+
+// TestNewHeadscaleRejectsSharedKey: noise and DERP keys that resolve to
+// one file stop startup before anything is written, set from Go or loaded.
+func TestNewHeadscaleRejectsSharedKey(t *testing.T) {
+	shared := func(t *testing.T) (types.Config, string) {
+		t.Helper()
+
+		cfg := validConfig(t)
+		dir := filepath.Dir(cfg.Database.Sqlite.Path)
+		cfg.ConfigDir = dir
+		cfg.Noise.PrivateKeyPath = "shared.key"
+		cfg.DERP.Server.Enabled = true
+		cfg.DERP.Server.STUNAddr = ":3478"
+		cfg.DERP.Server.PrivateKeyPath = filepath.Join(dir, "shared.key")
+
+		return cfg, dir
+	}
+
+	t.Run("go", func(t *testing.T) {
+		cfg, dir := shared(t)
+
+		_, err := NewHeadscale(&cfg)
+		require.ErrorContains(t, err, "derp.server.private_key_path must differ from noise.private_key_path")
+
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		assert.Empty(t, entries, "no key or database")
+	})
+
+	t.Run("go without config dir", func(t *testing.T) {
+		cfg, dir := shared(t)
+		cfg.ConfigDir = ""
+
+		t.Chdir(dir)
+
+		_, err := NewHeadscale(&cfg)
+		require.ErrorContains(t, err, "derp.server.private_key_path must differ from noise.private_key_path")
+
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		assert.Empty(t, entries, "no key or database")
+	})
+
+	t.Run("loaded", func(t *testing.T) {
+		cfg, dir := shared(t)
+
+		out, err := config.Marshal(&cfg, ".yaml")
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), out, 0o600))
+
+		l, err := config.Load(filepath.Join(dir, "config.yaml"), true, nil)
+		require.NoError(t, err)
+
+		_, err = NewHeadscale(l.Config)
+		require.ErrorContains(t, err, "derp.server.private_key_path must differ from noise.private_key_path")
+
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		require.Len(t, entries, 1, "no key or database")
+		assert.Equal(t, "config.yaml", entries[0].Name())
+	})
+}
+
+// TestNewHeadscaleWarnsBeforeRejecting: the advisories are logged even when
+// the configuration is rejected; one may explain the error.
+func TestNewHeadscaleWarnsBeforeRejecting(t *testing.T) {
+	buf := captureLog(t, zerolog.WarnLevel)
+
+	cfg := validConfig(t)
+	v4 := netip.MustParsePrefix("10.0.0.0/8")
+	cfg.Prefixes.V4 = &v4
+	cfg.Tuning.BatchChangeDelay = 0
+
+	warnings := config.Warnings(&cfg)
+	require.NotEmpty(t, warnings)
+
+	_, err := NewHeadscale(&cfg)
+	require.ErrorContains(t, err, "tuning.batch_change_delay must be positive")
+	assert.Len(t, buf.entries(t, warnings[0]), 1)
+}
+
+// TestNewHeadscaleGoOnlyProvider: an embedder's provider serves node
+// certificates without a provider name.
+func TestNewHeadscaleGoOnlyProvider(t *testing.T) {
+	provider := &cloudflare.Provider{APIToken: "go-only"}
+
+	cfg := validConfig(t)
+	cfg.DNSConfig.MagicDNS = true
+	cfg.DNSConfig.BaseDomain = "ts.example.com"
+	cfg.DNSConfig.Certificates.Enabled = true
+	cfg.DNSConfig.Challenge.Provider = provider
+
+	app, err := NewHeadscale(&cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = app.state.Close() })
+
+	assert.Same(t, provider, cfg.DNSProvider())
 }

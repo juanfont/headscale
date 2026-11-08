@@ -17,6 +17,7 @@ import (
 	"time"
 
 	hscontrol "github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/config"
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -165,39 +166,30 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 	prefixV4 := sc.prefixV4
 	prefixV6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
 
-	cfg := types.Config{
-		// Placeholder; updated below once the in-memory server starts.
-		ServerURL: "http://localhost:0",
-		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
-		Node: types.NodeConfig{
-			Expiry: sc.nodeExpiry,
-			Ephemeral: types.EphemeralConfig{
-				InactivityTimeout: sc.ephemeralTimeout,
-			},
-		},
-		Prefixes: types.PrefixesConfig{
-			V4:         &prefixV4,
-			V6:         &prefixV6,
-			Allocation: types.IPAllocationStrategySequential,
-		},
-		Database: types.DatabaseConfig{
-			Type: "sqlite3",
-			Sqlite: types.SqliteConfig{
-				Path: tmpDir + "/headscale_test.db",
-			},
-		},
-		Policy: types.PolicyConfig{
-			Mode: types.PolicyModeDB,
-		},
-		Taildrop: types.TaildropConfig{Enabled: sc.taildropEnabled},
-		LogTail:  types.LogTailConfig{Enabled: sc.logTailEnabled},
-		Tuning: types.Tuning{
-			BatchChangeDelay:               sc.batchDelay,
-			BatcherWorkers:                 sc.batcherWorkers,
-			NodeMapSessionBufferedChanSize: sc.bufferedChanSize,
-			NodeStoreBatchTimeout:          sc.nodeStoreBatchTimeout,
-		},
+	cfg := config.Default()
+	// Placeholder; updated below once the in-memory server starts.
+	cfg.ServerURL = "http://localhost:0"
+	cfg.Noise.PrivateKeyPath = tmpDir + "/noise_private.key"
+	cfg.Node.Expiry = sc.nodeExpiry
+	cfg.Prefixes.V4 = &prefixV4
+	cfg.Prefixes.V6 = &prefixV6
+	cfg.Database.Type = types.DatabaseSqlite
+	cfg.Database.Sqlite.Path = tmpDir + "/headscale_test.db"
+	cfg.Policy.Mode = types.PolicyModeDB
+	cfg.Taildrop.Enabled = sc.taildropEnabled
+	cfg.LogTail.Enabled = sc.logTailEnabled
+	cfg.Tuning.BatchChangeDelay = sc.batchDelay
+	cfg.Tuning.BatcherWorkers = sc.batcherWorkers
+	cfg.Tuning.NodeMapSessionBufferedChanSize = sc.bufferedChanSize
+
+	if sc.nodeStoreBatchTimeout > 0 {
+		cfg.Tuning.NodeStoreBatchTimeout = sc.nodeStoreBatchTimeout
 	}
+
+	// Off unless an option sets them: each needs a value Default leaves
+	// to the operator.
+	cfg.DNSConfig.MagicDNS = false
+	cfg.DNSConfig.OverrideLocalDNS = false
 
 	if sc.magicDNSDomain != "" {
 		cfg.DNSConfig.MagicDNS = true
@@ -207,6 +199,7 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 	if sc.certProvider != nil {
 		cfg.DNSConfig.Certificates = types.CertificatesConfig{Enabled: true, Zone: cfg.DNSConfig.BaseDomain}
 		cfg.DNSConfig.Challenge.Provider = sc.certProvider
+		cfg.DNSConfig.Challenge.PropagationTimeout = 0
 	}
 
 	if len(sc.dnsResolvers) > 0 {
@@ -218,6 +211,10 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 	if err != nil {
 		tb.Fatalf("servertest: NewHeadscale: %v", err)
 	}
+
+	// Validate's floor is for clients that reconnect over real networks;
+	// tests shorten it once the configuration has been validated.
+	cfg.Node.Ephemeral.InactivityTimeout = sc.ephemeralTimeout
 
 	// Registered first so clients, HTTP, and background subsystems stop first.
 	tb.Cleanup(func() {

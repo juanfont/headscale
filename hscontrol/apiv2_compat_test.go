@@ -292,21 +292,7 @@ func newAPIReplay(t *testing.T, c *testcapture.Capture, useV1 bool) *apiReplay {
 func newAddressedTestApp(t *testing.T) *Headscale {
 	t.Helper()
 
-	tmpDir := t.TempDir()
-	prefixV4 := netip.MustParsePrefix("100.64.0.0/10")
-	prefixV6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
-
-	cfg := types.Config{
-		ServerURL: "http://localhost:8080",
-		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
-		Prefixes:  types.PrefixesConfig{V4: &prefixV4, V6: &prefixV6, Allocation: types.IPAllocationStrategySequential},
-		Database: types.DatabaseConfig{
-			Type:   "sqlite3",
-			Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db"},
-		},
-		Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
-		Tuning: types.Tuning{BatchChangeDelay: 100 * time.Millisecond, BatcherWorkers: 1},
-	}
+	cfg := validConfig(t)
 
 	app, err := NewHeadscale(&cfg)
 	require.NoError(t, err)
