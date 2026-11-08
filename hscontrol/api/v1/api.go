@@ -2,9 +2,10 @@
 // Handlers are a thin adapter over hscontrol/state; Huma emits the OpenAPI 3.1
 // spec from the Go definitions (see Spec), and that spec drives the client.
 //
-// It depends only on the domain layer (hscontrol/state, hscontrol/types) via
-// Backend, never on the hscontrol server package, so a future hscontrol/api/v2
-// can sit beside it without either importing the other.
+// It depends only on the domain layer (hscontrol/state, hscontrol/types,
+// hscontrol/config) via Backend, never on the hscontrol server package, so a
+// future hscontrol/api/v2 can sit beside it without either importing the
+// other.
 package apiv1
 
 import (
@@ -22,7 +23,8 @@ import (
 
 // Backend is the dependency surface the v1 API needs from the control plane:
 // the state layer, the change-notification sink that distributes updates to
-// connected nodes, and the config (only Policy.Mode and Policy.Path are read).
+// connected nodes, and the config (Policy.Mode and Policy.Path; GET
+// /api/v1/config renders all of it, redacted).
 type Backend struct {
 	State  *state.State
 	Change func(...change.Change)
