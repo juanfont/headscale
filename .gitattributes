@@ -1,6 +1,10 @@
-# Captured golden data. GitHub collapses generated files in pull request diffs.
+# Generated or captured files. GitHub collapses them in pull request diffs.
 hscontrol/policy/v2/testdata/*_results/** linguist-generated
 hscontrol/servertest/testdata/steps/** linguist-generated
 hscontrol/testdata/apiv1_golden/** linguist-generated
 hscontrol/config/testdata/compat/*.golden.json linguist-generated
 hscontrol/config/testdata/bad/*.golden linguist-generated
+hscontrol/types/config_docs_generated.go linguist-generated
+nix/options.generated.nix linguist-generated
+docs/ref/configuration-options.md linguist-generated
+docs/ref/config-example.yaml linguist-generated

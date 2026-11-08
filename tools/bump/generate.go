@@ -22,6 +22,8 @@ var generatedPaths = map[string]bool{
 	"gen/client/v2/client.gen.go":              true,
 	".github/workflows/test-integration.yaml":  true,
 	"nix/options.generated.nix":                true,
+	"docs/ref/configuration-options.md":        true,
+	"docs/ref/config-example.yaml":             true,
 }
 
 // oapiPin finds the oapi-codegen version the Makefile pins, so the clients are

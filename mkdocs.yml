@@ -22,7 +22,7 @@ theme:
     - content.action.view
     - content.code.annotate
     - content.code.copy
-    # - content.tabs.link
+    - content.tabs.link
     - content.tooltips
     # - header.autohide
     # - navigation.expand
@@ -183,6 +183,7 @@ nav:
           - Windows: usage/connect/windows.md
   - Reference:
       - Configuration: ref/configuration.md
+      - Configuration options: ref/configuration-options.md
       - Registration methods: ref/registration.md
       - OpenID Connect: ref/oidc.md
       - Routes: ref/routes.md
