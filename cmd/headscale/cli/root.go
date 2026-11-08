@@ -22,8 +22,8 @@ var (
 
 	// loaded is what initConfig loaded, or generate config --running, which
 	// skips initConfig and loads it itself; nil for the other commands that
-	// skip initConfig: check, generate config, version, mockoidc and
-	// completion.
+	// skip initConfig: check, generate config, generate nixos-options,
+	// version, mockoidc and completion.
 	loaded *config.Loaded
 )
 
@@ -50,10 +50,10 @@ func init() {
 	})
 }
 
-// skipsInitConfig reports whether args select the check command group or
-// generate config, which must work without a loadable config. Find runs
-// lazily because init order across files is not guaranteed to have
-// registered every command.
+// skipsInitConfig reports whether args select the check command group,
+// generate config or generate nixos-options, which must work without a
+// loadable config. Find runs lazily because init order across files is not
+// guaranteed to have registered every command.
 func skipsInitConfig(args []string) bool {
 	cmd, rest, err := rootCmd.Find(args)
 	// `help check …` must work wherever `check …` does.
@@ -61,7 +61,7 @@ func skipsInitConfig(args []string) bool {
 		cmd, _, err = rootCmd.Find(rest)
 	}
 
-	return err == nil && (cmd == checkCmd || cmd.HasParent() && cmd.Parent() == checkCmd || cmd == generateConfigCmd)
+	return err == nil && (cmd == checkCmd || cmd.HasParent() && cmd.Parent() == checkCmd || cmd == generateConfigCmd || cmd == generateNixOSOptionsCmd)
 }
 
 // loadConfig loads path, else the file -c names, else $HEADSCALE_CONFIG,
