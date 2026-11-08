@@ -157,8 +157,5 @@
       "NodeStoreBatchSize": 100,
       "NodeStoreBatchTimeout": 500000000
     }
-  },
-  "warnings": [
-    "no config file found, using defaults"
-  ]
+  }
 }

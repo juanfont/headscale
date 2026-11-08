@@ -309,11 +309,7 @@ func TestConfigSource(t *testing.T) {
 			dir := t.TempDir()
 			path, isFile := dir, false
 
-			warns := append([]string{"no config file found"}, tt.warns...)
-
 			if tt.file != "" || tt.fileName != "" || tt.emptyFile {
-				warns = tt.warns
-
 				name := cmp.Or(tt.fileName, "config.yaml")
 				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(tt.file), 0o600))
 
@@ -335,9 +331,9 @@ func TestConfigSource(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Len(t, l.Warnings, len(warns))
+			require.Len(t, l.Warnings, len(tt.warns))
 
-			for i, w := range warns {
+			for i, w := range tt.warns {
 				assert.Contains(t, l.Warnings[i], w)
 			}
 
@@ -385,7 +381,7 @@ func TestConfigSourceSearch(t *testing.T) {
 	l, err = Load(t.TempDir(), false, nil)
 	require.NoError(t, err)
 	assert.Empty(t, l.File)
-	assert.Equal(t, []string{"no config file found, using defaults"}, l.Warnings)
+	assert.Empty(t, l.Warnings)
 }
 
 // TestConfigSourceDottedOverlap reloads the file each time: map iteration

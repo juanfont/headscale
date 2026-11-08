@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"syscall"
 
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/tailscale/squibble"
 )
@@ -19,6 +21,8 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Launches the headscale server",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		logNoConfigFile(loaded)
+
 		app, err := newHeadscaleServerWithConfig()
 		if err != nil {
 			if squibbleErr, ok := errors.AsType[squibble.ValidationError](err); ok {
@@ -36,6 +40,14 @@ var serveCmd = &cobra.Command{
 
 		return classifyServeError(err)
 	},
+}
+
+// logNoConfigFile says when the server runs without a file. The loader does
+// not warn: client commands need no file unless they use an API key.
+func logNoConfigFile(l *config.Loaded) {
+	if l.File == "" {
+		log.Info().Msg("no configuration file, using defaults and the environment")
+	}
 }
 
 // classifyServeError augments specific error classes with operator

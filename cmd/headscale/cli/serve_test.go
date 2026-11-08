@@ -1,13 +1,20 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"syscall"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -116,6 +123,51 @@ func TestClassifyServeError(t *testing.T) {
 
 			for _, unwanted := range tt.wantHintNotSubstr {
 				assert.NotContains(t, got.Error(), unwanted)
+			}
+		})
+	}
+}
+
+func TestLogNoConfigFile(t *testing.T) {
+	oldLogger, oldLevel := log.Logger, zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() {
+		log.Logger = oldLogger
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	type line struct{ Level, Message string }
+
+	tests := []struct {
+		name string
+		file string
+		want []line
+	}{
+		{name: "no file", want: []line{{Level: "info", Message: "no configuration file, using defaults and the environment"}}},
+		{name: "file", file: "/x/config.yaml"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+
+			log.Logger = zerolog.New(&buf)
+
+			logNoConfigFile(&config.Loaded{File: tt.file})
+
+			var got []line
+
+			for l := range strings.Lines(buf.String()) {
+				var r line
+				require.NoError(t, json.Unmarshal([]byte(l), &r), l)
+
+				got = append(got, r)
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("logged (-want +got):\n%s", diff)
 			}
 		})
 	}

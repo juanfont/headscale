@@ -159,7 +159,6 @@
     }
   },
   "warnings": [
-    "no config file found, using defaults",
     "configuration variable HEADSCALE_DATABASE_GORM_PREPARE_STMT was removed in 0.30; remove HEADSCALE_DATABASE_GORM_PREPARE_STMT; see the CHANGELOG for context",
     "configuration variable HEADSCALE_DB_TYPE was removed in 0.30; use HEADSCALE_DATABASE_TYPE",
     "configuration variable HEADSCALE_DNS_CONFIG_MAGIC_DNS was removed in 0.30; use HEADSCALE_DNS_MAGIC_DNS",

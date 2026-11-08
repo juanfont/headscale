@@ -457,11 +457,10 @@ func newConfigSource(path string, isFile bool, environ []string) (*configSource,
 		return s, fmt.Errorf("loading defaults: %w", err)
 	}
 
+	// No file is no warning: defaults and the environment are a complete
+	// configuration.
 	var fileErr error
-
-	if s.file == "" {
-		s.warnings = append(s.warnings, "no config file found, using defaults")
-	} else {
+	if s.file != "" {
 		fileErr = s.loadFile()
 	}
 

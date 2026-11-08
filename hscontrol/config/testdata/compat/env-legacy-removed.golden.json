@@ -159,7 +159,6 @@
     }
   },
   "warnings": [
-    "no config file found, using defaults",
     "configuration variable HEADSCALE_ACL_POLICY_PATH was removed in 0.30; use HEADSCALE_POLICY_PATH",
     "configuration variable HEADSCALE_OIDC_EXPIRY was removed in 0.29; use HEADSCALE_NODE_EXPIRY",
     "configuration variable HEADSCALE_RANDOMIZE_CLIENT_PORT was removed in 0.29; set \"randomizeClientPort\": true at the top level of the policy file, or grant the cap per node via a \"nodeAttrs\" entry"

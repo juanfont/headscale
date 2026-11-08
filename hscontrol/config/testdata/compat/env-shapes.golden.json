@@ -1,6 +1,3 @@
 {
-  "warnings": [
-    "no config file found, using defaults"
-  ],
   "error": "Fatal config error: node.expiry needs a unit (env HEADSCALE_NODE_EXPIRY)\n  current: node.expiry: \"90\"\n  hint: write the unit, e.g. \"30s\", \"5m\" or \"90d\"\n\nFatal config error: derp.update_frequency needs a unit (env HEADSCALE_DERP_UPDATE_FREQUENCY)\n  current: derp.update_frequency: \"30\"\n  hint: write the unit, e.g. \"30s\", \"5m\" or \"90d\"\n\nFatal config error: dns.nameservers.split is not a JSON object (env HEADSCALE_DNS_NAMESERVERS_SPLIT)\n  hint: write the map as JSON, e.g. {\"example.com\": [\"1.1.1.1\"]}\n\nFatal config error: tuning.batch_change_delay needs a unit (env HEADSCALE_TUNING_BATCH_CHANGE_DELAY)\n  current: tuning.batch_change_delay: \"800\"\n  hint: write the unit, e.g. \"30s\", \"5m\" or \"90d\"\n"
 }
