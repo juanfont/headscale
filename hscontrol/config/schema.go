@@ -221,18 +221,24 @@ func (k *keyInfo) describeLeaf(def any, required map[string]string) error {
 		k.Type.Label = strings.Replace(k.Type.Label, "<key>", "<"+k.MapKey+">", 1)
 	}
 
-	switch {
-	case def != nil:
-		k.Default = def
-	case k.Value.Kind() == reflect.Slice:
-		k.Default = []any{}
-	default:
-		k.Default = map[string]any{}
-	}
+	k.Default = orEmpty(def, k.Field.Type)
 
 	k.Example, err = loadExample(k.ConfigField, k.Default)
 
 	return err
+}
+
+// orEmpty is v, or for nil, which plainFields gives a nil list or map, an
+// empty one of t's kind.
+func orEmpty(v any, t reflect.Type) any {
+	switch {
+	case v != nil:
+		return v
+	case t.Kind() == reflect.Slice:
+		return []any{}
+	default:
+		return map[string]any{}
+	}
 }
 
 // loadExample is f's example tag as plainFields prints it once the

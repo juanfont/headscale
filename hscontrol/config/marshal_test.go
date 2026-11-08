@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	gocmp "github.com/google/go-cmp/cmp"
@@ -259,87 +260,104 @@ func (fakeProvider) DeleteRecords(context.Context, string, []libdns.Record) ([]l
 	return nil, nil
 }
 
+// redactTests hold a credential in every key that can: dns.challenge.provider
+// in each shape, the rest as redactConfig sets them. A redacted rendering
+// hides redactHidden and hidden, and shows redactShown and shown.
+var redactTests = []struct {
+	name     string
+	provider map[string]any
+	hidden   []string
+	shown    []string
+}{
+	{
+		name:     "string token",
+		provider: map[string]any{"name": "cloudflare", "api_token": "marker-api-token"},
+		hidden:   []string{"marker-api-token"},
+		shown:    []string{"cloudflare"},
+	},
+	{
+		name:     "numeric token",
+		provider: map[string]any{"name": "cloudflare", "api_token": 123456},
+		hidden:   []string{"123456"},
+		shown:    []string{"cloudflare"},
+	},
+	{
+		name: "nested registration",
+		provider: map[string]any{"name": "acmedns", "config": map[string]any{
+			"laptop.example.com": map[string]any{
+				"username":   "marker-user",
+				"password":   "marker-registration-password",
+				"subdomain":  "marker-subdomain",
+				"server_url": "https://auth.acme-dns.io",
+			},
+		}},
+		hidden: []string{"marker-user", "marker-registration-password", "marker-subdomain"},
+		shown:  []string{"acmedns"},
+	},
+	{
+		name:     "file reference",
+		provider: map[string]any{"name": "cloudflare", "api_token": "file:/run/credentials/cloudflare"}, //nolint:gosec // a file reference, not a credential
+		shown:    []string{"cloudflare", "file:/run/credentials/cloudflare"},
+	},
+}
+
+// redactHidden are the credentials redactConfig sets outside the provider.
+var redactHidden = []string{
+	"marker-oidc-secret", "marker-issuer-user", "marker-issuer-pass", "marker-pg-pass",
+	"marker-acme-user", "marker-derp-user", "marker-derp-pass",
+	"marker-derpmap", "marker-go-provider",
+	"marker-server-user", "marker-server-pass", "marker-cli-user",
+	"marker-dns-user", "marker-dns-pass", "marker-split-user",
+}
+
+// redactShown is what of redactConfig's values a redacted rendering keeps.
+var redactShown = []string{
+	"file:/run/credentials/cli_key", "idp.example.com", "derp.example.com",
+	"https://headscale.example.com", "https://cli.example.com", "1.1.1.1",
+	"https://dns.example.com/dns-query", "https://dns.example.com/q",
+}
+
+// redactConfig is Default() with a credential in every key that can hold
+// one, provider as dns.challenge.provider, and some set only from Go.
+func redactConfig(provider map[string]any) types.Config {
+	cfg := Default()
+	cfg.ServerURL = "https://marker-server-user:marker-server-pass@headscale.example.com" //nolint:gosec // test markers, not credentials
+	cfg.CLI.Address = "https://marker-cli-user@cli.example.com"
+	cfg.DNSConfig.Nameservers.Global = []string{"1.1.1.1", "https://marker-dns-user:marker-dns-pass@dns.example.com/dns-query"}
+	cfg.DNSConfig.Nameservers.Split = map[string][]string{"corp.example.com": {"https://marker-split-user@dns.example.com/q"}}
+	cfg.OIDC.ClientSecret = "marker-oidc-secret"
+	cfg.OIDC.Issuer = "https://marker-issuer-user:marker-issuer-pass@idp.example.com"
+	cfg.Database.Postgres.Pass = "marker-pg-pass"
+	cfg.CLI.APIKey = "file:/run/credentials/cli_key"
+	cfg.TLS.ACME.URL = "https://marker-acme-user@acme.example.com/dir"
+	cfg.DERP.URLs = []types.HTTPURL{"https://marker-derp-user:marker-derp-pass@derp.example.com/map"}
+	cfg.DERP.DERPMap = &tailcfg.DERPMap{Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
+		900: {RegionID: 900, RegionName: "marker-derpmap"},
+	}}
+	cfg.DNSConfig.Challenge.ProviderSettings = maps.Clone(provider)
+	cfg.DNSConfig.Challenge.Provider = fakeProvider{Token: "marker-go-provider"} //nolint:gosec // a test marker, not a credential
+
+	return cfg
+}
+
 // TestMarshalRedacts: what Marshal prints holds no credential, in any
 // format: a literal secret, a DNS provider setting of any shape, URL
 // userinfo, in URL and plain string keys alike, and nothing set only from
 // Go. The running values keep theirs.
 func TestMarshalRedacts(t *testing.T) {
-	tests := []struct {
-		name     string
-		provider map[string]any
-		hidden   []string
-		shown    []string
-	}{
-		{
-			name:     "string token",
-			provider: map[string]any{"name": "cloudflare", "api_token": "marker-api-token"},
-			hidden:   []string{"marker-api-token"},
-			shown:    []string{"cloudflare"},
-		},
-		{
-			name:     "numeric token",
-			provider: map[string]any{"name": "cloudflare", "api_token": 123456},
-			hidden:   []string{"123456"},
-			shown:    []string{"cloudflare"},
-		},
-		{
-			name: "nested registration",
-			provider: map[string]any{"name": "acmedns", "config": map[string]any{
-				"laptop.example.com": map[string]any{
-					"username":   "marker-user",
-					"password":   "marker-registration-password",
-					"subdomain":  "marker-subdomain",
-					"server_url": "https://auth.acme-dns.io",
-				},
-			}},
-			hidden: []string{"marker-user", "marker-registration-password", "marker-subdomain"},
-			shown:  []string{"acmedns"},
-		},
-		{
-			name:     "file reference",
-			provider: map[string]any{"name": "cloudflare", "api_token": "file:/run/credentials/cloudflare"}, //nolint:gosec // a file reference, not a credential
-			shown:    []string{"cloudflare", "file:/run/credentials/cloudflare"},
-		},
-	}
-
-	for _, tt := range tests {
+	for _, tt := range redactTests {
 		for _, ext := range fileFormats {
 			t.Run(tt.name+ext, func(t *testing.T) {
-				cfg := Default()
-				cfg.ServerURL = "https://marker-server-user:marker-server-pass@headscale.example.com" //nolint:gosec // test markers, not credentials
-				cfg.CLI.Address = "https://marker-cli-user@cli.example.com"
-				cfg.DNSConfig.Nameservers.Global = []string{"1.1.1.1", "https://marker-dns-user:marker-dns-pass@dns.example.com/dns-query"}
-				cfg.DNSConfig.Nameservers.Split = map[string][]string{"corp.example.com": {"https://marker-split-user@dns.example.com/q"}}
-				cfg.OIDC.ClientSecret = "marker-oidc-secret"
-				cfg.OIDC.Issuer = "https://marker-issuer-user:marker-issuer-pass@idp.example.com"
-				cfg.Database.Postgres.Pass = "marker-pg-pass"
-				cfg.CLI.APIKey = "file:/run/credentials/cli_key"
-				cfg.TLS.ACME.URL = "https://marker-acme-user@acme.example.com/dir"
-				cfg.DERP.URLs = []types.HTTPURL{"https://marker-derp-user:marker-derp-pass@derp.example.com/map"}
-				cfg.DERP.DERPMap = &tailcfg.DERPMap{Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
-					900: {RegionID: 900, RegionName: "marker-derpmap"},
-				}}
-				cfg.DNSConfig.Challenge.ProviderSettings = maps.Clone(tt.provider)
-				cfg.DNSConfig.Challenge.Provider = fakeProvider{Token: "marker-go-provider"} //nolint:gosec // a test marker, not a credential
+				cfg := redactConfig(tt.provider)
 
 				out, err := Marshal(&cfg, ext)
 				require.NoError(t, err)
 
-				for _, h := range append([]string{
-					"marker-oidc-secret", "marker-issuer-user", "marker-issuer-pass", "marker-pg-pass",
-					"marker-acme-user", "marker-derp-user", "marker-derp-pass",
-					"marker-derpmap", "marker-go-provider",
-					"marker-server-user", "marker-server-pass", "marker-cli-user",
-					"marker-dns-user", "marker-dns-pass", "marker-split-user",
-				}, tt.hidden...) {
+				for _, h := range append(slices.Clone(redactHidden), tt.hidden...) {
 					assert.NotContains(t, string(out), h)
 				}
 
-				for _, s := range append([]string{
-					"file:/run/credentials/cli_key", "idp.example.com", "derp.example.com",
-					"https://headscale.example.com", "https://cli.example.com", "1.1.1.1",
-					"https://dns.example.com/dns-query", "https://dns.example.com/q",
-				}, tt.shown...) {
+				for _, s := range append(slices.Clone(redactShown), tt.shown...) {
 					assert.Contains(t, string(out), s)
 				}
 
@@ -352,24 +370,28 @@ func TestMarshalRedacts(t *testing.T) {
 	}
 }
 
+// serverURLRedactTests are server_url values with userinfo, each with what
+// a redacted rendering shows: "" when the value is withheld whole.
+var serverURLRedactTests = []struct {
+	serverURL string
+	shown     string
+}{
+	{serverURL: "https://headscale.example.com", shown: "https://headscale.example.com"},
+	{serverURL: "https://marker-user:marker-pass@headscale.example.com", shown: "https://headscale.example.com"}, //nolint:gosec // test markers, not credentials
+	{serverURL: "https://marker-user@headscale.example.com", shown: "https://headscale.example.com"},
+	{serverURL: "https://marker-user:marker-pass@headscale.example.com/%zz"}, //nolint:gosec // test markers, not credentials
+	{serverURL: "https://alice:marker-pass?@headscale.example.com"},
+	{serverURL: "https://alice:marker-pass#@headscale.example.com"},
+	{serverURL: "https://alice:marker-pass@headscale.example.com:port"},
+	{serverURL: "https:/alice:marker-pass@headscale.example.com"},
+}
+
 // TestMarshalRedactsServerURL: server_url is a string, not an HTTPURL, but
 // its userinfo is as secret; a value whose userinfo cannot be told from the
 // rest is withheld whole. The raw map, as the round trip writes it, keeps
 // the value.
 func TestMarshalRedactsServerURL(t *testing.T) {
-	for _, tt := range []struct {
-		serverURL string
-		shown     string // "" when withheld
-	}{
-		{serverURL: "https://headscale.example.com", shown: "https://headscale.example.com"},
-		{serverURL: "https://marker-user:marker-pass@headscale.example.com", shown: "https://headscale.example.com"}, //nolint:gosec // test markers, not credentials
-		{serverURL: "https://marker-user@headscale.example.com", shown: "https://headscale.example.com"},
-		{serverURL: "https://marker-user:marker-pass@headscale.example.com/%zz"}, //nolint:gosec // test markers, not credentials
-		{serverURL: "https://alice:marker-pass?@headscale.example.com"},
-		{serverURL: "https://alice:marker-pass#@headscale.example.com"},
-		{serverURL: "https://alice:marker-pass@headscale.example.com:port"},
-		{serverURL: "https:/alice:marker-pass@headscale.example.com"},
-	} {
+	for _, tt := range serverURLRedactTests {
 		for _, ext := range fileFormats {
 			t.Run(tt.serverURL+ext, func(t *testing.T) {
 				cfg := Default()
