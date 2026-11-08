@@ -23,10 +23,10 @@ logs/
 vendor/
 
 dist/
+/release-assets/
 /headscale
 config.yaml
 config*.yaml
-!config-example.yaml
 !docs/ref/config-example.yaml
 derp.yaml
 *.hujson

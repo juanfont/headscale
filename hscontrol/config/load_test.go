@@ -3021,8 +3021,9 @@ func unsetHeadscaleEnv(t *testing.T) {
 // HEADSCALE_UPDATE_GOLDEN=1.
 //
 // Sources: example-<tag>.yaml is `git show <tag>:config-example.yaml`;
-// example-main.yaml is a frozen copy of the root file; nixos-*.yaml are the
-// files `nix build` writes for the flake module with nix/example-configuration.nix
+// example-main.yaml is a frozen copy of main's root config-example.yaml;
+// nixos-*.yaml are the files `nix build` writes for the flake module with
+// nix/example-configuration.nix
 // (services.headscale.configFile, environment.etc."headscale/config.yaml") and
 // for the nixpkgs module with only server_url, dns.base_domain and
 // dns.nameservers.global set; hsic-* mirror integration/hsic's

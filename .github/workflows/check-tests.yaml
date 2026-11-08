@@ -27,7 +27,6 @@ jobs:
               - 'go.*'
               - '**/*.go'
               - 'flake.lock'
-              - 'config-example.yaml'
               - '.github/workflows/gh-action-integration-generator.go'
       - uses: NixOS/nix-installer-action@62c1943b776c509394b550f3f983adc14e9212d6 # main
         if: steps.changed-files.outputs.files == 'true'

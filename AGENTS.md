@@ -163,9 +163,10 @@ headscale/
   (`Load`: defaults, file, `HEADSCALE_*` environment; `Default`; `Marshal`;
   the removed-keys table), `Validate` and `Warnings`, the checks behind
   `headscale check` (`Files` lists every file a config names, with its
-  validator) and `ReadPrivateKey`. The schema and `ConfigError` stay in
-  `types`. It imports `types`; `types`, `derp`, `dns` and `policy` must
-  never import it.
+  validator), `ReadPrivateKey` and the generators (`GenerateExample`,
+  `GenerateNixOptions`, `GenerateReference`). The schema and `ConfigError`
+  stay in `types`. It imports `types`; `types`, `derp`, `dns` and `policy`
+  must never import it.
 - `routes/`, `dns/`, `derp/`, `types/`, `util/`, `templates/`, `capver/`
   — routing, MagicDNS, relay, core types, helpers, client templates,
   capability versioning.
@@ -358,6 +359,10 @@ a broken one.
 - **Do not edit `gen/`** — it is regenerated from `proto/` by
   `make generate`.
 - **Proto changes + code changes should be two commits**, not one.
+- **Do not edit the generated config files** —
+  `hscontrol/types/config_docs_generated.go`, `nix/options.generated.nix`,
+  `docs/ref/configuration-options.md` and `docs/ref/config-example.yaml`
+  come from `go generate ./hscontrol/types/`.
 - **The NixOS test kit is a public contract** consumed by other projects'
   NixOS tests: the "Contract" in `nix/README.md`, covering
   `nix/testkit.nix`, `nix/testkit-peer.nix`, the embedded DERP region
