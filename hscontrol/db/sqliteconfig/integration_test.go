@@ -309,6 +309,21 @@ func TestToURLOpensExactPath(t *testing.T) {
 			var mode string
 			require.NoError(t, db.QueryRowContext(t.Context(), "PRAGMA journal_mode").Scan(&mode))
 			require.Equal(t, "wal", mode)
+
+			// The read-only form tailsql uses must open the same file.
+			roURL, err := (&Config{Path: dbPath, WALAutocheckpoint: -1, ReadOnly: true}).ToURL()
+			require.NoError(t, err)
+
+			ro, err := sql.Open("sqlite", roURL)
+			require.NoError(t, err)
+
+			defer ro.Close()
+
+			var n int
+			require.NoError(t, ro.QueryRowContext(t.Context(), "SELECT count(*) FROM t").Scan(&n))
+
+			_, err = ro.ExecContext(t.Context(), "INSERT INTO t VALUES (1)")
+			require.ErrorContains(t, err, "readonly")
 		})
 	}
 }

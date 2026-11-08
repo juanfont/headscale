@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/juanfont/headscale/hscontrol/db/sqliteconfig"
 	"github.com/tailscale/tailsql/server/tailsql"
 	"tailscale.com/tsnet"
 	"tailscale.com/tsweb"
@@ -17,6 +18,15 @@ import (
 var ErrNoCertDomains = errors.New("no cert domains available for HTTPS")
 
 func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath string) error {
+	dsn, err := (&sqliteconfig.Config{
+		Path:              dbPath,
+		WALAutocheckpoint: -1, // not set
+		ReadOnly:          true,
+	}).ToURL()
+	if err != nil {
+		return fmt.Errorf("building sqlite connection URL: %w", err)
+	}
+
 	opts := tailsql.Options{
 		Hostname: "tailsql-headscale",
 		StateDir: stateDir,
@@ -25,7 +35,7 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 				Source: "headscale",
 				Label:  "headscale - sqlite",
 				Driver: "sqlite",
-				URL:    fmt.Sprintf("file:%s?mode=ro", dbPath),
+				URL:    dsn,
 				Named: map[string]string{
 					"schema": `select * from sqlite_schema`,
 				},
