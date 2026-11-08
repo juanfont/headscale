@@ -277,6 +277,7 @@ type Config struct {
 	Synchronous       Synchronous // synchronous mode (affects durability vs performance)
 	ForeignKeys       bool        // enable foreign key constraints (data integrity)
 	TxLock            TxLock      // transaction lock mode (affects write concurrency)
+	ReadOnly          bool        // open with SQLite's mode=ro
 }
 
 // Default returns the production configuration optimized for Headscale's usage patterns.
@@ -391,6 +392,10 @@ func (c *Config) ToURL() (string, error) {
 
 	if c.ForeignKeys {
 		queryParts = append(queryParts, "_pragma=foreign_keys=ON")
+	}
+
+	if c.ReadOnly {
+		queryParts = append(queryParts, "mode=ro")
 	}
 
 	if len(queryParts) > 0 {
