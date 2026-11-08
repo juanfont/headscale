@@ -119,6 +119,8 @@ var removedKeys = []removedKey{
 	{Old: "dns_config.extra_records", New: "dns.extra_records", Since: "0.30"},
 	{Old: "dns_config.use_username_in_magic_dns", Since: "0.24"},
 	{Old: "dns.use_username_in_magic_dns", Since: "0.24"},
+	// The NixOS module's name; headscale never read it.
+	{Old: "dns.split", New: "dns.nameservers.split", Since: "0.30"},
 	{Old: "oidc.strip_email_domain", Since: "0.26"},
 	{Old: "oidc.map_legacy_users", Since: "0.26"},
 	{Old: "randomize_client_port", Since: "0.29", Hint: `set "randomizeClientPort": true at the top level of the policy file, or grant the cap per node via a "nodeAttrs" entry`},
@@ -143,6 +145,8 @@ var removedKeys = []removedKey{
 	{Old: "db_user", New: "database.postgres.user", Since: "0.30"},
 	{Old: "db_pass", New: "database.postgres.pass", Since: "0.30"},
 	{Old: "db_ssl", New: "database.postgres.ssl", Since: "0.30"},
+	// The NixOS module's name; headscale never read it.
+	{Old: "db_password_file", New: "database.postgres.pass", Value: "file:<path>", Since: "0.30"},
 	{Old: "private_key_path", New: "noise.private_key_path", Since: "0.23"},
 	{Old: "ip_prefixes", New: "prefixes.v4 prefixes.v6", Since: "0.23"},
 	{Old: "log_level", New: "log.level", Since: "0.17"},

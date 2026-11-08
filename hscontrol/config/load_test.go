@@ -1669,6 +1669,7 @@ func TestRemovedKeysAreRejected(t *testing.T) {
 		want      []string // substrings of the load error
 		warns     []string // substrings of the warnings
 		serverErr string   // from Validate after a clean load
+		check     func(t *testing.T, cfg *types.Config)
 	}{
 		{
 			name: "deprecated keys",
@@ -1713,6 +1714,26 @@ func TestRemovedKeysAreRejected(t *testing.T) {
 			name:  "postgres password file env",
 			env:   map[string]string{"HEADSCALE_DATABASE_POSTGRES_PASSWORD_FILE": "/run/secret"},
 			warns: []string{"HEADSCALE_DATABASE_POSTGRES_PASSWORD_FILE was removed", "use HEADSCALE_DATABASE_POSTGRES_PASS=file:<path>"},
+		},
+		// The old NixOS module's settings, which headscale never read.
+		{
+			name: "nixos db password file",
+			file: "db_password_file: /run/x\n",
+			want: []string{"db_password_file was removed", `database.postgres.pass: "file:<path>"`},
+		},
+		{
+			name: "nixos dns split",
+			file: "dns:\n  split:\n    corp: [\"192.0.2.53\"]\n",
+			want: []string{"dns.split was removed", "use dns.nameservers.split"},
+		},
+		{
+			name:  "nixos dns split env",
+			env:   map[string]string{"HEADSCALE_DNS_SPLIT": `{"corp":["192.0.2.53"]}`},
+			warns: []string{"HEADSCALE_DNS_SPLIT was removed", "use HEADSCALE_DNS_NAMESERVERS_SPLIT"},
+			check: func(t *testing.T, cfg *types.Config) {
+				t.Helper()
+				assert.Empty(t, cfg.DNSConfig.Nameservers.Split)
+			},
 		},
 		{
 			name: "env hints name variables",
@@ -1909,6 +1930,10 @@ func TestRemovedKeysAreRejected(t *testing.T) {
 
 			if tt.serverErr != "" {
 				require.ErrorContains(t, Validate(l.Config), tt.serverErr)
+			}
+
+			if tt.check != nil {
+				tt.check(t, l.Config)
 			}
 		})
 	}
