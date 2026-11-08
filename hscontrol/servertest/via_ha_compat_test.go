@@ -814,7 +814,11 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			if r.interactive != nil && r.interactive(step, a) {
 				err = cl.Login(ctx, cl.Persist(), "", controlclient.LoginInteractive, hi.Clone(), r.approver(ctx, t, a.Key))
 			} else {
-				require.Contains(t, r.keys, a.Key, "%s: relogin with unknown key", step.Name)
+				// No key: `tailscale up --advertise-tags` on a running node.
+				if a.Key != "" {
+					require.Contains(t, r.keys, a.Key, "%s: relogin with unknown key", step.Name)
+				}
+
 				err = cl.Relogin(ctx, r.keys[a.Key], a.Force, hi.Clone())
 			}
 
@@ -859,7 +863,24 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 				refused[a.Node] = err
 			}
 
-		case "restart", "start", "kill", "shutdown", "logout", "advertise", "set_hostname",
+		case "restart":
+			if a.Key == "" {
+				r.daemon(ctx, t, step.Name, a)
+
+				continue
+			}
+
+			// A tsnet program hands its auth key to the backend on every start.
+			require.Contains(t, r.keys, a.Key, "%s: restart with unknown key", step.Name)
+
+			err := r.clients[a.Node].RestartWithKey(ctx, r.keys[a.Key], r.hostinfo[a.Node].Clone())
+			if err != nil {
+				refused[a.Node] = err
+			}
+
+			r.remember(a.Node)
+
+		case "start", "kill", "shutdown", "logout", "advertise", "set_hostname",
 			"break_tcp_conns", "rotate_disco_key", "cli", "disconnect_control", "down", "up":
 			r.daemon(ctx, t, step.Name, a)
 

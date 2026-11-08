@@ -432,7 +432,14 @@ func stepCells(step testcapture.Step) ([]string, map[string]testcapture.Action) 
 		case "join", "relogin", "login", "switch_profile":
 			add(a.Node)
 			logins[a.Node] = a
-		case "restart", "cli", "logout":
+		case "restart":
+			add(a.Node)
+
+			// A tsnet program logs in with its key on every start.
+			if a.Key != "" {
+				logins[a.Node] = a
+			}
+		case "cli", "logout":
 			add(a.Node)
 		case "api":
 			if strings.HasPrefix(a.Path, "/device/") {

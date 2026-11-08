@@ -757,9 +757,18 @@ func (c *TestClient) Login(
 //
 // Safe to call from non-test goroutines.
 func (c *TestClient) Restart(ctx context.Context, hi *tailcfg.Hostinfo) error {
+	return c.RestartWithKey(ctx, "", hi)
+}
+
+// RestartWithKey is [TestClient.Restart] for a client that hands authKey to
+// its backend on every start, as a tsnet program does with TS_AUTHKEY: the
+// key goes out under the node key the client already has.
+//
+// Safe to call from non-test goroutines.
+func (c *TestClient) RestartWithKey(ctx context.Context, authKey string, hi *tailcfg.Hostinfo) error {
 	c.discoKey = key.NewDisco().Public()
 
-	return c.Login(ctx, c.Persist(), "", controlclient.LoginDefault, hi, nil)
+	return c.Login(ctx, c.Persist(), authKey, controlclient.LoginDefault, hi, nil)
 }
 
 // RotateDisco gives the client a new disco key and reports it, then logs in
