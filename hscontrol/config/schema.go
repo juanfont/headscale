@@ -23,6 +23,7 @@ var (
 	errBadExample     = errors.New("bad example tag")
 	errNoMapKey       = errors.New("open map without a mapkey tag")
 	errInvalidDefault = errors.New("a default fails validation")
+	errBadNixTag      = errors.New("bad nix tag")
 )
 
 // keyInfo is what the generators know about one node of
@@ -72,6 +73,18 @@ type leafType struct {
 }
 
 const nixStr = "lib.types.str"
+
+// nixFiles types a file a key names, by the key's nix tag and Go type.
+// "path" is a file headscale only reads and that holds no secret, so a Nix
+// path may copy it to the store; "external" is a key or state file, which
+// must stay out of the world-readable store.
+var nixFiles = map[string]map[reflect.Type]string{
+	"path": {
+		reflect.TypeFor[string]():   "t.readFile",
+		reflect.TypeFor[[]string](): "lib.types.listOf lib.types.path",
+	},
+	"external": {reflect.TypeFor[string](): "t.stateFile"},
+}
 
 var allowedType = reflect.TypeFor[interface{ Allowed() []string }]()
 
@@ -211,6 +224,15 @@ func (k *keyInfo) describeLeaf(def any, required map[string]string) error {
 	k.Type, err = typeOf(k.Field.Type)
 	if err != nil {
 		return err
+	}
+
+	if tag := k.Field.Tag.Get("nix"); tag != "" {
+		nix, ok := nixFiles[tag][k.Field.Type]
+		if !ok {
+			return fmt.Errorf("%w %q on %s", errBadNixTag, tag, k.Field.Type)
+		}
+
+		k.Type.Nix = nix
 	}
 
 	if k.Open {

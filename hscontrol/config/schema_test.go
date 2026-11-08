@@ -173,6 +173,48 @@ func TestLoadExample(t *testing.T) {
 	}
 }
 
+// TestDescribeLeafNixTag: nix:"path" lets a file headscale only reads be a
+// Nix path, in the store; nix:"external" keeps a key or state file out of
+// it. Any other value, or a tag on another type, is an error, so a secret
+// never takes a store path.
+func TestDescribeLeafNixTag(t *testing.T) {
+	str, list := reflect.TypeFor[string](), reflect.TypeFor[[]string]()
+
+	tests := []struct {
+		name    string
+		path    string
+		typ     reflect.Type
+		tag     string
+		want    string // Type.Nix
+		wantErr bool
+	}{
+		{name: "path", path: "policy.path", typ: str, tag: `example:"\"/p\"" nix:"path"`, want: "t.readFile"},
+		{name: "path list", path: "derp.paths", typ: list, tag: `example:"[\"/d\"]" nix:"path"`, want: "lib.types.listOf lib.types.path"},
+		{name: "external", path: "noise.private_key_path", typ: str, tag: `example:"\"/k\"" nix:"external"`, want: "t.stateFile"},
+		{name: "untagged", path: "policy.path", typ: str, tag: `example:"\"/p\""`, want: nixStr},
+		{name: "unknown value", path: "policy.path", typ: str, tag: `nix:"file"`, wantErr: true},
+		{name: "path on a secret", path: "oidc.client_secret", typ: reflect.TypeFor[types.Secret](), tag: `nix:"path"`, wantErr: true},
+		{name: "path on an int", path: "database.postgres.port", typ: reflect.TypeFor[int](), tag: `nix:"path"`, wantErr: true},
+		{name: "external list", path: "derp.paths", typ: list, tag: `nix:"external"`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := keyInfo{Path: tt.path, Field: reflect.StructField{Type: tt.typ, Tag: reflect.StructTag(tt.tag)}}
+
+			err := k.describeLeaf(nil, nil)
+			if tt.wantErr {
+				require.ErrorIs(t, err, errBadNixTag)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, k.Type.Nix)
+		})
+	}
+}
+
 func TestExamples(t *testing.T) {
 	keys, err := schema()
 	require.NoError(t, err)

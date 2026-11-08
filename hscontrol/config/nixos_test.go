@@ -228,6 +228,18 @@ func TestGenerateNixOptions(t *testing.T) {
 		},
 		{path: "dns.extra_records.options.value", want: []string{"\n  type = t.ip;\n"}, hide: []string{"\n  default = "}},
 		{path: "log.level", want: []string{"\n  example = \"debug\";\n"}},
+		// Files headscale only reads take a Nix path; key and state files
+		// must be outside the store, so no key is copied into it.
+		{path: "policy.path", want: []string{"\n  type = t.readFile;\n", "On NixOS, paths must be absolute.\n"}},
+		{path: "dns.extra_records_path", want: []string{"\n  type = t.readFile;\n"}},
+		{path: "tls.cert_path", want: []string{"\n  type = t.readFile;\n"}},
+		{path: "derp.paths", want: []string{"\n  type = lib.types.listOf lib.types.path;\n", "On NixOS, paths must be absolute.\n"}},
+		{path: "noise.private_key_path", want: []string{"\n  type = t.stateFile;\n", "On NixOS, paths must be absolute and outside the Nix store.\n"}},
+		{path: "derp.server.private_key_path", want: []string{"\n  type = t.stateFile;\n"}},
+		{path: "database.sqlite.path", want: []string{"\n  type = t.stateFile;\n"}},
+		{path: "unix_socket", want: []string{"\n  type = t.stateFile;\n"}},
+		{path: "tls.key_path", want: []string{"\n  type = t.stateFile;\n"}},
+		{path: "tls.acme.cache_dir", want: []string{"\n  type = t.stateFile;\n"}},
 	}
 
 	for _, tt := range tests {

@@ -162,7 +162,7 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// UnixSocket is where the server serves the API without
 	// authentication, for the CLI on the same host. The CLI connects to it
 	// when `cli.address` is empty.
-	UnixSocket string `example:"\"/run/headscale/headscale.sock\"" koanf:"unix_socket"`
+	UnixSocket string `example:"\"/run/headscale/headscale.sock\"" koanf:"unix_socket" nix:"external"`
 
 	// UnixSocketPermission is the file mode of `unix_socket`, in quoted
 	// octal (`"0770"`): unquoted, YAML reads `0770` as the number 504.
@@ -268,7 +268,7 @@ type NoiseConfig struct {
 	// PrivateKeyPath is the file holding the Noise private key, which
 	// encrypts traffic between headscale and clients, relative to the
 	// configuration file. A missing file is created with a new key.
-	PrivateKeyPath string `example:"\"/var/lib/headscale/noise_private.key\"" koanf:"private_key_path"`
+	PrivateKeyPath string `example:"\"/var/lib/headscale/noise_private.key\"" koanf:"private_key_path" nix:"external"`
 }
 
 // PrefixesConfig are the ranges node IPs are allocated from. At least one
@@ -332,7 +332,7 @@ type DNSConfig struct {
 	// ExtraRecordsPath is a file of extra records, reloaded when it
 	// changes. The extension picks the format: `.json`, `.hujson`, `.yaml`
 	// or `.yml`. Mutually exclusive with `dns.extra_records`.
-	ExtraRecordsPath string `example:"\"/var/lib/headscale/extra-records.json\"" koanf:"extra_records_path"`
+	ExtraRecordsPath string `example:"\"/var/lib/headscale/extra-records.json\"" koanf:"extra_records_path" nix:"path"`
 
 	// Certificates lets nodes get TLS certificates for their MagicDNS
 	// names with `tailscale cert`. The node runs ACME itself; headscale
@@ -472,7 +472,7 @@ type Nameservers struct {
 type SqliteConfig struct {
 	// Path is the database file, relative to the configuration file;
 	// `:memory:` keeps the database in memory.
-	Path string `example:"\"/var/lib/headscale/db.sqlite\"" koanf:"path"`
+	Path string `example:"\"/var/lib/headscale/db.sqlite\"" koanf:"path" nix:"external"`
 
 	// WriteAheadLog applies `database.sqlite.wal_autocheckpoint` and
 	// compacts the database (`VACUUM`) on shutdown. SQLite runs in WAL
@@ -631,11 +631,11 @@ func (d DatabaseConfig) IsSQLite() bool {
 type TLSConfig struct {
 	// CertPath is the PEM certificate file, relative to the configuration
 	// file. Setting it turns TLS on.
-	CertPath string `example:"\"/etc/headscale/tls/cert.pem\"" koanf:"cert_path"`
+	CertPath string `example:"\"/etc/headscale/tls/cert.pem\"" koanf:"cert_path" nix:"path"`
 
 	// KeyPath is the PEM private key file of `tls.cert_path`, relative to
 	// the configuration file.
-	KeyPath string `example:"\"/etc/headscale/tls/key.pem\"" koanf:"key_path"`
+	KeyPath string `example:"\"/etc/headscale/tls/key.pem\"" koanf:"key_path" nix:"external"`
 
 	// ACME gets the certificate from an ACME CA such as Let's Encrypt,
 	// and renews it. Setting `tls.acme.hostname` turns it on.
@@ -665,7 +665,7 @@ type ACMEConfig struct {
 
 	// CacheDir is where certificates and ACME account data are stored,
 	// relative to the configuration file.
-	CacheDir string `example:"\"/var/cache/headscale/acme\"" koanf:"cache_dir"`
+	CacheDir string `example:"\"/var/cache/headscale/acme\"" koanf:"cache_dir" nix:"external"`
 }
 
 // PKCEConfig configures PKCE (RFC 7636), which protects the OIDC
@@ -751,7 +751,7 @@ type DERPConfig struct {
 	// Paths are DERP map files. The extension picks the format: `.yaml` or
 	// `.yml`, or Tailscale JSON as `.json` or `.hujson`, both accepting
 	// comments and trailing commas.
-	Paths []string `example:"[\"/etc/headscale/derp.yaml\"]" koanf:"paths"`
+	Paths []string `example:"[\"/etc/headscale/derp.yaml\"]" koanf:"paths" nix:"path"`
 
 	// AutoUpdate reloads `derp.urls` and `derp.paths` every
 	// `derp.update_frequency`.
@@ -794,7 +794,7 @@ type DERPServerConfig struct {
 	// relative to the configuration file; required when
 	// `derp.server.enabled` is true. A missing file is created with a new
 	// key. It must differ from `noise.private_key_path`.
-	PrivateKeyPath string `example:"\"/var/lib/headscale/derp_server_private.key\"" koanf:"private_key_path"`
+	PrivateKeyPath string `example:"\"/var/lib/headscale/derp_server_private.key\"" koanf:"private_key_path" nix:"external"`
 
 	// IPv4 is the server's public IPv4 address, published in the DERP map
 	// so clients reach it without DNS. Empty publishes none.
@@ -861,7 +861,7 @@ type PolicyConfig struct {
 	// Path is the HuJSON policy file read when `policy.mode` is `file`,
 	// relative to the configuration file. Empty starts without a policy,
 	// which allows all traffic.
-	Path string `example:"\"/etc/headscale/policy.hujson\"" koanf:"path"`
+	Path string `example:"\"/etc/headscale/policy.hujson\"" koanf:"path" nix:"path"`
 
 	// Mode is where the policy is kept: in the file `policy.path`, or in
 	// the database, edited through the CLI or API.

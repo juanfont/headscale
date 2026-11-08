@@ -198,8 +198,8 @@ func mkOption(indent int, attrs [][2]string) string {
 }
 
 // nixDescription is k's documentation in Markdown: its doc, its enum
-// values, whether it is required and, for a secret, what the NixOS type
-// accepts and how NixOS passes it as a file.
+// values, whether it is required, for a path or a secret what the NixOS
+// type accepts and, for a secret, how NixOS passes it as a file.
 func nixDescription(k keyInfo) string {
 	parts := []string{k.Doc}
 
@@ -231,6 +231,10 @@ func nixDescription(k keyInfo) string {
 		parts = append(parts, nixCredential("the value must be `\"\"` or `file:<path>`", credentialName(k.Path), "the secret", "this option"))
 	case k.Path == providerKey:
 		parts = append(parts, nixCredential("keep a secret setting out of the Nix store", credentialName(k.Path+".<setting>"), "it", "the setting")+" `name` is not a secret.")
+	case k.Field.Tag.Get("nix") == "path":
+		parts = append(parts, "On NixOS, paths must be absolute.")
+	case k.Field.Tag.Get("nix") == "external":
+		parts = append(parts, "On NixOS, paths must be absolute and outside the Nix store.")
 	}
 
 	return strings.Join(parts, "\n\n")
