@@ -82,7 +82,7 @@ type EphemeralConfig struct {
 	// InactivityTimeout is how long an ephemeral node can be offline
 	// before it is automatically deleted. It must exceed 65s, the client
 	// keepalive plus a margin.
-	InactivityTimeout time.Duration `koanf:"inactivity_timeout"`
+	InactivityTimeout time.Duration `example:"\"30m\"" koanf:"inactivity_timeout"`
 }
 
 // HARouteConfig contains configuration for HA subnet router health probing.
@@ -94,12 +94,12 @@ type HARouteConfig struct {
 	// ProbeInterval is how often HA subnet routers are probed; a positive
 	// interval must be at least 2s. Zero or negative disables probing,
 	// and with it the `node.routes.ha.probe_timeout` rules.
-	ProbeInterval time.Duration `koanf:"probe_interval"`
+	ProbeInterval time.Duration `example:"\"30s\"" koanf:"probe_interval"`
 
 	// ProbeTimeout is the maximum time to wait for a probe response
 	// before declaring a node unhealthy; at least 1s and less than
 	// `node.routes.ha.probe_interval`.
-	ProbeTimeout time.Duration `koanf:"probe_timeout"`
+	ProbeTimeout time.Duration `example:"\"3s\"" koanf:"probe_timeout"`
 }
 
 // RouteConfig contains configuration for route behaviour.
@@ -117,7 +117,7 @@ type PreAuthKeysConfig struct {
 	// v2 API's DELETE) is kept retrievable before the background collector
 	// hard-deletes it. Keys still backing a node are kept until the node is
 	// deleted. A zero or negative duration disables the collector.
-	RevokedRetention time.Duration `koanf:"revoked_retention"`
+	RevokedRetention time.Duration `example:"\"720h\"" koanf:"revoked_retention"`
 }
 
 // NodeConfig contains configuration for node lifecycle and expiry.
@@ -127,7 +127,7 @@ type NodeConfig struct {
 	// expiry the client asks for, `oidc.use_expiry_from_token` and an
 	// admin's `headscale nodes expire` still apply. Tagged nodes never get
 	// this default. Zero or negative disables the default.
-	Expiry time.Duration `koanf:"expiry"`
+	Expiry time.Duration `example:"\"2160h\"" koanf:"expiry"`
 
 	// Ephemeral covers ephemeral nodes, which register with an ephemeral
 	// auth key and are deleted once they have been offline for
@@ -147,31 +147,31 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// `https://` scheme, e.g. `https://headscale.example.com:443`. A
 	// trailing slash is trimmed on load. Its host must not be
 	// `dns.base_domain` or a name below it.
-	ServerURL string `koanf:"server_url"`
+	ServerURL string `example:"\"https://headscale.example.com\"" koanf:"server_url"`
 
 	// Addr is the host:port the server listens on for clients, the API and
 	// the web pages. It serves HTTPS when `tls.cert_path` or
 	// `tls.acme.hostname` is set, plain HTTP otherwise.
-	Addr ListenAddr `koanf:"listen_addr"`
+	Addr ListenAddr `example:"\"0.0.0.0:8080\"" koanf:"listen_addr"`
 
 	// MetricsAddr is the host:port serving `/metrics` and `/debug`; keep
 	// it private. Empty disables this listener.
-	MetricsAddr ListenAddr `koanf:"metrics_listen_addr"`
+	MetricsAddr ListenAddr `example:"\"127.0.0.1:9090\"" koanf:"metrics_listen_addr"`
 
 	// UnixSocket is where the server serves the API without
 	// authentication, for the CLI on the same host. The CLI connects to it
 	// when `cli.address` is empty.
-	UnixSocket string `koanf:"unix_socket"`
+	UnixSocket string `example:"\"/run/headscale/headscale.sock\"" koanf:"unix_socket"`
 
 	// UnixSocketPermission is the file mode of `unix_socket`, in quoted
 	// octal (`"0770"`): unquoted, YAML reads `0770` as the number 504.
-	UnixSocketPermission FileMode `koanf:"unix_socket_permission"`
+	UnixSocketPermission FileMode `example:"\"0660\"" koanf:"unix_socket_permission"`
 
 	// TrustedProxies are the CIDRs of reverse proxies whose
 	// `True-Client-IP`, `X-Real-IP` and `X-Forwarded-For` headers are
 	// honoured. Empty ignores those headers. Set without a proxy in front,
 	// clients can spoof their source IP in logs and the v2 API.
-	TrustedProxies []netip.Prefix `koanf:"trusted_proxies"`
+	TrustedProxies []netip.Prefix `example:"[\"192.0.2.10/32\",\"2001:db8::10/128\"]" koanf:"trusted_proxies"`
 
 	// DisableUpdateCheck skips the check for a newer headscale release
 	// that commands make at start.
@@ -267,7 +267,7 @@ type NoiseConfig struct {
 	// PrivateKeyPath is the file holding the Noise private key, which
 	// encrypts traffic between headscale and clients, relative to the
 	// configuration file. A missing file is created with a new key.
-	PrivateKeyPath string `koanf:"private_key_path"`
+	PrivateKeyPath string `example:"\"/var/lib/headscale/noise_private.key\"" koanf:"private_key_path"`
 }
 
 // PrefixesConfig are the ranges node IPs are allocated from. At least one
@@ -277,14 +277,14 @@ type NoiseConfig struct {
 type PrefixesConfig struct {
 	// V4 is the IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no
 	// IPv4 address.
-	V4 *netip.Prefix `koanf:"v4"`
+	V4 *netip.Prefix `example:"\"100.64.0.0/10\"" koanf:"v4"`
 
 	// V6 is the IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes
 	// no IPv6 address.
-	V6 *netip.Prefix `koanf:"v6"`
+	V6 *netip.Prefix `example:"\"fd7a:115c:a1e0::/48\"" koanf:"v6"`
 
 	// Allocation is how a new node's addresses are picked.
-	Allocation IPAllocationStrategy `koanf:"allocation"`
+	Allocation IPAllocationStrategy `example:"\"random\"" koanf:"allocation"`
 }
 
 // liveDNS is the DNS state of a running server: the tailcfg form, whose
@@ -307,7 +307,7 @@ type DNSConfig struct {
 	// BaseDomain is the domain MagicDNS names live under, without a
 	// trailing dot, e.g. `example.com`. The host of `server_url` must not
 	// be this domain or a name below it: clients take the domain over.
-	BaseDomain string `koanf:"base_domain"`
+	BaseDomain string `example:"\"tailnet.example.com\"" koanf:"base_domain"`
 
 	// OverrideLocalDNS makes clients use `dns.nameservers.global` instead
 	// of their local DNS settings, which then requires at least one global
@@ -320,18 +320,18 @@ type DNSConfig struct {
 
 	// SearchDomains are DNS search domains sent to clients. With MagicDNS,
 	// `dns.base_domain` comes first.
-	SearchDomains []string `koanf:"search_domains"`
+	SearchDomains []string `example:"[\"corp.example.com\",\"lab.example.net\"]" koanf:"search_domains"`
 
 	// ExtraRecords are DNS records served to clients, each with a `name`,
 	// `type` and `value`. Clients support `A` and `AAAA`. Mutually
 	// exclusive with `dns.extra_records_path`. See
 	// [Setting extra DNS records](https://headscale.net/stable/ref/dns/#setting-extra-dns-records).
-	ExtraRecords []tailcfg.DNSRecord `koanf:"extra_records"`
+	ExtraRecords []tailcfg.DNSRecord `example:"[{\"name\":\"grafana.tailnet.example.com\",\"type\":\"A\",\"value\":\"100.64.0.3\"},{\"name\":\"grafana.tailnet.example.com\",\"type\":\"AAAA\",\"value\":\"fd7a:115c:a1e0::3\"}]" koanf:"extra_records"`
 
 	// ExtraRecordsPath is a file of extra records, reloaded when it
 	// changes. The extension picks the format: `.json`, `.hujson`, `.yaml`
 	// or `.yml`. Mutually exclusive with `dns.extra_records`.
-	ExtraRecordsPath string `koanf:"extra_records_path"`
+	ExtraRecordsPath string `example:"\"/var/lib/headscale/extra-records.json\"" koanf:"extra_records_path"`
 
 	// Certificates lets nodes get TLS certificates for their MagicDNS
 	// names with `tailscale cert`. The node runs ACME itself; headscale
@@ -357,7 +357,7 @@ type CertificatesConfig struct {
 	// Zone is the public DNS zone challenge records are written to, when
 	// `dns.base_domain` sits below the zone apex. It must contain
 	// `dns.base_domain`. Empty uses `dns.base_domain`.
-	Zone string `koanf:"zone"`
+	Zone string `example:"\"example.com\"" koanf:"zone"`
 }
 
 // CertificateZone is the zone challenge records are written to:
@@ -371,13 +371,13 @@ func (d DNSConfig) CertificateZone() string {
 type DNSChallengeConfig struct {
 	// PropagationTimeout is how long to wait for a challenge record to
 	// show up on every authoritative nameserver. Zero skips the check.
-	PropagationTimeout time.Duration `koanf:"propagation_timeout"`
+	PropagationTimeout time.Duration `example:"\"5m\"" koanf:"propagation_timeout"`
 
 	// Resolvers are the servers asked for the zone's nameservers, each an
 	// IP or host with an optional port (53 if omitted). Empty uses the
 	// default public resolvers. The system resolver is never used: on a
 	// host running MagicDNS it answers for `dns.base_domain` itself.
-	Resolvers []string `koanf:"resolvers"`
+	Resolvers []string `example:"[\"9.9.9.9:53\",\"[2620:fe::fe]:53\"]" koanf:"resolvers"`
 
 	// ProviderSettings is the DNS provider that writes challenge records:
 	// `name` selects it, the other keys are its settings. Keys are
@@ -389,7 +389,7 @@ type DNSChallengeConfig struct {
 	// [DNS-01 challenge provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider)
 	// to set a provider up, acme-dns included, and to set it from
 	// environment variables.
-	ProviderSettings map[string]any `json:"-" koanf:"provider"`
+	ProviderSettings map[string]any `example:"{\"name\":\"cloudflare\",\"api_token\":\"file:/run/secrets/cloudflare\"}" json:"-" koanf:"provider" mapkey:"setting"`
 
 	// Provider is a DNS provider set from Go, by an embedder or a test; it
 	// cannot be set from a file. It wins over ProviderSettings.
@@ -459,19 +459,19 @@ type Nameservers struct {
 	// Global are the nameservers for names `dns.nameservers.split` does not
 	// cover: IP addresses, or DNS-over-HTTPS URLs such as
 	// `https://dns.nextdns.io/<id>`.
-	Global []string `koanf:"global"`
+	Global []string `example:"[\"9.9.9.9\",\"149.112.112.112\",\"2620:fe::fe\",\"2620:fe::9\"]" koanf:"global"`
 
 	// Split maps a domain to the nameservers that answer for it (split
 	// DNS). Domains are lowercased on load; two that differ only in case
 	// are an error.
-	Split map[string][]string `koanf:"split"`
+	Split map[string][]string `example:"{\"corp.example.com\":[\"192.0.2.53\"],\"lab.example.net\":[\"198.51.100.53\",\"2001:db8::53\"]}" koanf:"split" mapkey:"domain"`
 }
 
 // SqliteConfig configures the SQLite database.
 type SqliteConfig struct {
 	// Path is the database file, relative to the configuration file;
 	// `:memory:` keeps the database in memory.
-	Path string `koanf:"path"`
+	Path string `example:"\"/var/lib/headscale/db.sqlite\"" koanf:"path"`
 
 	// WriteAheadLog applies `database.sqlite.wal_autocheckpoint` and
 	// compacts the database (`VACUUM`) on shutdown. SQLite runs in WAL
@@ -482,7 +482,7 @@ type SqliteConfig struct {
 	// WALAutoCheckPoint is the number of WAL frames after which the WAL
 	// is checkpointed automatically; zero disables automatic checkpoints.
 	// Applied only when `database.sqlite.write_ahead_log` is true.
-	WALAutoCheckPoint int `koanf:"wal_autocheckpoint"`
+	WALAutoCheckPoint int `example:"2000" koanf:"wal_autocheckpoint"`
 }
 
 // PostgresConfig configures the PostgreSQL database, supported for legacy
@@ -490,39 +490,39 @@ type SqliteConfig struct {
 type PostgresConfig struct {
 	// Host is the server's host name or IP, or the directory of its Unix
 	// socket (a path starting with `/`).
-	Host string `koanf:"host"`
+	Host string `example:"\"db.example.com\"" koanf:"host"`
 
 	// Port is the server's port or, with a Unix socket directory in
 	// `database.postgres.host`, the port in the socket's file name. Zero
 	// uses the driver's default.
-	Port int `koanf:"port"`
+	Port int `example:"5432" koanf:"port"`
 
 	// Name is the database name.
-	Name string `koanf:"name"`
+	Name string `example:"\"headscale\"" koanf:"name"`
 
 	// User is the user to connect as.
-	User string `koanf:"user"`
+	User string `example:"\"headscale\"" koanf:"user"`
 
 	// Pass is the password, or `file:<path>` to read it from a file, read
 	// only when `database.type` is `postgres`. `headscale generate config
 	// --running` and `/debug/config` show a literal password as
 	// `<redacted>` and a `file:` reference as written.
-	Pass Secret `json:"-" koanf:"pass"`
+	Pass Secret `example:"\"file:/run/secrets/postgres_password\"" json:"-" koanf:"pass"`
 
 	// Ssl is the TLS mode: `true` keeps the driver's default `sslmode`,
 	// `false` disables TLS, any other value is passed as `sslmode`
 	// (`require`, `verify-full`, ...).
-	Ssl string `koanf:"ssl"`
+	Ssl string `example:"\"verify-full\"" koanf:"ssl"`
 
 	// MaxOpenConnections caps open connections to the database.
-	MaxOpenConnections int `koanf:"max_open_conns"`
+	MaxOpenConnections int `example:"20" koanf:"max_open_conns"`
 
 	// MaxIdleConnections caps idle connections kept in the pool.
-	MaxIdleConnections int `koanf:"max_idle_conns"`
+	MaxIdleConnections int `example:"5" koanf:"max_idle_conns"`
 
 	// ConnMaxIdleTimeSecs is how long, in seconds, a connection may stay
 	// idle before it is closed.
-	ConnMaxIdleTimeSecs int `koanf:"conn_max_idle_time_secs"`
+	ConnMaxIdleTimeSecs int `example:"600" koanf:"conn_max_idle_time_secs"`
 }
 
 // DSN returns the connection string for this configuration as a
@@ -585,7 +585,7 @@ func (cfg PostgresConfig) DSN() string {
 type GormConfig struct {
 	// SlowThreshold is the query time, in milliseconds, above which a
 	// query is logged as a warning. Zero disables the warning.
-	SlowThreshold int `koanf:"slow_threshold"`
+	SlowThreshold int `example:"1000" koanf:"slow_threshold"`
 
 	// SkipErrRecordNotFound logs a query that finds no record as an
 	// ordinary query, not as an error.
@@ -599,7 +599,7 @@ type GormConfig struct {
 type DatabaseConfig struct {
 	// Type is the database backend. SQLite is recommended; PostgreSQL is
 	// supported for legacy deployments only.
-	Type DatabaseType `koanf:"type"`
+	Type DatabaseType `example:"\"sqlite\"" koanf:"type"`
 
 	// Debug turns on query logging: ordinary queries at log level debug,
 	// shown only when `log.level` is `debug` or `trace`, slow ones at warn
@@ -630,11 +630,11 @@ func (d DatabaseConfig) IsSQLite() bool {
 type TLSConfig struct {
 	// CertPath is the PEM certificate file, relative to the configuration
 	// file. Setting it turns TLS on.
-	CertPath string `koanf:"cert_path"`
+	CertPath string `example:"\"/etc/headscale/tls/cert.pem\"" koanf:"cert_path"`
 
 	// KeyPath is the PEM private key file of `tls.cert_path`, relative to
 	// the configuration file.
-	KeyPath string `koanf:"key_path"`
+	KeyPath string `example:"\"/etc/headscale/tls/key.pem\"" koanf:"key_path"`
 
 	// ACME gets the certificate from an ACME CA such as Let's Encrypt,
 	// and renews it. Setting `tls.acme.hostname` turns it on.
@@ -645,26 +645,26 @@ type TLSConfig struct {
 type ACMEConfig struct {
 	// Hostname is the domain to request a certificate for. Setting it
 	// turns ACME on.
-	Hostname string `koanf:"hostname"`
+	Hostname string `example:"\"headscale.example.com\"" koanf:"hostname"`
 
 	// ChallengeType is how the CA verifies that headscale controls
 	// `tls.acme.hostname`.
-	ChallengeType ACMEChallenge `koanf:"challenge_type"`
+	ChallengeType ACMEChallenge `example:"\"TLS-ALPN-01\"" koanf:"challenge_type"`
 
 	// HTTPListen is the host:port serving HTTP-01 challenges; the port
 	// may be a name, as in `:http` for port 80. Other requests to it are
 	// redirected to `server_url`.
-	HTTPListen ListenAddr `koanf:"http_listen"`
+	HTTPListen ListenAddr `example:"\"0.0.0.0:80\"" koanf:"http_listen"`
 
 	// URL is the CA's ACME directory. Empty uses Let's Encrypt.
-	URL HTTPURL `koanf:"url"`
+	URL HTTPURL `example:"\"https://acme-staging-v02.api.letsencrypt.org/directory\"" koanf:"url"`
 
 	// Email is the contact address registered with the CA.
-	Email string `koanf:"email"`
+	Email string `example:"\"admin@example.com\"" koanf:"email"`
 
 	// CacheDir is where certificates and ACME account data are stored,
 	// relative to the configuration file.
-	CacheDir string `koanf:"cache_dir"`
+	CacheDir string `example:"\"/var/cache/headscale/acme\"" koanf:"cache_dir"`
 }
 
 // PKCEConfig configures PKCE (RFC 7636), which protects the OIDC
@@ -675,7 +675,7 @@ type PKCEConfig struct {
 
 	// Method is how the code challenge is derived from the verifier. The
 	// verifier is sent as is in the token exchange.
-	Method PKCEMethod `koanf:"method"`
+	Method PKCEMethod `example:"\"plain\"" koanf:"method"`
 }
 
 // OIDCConfig configures login through an OpenID Connect provider.
@@ -685,37 +685,37 @@ type OIDCConfig struct {
 	OnlyStartIfOIDCIsAvailable bool `koanf:"only_start_if_oidc_is_available"`
 
 	// Issuer is the provider's issuer URL. Setting it turns OIDC on.
-	Issuer HTTPURL `koanf:"issuer"`
+	Issuer HTTPURL `example:"\"https://idp.example.com/realms/headscale\"" koanf:"issuer"`
 
 	// ClientID is the client ID from the provider; required when
 	// `oidc.issuer` is set.
-	ClientID string `koanf:"client_id"`
+	ClientID string `example:"\"headscale\"" koanf:"client_id"`
 
 	// ClientSecret is the client secret from the provider, or
 	// `file:<path>` to read it from a file; required when `oidc.issuer` is
 	// set. `headscale generate config --running` and `/debug/config` show a
 	// literal secret as `<redacted>` and a `file:` reference as written.
-	ClientSecret Secret `json:"-" koanf:"client_secret"`
+	ClientSecret Secret `example:"\"file:/run/secrets/oidc_client_secret\"" json:"-" koanf:"client_secret"`
 
 	// Scope are the scopes requested; include `openid`.
-	Scope []string `koanf:"scope"`
+	Scope []string `example:"[\"openid\",\"profile\",\"email\",\"groups\"]" koanf:"scope"`
 
 	// ExtraParams are sent as is to the provider's authorization endpoint,
 	// e.g. `domain_hint`; names keep their case.
-	ExtraParams map[string]string `koanf:"extra_params"`
+	ExtraParams map[string]string `example:"{\"domain_hint\":\"example.com\",\"prompt\":\"select_account\"}" koanf:"extra_params" mapkey:"param"`
 
 	// AllowedDomains admits only users whose email domain is listed.
 	// Empty admits any domain.
-	AllowedDomains []string `koanf:"allowed_domains"`
+	AllowedDomains []string `example:"[\"example.com\"]" koanf:"allowed_domains"`
 
 	// AllowedUsers admits only users whose email address is listed. Empty
 	// admits any user.
-	AllowedUsers []string `koanf:"allowed_users"`
+	AllowedUsers []string `example:"[\"alice@example.com\"]" koanf:"allowed_users"`
 
 	// AllowedGroups admits only members of at least one listed group,
 	// from the provider's `groups` claim: UserInfo first, the ID token as
 	// fallback. Empty admits any group.
-	AllowedGroups []string `koanf:"allowed_groups"`
+	AllowedGroups []string `example:"[\"headscale-users\"]" koanf:"allowed_groups"`
 
 	// EmailVerifiedRequired trusts an email only when the provider marks
 	// it verified: an unverified one fails `oidc.allowed_domains` and
@@ -745,12 +745,12 @@ type DERPConfig struct {
 
 	// URLs are DERP maps in JSON to fetch. One that fails to load is
 	// logged and skipped; startup fails only when no region remains.
-	URLs []HTTPURL `koanf:"urls"`
+	URLs []HTTPURL `example:"[\"https://controlplane.tailscale.com/derpmap/default\"]" koanf:"urls"`
 
 	// Paths are DERP map files. The extension picks the format: `.yaml` or
 	// `.yml`, or Tailscale JSON as `.json` or `.hujson`, both accepting
 	// comments and trailing commas.
-	Paths []string `koanf:"paths"`
+	Paths []string `example:"[\"/etc/headscale/derp.yaml\"]" koanf:"paths"`
 
 	// AutoUpdate reloads `derp.urls` and `derp.paths` every
 	// `derp.update_frequency`.
@@ -758,7 +758,7 @@ type DERPConfig struct {
 
 	// UpdateFrequency is how often `derp.auto_update_enabled` reloads the
 	// DERP map. Zero disables reloading.
-	UpdateFrequency time.Duration `koanf:"update_frequency"`
+	UpdateFrequency time.Duration `example:"\"24h\"" koanf:"update_frequency"`
 
 	// DERPMap is a DERP map set from Go, by an embedder or a test; it
 	// cannot be set from a file.
@@ -773,13 +773,13 @@ type DERPServerConfig struct {
 
 	// RegionID is the embedded server's region ID. It replaces a region
 	// with the same ID from the other sources.
-	RegionID tailcfg.DERPRegionID `koanf:"region_id"`
+	RegionID tailcfg.DERPRegionID `example:"999" koanf:"region_id"`
 
 	// RegionCode is the region's short code, shown by Tailscale clients.
-	RegionCode string `koanf:"region_code"`
+	RegionCode string `example:"\"headscale\"" koanf:"region_code"`
 
 	// RegionName is the region's name, shown by Tailscale clients.
-	RegionName string `koanf:"region_name"`
+	RegionName string `example:"\"Headscale Embedded DERP\"" koanf:"region_name"`
 
 	// VerifyClients admits only nodes registered with this server.
 	VerifyClients bool `koanf:"verify_clients"`
@@ -787,21 +787,21 @@ type DERPServerConfig struct {
 	// STUNAddr is the UDP host:port of the STUN server, which helps
 	// clients with NAT traversal; required when `derp.server.enabled` is
 	// true.
-	STUNAddr ListenAddr `koanf:"stun_listen_addr"`
+	STUNAddr ListenAddr `example:"\"0.0.0.0:3478\"" koanf:"stun_listen_addr"`
 
 	// PrivateKeyPath is the file holding the DERP server's private key,
 	// relative to the configuration file; required when
 	// `derp.server.enabled` is true. A missing file is created with a new
 	// key. It must differ from `noise.private_key_path`.
-	PrivateKeyPath string `koanf:"private_key_path"`
+	PrivateKeyPath string `example:"\"/var/lib/headscale/derp_server_private.key\"" koanf:"private_key_path"`
 
 	// IPv4 is the server's public IPv4 address, published in the DERP map
 	// so clients reach it without DNS. Empty publishes none.
-	IPv4 string `koanf:"ipv4"`
+	IPv4 string `example:"\"198.51.100.1\"" koanf:"ipv4"`
 
 	// IPv6 is the server's public IPv6 address, published in the DERP map
 	// so clients reach it without DNS. Empty publishes none.
-	IPv6 string `koanf:"ipv6"`
+	IPv6 string `example:"\"2001:db8::1\"" koanf:"ipv6"`
 
 	// AutomaticallyAddEmbeddedDerpRegion adds the embedded server's region
 	// to the DERP map. When it is false and `derp.server.enabled` is true,
@@ -841,14 +841,14 @@ type AutoUpdateConfig struct {
 type CLIConfig struct {
 	// Address is the remote server's host:port or URL; `https://` is
 	// assumed without a scheme. Empty uses `unix_socket`.
-	Address string `koanf:"address"`
+	Address string `example:"\"headscale.example.com:443\"" koanf:"address"`
 
 	// APIKey is the API key the CLI sends to `cli.address`, or
 	// `file:<path>` to read it from a file. Read only by the CLI.
-	APIKey Secret `json:"-" koanf:"api_key"`
+	APIKey Secret `example:"\"file:/run/secrets/headscale_api_key\"" json:"-" koanf:"api_key"`
 
 	// Timeout bounds each CLI command's requests to the server.
-	Timeout time.Duration `koanf:"timeout"`
+	Timeout time.Duration `example:"\"30s\"" koanf:"timeout"`
 
 	// Insecure skips TLS certificate verification of `cli.address`.
 	Insecure bool `koanf:"insecure"`
@@ -860,11 +860,11 @@ type PolicyConfig struct {
 	// Path is the HuJSON policy file read when `policy.mode` is `file`,
 	// relative to the configuration file. Empty starts without a policy,
 	// which allows all traffic.
-	Path string `koanf:"path"`
+	Path string `example:"\"/etc/headscale/policy.hujson\"" koanf:"path"`
 
 	// Mode is where the policy is kept: in the file `policy.path`, or in
 	// the database, edited through the CLI or API.
-	Mode PolicyMode `koanf:"mode"`
+	Mode PolicyMode `example:"\"database\"" koanf:"mode"`
 }
 
 func (p *PolicyConfig) IsEmpty() bool {
@@ -874,10 +874,10 @@ func (p *PolicyConfig) IsEmpty() bool {
 // LogConfig configures headscale's own log output.
 type LogConfig struct {
 	// Level is the lowest level logged.
-	Level LogLevel `koanf:"level"`
+	Level LogLevel `example:"\"debug\"" koanf:"level"`
 
 	// Format is how log lines are written.
-	Format LogFormat `koanf:"format"`
+	Format LogFormat `example:"\"json\"" koanf:"format"`
 }
 
 // Tuning contains advanced performance tuning parameters for Headscale.
@@ -888,37 +888,37 @@ type LogConfig struct {
 type Tuning struct {
 	// BatchChangeDelay is how often queued changes are sent to clients
 	// as one update; must be positive.
-	BatchChangeDelay time.Duration `koanf:"batch_change_delay"`
+	BatchChangeDelay time.Duration `example:"\"500ms\"" koanf:"batch_change_delay"`
 
 	// NodeMapSessionBufferedChanSize is how many map updates are queued
 	// per connected client.
-	NodeMapSessionBufferedChanSize int `koanf:"node_mapsession_buffered_chan_size"`
+	NodeMapSessionBufferedChanSize int `example:"60" koanf:"node_mapsession_buffered_chan_size"`
 
 	// BatcherWorkers is the number of workers building map updates for
 	// connected clients. Zero picks the number from the CPU count.
-	BatcherWorkers int `koanf:"batcher_workers"`
+	BatcherWorkers int `defaulttext:"three quarters of the CPU cores, at least one" example:"8" koanf:"batcher_workers"`
 
 	// RegisterCacheExpiration is how long a pending registration waits
 	// to be completed. Zero uses the default.
-	RegisterCacheExpiration time.Duration `koanf:"register_cache_expiration"`
+	RegisterCacheExpiration time.Duration `example:"\"30m\"" koanf:"register_cache_expiration"`
 
 	// RegisterCacheMaxEntries bounds pending registrations. At capacity,
 	// new registrations are refused without evicting pending ones; SSH
 	// checks have a small reserve beyond it. Zero uses the default. See
 	// [Pending authentication limits](https://headscale.net/stable/ref/registration/#pending-authentication-limits).
-	RegisterCacheMaxEntries int `koanf:"register_cache_max_entries"`
+	RegisterCacheMaxEntries int `example:"4096" koanf:"register_cache_max_entries"`
 
 	// NodeStoreBatchSize is how many node changes are batched before the
 	// in-memory node state, peer relationships included, is rebuilt; must
 	// be positive. Higher values save CPU on bulk changes but delay each
 	// change until its batch is full or `tuning.node_store_batch_timeout`
 	// passes.
-	NodeStoreBatchSize int `koanf:"node_store_batch_size"`
+	NodeStoreBatchSize int `example:"200" koanf:"node_store_batch_size"`
 
 	// NodeStoreBatchTimeout is the longest a partial batch of node changes
 	// waits before the rebuild; must be positive. Lower values answer
 	// single changes faster at the cost of more rebuilds.
-	NodeStoreBatchTimeout time.Duration `koanf:"node_store_batch_timeout"`
+	NodeStoreBatchTimeout time.Duration `example:"\"1s\"" koanf:"node_store_batch_timeout"`
 }
 
 // BatcherWorkerCount is BatcherWorkers, or [DefaultBatcherWorkers] when unset.
