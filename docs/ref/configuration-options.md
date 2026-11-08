@@ -1657,6 +1657,7 @@ The password, or `file:<path>` to read it from a file, read only when [`database
     ```
 
 Replaces `db_pass` ([removed](#db_pass)).
+Replaces `db_password_file` ([removed](#db_password_file)).
 Replaces `database.postgres.password_file` ([removed](#database.postgres.password_file)).
 
 #### `database.postgres.ssl` { #database.postgres.ssl data-toc-label="ssl" }
@@ -1984,6 +1985,7 @@ Maps a domain to the nameservers that answer for it (split DNS). Domains are low
     ```
 
 Replaces `dns_config.restricted_nameservers` ([removed](#dns_config.restricted_nameservers)).
+Replaces `dns.split` ([removed](#dns.split)).
 
 ### `dns.search_domains` { #dns.search_domains data-toc-label="search_domains" }
 
@@ -3427,6 +3429,7 @@ one logs a warning, each saying what to do instead, as the table does.
 | <span id="db_host"></span>`db_host`                                                           | 0.30       | use [`database.postgres.host`](#database.postgres.host)                                                                                                                                                                                        |
 | <span id="db_name"></span>`db_name`                                                           | 0.30       | use [`database.postgres.name`](#database.postgres.name)                                                                                                                                                                                        |
 | <span id="db_pass"></span>`db_pass`                                                           | 0.30       | use [`database.postgres.pass`](#database.postgres.pass)                                                                                                                                                                                        |
+| <span id="db_password_file"></span>`db_password_file`                                         | 0.30       | use [`database.postgres.pass`](#database.postgres.pass): `file:<path>`                                                                                                                                                                         |
 | <span id="db_path"></span>`db_path`                                                           | 0.30       | use [`database.sqlite.path`](#database.sqlite.path)                                                                                                                                                                                            |
 | <span id="db_port"></span>`db_port`                                                           | 0.30       | use [`database.postgres.port`](#database.postgres.port)                                                                                                                                                                                        |
 | <span id="db_ssl"></span>`db_ssl`                                                             | 0.30       | use [`database.postgres.ssl`](#database.postgres.ssl)                                                                                                                                                                                          |
@@ -3435,6 +3438,7 @@ one logs a warning, each saying what to do instead, as the table does.
 | <span id="derp.server.stun.enabled"></span>`derp.server.stun.enabled`                         | 0.30       | remove it: headscale never read it; the embedded DERP server always serves STUN on [`derp.server.stun_listen_addr`](#derp.server.stun_listen_addr)                                                                                             |
 | <span id="derp_map_path"></span>`derp_map_path`                                               | 0.30       | use [`derp.paths`](#derp.paths)                                                                                                                                                                                                                |
 | <span id="dns.challenge.provider.setting_path"></span>`dns.challenge.provider.<setting>_path` | 0.30       | use [`dns.challenge.provider.<setting>`](#dns.challenge.provider): `file:<path>`                                                                                                                                                               |
+| <span id="dns.split"></span>`dns.split`                                                       | 0.30       | use [`dns.nameservers.split`](#dns.nameservers.split)                                                                                                                                                                                          |
 | <span id="dns.use_username_in_magic_dns"></span>`dns.use_username_in_magic_dns`               | 0.24       | remove `dns.use_username_in_magic_dns`; see the CHANGELOG for context                                                                                                                                                                          |
 | <span id="dns_config"></span>`dns_config`                                                     | 0.30       | move every `dns_config.*` key to dns (nameservers to [`dns.nameservers.global`](#dns.nameservers.global), restricted_nameservers to [`dns.nameservers.split`](#dns.nameservers.split), domains to [`dns.search_domains`](#dns.search_domains)) |
 | <span id="dns_config.base_domain"></span>`dns_config.base_domain`                             | 0.30       | use [`dns.base_domain`](#dns.base_domain)                                                                                                                                                                                                      |
