@@ -47,10 +47,12 @@ in
     example = "127.0.0.1:9090";
   };
   unix_socket = lib.mkOption {
-    type = lib.types.str;
+    type = t.stateFile;
     default = "/var/run/headscale/headscale.sock";
     description = ''
       Where the server serves the API without authentication, for the CLI on the same host. The CLI connects to it when `cli.address` is empty.
+
+      On NixOS, paths must be absolute and outside the Nix store.
     '';
     example = "/run/headscale/headscale.sock";
   };
@@ -83,11 +85,13 @@ in
   };
   noise = {
     private_key_path = lib.mkOption {
-      type = lib.types.str;
+      type = t.stateFile;
       description = ''
         The file holding the Noise private key, which encrypts traffic between headscale and clients, relative to the configuration file. A missing file is created with a new key.
 
         Required.
+
+        On NixOS, paths must be absolute and outside the Nix store.
       '';
       example = "/var/lib/headscale/noise_private.key";
     };
@@ -129,10 +133,12 @@ in
   };
   policy = {
     path = lib.mkOption {
-      type = lib.types.str;
+      type = t.readFile;
       default = "";
       description = ''
         The HuJSON policy file read when `policy.mode` is `file`, relative to the configuration file. Empty starts without a policy, which allows all traffic.
+
+        On NixOS, paths must be absolute.
       '';
       example = "/etc/headscale/policy.hujson";
     };
@@ -303,10 +309,12 @@ in
         example = "0.0.0.0:3478";
       };
       private_key_path = lib.mkOption {
-        type = lib.types.str;
+        type = t.stateFile;
         default = "";
         description = ''
           The file holding the DERP server's private key, relative to the configuration file; required when `derp.server.enabled` is true. A missing file is created with a new key. It must differ from `noise.private_key_path`.
+
+          On NixOS, paths must be absolute and outside the Nix store.
         '';
         example = "/var/lib/headscale/derp_server_private.key";
       };
@@ -346,10 +354,12 @@ in
       ];
     };
     paths = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
+      type = lib.types.listOf lib.types.path;
       default = [ ];
       description = ''
         DERP map files. The extension picks the format: `.yaml` or `.yml`, or Tailscale JSON as `.json` or `.hujson`, both accepting comments and trailing commas.
+
+        On NixOS, paths must be absolute.
       '';
       example = [
         "/etc/headscale/derp.yaml"
@@ -429,10 +439,12 @@ in
     };
     sqlite = {
       path = lib.mkOption {
-        type = lib.types.str;
+        type = t.stateFile;
         default = "";
         description = ''
           The database file, relative to the configuration file; `:memory:` keeps the database in memory.
+
+          On NixOS, paths must be absolute and outside the Nix store.
         '';
         example = "/var/lib/headscale/db.sqlite";
       };
@@ -604,6 +616,7 @@ in
     extra_records = lib.mkOption {
       type = lib.types.listOf (
         lib.types.submodule {
+          freeformType = lib.types.attrsOf lib.types.anything;
           options = {
             name = lib.mkOption {
               type = lib.types.str;
@@ -652,10 +665,12 @@ in
       ];
     };
     extra_records_path = lib.mkOption {
-      type = lib.types.str;
+      type = t.readFile;
       default = "";
       description = ''
         A file of extra records, reloaded when it changes. The extension picks the format: `.json`, `.hujson`, `.yaml` or `.yml`. Mutually exclusive with `dns.extra_records`.
+
+        On NixOS, paths must be absolute.
       '';
       example = "/var/lib/headscale/extra-records.json";
     };
@@ -717,18 +732,22 @@ in
   };
   tls = {
     cert_path = lib.mkOption {
-      type = lib.types.str;
+      type = t.readFile;
       default = "";
       description = ''
         The PEM certificate file, relative to the configuration file. Setting it turns TLS on.
+
+        On NixOS, paths must be absolute.
       '';
       example = "/etc/headscale/tls/cert.pem";
     };
     key_path = lib.mkOption {
-      type = lib.types.str;
+      type = t.stateFile;
       default = "";
       description = ''
         The PEM private key file of `tls.cert_path`, relative to the configuration file.
+
+        On NixOS, paths must be absolute and outside the Nix store.
       '';
       example = "/etc/headscale/tls/key.pem";
     };
@@ -785,10 +804,12 @@ in
         example = "admin@example.com";
       };
       cache_dir = lib.mkOption {
-        type = lib.types.str;
+        type = t.stateFile;
         default = "/var/lib/headscale/cache";
         description = ''
           Where certificates and ACME account data are stored, relative to the configuration file.
+
+          On NixOS, paths must be absolute and outside the Nix store.
         '';
         example = "/var/cache/headscale/acme";
       };
