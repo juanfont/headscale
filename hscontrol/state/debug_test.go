@@ -2,8 +2,10 @@ package state
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNodeStoreDebugString(t *testing.T) {
@@ -64,15 +66,28 @@ func TestNodeStoreDebugString(t *testing.T) {
 	}
 }
 
+// TestDebugRegistrationCache: the cache reports the expiration NewState
+// chose, the default for zero.
 func TestDebugRegistrationCache(t *testing.T) {
-	// Create a minimal NodeStore for testing debug methods
-	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+	tests := []struct {
+		name string
+		set  time.Duration
+		want time.Duration
+	}{
+		{name: "configured", set: 20 * time.Minute, want: 20 * time.Minute},
+		{name: "zero is the default", set: 0, want: 15 * time.Minute},
+	}
 
-	debugStr := store.DebugString()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+			cfg.Tuning.RegisterCacheExpiration = tt.set
 
-	// Should contain basic debug information
-	assert.Contains(t, debugStr, "=== NodeStore Debug Information ===")
-	assert.Contains(t, debugStr, "Total Nodes: 0")
-	assert.Contains(t, debugStr, "Users with Nodes: 0")
-	assert.Contains(t, debugStr, "NodeKey Index: 0 entries")
+			s, err := NewState(cfg)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, s.Close()) })
+
+			assert.Equal(t, tt.want.String(), s.DebugRegistrationCache()["expiration"])
+		})
+	}
 }

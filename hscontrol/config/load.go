@@ -1404,7 +1404,7 @@ func plainValue(v reflect.Value, redact bool) any {
 
 	switch x := v.Interface().(type) {
 	case time.Duration:
-		return x.String()
+		return formatDuration(x)
 	case types.Secret:
 		if redact {
 			return x.Redacted()
@@ -1478,6 +1478,21 @@ func plainValue(v reflect.Value, redact bool) any {
 	default:
 		return v.Interface()
 	}
+}
+
+// formatDuration is d as Go writes it without trailing zero units: 3h,
+// not 3h0m0s.
+func formatDuration(d time.Duration) string {
+	s := d.String()
+
+	if t, ok := strings.CutSuffix(s, "m0s"); ok {
+		s = t + "m"
+		if t, ok := strings.CutSuffix(t, "h0"); ok {
+			s = t + "h"
+		}
+	}
+
+	return s
 }
 
 func redactProvider(settings map[string]any) map[string]any {

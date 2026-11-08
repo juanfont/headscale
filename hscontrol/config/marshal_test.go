@@ -238,6 +238,16 @@ func TestMarshalNullablePrefix(t *testing.T) {
 	}
 }
 
+// TestMarshalDurations: durations print without trailing zero units.
+func TestMarshalDurations(t *testing.T) {
+	cfg := Default()
+
+	out, err := Marshal(&cfg, ".yaml")
+	require.NoError(t, err)
+	assert.Contains(t, string(out), "update_frequency: 3h\n")
+	assert.Contains(t, string(out), "revoked_retention: 168h\n")
+}
+
 // fakeProvider is a Go-only DNS provider.
 type fakeProvider struct{ Token string }
 

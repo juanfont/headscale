@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/juanfont/headscale/hscontrol/config"
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
 	"github.com/juanfont/headscale/hscontrol/policy"
@@ -49,26 +50,9 @@ import (
 	"tailscale.com/util/truncate"
 )
 
-const (
-	// registerCacheExpiration defines how long node registration entries remain in cache.
-	registerCacheExpiration = time.Minute * 15
-
-	// defaultRegisterCacheMaxEntries bounds pending authentication transactions.
-	// Admission refuses new work at capacity instead of invalidating approvals.
-	defaultRegisterCacheMaxEntries = 1024
-
-	// authCacheSSHReserve keeps registered nodes' SSH checks available when
-	// unauthenticated registrations have filled their allocation.
-	authCacheSSHReserve = 64
-
-	// defaultNodeStoreBatchSize is the default number of write operations to batch
-	// before rebuilding the in-memory node snapshot.
-	defaultNodeStoreBatchSize = 100
-
-	// defaultNodeStoreBatchTimeout is the default maximum time to wait before
-	// processing a partial batch of node operations.
-	defaultNodeStoreBatchTimeout = 500 * time.Millisecond
-)
+// authCacheSSHReserve keeps registered nodes' SSH checks available when
+// unauthenticated registrations have filled their allocation.
+const authCacheSSHReserve = 64
 
 // ErrUnsupportedPolicyMode is returned for invalid policy modes. Valid modes are "file" and "db".
 var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
@@ -252,6 +236,7 @@ type State struct {
 	authCache               *expirable.LRU[types.AuthID, *types.AuthRequest]
 	authCacheMu             sync.Mutex
 	authCacheMaxEntries     int
+	authCacheExpiration     time.Duration
 	authCacheClosed         bool
 	authCacheRegularEntries atomic.Int64
 
@@ -357,9 +342,11 @@ func (s *State) lockRegistration(machineKey key.MachinePublic) func() {
 // NewState creates and initializes a new [State] instance, setting up the database,
 // IP allocator, DERP map, policy manager, and loading existing users and nodes.
 func NewState(cfg *types.Config) (*State, error) {
-	cacheExpiration := cmp.Or(cfg.Tuning.RegisterCacheExpiration, registerCacheExpiration)
+	defaults := config.Default().Tuning
 
-	cacheMaxEntries := defaultRegisterCacheMaxEntries
+	cacheExpiration := cmp.Or(cfg.Tuning.RegisterCacheExpiration, defaults.RegisterCacheExpiration)
+
+	cacheMaxEntries := defaults.RegisterCacheMaxEntries
 	if cfg.Tuning.RegisterCacheMaxEntries > 0 {
 		cacheMaxEntries = cfg.Tuning.RegisterCacheMaxEntries
 	}
@@ -440,11 +427,9 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("initializing policy manager: %w", err)
 	}
 
-	// Apply defaults for [NodeStore] batch configuration if not set.
-	// This ensures tests that create Config directly (without config.Load) still work.
-	batchSize := cmp.Or(cfg.Tuning.NodeStoreBatchSize, defaultNodeStoreBatchSize)
+	batchSize := cmp.Or(cfg.Tuning.NodeStoreBatchSize, defaults.NodeStoreBatchSize)
 
-	batchTimeout := cmp.Or(cfg.Tuning.NodeStoreBatchTimeout, defaultNodeStoreBatchTimeout)
+	batchTimeout := cmp.Or(cfg.Tuning.NodeStoreBatchTimeout, defaults.NodeStoreBatchTimeout)
 
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
 	polMan.SetRouterSession(nodeStore.RouterSession)
@@ -460,6 +445,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		ipAlloc:             ipAlloc,
 		polMan:              polMan,
 		authCacheMaxEntries: cacheMaxEntries,
+		authCacheExpiration: cacheExpiration,
 		nodeStore:           nodeStore,
 		pings:               newPingTracker(),
 

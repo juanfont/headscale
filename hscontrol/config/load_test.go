@@ -912,7 +912,7 @@ func TestPlainMap(t *testing.T) {
 	assert.Contains(t, prefixes, "v6")
 
 	node, _ := plain["node"].(map[string]any)
-	assert.Equal(t, "1h30m0s", node["expiry"])
+	assert.Equal(t, "1h30m", node["expiry"])
 
 	derp, _ := plain["derp"].(map[string]any)
 	assert.Equal(t, []any{
@@ -967,6 +967,37 @@ func TestPlainMap(t *testing.T) {
 	plainProvider, _ := plain["dns"].(map[string]any)["challenge"].(map[string]any)["provider"].(map[string]any)
 	assert.NotContains(t, plainProvider, "unset", "a typed nil is left out")
 	assert.NotContains(t, plainProvider, "nothing", "a typed nil is left out")
+}
+
+// TestFormatDuration: a duration prints without trailing zero units and
+// parses back to itself.
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "0s"},
+		{3 * time.Hour, "3h"},
+		{3*time.Hour + 30*time.Minute, "3h30m"},
+		{time.Hour + 30*time.Second, "1h0m30s"},
+		{2 * time.Minute, "2m"},
+		{90 * time.Second, "1m30s"},
+		{800 * time.Millisecond, "800ms"},
+		{1500 * time.Millisecond, "1.5s"},
+		{168 * time.Hour, "168h"},
+		{-5 * time.Second, "-5s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got := formatDuration(tt.d)
+			assert.Equal(t, tt.want, got)
+
+			back, err := time.ParseDuration(got)
+			require.NoError(t, err)
+			assert.Equal(t, tt.d, back)
+		})
+	}
 }
 
 // TestPlainMapLargeIntegers: JSON parsers read numbers as float64, so an
@@ -1096,7 +1127,7 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
-				Challenge:     types.DNSChallengeConfig{PropagationTimeout: 2 * time.Minute},
+				Challenge:     types.DNSChallengeConfig{PropagationTimeout: 2 * time.Minute, Resolvers: types.DefaultChallengeResolvers()},
 			},
 		},
 		{
@@ -1153,7 +1184,7 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
-				Challenge:     types.DNSChallengeConfig{PropagationTimeout: 2 * time.Minute},
+				Challenge:     types.DNSChallengeConfig{PropagationTimeout: 2 * time.Minute, Resolvers: types.DefaultChallengeResolvers()},
 			},
 		},
 		{
@@ -1337,7 +1368,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 				// 	{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				// },
 				SearchDomains: []string{"test.com", "bar.com"},
-				Challenge:     types.DNSChallengeConfig{PropagationTimeout: 2 * time.Minute},
+				Challenge:     types.DNSChallengeConfig{PropagationTimeout: 2 * time.Minute, Resolvers: types.DefaultChallengeResolvers()},
 			},
 		},
 	}
@@ -2212,7 +2243,7 @@ dns:
 			// CertificateZone follows base_domain even when unused, so it is never empty.
 			wantZone:      "ts.example.com",
 			wantNoProv:    true,
-			wantResolvers: []string{"1.1.1.1:53", "8.8.8.8:53"},
+			wantResolvers: []string{"9.9.9.9:53", "149.112.112.112:53"},
 		},
 		{
 			name: "resolvers default to port 53",

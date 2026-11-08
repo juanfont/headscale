@@ -38,11 +38,13 @@ var (
 	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
 )
 
-// defaultChallengeResolvers find a zone's nameservers when
+// DefaultChallengeResolvers find a zone's nameservers when
 // dns.challenge.resolvers is empty. The system resolver is not used: on a
 // host running MagicDNS it answers for base_domain itself instead of
 // asking the public zone.
-var defaultChallengeResolvers = []string{"1.1.1.1:53", "8.8.8.8:53"}
+func DefaultChallengeResolvers() []string {
+	return []string{"9.9.9.9:53", "149.112.112.112:53"}
+}
 
 // IPAllocationStrategy is how new node IPs are picked. "" decodes without
 // error to the zero value (unset).
@@ -378,7 +380,7 @@ func (c DNSChallengeConfig) NewProvider(secret func(key, value string) (string, 
 // are set. Like dns.nameservers, a resolver may be a bare IP.
 func (c DNSChallengeConfig) ResolverAddrs() []string {
 	if len(c.Resolvers) == 0 {
-		return slices.Clone(defaultChallengeResolvers)
+		return DefaultChallengeResolvers()
 	}
 
 	addrs := make([]string, len(c.Resolvers))

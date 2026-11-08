@@ -48,7 +48,10 @@ func Default() types.Config {
 			OverrideLocalDNS: true,
 			Nameservers:      types.Nameservers{Global: []string{}, Split: map[string][]string{}},
 			SearchDomains:    []string{},
-			Challenge:        types.DNSChallengeConfig{PropagationTimeout: 2 * time.Minute},
+			Challenge: types.DNSChallengeConfig{
+				PropagationTimeout: 2 * time.Minute,
+				Resolvers:          types.DefaultChallengeResolvers(),
+			},
 		},
 		TLS: types.TLSConfig{ACME: types.ACMEConfig{
 			ChallengeType: types.HTTP01ChallengeType,
@@ -68,6 +71,8 @@ func Default() types.Config {
 			NodeMapSessionBufferedChanSize: 30,
 			NodeStoreBatchSize:             100,
 			NodeStoreBatchTimeout:          500 * time.Millisecond,
+			RegisterCacheExpiration:        15 * time.Minute,
+			RegisterCacheMaxEntries:        1024,
 		},
 	}
 }

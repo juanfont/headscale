@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
@@ -26,6 +27,21 @@ func validConfig() types.Config {
 	cfg.DNSConfig.Nameservers.Global = []string{"1.1.1.1"}
 
 	return cfg
+}
+
+// TestDefaultHoldsDefaults: the defaults consumers fall back to for a zero
+// value are Default's, so the loaded configuration shows them.
+func TestDefaultHoldsDefaults(t *testing.T) {
+	d := Default()
+	assert.Equal(t, 15*time.Minute, d.Tuning.RegisterCacheExpiration)
+	assert.Equal(t, 1024, d.Tuning.RegisterCacheMaxEntries)
+	assert.Equal(t, 100, d.Tuning.NodeStoreBatchSize)
+	assert.Equal(t, 500*time.Millisecond, d.Tuning.NodeStoreBatchTimeout)
+	assert.Zero(t, d.Tuning.BatcherWorkers, "auto: its count depends on the host")
+	require.Equal(t, []string{"9.9.9.9:53", "149.112.112.112:53"}, d.DNSConfig.Challenge.Resolvers)
+
+	d.DNSConfig.Challenge.Resolvers[0] = "changed"
+	assert.Equal(t, "9.9.9.9:53", Default().DNSConfig.Challenge.Resolvers[0], "each Default is its own copy")
 }
 
 // TestValidateHintsNameDefaults: the defaults Validate's hints quote, which

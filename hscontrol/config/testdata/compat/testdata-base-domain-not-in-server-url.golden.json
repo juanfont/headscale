@@ -108,8 +108,8 @@
     "DNSChallenge": {
       "PropagationTimeout": 120000000000,
       "Resolvers": [
-        "1.1.1.1:53",
-        "8.8.8.8:53"
+        "9.9.9.9:53",
+        "149.112.112.112:53"
       ],
       "ProviderName": ""
     },
@@ -157,8 +157,8 @@
       "BatchChangeDelay": 800000000,
       "NodeMapSessionBufferedChanSize": 30,
       "BatcherWorkers": 0,
-      "RegisterCacheExpiration": 0,
-      "RegisterCacheMaxEntries": 0,
+      "RegisterCacheExpiration": 900000000000,
+      "RegisterCacheMaxEntries": 1024,
       "NodeStoreBatchSize": 100,
       "NodeStoreBatchTimeout": 500000000
     }
