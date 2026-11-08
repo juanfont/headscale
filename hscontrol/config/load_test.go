@@ -3047,7 +3047,9 @@ func unsetHeadscaleEnv(t *testing.T) {
 // nix/example-configuration.nix
 // (services.headscale.configFile, environment.etc."headscale/config.yaml") and
 // for the nixpkgs module with only server_url, dns.base_domain and
-// dns.nameservers.global set; hsic-* mirror integration/hsic's
+// dns.nameservers.global set; nixos-module-minimal.yaml is the flake module's
+// configFile with only those three set, before the module moved to the
+// generated options; hsic-* mirror integration/hsic's
 // MinimumConfigYAML and DefaultConfigEnv. <name>-strict is the same source
 // as updated for the strict loader, <name>-pruned without the keys removed
 // for having no effect.
