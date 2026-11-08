@@ -1060,6 +1060,16 @@ func (ns *noiseServer) RegistrationHandler(
 
 		resp, err := ns.headscale.handleRegister(req.Context(), registerRequest, ns.machineKey)
 		if err != nil {
+			// The client only retries, so this is the operator's one sign of a refused node.
+			e := log.Warn().Err(err).
+				Str(zf.MachineKey, ns.machineKey.ShortString()).
+				Str(zf.NodeKey, registerRequest.NodeKey.ShortString())
+			if registerRequest.Hostinfo != nil {
+				e = e.Str(zf.Hostname, registerRequest.Hostinfo.Hostname)
+			}
+
+			e.Msg("registration refused")
+
 			if httpErr, ok := errors.AsType[HTTPError](err); ok {
 				// Keep permanent errors in HTTP 200 so controlclient surfaces RegisterResponse.Error.
 				if httpErr.Code == http.StatusServiceUnavailable {
