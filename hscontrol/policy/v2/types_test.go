@@ -6518,6 +6518,7 @@ func TestValidateCapabilityName(t *testing.T) {
 		{name: "custom domain allowed", cap: "example.com/cap/foo", wantErr: nil},
 		{name: "allowlisted tailscale cap", cap: "tailscale.com/cap/drive", wantErr: nil},
 		{name: "setec secrets cap allowed", cap: "tailscale.com/cap/secrets", wantErr: nil},
+		{name: "tailsql cap allowed", cap: "tailscale.com/cap/tailsql", wantErr: nil},
 		{name: "non-allowlisted tailscale cap rejected", cap: "tailscale.com/cap/nope", wantErr: ErrCapNameTailscaleDomain},
 		{name: "url scheme rejected", cap: "https://tailscale.com/cap/drive", wantErr: ErrCapNameInvalidForm},
 	}
