@@ -9,7 +9,7 @@ unset GOFLAGS GOOS GOARCH
 
 mkdir -p "$tmp/headscale/cmd/headscale" "$tmp/headscale/tools"
 cp "$root/.goreleaser.yml" "$tmp/headscale/"
-cp "$root/tools/release-check.sh" "$tmp/headscale/tools/"
+cp "$root/tools/release-check.sh" "$root/tools/release-generate.sh" "$tmp/headscale/tools/"
 cd "$tmp/headscale"
 cat > go.mod <<'MOD'
 module example.com/headscale
@@ -20,8 +20,9 @@ go 1.24.0
 require (
 )
 MOD
-printf 'package main\nfunc main() {}\n' > cmd/headscale/main.go
-printf 'dist/\nvendor/\n' > .gitignore
+# Prints a line for any arguments, so each generate command writes a file.
+printf 'package main\nimport "fmt"\nfunc main() { fmt.Println("generated") }\n' > cmd/headscale/main.go
+printf 'dist/\nvendor/\nrelease-assets/\n' > .gitignore
 git init -q
 git config user.name 'Release check test'
 git config user.email 'release-check@example.invalid'
@@ -53,6 +54,13 @@ fi
 binaries=(dist/headscale_*/headscale)
 bash "$check" "${binaries[@]}"
 printf 'PASS: clean release builds, including cross-compiled binaries\n'
+for asset in config-example.yaml headscale-nixos-options.nix; do
+    if [[ ! -s release-assets/$asset ]]; then
+        printf 'FAIL: release-assets/%s not generated\n' "$asset" >&2
+        exit 1
+    fi
+done
+printf 'PASS: release assets generated\n'
 
 git config status.showUntrackedFiles no
 printf '// dirty\n' >> cmd/headscale/main.go

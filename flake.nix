@@ -181,7 +181,6 @@
           embedDirs = [
             ./hscontrol/assets
             ./hscontrol/db/schema.sql
-            ./config-example.yaml
           ];
           extraSrc = [
             ./hscontrol/testdata

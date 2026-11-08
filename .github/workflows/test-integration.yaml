@@ -37,7 +37,6 @@ jobs:
               - 'flake.lock'
               - 'flakehashes.json'
               - 'integration/**'
-              - 'config-example.yaml'
               - 'Makefile'
               - '.github/workflows/test-integration.yaml'
               - '.github/workflows/integration-test-template.yml'
