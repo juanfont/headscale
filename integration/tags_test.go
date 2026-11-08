@@ -787,6 +787,105 @@ func TestTagsReauthDifferentKeyRemovesTag(t *testing.T) {
 	t.Logf("Test #3370 PASS: re-keying replaced the tag set (tag:second removed)")
 }
 
+// TestTagsRestartWithAnotherSpentKeyStaysOnline: a container or tsnet node
+// sends its configured auth key on every start, under the node key it already
+// has. After a key rotation that key is not the one the node joined with, and
+// may be used and expired. The restart must bring the node back as it was:
+// the key it carries authorises nothing new, as on Tailscale SaaS, where an
+// expired or used key does not deauthorise the devices it registered.
+func TestTagsRestartWithAnotherSpentKeyStaysOnline(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(tagsTestPolicy()),
+		hsic.WithTestName("tags-restart-spent"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	userID := mustParseID(userMap[tagTestUser].Id)
+	tags := []string{"tag:valid-owned"}
+
+	joinKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, tags)
+	require.NoError(t, err)
+
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), joinKey.Key)
+	require.NoError(t, err)
+
+	var nodeID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			nodeID = mustParseID(nodes[0].Id)
+			assertNodeHasTagsWithCollect(c, nodes[0], tags)
+		}
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
+
+	// The rotated key: same tags, spent by a sibling, then expired.
+	rotatedKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, tags)
+	require.NoError(t, err)
+
+	sibling, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = sibling.Login(headscale.GetEndpoint(), rotatedKey.Key)
+	require.NoError(t, err)
+
+	_, err = headscale.Execute([]string{"headscale", "preauthkeys", "expire", "--id", rotatedKey.Id})
+	require.NoError(t, err)
+
+	// Restart as containerboot does: tailscaled comes back with its state,
+	// then "tailscale up --authkey" runs with the configured key.
+	require.NoError(t, client.Restart())
+
+	err = client.Login(headscale.GetEndpoint(), rotatedKey.Key)
+	require.NoError(t, err, "a restart under the node's own node key must not judge the key it carries")
+
+	require.NoError(t, client.WaitForRunning(integrationutil.PeerSyncTimeout()))
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2, "the restart must not add a node")
+
+		for _, n := range nodes {
+			if mustParseID(n.Id) == nodeID {
+				assertNodeHasTagsWithCollect(c, n, tags)
+				assert.True(c, n.Online, "the restarted node must be online")
+			}
+		}
+	}, integrationutil.ScaledTimeout(60*time.Second), integrationutil.SlowPoll, "restarted node must be back online, unchanged")
+}
+
 // TestTagsAuthKeyWithTagCLICannotModifyAdminTags tests that the client CLI
 // cannot modify admin-assigned tags.
 //
