@@ -3,9 +3,13 @@ package types
 import (
 	"bytes"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/netip"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -487,4 +491,74 @@ func TestDerivedValues(t *testing.T) {
 	written := []string{"9.9.9.9"}
 	resolvers(written...).ResolverAddrs()
 	assert.Equal(t, []string{"9.9.9.9"}, written)
+}
+
+// TestConfigFieldsDocumented pins a doc comment on every exported field
+// reachable from Config: generated docs and option descriptions read them.
+func TestConfigFieldsDocumented(t *testing.T) {
+	files, err := filepath.Glob("config*.go")
+	require.NoError(t, err)
+
+	fset := token.NewFileSet()
+	structs := map[string]*ast.StructType{}
+
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		f, err := parser.ParseFile(fset, name, nil, parser.ParseComments)
+		require.NoError(t, err)
+
+		ast.Inspect(f, func(n ast.Node) bool {
+			if ts, ok := n.(*ast.TypeSpec); ok {
+				if st, ok := ts.Type.(*ast.StructType); ok {
+					structs[ts.Name.Name] = st
+				}
+			}
+
+			return true
+		})
+	}
+
+	var missing []string
+
+	seen := map[string]bool{}
+	queue := []string{"Config"}
+
+	for len(queue) > 0 {
+		typ := queue[0]
+		queue = queue[1:]
+
+		if seen[typ] {
+			continue
+		}
+
+		seen[typ] = true
+
+		require.Contains(t, structs, typ)
+
+		for _, field := range structs[typ].Fields.List {
+			for _, name := range field.Names {
+				if name.IsExported() && field.Doc == nil {
+					missing = append(missing, typ+"."+name.Name)
+				}
+			}
+
+			ast.Inspect(field.Type, func(n ast.Node) bool {
+				switch n := n.(type) {
+				case *ast.SelectorExpr:
+					return false // another package's type
+				case *ast.Ident:
+					if structs[n.Name] != nil {
+						queue = append(queue, n.Name)
+					}
+				}
+
+				return true
+			})
+		}
+	}
+
+	assert.Empty(t, missing, "fields without a doc comment")
 }
