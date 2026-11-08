@@ -1,7 +1,8 @@
 // This file replays re-authentication captures from Tailscale SaaS.
 //
 // Test data source: testdata/steps/{owner-routes,reauth,reauth-foreign,
-// reauth-owner,identity,reauth-user,tag-owner-chain}.hujson, loaded by name.
+// reauth-owner,identity,reauth-user,tag-owner-chain,reauth-wake,
+// reauth-wake-tsnet,reauth-wake-tags}.hujson, loaded by name.
 // owner-routes is checked by runRouteLifecycleCompat in
 // lifecycle_compat_test.go. tag-owner-chain's joins are replayed here; its
 // OAuth mints and the tag owner functions are checked in ../policy/v2. The
@@ -45,9 +46,29 @@ var reauthSkipReasons = map[string]string{
 	"ephemeral-lifecycle/late-expired/late-exp/text":        refusalText,
 	"ephemeral-lifecycle/late-expired/late-exp/legacy-text": refusalText,
 
-	"reauth-user/a8-convert/u-convert/owner": tagsAwake,
-	"reauth-user/a8-convert/obs/filter":      tagsAwake,
-	"reauth-user/a8-convert/t-server/filter": tagsAwake,
+	"reauth-user/a8-convert/u-convert/owner":                                   tagsAwake,
+	"reauth-user/a8-convert/obs/filter":                                        tagsAwake,
+	"reauth-user/a8-convert/t-server/filter":                                   tagsAwake,
+	"reauth-wake-tags/wt-owned-spent-restart/wt-owned-spent/owner":             tagsAwake,
+	"reauth-wake-tags/wt-owned-spent-restart/obs/filter":                       tagsAwake,
+	"reauth-wake-tags/wt-owned-own-restart/wt-owned-own/owner":                 tagsAwake,
+	"reauth-wake-tags/wt-owned-own-restart/obs/filter":                         tagsAwake,
+	"reauth-wake-tags/wt-foreign-restart/wt-foreign/expiry":                    tagsAwake,
+	"reauth-wake-tags/wt-foreign-restart/wt-foreign/peer-obs":                  tagsAwake,
+	"reauth-wake-tags/wt-foreign-restart/obs/filter":                           tagsAwake,
+	"reauth-wake-tags/wt-more-restart/wt-more/expiry":                          tagsAwake,
+	"reauth-wake-tags/wt-more-restart/wt-more/peer-obs":                        tagsAwake,
+	"reauth-wake-tags/wt-owned-nokey-relogin/wt-owned-nokey/owner":             tagsAwake,
+	"reauth-wake-tags/wt-owned-nokey-relogin/obs/filter":                       tagsAwake,
+	"reauth-wake-tags/wt-owned-spent-tsnet-restart/wt-owned-spent-tsnet/owner": tagsAwake,
+	"reauth-wake-tags/wt-owned-spent-tsnet-restart/obs/filter":                 tagsAwake,
+	"reauth-wake-tags/wt-owned-own-tsnet-restart/wt-owned-own-tsnet/owner":     tagsAwake,
+	"reauth-wake-tags/wt-owned-own-tsnet-restart/obs/filter":                   tagsAwake,
+	"reauth-wake-tags/wt-foreign-tsnet-restart/wt-foreign-tsnet/expiry":        tagsAwake,
+	"reauth-wake-tags/wt-foreign-tsnet-restart/wt-foreign-tsnet/peer-obs":      tagsAwake,
+	"reauth-wake-tags/wt-foreign-tsnet-restart/obs/filter":                     tagsAwake,
+	"reauth-wake-tags/wt-more-tsnet-restart/wt-more-tsnet/expiry":              tagsAwake,
+	"reauth-wake-tags/wt-more-tsnet-restart/wt-more-tsnet/peer-obs":            tagsAwake,
 }
 
 const (
@@ -76,7 +97,10 @@ var reauthNotCompared = []string{
 }
 
 // reauthCompatTests are the captures [runReauthCompat] replays.
-var reauthCompatTests = []string{"reauth", "reauth-foreign", "reauth-owner", "identity", "reauth-user", "tag-owner-chain"}
+var reauthCompatTests = []string{
+	"reauth", "reauth-foreign", "reauth-owner", "identity", "reauth-user", "tag-owner-chain",
+	"reauth-wake", "reauth-wake-tsnet", "reauth-wake-tags",
+}
 
 // reauthObservers stay up through a capture: their view of each cell and
 // their own filters are checked.
