@@ -217,7 +217,8 @@ func TestGenerateNixOptions(t *testing.T) {
 		{
 			path: "dns.extra_records",
 			want: []string{
-				"\n  type = lib.types.listOf (\n    lib.types.submodule {\n      options = {\n        name = lib.mkOption {\n",
+				// An unknown field reaches headscale's check, not a Nix error.
+				"\n  type = lib.types.listOf (\n    lib.types.submodule {\n      freeformType = lib.types.attrsOf lib.types.anything;\n      options = {\n        name = lib.mkOption {\n",
 				"\n  default = [ ];\n",
 			},
 		},

@@ -159,7 +159,9 @@ func nixOption(k keyInfo, indent int) (string, error) {
 			fmt.Fprintf(&fields, "%s%s = %s;\n", pad, f.Name, mkOption(in+6, attrs))
 		}
 
-		typ = fmt.Sprintf("lib.types.listOf (\n%[1]s  lib.types.submodule {\n%[1]s    options = {\n%[2]s%[1]s    };\n%[1]s  }\n%[1]s)",
+		// Freeform, so an unknown field reaches headscale, whose check names
+		// it, instead of failing evaluation.
+		typ = fmt.Sprintf("lib.types.listOf (\n%[1]s  lib.types.submodule {\n%[1]s    freeformType = lib.types.attrsOf lib.types.anything;\n%[1]s    options = {\n%[2]s%[1]s    };\n%[1]s  }\n%[1]s)",
 			strings.Repeat(" ", in), fields.String())
 	default:
 		return "", fmt.Errorf("%w for %s", errNoNixType, k.Field.Type)
