@@ -1340,12 +1340,26 @@ func toObject(s string) (any, error) {
 	return dropNulls(m), nil
 }
 
-// plainMap is cfg as nested maps of plain values, keyed as in a file: what
-// the defaults layer loads and a parser marshals. With redact, a secret
-// shows only a file: reference, a URL no userinfo, and every DNS provider
-// setting but a scalar name and file: references is hidden: any of them, a
-// number included, may be a credential.
+// plainMap is [plainFields] nested as in a file, nils left out: what the
+// defaults layer loads and a parser marshals.
 func plainMap(cfg *types.Config, redact bool) map[string]any {
+	out := map[string]any{}
+
+	for path, v := range plainFields(cfg, redact) {
+		if v != nil {
+			setPath(out, path, v)
+		}
+	}
+
+	return out
+}
+
+// plainFields is every leaf of cfg by path, as a parser writes it: nil
+// for a nil list or map, "" for a nil prefix. With redact, a secret shows
+// only a file: reference, a URL no userinfo, and every DNS provider
+// setting but a scalar name and file: references is hidden: any of them,
+// a number included, may be a credential.
+func plainFields(cfg *types.Config, redact bool) map[string]any {
 	out := map[string]any{}
 
 	if redact {
@@ -1365,27 +1379,27 @@ func plainMap(cfg *types.Config, redact bool) map[string]any {
 			v = redactProvider(settings)
 		}
 
-		if v == nil {
-			continue
-		}
-
-		parts := strings.Split(f.Path, ".")
-		m := out
-
-		for _, p := range parts[:len(parts)-1] {
-			child, ok := m[p].(map[string]any)
-			if !ok {
-				child = map[string]any{}
-				m[p] = child
-			}
-
-			m = child
-		}
-
-		m[parts[len(parts)-1]] = v
+		out[f.Path] = v
 	}
 
 	return out
+}
+
+// setPath sets the dotted path below m to v, adding the maps between.
+func setPath(m map[string]any, path string, v any) {
+	parts := strings.Split(path, ".")
+
+	for _, p := range parts[:len(parts)-1] {
+		child, ok := m[p].(map[string]any)
+		if !ok {
+			child = map[string]any{}
+			m[p] = child
+		}
+
+		m = child
+	}
+
+	m[parts[len(parts)-1]] = v
 }
 
 // maxExactJSONInt is the largest integer a float64, as JSON parsers read
