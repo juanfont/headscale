@@ -328,6 +328,12 @@ type DeleteApiKeyParams struct {
 	Id *string `form:"id,omitempty" json:"id,omitempty"`
 }
 
+// GetConfigParams defines parameters for GetConfig.
+type GetConfigParams struct {
+	// Docs Put each key's documentation above it, as comments.
+	Docs *bool `form:"docs,omitempty" json:"docs,omitempty"`
+}
+
 // ListNodesParams defines parameters for ListNodes.
 type ListNodesParams struct {
 	User *string `form:"user,omitempty" json:"user,omitempty"`
@@ -551,6 +557,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
 	AuthReject(ctx context.Context, body AuthRejectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetConfig Get configuration
+	//
+	// The configuration the server runs with, as a YAML configuration file without the client-only `cli` section. Secrets are redacted.
+	//
+	// Corresponds with GET /api/v1/config (the `GetConfig` operationId).
+	GetConfig(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DebugCreateNodeWithBody Debug create node
 	//
@@ -940,6 +953,23 @@ func (c *Client) AuthRejectWithBody(ctx context.Context, contentType string, bod
 // Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
 func (c *Client) AuthReject(ctx context.Context, body AuthRejectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAuthRejectRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetConfig Get configuration
+//
+// The configuration the server runs with, as a YAML configuration file without the client-only `cli` section. Secrets are redacted.
+//
+// Corresponds with GET /api/v1/config (the `GetConfig` operationId).
+func (c *Client) GetConfig(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetConfigRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1741,6 +1771,60 @@ func NewAuthRejectRequestWithBody(server string, contentType string, body io.Rea
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetConfigRequest constructs an http.Request for the GetConfig method
+func NewGetConfigRequest(server string, params *GetConfigParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Docs != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "docs", *params.Docs, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -2825,6 +2909,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
 	AuthRejectWithResponse(ctx context.Context, body AuthRejectJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthRejectResponse, error)
 
+	// GetConfigWithResponse Get configuration
+	//
+	// The configuration the server runs with, as a YAML configuration file without the client-only `cli` section. Secrets are redacted.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/config (the `GetConfig` operationId).
+	GetConfigWithResponse(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*GetConfigResponse, error)
+
 	// DebugCreateNodeWithBodyWithResponse Debug create node
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -3379,6 +3472,47 @@ func (r AuthRejectResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r AuthRejectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetConfigResponse) GetApplicationproblemJSONDefault() *ErrorModel {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetConfigResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetConfigResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4597,6 +4731,21 @@ func (c *ClientWithResponses) AuthRejectWithResponse(ctx context.Context, body A
 	return ParseAuthRejectResponse(rsp)
 }
 
+// GetConfigWithResponse Get configuration
+//
+// The configuration the server runs with, as a YAML configuration file without the client-only `cli` section. Secrets are redacted.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/config (the `GetConfig` operationId).
+func (c *ClientWithResponses) GetConfigWithResponse(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*GetConfigResponse, error) {
+	rsp, err := c.GetConfig(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetConfigResponse(rsp)
+}
+
 // DebugCreateNodeWithBodyWithResponse Debug create node
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -5225,6 +5374,32 @@ func ParseAuthRejectResponse(rsp *http.Response) (*AuthRejectResponse, error) {
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetConfigResponse parses an HTTP response from a GetConfigWithResponse call
+func ParseGetConfigResponse(rsp *http.Response) (*GetConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
