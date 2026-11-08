@@ -800,28 +800,14 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 
 			r.remember(a.Node)
 
-		case "relogin":
-			// The probe restates hostname and routes on every login.
-			hi := r.hostinfo[a.Node].Clone()
-			hi.Hostname = a.Hostname
-			hi.RoutableIPs = prefixes(t, a.Routes)
-			hi.RequestTags = requestTags(a, hi.RequestTags)
-			r.hostinfo[a.Node] = hi
+		case "relogin", "restart":
+			if a.Kind == "restart" && a.Key == "" {
+				r.daemon(ctx, t, step.Name, a)
 
-			cl := r.clients[a.Node]
-
-			var err error
-			if r.interactive != nil && r.interactive(step, a) {
-				err = cl.Login(ctx, cl.Persist(), "", controlclient.LoginInteractive, hi.Clone(), r.approver(ctx, t, a.Key))
-			} else {
-				// No key: `tailscale up --advertise-tags` on a running node.
-				if a.Key != "" {
-					require.Contains(t, r.keys, a.Key, "%s: relogin with unknown key", step.Name)
-				}
-
-				err = cl.Relogin(ctx, r.keys[a.Key], a.Force, hi.Clone())
+				continue
 			}
 
+			err := r.relogin(ctx, t, step, a)
 			if err != nil {
 				refused[a.Node] = err
 			}
@@ -863,23 +849,6 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 				refused[a.Node] = err
 			}
 
-		case "restart":
-			if a.Key == "" {
-				r.daemon(ctx, t, step.Name, a)
-
-				continue
-			}
-
-			// A tsnet program hands its auth key to the backend on every start.
-			require.Contains(t, r.keys, a.Key, "%s: restart with unknown key", step.Name)
-
-			err := r.clients[a.Node].RestartWithKey(ctx, r.keys[a.Key], r.hostinfo[a.Node].Clone())
-			if err != nil {
-				refused[a.Node] = err
-			}
-
-			r.remember(a.Node)
-
 		case "start", "kill", "shutdown", "logout", "advertise", "set_hostname",
 			"break_tcp_conns", "rotate_disco_key", "cli", "disconnect_control", "down", "up":
 			r.daemon(ctx, t, step.Name, a)
@@ -907,6 +876,39 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 	}
 
 	return refused
+}
+
+// relogin replays a login on a node's current login: `tailscale up`, or a
+// restart of a tsnet program, which hands TS_AUTHKEY to its backend on
+// every start.
+func (r *stepReplay) relogin(ctx context.Context, t *testing.T, step testcapture.Step, a testcapture.Action) error {
+	t.Helper()
+
+	cl := r.clients[a.Node]
+
+	if a.Kind == "restart" {
+		require.Contains(t, r.keys, a.Key, "%s: restart with unknown key", step.Name)
+
+		return cl.RestartWithKey(ctx, r.keys[a.Key], r.hostinfo[a.Node].Clone())
+	}
+
+	// The probe restates hostname and routes on every login.
+	hi := r.hostinfo[a.Node].Clone()
+	hi.Hostname = a.Hostname
+	hi.RoutableIPs = prefixes(t, a.Routes)
+	hi.RequestTags = requestTags(a, hi.RequestTags)
+	r.hostinfo[a.Node] = hi
+
+	if r.interactive != nil && r.interactive(step, a) {
+		return cl.Login(ctx, cl.Persist(), "", controlclient.LoginInteractive, hi.Clone(), r.approver(ctx, t, a.Key))
+	}
+
+	// No key: `tailscale up --advertise-tags` on a running node.
+	if a.Key != "" {
+		require.Contains(t, r.keys, a.Key, "%s: relogin with unknown key", step.Name)
+	}
+
+	return cl.Relogin(ctx, r.keys[a.Key], a.Force, hi.Clone())
 }
 
 // daemon replays what a node's tailscaled or its CLI did.
