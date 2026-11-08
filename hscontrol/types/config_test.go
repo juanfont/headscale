@@ -475,7 +475,7 @@ func TestDerivedValues(t *testing.T) {
 		{"workers set", Tuning{BatcherWorkers: 7}.BatcherWorkerCount(), 7},
 		{"zone unset", DNSConfig{BaseDomain: "ts.example.com"}.CertificateZone(), "ts.example.com"},
 		{"zone set", DNSConfig{BaseDomain: "ts.example.com", Certificates: CertificatesConfig{Zone: "example.com"}}.CertificateZone(), "example.com"},
-		{"resolvers unset", resolvers().ResolverAddrs(), []string{"1.1.1.1:53", "8.8.8.8:53"}},
+		{"resolvers unset", resolvers().ResolverAddrs(), []string{"9.9.9.9:53", "149.112.112.112:53"}},
 		{"resolver bare IPv4", resolvers("9.9.9.9").ResolverAddrs(), []string{"9.9.9.9:53"}},
 		{"resolver bare IPv6", resolvers("2620:fe::fe").ResolverAddrs(), []string{"[2620:fe::fe]:53"}},
 		{"resolver with port", resolvers("[::1]:5353").ResolverAddrs(), []string{"[::1]:5353"}},

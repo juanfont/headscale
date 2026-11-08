@@ -180,7 +180,7 @@ func (s *State) DebugSSHPolicies() map[string]*tailcfg.SSHPolicy {
 func (s *State) DebugRegistrationCache() map[string]any {
 	return map[string]any{
 		"type":        "expirable-lru",
-		"expiration":  registerCacheExpiration.String(),
+		"expiration":  s.authCacheExpiration.String(),
 		"max_entries": s.authCacheMaxEntries,
 		"ssh_reserve": authCacheSSHReserve,
 		"current_len": s.authCache.Len(),
