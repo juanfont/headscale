@@ -9,6 +9,7 @@ import (
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
 )
 
 // TestAPIV1GeneratedClient smoke-tests the generated client against the Huma
@@ -47,4 +48,15 @@ func TestAPIV1GeneratedClient(t *testing.T) {
 	require.NotNil(t, listed.JSON200)
 	require.Len(t, listed.JSON200.Users, 1)
 	assert.Equal(t, "alice", listed.JSON200.Users[0].Name)
+
+	docs := false
+	cfg, err := client.GetConfigWithResponse(ctx, &clientv1.GetConfigParams{Docs: &docs})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, cfg.StatusCode())
+
+	var doc map[string]any
+	require.NoError(t, yaml.Unmarshal(cfg.Body, &doc), string(cfg.Body))
+	assert.Contains(t, doc, "server_url")
+	assert.NotContains(t, doc, "cli")
+	assert.NotRegexp(t, `(?m)^\s*#`, string(cfg.Body))
 }
