@@ -149,8 +149,9 @@ node:
   #
   # If a client explicitly requests a specific expiry, the client value is used.
   #
-  # Setting the value to "0" means no default expiry (nodes never expire unless
-  # explicitly expired via `headscale nodes expire`).
+  # Setting the value to "0" means no default expiry: a node expires only when
+  # its client asks for an expiry, oidc.use_expiry_from_token sets one, or an
+  # admin runs `headscale nodes expire`.
   #
   # Tailscale SaaS uses 180d; set to a positive duration to match that behaviour.
   #
@@ -190,9 +191,9 @@ database:
   # Enable debug mode. This setting requires the log.level to be set to "debug" or "trace".
   debug: false
 
-  # GORM configuration settings.
+  # Query logging settings; they apply only when database.debug is true.
   gorm:
-    # Enable parameterized queries.
+    # Log queries without their parameter values.
     parameterized_queries: true
 
     # Skip logging "record not found" errors.
@@ -205,7 +206,9 @@ database:
   sqlite:
     path: /var/lib/headscale/db.sqlite
 
-    # Enable WAL mode for SQLite. This is recommended for production environments.
+    # SQLite runs in WAL mode whether or not this is set. true applies
+    # wal_autocheckpoint below (false keeps 1000) and compacts the database
+    # (VACUUM) on shutdown.
     # https://www.sqlite.org/wal.html
     write_ahead_log: true
 
@@ -218,7 +221,8 @@ database:
   # Please note that using Postgres is highly discouraged as it is only supported for legacy reasons.
   # See database.type for more information.
   # postgres:
-  #   # If using a Unix socket to connect to Postgres, set the socket path in the 'host' field and leave 'port' blank.
+  #   # To connect over a Unix socket, set 'host' to the socket's directory; 'port' then picks the
+  #   # socket file (.s.PGSQL.<port>), and leaving it out uses the driver's default port.
   #   host: localhost
   #   port: 5432
   #   name: headscale
@@ -229,8 +233,8 @@ database:
   #   max_idle_conns: 10
   #   conn_max_idle_time_secs: 3600
 
-  #   # If other 'sslmode' is required instead of 'require(true)' and 'disabled(false)', set the 'sslmode' you need
-  #   # in the 'ssl' field. Refers to https://www.postgresql.org/docs/current/libpq-ssl.html Table 34.1.
+  #   # 'true' keeps the driver's default sslmode (prefer), 'false' disables TLS. Any other value is used as the
+  #   # sslmode. Refers to https://www.postgresql.org/docs/current/libpq-ssl.html Table 34.1.
   #   ssl: false
 
 ### TLS configuration
