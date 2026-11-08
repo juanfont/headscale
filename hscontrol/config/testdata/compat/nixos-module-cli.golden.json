@@ -1,0 +1,154 @@
+{
+  "config": {
+    "ServerURL": "",
+    "Addr": "",
+    "MetricsAddr": "",
+    "TrustedProxies": null,
+    "Node": {
+      "Expiry": 0,
+      "Ephemeral": {
+        "InactivityTimeout": 0
+      },
+      "Routes": {
+        "HA": {
+          "ProbeInterval": 0,
+          "ProbeTimeout": 0
+        }
+      }
+    },
+    "PreAuthKeys": {
+      "RevokedRetention": 0
+    },
+    "PrefixV4": null,
+    "PrefixV6": null,
+    "IPAllocation": "",
+    "NoisePrivateKeyPath": "",
+    "BaseDomain": "",
+    "Log": {
+      "Format": "text",
+      "Level": "info"
+    },
+    "DisableUpdateCheck": true,
+    "Database": {
+      "Type": "",
+      "Debug": false,
+      "Gorm": {
+        "Debug": false,
+        "SlowThreshold": 0,
+        "SkipErrRecordNotFound": false,
+        "ParameterizedQueries": false
+      },
+      "Sqlite": {
+        "Path": "",
+        "WriteAheadLog": false,
+        "WALAutoCheckPoint": 0
+      },
+      "Postgres": {
+        "Host": "",
+        "Port": 0,
+        "Name": "",
+        "User": "",
+        "Ssl": "",
+        "MaxOpenConnections": 0,
+        "MaxIdleConnections": 0,
+        "ConnMaxIdleTimeSecs": 0
+      }
+    },
+    "DERP": {
+      "ServerEnabled": false,
+      "AutomaticallyAddEmbeddedDerpRegion": false,
+      "ServerRegionID": 0,
+      "ServerRegionCode": "",
+      "ServerRegionName": "",
+      "ServerPrivateKeyPath": "",
+      "ServerVerifyClients": false,
+      "STUNAddr": "",
+      "URLs": null,
+      "Paths": null,
+      "DERPMap": null,
+      "AutoUpdate": false,
+      "UpdateFrequency": 0,
+      "IPv4": "",
+      "IPv6": ""
+    },
+    "TLS": {
+      "CertPath": "",
+      "KeyPath": "",
+      "ACME": {
+        "Hostname": "",
+        "ChallengeType": "",
+        "HTTPListen": "",
+        "URL": "",
+        "Email": "",
+        "CacheDir": ""
+      }
+    },
+    "DNSConfig": {
+      "MagicDNS": false,
+      "BaseDomain": "",
+      "OverrideLocalDNS": false,
+      "Nameservers": {
+        "Global": null,
+        "Split": null
+      },
+      "SearchDomains": null,
+      "ExtraRecords": null,
+      "ExtraRecordsPath": "",
+      "Certificates": {
+        "Enabled": false,
+        "Zone": ""
+      }
+    },
+    "TailcfgDNSConfig": null,
+    "DNSChallenge": {
+      "PropagationTimeout": 0,
+      "Resolvers": null,
+      "ProviderName": ""
+    },
+    "UnixSocket": "/run/headscale/headscale.sock",
+    "UnixSocketPermission": 0,
+    "OIDC": {
+      "OnlyStartIfOIDCIsAvailable": false,
+      "Issuer": "",
+      "ClientID": "",
+      "Scope": null,
+      "ExtraParams": null,
+      "AllowedDomains": null,
+      "AllowedUsers": null,
+      "AllowedGroups": null,
+      "EmailVerifiedRequired": false,
+      "UseExpiryFromToken": false,
+      "PKCE": {
+        "Enabled": false,
+        "Method": ""
+      }
+    },
+    "LogTail": {
+      "Enabled": false
+    },
+    "Taildrop": {
+      "Enabled": false
+    },
+    "AutoUpdate": {
+      "Enabled": false
+    },
+    "CLI": {
+      "Address": "",
+      "Timeout": 5000000000,
+      "Insecure": false
+    },
+    "Policy": {
+      "Path": "",
+      "Mode": ""
+    },
+    "Tuning": {
+      "BatchChangeDelay": 0,
+      "NodeMapSessionBufferedChanSize": 0,
+      "BatcherWorkers": 0,
+      "RegisterCacheExpiration": 0,
+      "RegisterCacheMaxEntries": 0,
+      "NodeStoreBatchSize": 0,
+      "NodeStoreBatchTimeout": 0
+    }
+  }
+}

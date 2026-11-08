@@ -10,15 +10,7 @@ let
   dataDir = "/var/lib/headscale";
   runDir = "/run/headscale";
 
-  cliConfig = {
-    # Nix pins the package, so an update notice cannot be acted on.
-    disable_check_updates = true;
-
-    unix_socket = "${runDir}/headscale.sock";
-  };
-
   settingsFormat = pkgs.formats.yaml { };
-  cliConfigFile = settingsFormat.generate "headscale.yaml" cliConfig;
 
   # headscale reads a non-empty variable of the unit over the setting.
   effective =
@@ -30,7 +22,7 @@ let
   policyMode = effective "HEADSCALE_POLICY_MODE" cfg.settings.policy.mode;
   policyPath = effective "HEADSCALE_POLICY_PATH" cfg.settings.policy.path;
   # Interpolated as the config and the unit are, so a Nix path is the same store path.
-  policyFile = if policyMode == "file" && policyPath != null then "${policyPath}" else null;
+  policyFile = if policyMode == "file" && policyPath != "" then "${policyPath}" else null;
   policyFileCheck = cfg.check.policy && policyFile != null;
   # The build can read a store path, and must be able to run the binary.
   buildTimePolicy =
@@ -47,27 +39,22 @@ let
   # Its own script, for shellcheck and runtimeInputs.
   preSwitchCheck =
     let
-      user = lib.escapeShellArg cfg.user;
-      group = lib.escapeShellArg cfg.group;
       # systemd gives the unit Group= and the account's /etc/group memberships.
-      # Activation rewrites a declared account's memberships in the groups
-      # NixOS declares (members holds extraGroups), so those come from the new
-      # configuration. It keeps the rest: an undeclared account's, and with
-      # mutableUsers a hand-made group.
-      managed = config.users.users ? ${cfg.user};
+      # Activation rewrites the account's memberships in the groups NixOS
+      # declares (members holds extraGroups), so those come from the new
+      # configuration. With mutableUsers it keeps a hand-made group.
       groups = [
-        cfg.group
+        "headscale"
       ]
-      ++ lib.optionals managed (
-        map (g: g.name) (lib.filter (g: lib.elem cfg.user g.members) (lib.attrValues config.users.groups))
+      ++ map (g: g.name) (
+        lib.filter (g: lib.elem "headscale" g.members) (lib.attrValues config.users.groups)
       )
       ++ lib.filter (g: g != "") (
         lib.concatMap (g: lib.splitString " " (toString g)) (
           lib.toList (config.systemd.services.headscale.serviceConfig.SupplementaryGroups or [ ])
         )
       );
-      keepCurrent = !managed || config.users.mutableUsers;
-      declared = lib.optionals managed (map (g: g.name) (lib.attrValues config.users.groups));
+      declared = map (g: g.name) (lib.attrValues config.users.groups);
       unitEnv = lib.mapAttrsToList (n: v: "${n}=${toString v}") (
         lib.filterAttrs (_: v: v != null) config.systemd.services.headscale.environment
       );
@@ -87,23 +74,23 @@ let
           exit 0
         fi
         # Activation creates users and groups after this check runs.
-        if ! id -u ${user} >/dev/null 2>&1; then
-          echo "headscale: user" ${user} "does not exist yet, skipping checks"
+        if ! id -u headscale >/dev/null 2>&1; then
+          echo "headscale: user headscale does not exist yet, skipping checks"
           exit 0
         fi
-        if ! getent group ${group} >/dev/null; then
-          echo "headscale: group" ${group} "does not exist yet, skipping checks"
+        if ! getent group headscale >/dev/null; then
+          echo "headscale: group headscale does not exist yet, skipping checks"
           exit 0
         fi
         trap '[ "$?" = 0 ] || echo "headscale: to skip, set services.headscale.check.config and check.policy to false, or run once with NIXOS_NO_CHECK=1"' EXIT
 
         # A group this switch creates does not exist yet; setpriv would fail on it.
         want=(${lib.escapeShellArgs groups})
-        ${lib.optionalString keepCurrent ''
+        ${lib.optionalString config.users.mutableUsers ''
           # Not the account's primary group, which the unit does not get, nor a
           # group NixOS declares now, or declared before and activation removes.
-          skip=" $(id -gn ${user} 2>/dev/null || true) "${lib.escapeShellArg (toString declared)}" ${lib.optionalString managed "$(cat /var/lib/nixos/declarative-groups 2>/dev/null || true)"} "
-          for g in $(id -Gn ${user}); do
+          skip=" $(id -gn headscale 2>/dev/null || true) "${lib.escapeShellArg (toString declared)}" $(cat /var/lib/nixos/declarative-groups 2>/dev/null || true) "
+          for g in $(id -Gn headscale); do
             [[ $skip == *" $g "* ]] || want+=("$g")
           done
         ''}
@@ -115,7 +102,7 @@ let
 
         # As the unit's user and groups, with the unit's environment rather than the caller's.
         hs() {
-          setpriv --reuid=${user} --regid=${group} --groups="$grouplist" -- \
+          setpriv --reuid=headscale --regid=headscale --groups="$grouplist" -- \
             env -i ${lib.escapeShellArgs unitEnv} ${lib.getExe cfg.package} "$@"
         }
 
@@ -130,11 +117,26 @@ let
       '';
     };
 
-  assertRemovedOption = option: message: {
-    assertion = !lib.hasAttrByPath option cfg;
-    message =
-      "The option `services.headscale.${lib.options.showOption option}` was removed. " + message;
-  };
+  # The option's type admits a number or http/https as the port, or an empty
+  # listen_addr, which grants nothing. Past four digits a port is never
+  # privileged, and the cap keeps toIntBase10 from throwing on a number too
+  # long for an integer.
+  listenPort = lib.last (lib.splitString ":" cfg.settings.listen_addr);
+  listenDigits = builtins.match "0*([0-9]{1,4})" listenPort;
+  privilegedPort =
+    lib.elem listenPort [
+      "http"
+      "https"
+    ]
+    || (listenDigits != null && lib.toIntBase10 (lib.head listenDigits) < 1024);
+
+  # Below lib.mkDefault, so a user's own mkDefault replaces these values
+  # instead of conflicting with a scalar or merging into a list.
+  distroDefault = lib.mkOverride 1200;
+
+  # Go reads cli, nested or dotted, as the client-only cli.*; written to the
+  # config, cli.api_key would land in the world-readable store.
+  cliKeys = lib.filter (n: n == "cli" || lib.hasPrefix "cli." n) (lib.attrNames cfg.settings);
 in
 {
   # Disable the upstream NixOS module to prevent conflicts
@@ -150,9 +152,10 @@ in
         type = lib.types.path;
         readOnly = true;
         default = settingsFormat.generate "headscale.yaml" cfg.settings;
-        defaultText = lib.literalExpression ''(pkgs.formats.yaml { }).generate "headscale.yaml" config.services.headscale.settings'';
+        defaultText = lib.literalMD "{option}`services.headscale.settings` as YAML";
         description = ''
-          Path to the configuration file of headscale.
+          Path to the configuration file of headscale:
+          {option}`services.headscale.settings` as YAML.
         '';
       };
 
@@ -164,8 +167,7 @@ in
           `headscale check all` on the new configuration and abort the switch
           if it fails. It checks the configuration and every file it names
           (policy, DERP maps, extra records, TLS pair, existing noise and DERP
-          keys) as {option}`services.headscale.user`. Keys are read, never
-          created.
+          keys) as the `headscale` user. Keys are read, never created.
 
           It runs outside the unit, and only when headscale's unit changes.
           It never reads a `file:` secret, so credentials referenced with
@@ -190,756 +192,89 @@ in
         '';
       };
 
+      # Read-only, kept only because nixpkgs' headplane module reads them.
       user = lib.mkOption {
-        default = "headscale";
         type = lib.types.str;
-        description = ''
-          User account under which headscale runs.
-
-          ::: {.note}
-          If left as the default value this user will automatically be created
-          on system activation, otherwise you are responsible for
-          ensuring the user exists before the headscale service starts.
-          :::
-        '';
+        default = "headscale";
+        readOnly = true;
+        description = "User account under which headscale runs, created by this module.";
       };
 
       group = lib.mkOption {
+        type = lib.types.str;
         default = "headscale";
-        type = lib.types.str;
-        description = ''
-          Group under which headscale runs.
-
-          ::: {.note}
-          If left as the default value this group will automatically be created
-          on system activation, otherwise you are responsible for
-          ensuring the user exists before the headscale service starts.
-          :::
-        '';
-      };
-
-      address = lib.mkOption {
-        type = lib.types.str;
-        default = "127.0.0.1";
-        description = ''
-          Listening address of headscale.
-        '';
-        example = "0.0.0.0";
-      };
-
-      port = lib.mkOption {
-        type = lib.types.port;
-        default = 8080;
-        description = ''
-          Listening port of headscale.
-        '';
-        example = 443;
+        readOnly = true;
+        description = "Group under which headscale runs, created by this module.";
       };
 
       settings = lib.mkOption {
         description = ''
-          Overrides to {file}`config.yaml` as a Nix attribute set.
-          See [Configuration options](https://headscale.net/stable/ref/configuration-options/)
-          for every key.
+          headscale's configuration, written to
+          {option}`services.headscale.configFile`. Each option is one key of
+          [Configuration options](https://headscale.net/stable/ref/configuration-options/).
+          A key without an option passes through to headscale, which rejects
+          unknown keys.
         '';
         type = lib.types.submodule {
           freeformType = settingsFormat.type;
-
-          options = {
-            server_url = lib.mkOption {
-              type = lib.types.str;
-              default = "http://127.0.0.1:8080";
-              description = ''
-                The url clients will connect to.
-              '';
-              example = "https://myheadscale.example.com:443";
-            };
-
-            noise.private_key_path = lib.mkOption {
-              type = lib.types.path;
-              default = "${dataDir}/noise_private.key";
-              description = ''
-                Path to noise private key file, generated automatically if it does not exist.
-              '';
-            };
-
-            prefixes =
-              let
-                prefDesc = ''
-                  Each prefix consists of either an IPv4 or IPv6 address,
-                  and the associated prefix length, delimited by a slash.
-                  It must be within IP ranges supported by the Tailscale
-                  client - i.e., subnets of 100.64.0.0/10 and fd7a:115c:a1e0::/48.
-                '';
-              in
-              {
-                v4 = lib.mkOption {
-                  type = lib.types.str;
-                  default = "100.64.0.0/10";
-                  description = prefDesc;
-                };
-
-                v6 = lib.mkOption {
-                  type = lib.types.str;
-                  default = "fd7a:115c:a1e0::/48";
-                  description = prefDesc;
-                };
-
-                allocation = lib.mkOption {
-                  type = lib.types.enum [
-                    "sequential"
-                    "random"
-                  ];
-                  example = "random";
-                  default = "sequential";
-                  description = ''
-                    Strategy used for allocation of IPs to nodes, available options:
-                    - sequential (default): assigns the next free IP from the previous given IP.
-                    - random: assigns the next free IP from a pseudo-random IP generator (crypto/rand).
-                  '';
-                };
-              };
-
-            derp = {
-              urls = lib.mkOption {
-                type = lib.types.listOf lib.types.str;
-                default = [ "https://controlplane.tailscale.com/derpmap/default" ];
-                description = ''
-                  List of urls containing DERP maps.
-                  See [How Tailscale works](https://tailscale.com/blog/how-tailscale-works/) for more information on DERP maps.
-                '';
-              };
-
-              paths = lib.mkOption {
-                type = lib.types.listOf lib.types.path;
-                default = [ ];
-                description = ''
-                  List of file paths containing DERP maps.
-                  See [How Tailscale works](https://tailscale.com/blog/how-tailscale-works/) for more information on DERP maps.
-                '';
-              };
-
-              auto_update_enabled = lib.mkOption {
-                type = lib.types.bool;
-                default = true;
-                description = ''
-                  Whether to automatically update DERP maps on a set frequency.
-                '';
-                example = false;
-              };
-
-              update_frequency = lib.mkOption {
-                type = lib.types.str;
-                default = "24h";
-                description = ''
-                  Frequency to update DERP maps.
-                '';
-                example = "5m";
-              };
-
-              server.private_key_path = lib.mkOption {
-                type = lib.types.path;
-                default = "${dataDir}/derp_server_private.key";
-                description = ''
-                  Path to derp private key file, generated automatically if it does not exist.
-                '';
-              };
-            };
-
-            node = {
-              expiry = lib.mkOption {
-                type = lib.types.str;
-                default = "0";
-                description = ''
-                  Default key expiry for non-tagged nodes, regardless of
-                  registration method (auth key, CLI, web auth, OIDC).
-                  Tagged nodes are exempt and never expire. Set to "0"
-                  for no default expiry.
-                '';
-                example = "90d";
-              };
-
-              ephemeral = {
-                inactivity_timeout = lib.mkOption {
-                  type = lib.types.str;
-                  default = "30m";
-                  description = ''
-                    Time before an inactive ephemeral node is deleted.
-                  '';
-                  example = "5m";
-                };
-              };
-            };
-
-            database = {
-              type = lib.mkOption {
-                type = lib.types.enum [
-                  "sqlite"
-                  "sqlite3"
-                  "postgres"
-                ];
-                example = "postgres";
-                default = "sqlite";
-                description = ''
-                  Database engine to use.
-                  Please note that using Postgres is highly discouraged as it is only supported for legacy reasons.
-                  All new development, testing and optimisations are done with SQLite in mind.
-                '';
-              };
-
-              sqlite = {
-                path = lib.mkOption {
-                  type = lib.types.nullOr lib.types.str;
-                  default = "${dataDir}/db.sqlite";
-                  description = "Path to the sqlite3 database file.";
-                };
-
-                write_ahead_log = lib.mkOption {
-                  type = lib.types.bool;
-                  default = true;
-                  description = ''
-                    Enable WAL mode for SQLite. This is recommended for production environments.
-                    <https://www.sqlite.org/wal.html>
-                  '';
-                  example = true;
-                };
-              };
-
-              postgres = {
-                host = lib.mkOption {
-                  type = lib.types.nullOr lib.types.str;
-                  default = null;
-                  example = "127.0.0.1";
-                  description = "Database host address.";
-                };
-
-                port = lib.mkOption {
-                  type = lib.types.nullOr lib.types.port;
-                  default = null;
-                  example = 3306;
-                  description = "Database host port.";
-                };
-
-                name = lib.mkOption {
-                  type = lib.types.nullOr lib.types.str;
-                  default = null;
-                  example = "headscale";
-                  description = "Database name.";
-                };
-
-                user = lib.mkOption {
-                  type = lib.types.nullOr lib.types.str;
-                  default = null;
-                  example = "headscale";
-                  description = "Database user.";
-                };
-              };
-            };
-
-            log = {
-              level = lib.mkOption {
-                type = lib.types.str;
-                default = "info";
-                description = ''
-                  headscale log level.
-                '';
-                example = "debug";
-              };
-
-              format = lib.mkOption {
-                type = lib.types.str;
-                default = "text";
-                description = ''
-                  headscale log format.
-                '';
-                example = "json";
-              };
-            };
-
-            dns = {
-              magic_dns = lib.mkOption {
-                type = lib.types.bool;
-                default = true;
-                description = ''
-                  Whether to use [MagicDNS](https://tailscale.com/docs/features/magicdns).
-                '';
-                example = false;
-              };
-
-              base_domain = lib.mkOption {
-                type = lib.types.str;
-                default = "";
-                description = ''
-                  Defines the base domain to create the hostnames for MagicDNS.
-                  This domain must be different from the {option}`server_url`
-                  domain.
-                  {option}`base_domain` must be a FQDN, without the trailing dot.
-                  The FQDN of the hosts will be `hostname.base_domain` (e.g.
-                  `myhost.tailnet.example.com`).
-                '';
-                example = "tailnet.example.com";
-              };
-
-              override_local_dns = lib.mkOption {
-                type = lib.types.bool;
-                default = true;
-                description = ''
-                  Whether to [override clients' DNS servers](https://tailscale.com/docs/reference/dns-in-tailscale#override-dns-servers).
-                '';
-                example = false;
-              };
-
-              nameservers = {
-                global = lib.mkOption {
-                  type = lib.types.listOf lib.types.str;
-                  default = [ ];
-                  description = ''
-                    List of nameservers to pass to Tailscale clients.
-                  '';
-                };
-
-                split = lib.mkOption {
-                  type = lib.types.attrsOf (lib.types.listOf lib.types.str);
-                  default = { };
-                  description = ''
-                    Split DNS configuration (map of domains and which DNS server to use for each).
-                    See <https://tailscale.com/docs/reference/dns-in-tailscale>.
-                  '';
-                  example = {
-                    "foo.bar.com" = [ "1.1.1.1" ];
-                  };
-                };
-              };
-
-              extra_records = lib.mkOption {
-                type = lib.types.nullOr (
-                  lib.types.listOf (
-                    lib.types.submodule {
-                      options = {
-                        name = lib.mkOption {
-                          type = lib.types.str;
-                          description = "DNS record name.";
-                          example = "grafana.tailnet.example.com";
-                        };
-                        type = lib.mkOption {
-                          type = lib.types.enum [
-                            "A"
-                            "AAAA"
-                          ];
-                          description = "DNS record type.";
-                          example = "A";
-                        };
-                        value = lib.mkOption {
-                          type = lib.types.str;
-                          description = "DNS record value (IP address).";
-                          example = "100.64.0.3";
-                        };
-                      };
-                    }
-                  )
-                );
-                default = null;
-                description = ''
-                  Extra DNS records to expose to clients.
-                '';
-                example = ''
-                  [ {
-                    name = "grafana.tailnet.example.com";
-                    type = "A";
-                    value = "100.64.0.3";
-                  } ]
-                '';
-              };
-
-              search_domains = lib.mkOption {
-                type = lib.types.listOf lib.types.str;
-                default = [ ];
-                description = ''
-                  Search domains to inject to Tailscale clients.
-                '';
-                example = [ "mydomain.internal" ];
-              };
-
-              certificates = {
-                enabled = lib.mkOption {
-                  type = lib.types.bool;
-                  default = false;
-                  description = ''
-                    Whether nodes can get TLS certificates for their MagicDNS name
-                    with `tailscale cert`. Needs a public {option}`base_domain` and
-                    {option}`dns.challenge.provider`.
-                  '';
-                };
-
-                zone = lib.mkOption {
-                  type = lib.types.str;
-                  default = "";
-                  description = ''
-                    DNS zone the challenge records are written to. Empty means
-                    {option}`base_domain`.
-                  '';
-                  example = "example.com";
-                };
-              };
-
-              challenge.provider = lib.mkOption {
-                type = lib.types.nullOr (
-                  lib.types.submodule {
-                    freeformType = settingsFormat.type;
-                    options.name = lib.mkOption {
-                      type = lib.types.str;
-                      description = ''
-                        DNS provider that writes ACME DNS-01 challenge records:
-                        acmedns, cloudflare, gigahost, hetzner, powerdns or rfc2136.
-                      '';
-                    };
-                  }
-                );
-                default = null;
-                description = ''
-                  DNS provider for ACME DNS-01 challenges. Every key besides
-                  `name` is a setting of the provider; a text setting can be read
-                  from a file by setting it to `file:<path>`.
-                '';
-                example = lib.literalExpression ''
-                  {
-                    name = "cloudflare";
-                    api_token = "file:\''${CREDENTIALS_DIRECTORY}/cloudflare-token";
-                  }
-                '';
-              };
-            };
-
-            oidc = {
-              issuer = lib.mkOption {
-                type = lib.types.str;
-                default = "";
-                description = ''
-                  URL to OpenID issuer.
-                '';
-                example = "https://openid.example.com";
-              };
-
-              client_id = lib.mkOption {
-                type = lib.types.str;
-                default = "";
-                description = ''
-                  OpenID Connect client ID.
-                '';
-              };
-
-              scope = lib.mkOption {
-                type = lib.types.listOf lib.types.str;
-                default = [
-                  "openid"
-                  "profile"
-                  "email"
-                ];
-                description = ''
-                  Scopes used in the OIDC flow.
-                '';
-              };
-
-              extra_params = lib.mkOption {
-                type = lib.types.attrsOf lib.types.str;
-                default = { };
-                description = ''
-                  Custom query parameters to send with the Authorize Endpoint request.
-                '';
-                example = {
-                  domain_hint = "example.com";
-                };
-              };
-
-              allowed_domains = lib.mkOption {
-                type = lib.types.listOf lib.types.str;
-                default = [ ];
-                description = ''
-                  Allowed principal domains. if an authenticated user's domain
-                  is not in this list authentication request will be rejected.
-                '';
-                example = [ "example.com" ];
-              };
-
-              allowed_users = lib.mkOption {
-                type = lib.types.listOf lib.types.str;
-                default = [ ];
-                description = ''
-                  Users allowed to authenticate even if not in allowedDomains.
-                '';
-                example = [ "alice@example.com" ];
-              };
-
-              pkce = {
-                enabled = lib.mkOption {
-                  type = lib.types.bool;
-                  default = false;
-                  description = ''
-                    Enable or disable PKCE (Proof Key for Code Exchange) support.
-                    PKCE adds an additional layer of security to the OAuth 2.0
-                    authorization code flow by preventing authorization code
-                    interception attacks
-                    See https://datatracker.ietf.org/doc/html/rfc7636
-                  '';
-                  example = true;
-                };
-
-                method = lib.mkOption {
-                  type = lib.types.str;
-                  default = "S256";
-                  description = ''
-                    PKCE method to use:
-                      - plain: Use plain code verifier
-                      - S256: Use SHA256 hashed code verifier (default, recommended)
-                  '';
-                };
-              };
-            };
-
-            tls = {
-              cert_path = lib.mkOption {
-                type = lib.types.nullOr lib.types.path;
-                default = null;
-                description = ''
-                  Path to already created certificate.
-                '';
-              };
-
-              key_path = lib.mkOption {
-                type = lib.types.nullOr lib.types.path;
-                default = null;
-                description = ''
-                  Path to key for already created certificate.
-                '';
-              };
-
-              acme = {
-                hostname = lib.mkOption {
-                  type = lib.types.str;
-                  default = "";
-                  description = ''
-                    Domain name to request a TLS certificate for.
-                  '';
-                };
-
-                # Null is written as YAML null, which headscale treats as unset.
-                challenge_type = lib.mkOption {
-                  type = lib.types.nullOr (
-                    lib.types.enum [
-                      "TLS-ALPN-01"
-                      "HTTP-01"
-                      "DNS-01"
-                    ]
-                  );
-                  default = null;
-                  description = ''
-                    Type of ACME challenge to use: `HTTP-01` (default),
-                    `TLS-ALPN-01`, or `DNS-01` through
-                    {option}`dns.challenge.provider`.
-                  '';
-                };
-
-                http_listen = lib.mkOption {
-                  type = lib.types.nullOr lib.types.str;
-                  default = null;
-                  description = ''
-                    When HTTP-01 challenge is chosen, letsencrypt must set up a
-                    verification endpoint, and it will be listening on:
-                    `:http = port 80` (default).
-                  '';
-                };
-              };
-            };
-
-            policy = {
-              mode = lib.mkOption {
-                type = lib.types.enum [
-                  "file"
-                  "database"
-                ];
-                default = "file";
-                description = ''
-                  The mode can be "file" or "database" that defines
-                  where the ACL policies are stored and read from.
-                '';
-              };
-
-              path = lib.mkOption {
-                type = lib.types.nullOr lib.types.path;
-                default = null;
-                description = ''
-                  If the mode is set to "file", the path to a
-                  HuJSON file containing ACL policies.
-                '';
-              };
-            };
-          };
+          options = import ./options.generated.nix { inherit lib; };
         };
       };
     };
   };
 
-  imports = with lib; [
-    (mkRenamedOptionModule
-      [ "services" "headscale" "derp" "autoUpdate" ]
-      [ "services" "headscale" "settings" "derp" "auto_update_enabled" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "derp" "auto_update_enable" ]
-      [ "services" "headscale" "settings" "derp" "auto_update_enabled" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "derp" "paths" ]
-      [ "services" "headscale" "settings" "derp" "paths" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "derp" "updateFrequency" ]
-      [ "services" "headscale" "settings" "derp" "update_frequency" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "derp" "urls" ]
-      [ "services" "headscale" "settings" "derp" "urls" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "ephemeralNodeInactivityTimeout" ]
-      [ "services" "headscale" "settings" "node" "ephemeral" "inactivity_timeout" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "logLevel" ]
-      [ "services" "headscale" "settings" "log" "level" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "openIdConnect" "clientId" ]
-      [ "services" "headscale" "settings" "oidc" "client_id" ]
-    )
-    (mkRemovedOptionModule [ "services" "headscale" "openIdConnect" "clientSecretFile" ] ''
-      Load the secret with systemd.services.headscale.serviceConfig.LoadCredential and set services.headscale.settings.oidc.client_secret = "file:\''${CREDENTIALS_DIRECTORY}/<name>".
-    '')
-    (mkRenamedOptionModule
-      [ "services" "headscale" "openIdConnect" "issuer" ]
-      [ "services" "headscale" "settings" "oidc" "issuer" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "serverUrl" ]
-      [ "services" "headscale" "settings" "server_url" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "tls" "certFile" ]
-      [ "services" "headscale" "settings" "tls" "cert_path" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "tls" "keyFile" ]
-      [ "services" "headscale" "settings" "tls" "key_path" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "tls" "letsencrypt" "challengeType" ]
-      [ "services" "headscale" "settings" "tls" "acme" "challenge_type" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "tls" "letsencrypt" "hostname" ]
-      [ "services" "headscale" "settings" "tls" "acme" "hostname" ]
-    )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "tls" "letsencrypt" "httpListen" ]
-      [ "services" "headscale" "settings" "tls" "acme" "http_listen" ]
-    )
-
-    (mkRemovedOptionModule [ "services" "headscale" "openIdConnect" "domainMap" ] ''
-      Headscale no longer uses domain_map.
-    '')
-  ];
-
   config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = with cfg.settings; dns.magic_dns -> dns.base_domain != "";
-        message = "dns.base_domain must be set when using MagicDNS";
-      }
-      {
-        assertion = with cfg.settings; dns.override_local_dns -> dns.nameservers.global != [ ];
-        message = "dns.nameservers.global must be set when overriding local DNS";
-      }
-      {
-        assertion =
-          with cfg.settings;
-          dns.certificates.enabled
-          -> dns.magic_dns && dns.base_domain != "" && dns.challenge.provider != null;
-        message = "dns.certificates.enabled needs dns.magic_dns, dns.base_domain and dns.challenge.provider";
-      }
-      {
-        assertion =
-          with cfg.settings.tls.acme;
-          hostname != "" && challenge_type == "DNS-01" -> cfg.settings.dns.challenge.provider != null;
-        message = "tls.acme.challenge_type DNS-01 needs dns.challenge.provider";
-      }
-      (assertRemovedOption [ "settings" "acl_policy_path" ] "Use `policy.path` instead.")
-      (assertRemovedOption [ "settings" "db_host" ] "Use `database.postgres.host` instead.")
-      (assertRemovedOption [ "settings" "db_name" ] "Use `database.postgres.name` instead.")
-      (assertRemovedOption [
-        "settings"
-        "db_password_file"
-      ] "Use `database.postgres.pass = \"file:<path>\"` instead.")
-      (assertRemovedOption [ "settings" "db_path" ] "Use `database.sqlite.path` instead.")
-      (assertRemovedOption [ "settings" "db_port" ] "Use `database.postgres.port` instead.")
-      (assertRemovedOption [ "settings" "db_type" ] "Use `database.type` instead.")
-      (assertRemovedOption [ "settings" "db_user" ] "Use `database.postgres.user` instead.")
-      (assertRemovedOption [ "settings" "dns" "split" ] "Use `dns.nameservers.split` instead.")
-      (assertRemovedOption [ "settings" "dns_config" ] "Use `dns` instead.")
-      (assertRemovedOption [ "settings" "dns_config" "domains" ] "Use `dns.search_domains` instead.")
-      (assertRemovedOption [
-        "settings"
-        "dns_config"
-        "nameservers"
-      ] "Use `dns.nameservers.global` instead.")
-      (assertRemovedOption [
-        "settings"
-        "oidc"
-        "strip_email_domain"
-      ] "The strip_email_domain option got removed upstream")
-      (assertRemovedOption [
-        "settings"
-        "ephemeral_node_inactivity_timeout"
-      ] "Use `node.ephemeral.inactivity_timeout` instead.")
-      (assertRemovedOption [
-        "settings"
-        "database"
-        "postgres"
-        "password_file"
-      ] "Use `database.postgres.pass = \"file:<path>\"` instead.")
-      (assertRemovedOption [
-        "settings"
-        "oidc"
-        "client_secret_path"
-      ] "Use `oidc.client_secret = \"file:<path>\"` instead.")
-    ];
-
     system.checks = lib.optional buildTimePolicy policyCheck;
 
     system.preSwitchChecks.headscale = lib.mkIf (
       cfg.check.config || preSwitchPolicy
     ) ''${lib.getExe preSwitchCheck} "$@"'';
 
-    services.headscale.settings = lib.mkMerge [
-      cliConfig
+    assertions = [
       {
-        listen_addr = lib.mkDefault "${cfg.address}:${toString cfg.port}";
+        assertion = cliKeys == [ ];
+        message = "services.headscale.settings: remove ${lib.concatStringsSep ", " cliKeys}: the server never reads cli.*; headscale's CLI reads ~/.config/headscale/config.yaml or HEADSCALE_CLI_*, and here it would be written to the world-readable Nix store.";
       }
     ];
 
-    environment = {
-      # Headscale CLI needs a minimal config to be able to locate the unix socket
-      # to talk to the server instance.
-      etc."headscale/config.yaml".source = cliConfigFile;
+    services.headscale.settings = lib.mapAttrsRecursive (_: distroDefault) {
+      # Where this module keeps state and the socket. Nix pins the package, so
+      # an update notice cannot be acted on.
+      noise.private_key_path = "${dataDir}/noise_private.key";
+      derp.server.private_key_path = "${dataDir}/derp_server_private.key";
+      database.type = "sqlite";
+      database.sqlite.path = "${dataDir}/db.sqlite";
+      unix_socket = "${runDir}/headscale.sock";
+      disable_check_updates = true;
 
-      systemPackages = [ cfg.package ];
+      # Earlier defaults of this module that headscale's own do not match,
+      # kept so an upgrade does not change a running configuration.
+      listen_addr = "127.0.0.1:8080";
+      prefixes.v4 = "100.64.0.0/10";
+      prefixes.v6 = "fd7a:115c:a1e0::/48";
+      derp.urls = [ "https://controlplane.tailscale.com/derpmap/default" ];
+      derp.auto_update_enabled = true;
+      derp.update_frequency = "24h";
+      node.ephemeral.inactivity_timeout = "30m";
     };
 
-    users.groups.headscale = lib.mkIf (cfg.group == "headscale") { };
+    environment = {
+      systemPackages = [ cfg.package ];
 
-    users.users.headscale = lib.mkIf (cfg.user == "headscale") {
+      # The local CLI reads no file: these point it at the server's socket and
+      # update-check setting. Through PAM, so sudo keeps them too.
+      sessionVariables = {
+        HEADSCALE_UNIX_SOCKET = cfg.settings.unix_socket;
+        HEADSCALE_DISABLE_CHECK_UPDATES = lib.boolToString cfg.settings.disable_check_updates;
+      };
+    };
+
+    users.groups.headscale = { };
+
+    users.users.headscale = {
       description = "headscale user";
       home = dataDir;
-      group = cfg.group;
+      group = "headscale";
       isSystemUser = true;
     };
 
@@ -955,13 +290,16 @@ in
 
       serviceConfig =
         let
-          capabilityBoundingSet = [ "CAP_CHOWN" ] ++ lib.optional (cfg.port < 1024) "CAP_NET_BIND_SERVICE";
+          # "" empties the set, and comes first, so the unit gets only the
+          # capabilities listed after it, here or by another module.
+          capabilities = lib.mkBefore ([ "" ] ++ lib.optional privilegedPort "CAP_NET_BIND_SERVICE");
         in
         {
           ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
           Restart = "always";
           RestartSec = "5s";
           Type = "simple";
+          # Read here, so setting either read-only option fails evaluation.
           User = cfg.user;
           Group = cfg.group;
 
@@ -991,15 +329,14 @@ in
           RemoveIPC = true;
           UMask = "0077";
 
-          CapabilityBoundingSet = capabilityBoundingSet;
-          AmbientCapabilities = capabilityBoundingSet;
+          CapabilityBoundingSet = capabilities;
+          AmbientCapabilities = capabilities;
           NoNewPrivileges = true;
           LockPersonality = true;
           RestrictRealtime = true;
           SystemCallFilter = [
             "@system-service"
             "~@privileged"
-            "@chown"
           ];
           SystemCallArchitectures = "native";
           RestrictAddressFamilies = "AF_INET AF_INET6 AF_UNIX";

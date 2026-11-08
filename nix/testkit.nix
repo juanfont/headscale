@@ -35,10 +35,9 @@ in
 
   services.headscale = {
     enable = true;
-    address = "[::]";
-    port = 80;
     settings = {
       server_url = "http://${config.networking.hostName}";
+      listen_addr = "[::]:80";
       dns.base_domain = lib.mkDefault "tailnet";
       dns.override_local_dns = lib.mkDefault false;
       # Nothing stored allows all, and `headscale policy set` works live.
@@ -60,7 +59,7 @@ in
   # for a hostname URL after a recent dial.
   systemd.services.headscale = {
     environment.HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR = "[::]:443";
-    # The module grants this only for a privileged main port.
+    # The module grants this from listen_addr, which does not name this :443.
     serviceConfig.AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
     serviceConfig.CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
   };

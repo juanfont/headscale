@@ -434,6 +434,7 @@
           // {
             headscale = pkgs.testers.runNixOSTest (import ./nix/tests/headscale.nix self);
             headscale-checks = pkgs.testers.runNixOSTest (import ./nix/tests/checks.nix self);
+            nixos-module = import ./nix/tests/module.nix self pkgs;
             inherit nixos-options;
           }
         );
