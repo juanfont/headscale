@@ -16,7 +16,6 @@ import (
 	"github.com/cenkalti/backoff/v5"
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol"
-	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
@@ -87,16 +86,10 @@ func mustMarkRequired(cmd *cobra.Command, names ...string) {
 	}
 }
 
+// newHeadscaleServerWithConfig builds the server, which validates the
+// configuration.
 func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
-	cfg, err := serverConfig()
-	if err != nil {
-		return nil, fmt.Errorf(
-			"loading configuration: %w",
-			err,
-		)
-	}
-
-	app, err := hscontrol.NewHeadscale(cfg)
+	app, err := hscontrol.NewHeadscale(serverConfig())
 	if err != nil {
 		return nil, fmt.Errorf("creating new headscale: %w", err)
 	}
@@ -104,23 +97,16 @@ func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
 	return app, nil
 }
 
-// serverConfig is the loaded configuration validated for the server, its
-// advisories logged.
-func serverConfig() (*types.Config, error) {
+// serverConfig is the loaded configuration as the server takes it,
+// unvalidated.
+func serverConfig() *types.Config {
 	cfg := loaded.Config
-
-	err := config.Validate(cfg)
-	logWarnings(config.Warnings(cfg))
-
-	if err != nil {
-		return nil, err
-	}
 
 	// The server never uses the CLI's key, which may be an unread file:
 	// reference.
 	cfg.CLI.APIKey = ""
 
-	return cfg, nil
+	return cfg
 }
 
 // clientRunE wraps a [cobra.Command.RunE] func, injecting a ready API client

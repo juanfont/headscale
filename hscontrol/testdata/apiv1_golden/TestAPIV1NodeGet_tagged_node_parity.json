@@ -10,7 +10,10 @@
       "expiry": null,
       "givenName": "node-b",
       "id": "1",
-      "ipAddresses": [],
+      "ipAddresses": [
+        "100.64.0.1",
+        "fd7a:115c:a1e0::1"
+      ],
       "lastSeen": "\u003ctimestamp\u003e",
       "machineKey": "\u003csecret\u003e",
       "name": "node-b",

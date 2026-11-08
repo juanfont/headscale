@@ -17,29 +17,8 @@ import (
 func createTestAppWithNodeExpiry(t *testing.T, nodeExpiry time.Duration) *Headscale {
 	t.Helper()
 
-	tmpDir := t.TempDir()
-
-	cfg := types.Config{
-		ServerURL: "http://localhost:8080",
-		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
-		Node: types.NodeConfig{
-			Expiry: nodeExpiry,
-		},
-		Database: types.DatabaseConfig{
-			Type: "sqlite3",
-			Sqlite: types.SqliteConfig{
-				Path: tmpDir + "/headscale_test.db",
-			},
-		},
-		OIDC: types.OIDCConfig{},
-		Policy: types.PolicyConfig{
-			Mode: types.PolicyModeDB,
-		},
-		Tuning: types.Tuning{
-			BatchChangeDelay: 100 * time.Millisecond,
-			BatcherWorkers:   1,
-		},
-	}
+	cfg := validConfig(t)
+	cfg.Node.Expiry = nodeExpiry
 
 	app, err := NewHeadscale(&cfg)
 	require.NoError(t, err)

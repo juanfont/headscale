@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -67,27 +66,9 @@ func TestHandleVerifyRequest_OversizedBodyRejected(t *testing.T) {
 // WriteHeader on first Write locks in a sniffed content type and the
 // later Header().Set becomes a no-op.
 func TestVerifyHandler_SuccessSetsJSONContentType(t *testing.T) {
-	tmpDir := t.TempDir()
+	cfg := validConfig(t)
 
-	prefixV4 := netip.MustParsePrefix("100.64.0.0/10")
-	prefixV6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
-
-	cfg := &types.Config{
-		ServerURL: "http://localhost:0",
-		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
-		Prefixes:  types.PrefixesConfig{V4: &prefixV4, V6: &prefixV6, Allocation: types.IPAllocationStrategySequential},
-		Database: types.DatabaseConfig{
-			Type: "sqlite3",
-			Sqlite: types.SqliteConfig{
-				Path: tmpDir + "/headscale_test.db",
-			},
-		},
-		Policy: types.PolicyConfig{
-			Mode: types.PolicyModeDB,
-		},
-	}
-
-	h, err := NewHeadscale(cfg)
+	h, err := NewHeadscale(&cfg)
 	require.NoError(t, err)
 
 	reqBody, err := json.Marshal(tailcfg.DERPAdmitClientRequest{

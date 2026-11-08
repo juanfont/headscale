@@ -112,7 +112,7 @@ func TestAPIV1NodeGet(t *testing.T) {
 		assert.Equal(t, "node-c", got.Node["name"])
 		assert.Equal(t, "REGISTER_METHOD_AUTH_KEY", got.Node["registerMethod"])
 		// EmitUnpopulated parity: slices present as [], expiry as null.
-		assert.Equal(t, []any{}, got.Node["ipAddresses"])
+		assert.Equal(t, []any{}, got.Node["approvedRoutes"])
 		assert.Equal(t, []any{}, got.Node["tags"])
 		assert.Nil(t, got.Node["expiry"])
 		assert.Contains(t, got.Node, "user")

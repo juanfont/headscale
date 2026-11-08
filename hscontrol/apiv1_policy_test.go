@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -199,26 +198,8 @@ func TestAPIV1PolicyCheck(t *testing.T) {
 func createFilePolicyApp(t *testing.T) *Headscale {
 	t.Helper()
 
-	tmpDir := t.TempDir()
-
-	cfg := types.Config{
-		ServerURL: "http://localhost:8080",
-		Noise:     types.NoiseConfig{PrivateKeyPath: tmpDir + "/noise_private.key"},
-		Database: types.DatabaseConfig{
-			Type: "sqlite3",
-			Sqlite: types.SqliteConfig{
-				Path: tmpDir + "/headscale_test.db",
-			},
-		},
-		OIDC: types.OIDCConfig{},
-		Policy: types.PolicyConfig{
-			Mode: types.PolicyModeFile,
-		},
-		Tuning: types.Tuning{
-			BatchChangeDelay: 100 * time.Millisecond,
-			BatcherWorkers:   1,
-		},
-	}
+	cfg := validConfig(t)
+	cfg.Policy.Mode = types.PolicyModeFile
 
 	app, err := NewHeadscale(&cfg)
 	require.NoError(t, err)

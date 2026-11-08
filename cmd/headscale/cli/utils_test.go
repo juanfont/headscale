@@ -105,7 +105,17 @@ func TestServerConfigDropsCLIKey(t *testing.T) {
 	dir := t.TempDir()
 	useLoaded(t, writeServerConfig(t, dir, "cli:\n  api_key: file:"+filepath.Join(dir, "missing")+"\n"))
 
-	cfg, err := serverConfig()
-	require.NoError(t, err)
-	assert.Empty(t, cfg.CLI.APIKey)
+	assert.Empty(t, serverConfig().CLI.APIKey)
+}
+
+// TestBypassDatabaseValidates: the policy commands' --bypass path, which
+// starts no server, validates the configuration before opening the
+// database.
+func TestBypassDatabaseValidates(t *testing.T) {
+	dir := t.TempDir()
+	useLoaded(t, writeServerConfig(t, dir, "node:\n  ephemeral:\n    inactivity_timeout: 1s\n"))
+
+	_, err := bypassDatabase()
+	require.ErrorContains(t, err, "node.ephemeral.inactivity_timeout is below the minimum")
+	assert.NoFileExists(t, filepath.Join(dir, "headscale.db"))
 }

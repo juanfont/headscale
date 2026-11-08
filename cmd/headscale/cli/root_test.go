@@ -376,10 +376,7 @@ dns:
 			require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 			useLoaded(t, configPath)
 
-			cfg, err := serverConfig()
-			require.NoError(t, err)
-
-			database, err := db.NewHeadscaleDatabase(cfg)
+			database, err := db.NewHeadscaleDatabase(serverConfig())
 			require.NoError(t, err)
 
 			t.Cleanup(func() { _ = database.Close() })
