@@ -322,13 +322,10 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 	lastExpiryCheck := time.Unix(0, 0)
 
-	var derpTickerChan <-chan time.Time
-
 	if h.cfg.DERP.AutoUpdate && h.cfg.DERP.UpdateFrequency != 0 {
-		derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
-		defer derpTicker.Stop()
-
-		derpTickerChan = derpTicker.C
+		// A refresh retries for minutes when a source is unreachable; the
+		// tasks below must not wait for it.
+		go h.refreshDERPMap(ctx)
 	}
 
 	var extraRecordsUpdate <-chan []tailcfg.DNSRecord
@@ -414,35 +411,6 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				}
 			}
 
-		case <-derpTickerChan:
-			log.Info().Msg("fetching DERPMap updates")
-
-			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) { //nolint:contextcheck
-				derpMap, err := derp.GetDERPMap(h.cfg.DERP, h.cfg.DNSConfig.BaseDomain)
-				if err != nil {
-					return nil, err
-				}
-
-				if h.cfg.DERP.Server.Enabled && h.cfg.DERP.Server.AutomaticallyAddEmbeddedDerpRegion {
-					region, err := h.DERPServer.GenerateRegion()
-					if err != nil {
-						return nil, fmt.Errorf("generating embedded DERP region: %w", err)
-					}
-
-					derpMap.Regions[region.RegionID] = &region
-				}
-
-				return derpMap, nil
-			}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
-			if err != nil {
-				log.Error().Err(err).Msg("failed to build new DERPMap, retrying later")
-				continue
-			}
-
-			h.state.SetDERPMap(derpMap)
-
-			h.Change(change.DERPMap())
-
 		case records, ok := <-extraRecordsUpdate:
 			if !ok {
 				continue
@@ -456,6 +424,49 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 		case <-haHealthChan:
 			haProber.ProbeOnce(ctx, h.Change)
 		}
+	}
+}
+
+// refreshDERPMap reloads the DERP map every derp.update_frequency until
+// ctx ends.
+func (h *Headscale) refreshDERPMap(ctx context.Context) {
+	ticker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		log.Info().Msg("fetching DERPMap updates")
+
+		derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) { //nolint:contextcheck
+			derpMap, err := derp.GetDERPMap(h.cfg.DERP, h.cfg.DNSConfig.BaseDomain)
+			if err != nil {
+				return nil, err
+			}
+
+			if h.cfg.DERP.Server.Enabled && h.cfg.DERP.Server.AutomaticallyAddEmbeddedDerpRegion {
+				region, err := h.DERPServer.GenerateRegion()
+				if err != nil {
+					return nil, fmt.Errorf("generating embedded DERP region: %w", err)
+				}
+
+				derpMap.Regions[region.RegionID] = &region
+			}
+
+			return derpMap, nil
+		}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
+		if err != nil {
+			log.Error().Err(err).Msg("failed to build new DERPMap, retrying later")
+			continue
+		}
+
+		h.state.SetDERPMap(derpMap)
+
+		h.Change(change.DERPMap())
 	}
 }
 

@@ -427,3 +427,57 @@ func TestNewHeadscaleGoOnlyProvider(t *testing.T) {
 
 	assert.Same(t, provider, cfg.DNSProvider())
 }
+
+// TestDERPRefreshDoesNotBlockScheduledTasks: a DERP refresh stuck on an
+// unreachable source leaves the other scheduled tasks running.
+func TestDERPRefreshDoesNotBlockScheduledTasks(t *testing.T) {
+	requested := make(chan struct{}, 1)
+	release := make(chan struct{})
+	stuck := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case requested <- struct{}{}:
+		default:
+		}
+
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(stuck.Close)
+	t.Cleanup(func() { close(release) })
+
+	app := createTestApp(t, func(c *types.Config) {
+		c.DERP.URLs = []types.HTTPURL{types.HTTPURL(stuck.URL)}
+		c.DERP.AutoUpdate = true
+		c.DERP.UpdateFrequency = time.Millisecond
+	})
+
+	records := filepath.Join(t.TempDir(), "records.json")
+	require.NoError(t, os.WriteFile(records, []byte("[]"), 0o600))
+
+	var err error
+
+	app.extraRecordMan, err = dns.NewExtraRecordsManager(records)
+	require.NoError(t, err)
+
+	go app.extraRecordMan.Run()
+
+	t.Cleanup(app.extraRecordMan.Close)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+
+	go app.scheduledTasks(ctx)
+
+	select {
+	case <-requested:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no DERP refresh started")
+	}
+
+	require.NoError(t, os.WriteFile(records, []byte(`[{"name":"a.example.com","type":"A","value":"100.64.0.1"}]`), 0o600))
+
+	assert.Eventually(t, func() bool { return app.cfg.HasExtraRecord("a.example.com") }, 10*time.Second, 50*time.Millisecond,
+		"extra records not reloaded while the DERP refresh is stuck")
+}
