@@ -420,7 +420,7 @@ func validateMagicDNS(c *types.Config, v *configValidator) {
 }
 
 // validateBaseDomain records a ConfigError for a dns.base_domain that is
-// not a DNS name, such as `""` in a variable, which is the text itself.
+// not a DNS name.
 func validateBaseDomain(c *types.Config, v *configValidator) {
 	base := strings.TrimSuffix(c.DNSConfig.BaseDomain, ".")
 	if base == "" || dnsname.ValidHostname(base) == nil {
@@ -430,7 +430,7 @@ func validateBaseDomain(c *types.Config, v *configValidator) {
 	v.Add(&types.ConfigError{
 		Reason:  "dns.base_domain is not a DNS name",
 		Current: []types.KV{{Key: "dns.base_domain", Value: c.DNSConfig.BaseDomain}},
-		Hint:    `use letters, digits, "-" and "."; to clear it, write dns.base_domain: "" in the configuration file, as a variable cannot`,
+		Hint:    `use letters, digits, "-" and "."; write "" to clear it`,
 		See:     dnsDocsURL,
 	})
 }

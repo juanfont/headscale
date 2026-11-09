@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -868,9 +869,9 @@ func TestDefaultsFitTypes(t *testing.T) {
 	}
 }
 
-// TestDefaultsCanBeCleared: a key with a default can still be emptied, in
-// the file or, for a list, with "[]" in a variable. An empty variable
-// counts as unset, so a variable cannot empty a text or a prefix.
+// TestDefaultsCanBeCleared: a key with a default can still be emptied with
+// "" in the file or in a variable, and a list also with []. An empty
+// variable counts as unset.
 func TestDefaultsCanBeCleared(t *testing.T) {
 	const serverURL = "server_url: https://headscale.example.com\n"
 
@@ -923,9 +924,29 @@ func TestDefaultsCanBeCleared(t *testing.T) {
 			},
 		},
 		{
-			name:    "quotes in env are text",
-			env:     []string{"HEADSCALE_DNS_MAGIC_DNS=false", `HEADSCALE_DNS_BASE_DOMAIN=""`},
-			wantErr: "dns.base_domain is not a DNS name",
+			name:  "env base domain",
+			env:   []string{"HEADSCALE_DNS_MAGIC_DNS=false", `HEADSCALE_DNS_BASE_DOMAIN=""`},
+			check: func(t *testing.T, c *types.Config) { t.Helper(); assert.Empty(t, c.DNSConfig.BaseDomain) },
+		},
+		{
+			name: "env prefix v6",
+			env:  []string{`HEADSCALE_PREFIXES_V6=""`},
+			check: func(t *testing.T, c *types.Config) {
+				t.Helper()
+				assert.Nil(t, c.Prefixes.V6)
+				require.NotNil(t, c.Prefixes.V4)
+				assert.Equal(t, *d.Prefixes.V4, *c.Prefixes.V4)
+			},
+		},
+		{
+			name:  "env derp urls quotes",
+			env:   []string{`HEADSCALE_DERP_URLS=""`},
+			check: func(t *testing.T, c *types.Config) { t.Helper(); assert.Empty(t, c.DERP.URLs) },
+		},
+		{
+			name:    "env base domain required by magic dns",
+			env:     []string{`HEADSCALE_DNS_BASE_DOMAIN=""`},
+			wantErr: "dns.base_domain is required when dns.magic_dns is true",
 		},
 	}
 
@@ -943,6 +964,73 @@ func TestDefaultsCanBeCleared(t *testing.T) {
 
 			require.NoError(t, err)
 			tt.check(t, l.Config)
+		})
+	}
+}
+
+// TestEnvEmptyLikeFile: a variable set to "" means what `key: ""` means in
+// the file, for every kind of key, errors included.
+func TestEnvEmptyLikeFile(t *testing.T) {
+	const serverURL = "server_url: https://headscale.example.com\n"
+
+	// Where a load error says the value came from.
+	origin := regexp.MustCompile(` \((env [A-Z0-9_]+|/[^)]*)\)$`)
+	loadReasons := func(err error) []string {
+		rs := reasons(types.ConfigErrors(err))
+		for i, r := range rs {
+			rs[i] = origin.ReplaceAllString(r, "")
+		}
+
+		return rs
+	}
+
+	tests := []struct {
+		name string
+		file string
+		env  []string
+	}{
+		{name: "text", file: "dns:\n  magic_dns: false\n  base_domain: \"\"\n", env: []string{"HEADSCALE_DNS_MAGIC_DNS=false", `HEADSCALE_DNS_BASE_DOMAIN=""`}},
+		{name: "prefix", file: "prefixes:\n  v6: \"\"\n", env: []string{`HEADSCALE_PREFIXES_V6=""`}},
+		{name: "list", file: "derp:\n  urls: \"\"\n", env: []string{`HEADSCALE_DERP_URLS=""`}},
+		{name: "list of objects", file: "dns:\n  extra_records: \"\"\n", env: []string{`HEADSCALE_DNS_EXTRA_RECORDS=""`}},
+		{name: "enum", file: "log:\n  level: \"\"\n", env: []string{`HEADSCALE_LOG_LEVEL=""`}},
+		{name: "integer", file: "database:\n  postgres:\n    port: \"\"\n", env: []string{`HEADSCALE_DATABASE_POSTGRES_PORT=""`}},
+		{name: "boolean", file: "dns:\n  magic_dns: \"\"\n", env: []string{`HEADSCALE_DNS_MAGIC_DNS=""`}},
+		{name: "duration", file: "node:\n  expiry: \"\"\n", env: []string{`HEADSCALE_NODE_EXPIRY=""`}},
+		{name: "map", file: "dns:\n  nameservers:\n    split: \"\"\n", env: []string{`HEADSCALE_DNS_NAMESERVERS_SPLIT=""`}},
+		{name: "secret", file: "oidc:\n  client_secret: \"\"\n", env: []string{`HEADSCALE_OIDC_CLIENT_SECRET=""`}},
+		{name: "dns provider", file: "dns:\n  challenge:\n    provider: \"\"\n", env: []string{`HEADSCALE_DNS_CHALLENGE_PROVIDER=""`}},
+		{
+			name: "dns provider setting",
+			file: "dns:\n  challenge:\n    provider:\n      name: cloudflare\n      api_token: \"\"\n",
+			env:  []string{"HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME=cloudflare", `HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN=""`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fromFile, fileErr := Load(writeConfig(t, serverURL+tt.file), true, nil)
+			fromEnv, envErr := Load(writeConfig(t, serverURL), true, tt.env)
+
+			if fileErr != nil {
+				require.Error(t, envErr)
+				assert.Equal(t, loadReasons(fileErr), loadReasons(envErr))
+
+				return
+			}
+
+			require.NoError(t, envErr)
+
+			diff := gocmp.Diff(fromFile.Config, fromEnv.Config,
+				cmpopts.IgnoreFields(types.Config{}, "ConfigDir"),
+				cmpopts.IgnoreUnexported(types.Config{}),
+				cmpopts.EquateComparable(netip.Prefix{}),
+			)
+			if diff != "" {
+				t.Errorf("file and variable differ (-file +env):\n%s", diff)
+			}
+
+			assert.Equal(t, reasons(types.ConfigErrors(Validate(fromFile.Config))), reasons(types.ConfigErrors(Validate(fromEnv.Config))))
 		})
 	}
 }

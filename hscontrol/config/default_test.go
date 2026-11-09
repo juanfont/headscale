@@ -227,7 +227,7 @@ func TestValidateGoData(t *testing.T) {
 			set:     func(c *types.Config) { c.ServerURL = "headscale.example.com" },
 			wantErr: `server_url: "headscale.example.com"`,
 		},
-		// A variable cannot clear a key: `""` in one is the text itself.
+		// Built in Go, `""` is the text itself, not an empty value.
 		{
 			name:    "base domain quotes",
 			set:     func(c *types.Config) { c.DNSConfig.BaseDomain = `""` },

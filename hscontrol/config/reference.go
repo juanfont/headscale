@@ -30,9 +30,21 @@ const (
 		"Every key can also be set with an environment variable: `HEADSCALE_` and the key's path in capitals, with `_` for\n" +
 		"`.`, e.g. `HEADSCALE_LOG_LEVEL` for `log.level`. Each key below names its variable. A variable wins over the\n" +
 		"configuration file, which wins over the default. An empty variable, like a key written with no value in the\n" +
-		"file, counts as unset and keeps the default. Clear a list with `[]`, as in `HEADSCALE_DERP_URLS='[]'` or\n" +
-		"`HEADSCALE_DNS_NAMESERVERS_GLOBAL='[]'`; any other key with a default clears only in the configuration file, as\n" +
-		"in `prefixes.v6: \"\"`.\n\n" +
+		"file, counts as unset and keeps the default. A variable set to `\"\"` means what `\"\"` means in the configuration\n" +
+		"file: it clears a key with a default, as `prefixes.v6: \"\"` does, and is an error where the file's `\"\"` is one. A\n" +
+		"list also clears with `[]`. Quote the value so the quotes reach headscale:\n\n" +
+		"```shell\n" +
+		"export HEADSCALE_PREFIXES_V6='\"\"'\n" +
+		"export HEADSCALE_DERP_URLS='[]'\n" +
+		"```\n\n" +
+		"```yaml title=\"docker-compose.yaml\"\n" +
+		"environment:\n" +
+		"  HEADSCALE_PREFIXES_V6: '\"\"'\n" +
+		"  HEADSCALE_DERP_URLS: '[]'\n" +
+		"```\n\n" +
+		"An env file (a Compose `env_file`, a systemd `EnvironmentFile=`) and a systemd `Environment=` strip one level of\n" +
+		"quotes, so `KEY=\"\"` there arrives empty and keeps the default: write `KEY='\"\"'` in an env file and\n" +
+		"`Environment='KEY=\"\"'` in a unit.\n\n" +
 		"A list is a JSON array or, unless its values are objects, its values separated by spaces. A map is a JSON object,\n" +
 		"which replaces the map in the configuration file instead of merging into it. The examples below write every list\n" +
 		"and map as JSON.\n\n" +
