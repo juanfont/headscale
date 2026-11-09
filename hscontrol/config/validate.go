@@ -212,6 +212,7 @@ func Validate(c *types.Config) error {
 	validateDERP(c, v)
 	validateDatabase(c, v)
 	validatePolicy(c, v)
+	validateLog(c, v)
 	validateMagicDNS(c, v)
 	validateBaseDomain(c, v)
 	validateCertificates(c, v)
@@ -329,6 +330,29 @@ func validatePolicy(c *types.Config, v *configValidator) {
 		Allowed: m.Allowed(),
 		See:     "https://headscale.net/stable/ref/policy/",
 	})
+}
+
+// validateLog records a ConfigError for an unset log.level or log.format,
+// as for the other enums: "" would run at a level or format the
+// configuration does not show.
+func validateLog(c *types.Config, v *configValidator) {
+	if l := c.Log.Level; l == "" {
+		v.Add(&types.ConfigError{
+			Reason:  "log.level has an unsupported value",
+			Current: []types.KV{{Key: "log.level", Value: string(l)}},
+			Allowed: l.Allowed(),
+			Hint:    "pick one of the allowed values; info is the default",
+		})
+	}
+
+	if f := c.Log.Format; f == "" {
+		v.Add(&types.ConfigError{
+			Reason:  "log.format has an unsupported value",
+			Current: []types.KV{{Key: "log.format", Value: string(f)}},
+			Allowed: f.Allowed(),
+			Hint:    "pick one of the allowed values; text is the default",
+		})
+	}
 }
 
 // validateDERP records ConfigErrors when the embedded DERP server is
