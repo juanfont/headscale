@@ -19,10 +19,14 @@ type ExampleOptions struct {
 	// OmitClientOnly leaves out the keys only the CLI reads, which a
 	// server's configuration has no use for.
 	OmitClientOnly bool
+	// Minimal keeps only the keys every server must set, under their
+	// sections.
+	Minimal bool
 }
 
 const (
 	exampleHeader = "# Every key: https://headscale.net/stable/ref/configuration-options/\n"
+	minimalHeader = "# The keys every server must set.\n" + exampleHeader
 	commentWidth  = 80
 )
 
@@ -60,6 +64,12 @@ func exampleOf(keys []keyInfo, cfg *types.Config, opts ExampleOptions, root stri
 			continue
 		}
 
+		if opts.Minimal && !slices.ContainsFunc(keys, func(l keyInfo) bool {
+			return l.Required && l.RequiredWhen == "" && (l.Path == k.Path || strings.HasPrefix(l.Path, k.Path+"."))
+		}) {
+			continue
+		}
+
 		parent, name := "", k.Path
 		if i := strings.LastIndex(k.Path, "."); i >= 0 {
 			parent, name = k.Path[:i], k.Path[i+1:]
@@ -88,7 +98,10 @@ func exampleOf(keys []keyInfo, cfg *types.Config, opts ExampleOptions, root stri
 
 	var b bytes.Buffer
 
-	if opts.Docs && root == "" {
+	switch {
+	case opts.Docs && root == "" && opts.Minimal:
+		b.WriteString(minimalHeader)
+	case opts.Docs && root == "":
 		b.WriteString(exampleHeader)
 	}
 
