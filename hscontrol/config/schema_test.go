@@ -77,7 +77,7 @@ func TestSchemaTypes(t *testing.T) {
 			want: typeInfo{Label: "list of prefixes", Anchor: "#type-list", Env: "space-separated or JSON array", Nix: "lib.types.listOf t.prefix"},
 			def:  []any{},
 		},
-		{path: "prefixes.v4", want: typeInfo{Label: "prefix", Anchor: "#type-prefix", Nix: "t.prefix"}, def: ""},
+		{path: "prefixes.v4", want: typeInfo{Label: "prefix", Anchor: "#type-prefix", Nix: "t.prefix"}, def: "100.64.0.0/10"},
 		{
 			path:   "dns.nameservers.split",
 			want:   typeInfo{Label: "map of `<domain>` → list of strings", Anchor: "#type-map", Env: "JSON object", Nix: "lib.types.attrsOf (lib.types.listOf lib.types.str)"},
@@ -97,11 +97,11 @@ func TestSchemaTypes(t *testing.T) {
 			mapKey: "setting",
 		},
 		{path: "database.postgres.pass", want: typeInfo{Label: "secret", Anchor: "#secrets", Nix: "t.secretFile"}, def: ""},
-		{path: "database.type", want: typeInfo{Label: "enum", Anchor: "#type-enum", Enum: types.DatabaseType("").Allowed()}, def: ""},
+		{path: "database.type", want: typeInfo{Label: "enum", Anchor: "#type-enum", Enum: types.DatabaseType("").Allowed()}, def: "sqlite"},
 		{path: "dns.extra_records", want: typeInfo{Label: "list of DNS records", Anchor: "#type-list", Env: "JSON array"}, def: []any{}},
-		{path: "derp.urls", want: typeInfo{Label: "list of URLs", Anchor: "#type-list", Env: "space-separated or JSON array", Nix: "lib.types.listOf t.httpURL"}, def: []any{}},
+		{path: "derp.urls", want: typeInfo{Label: "list of URLs", Anchor: "#type-list", Env: "space-separated or JSON array", Nix: "lib.types.listOf t.httpURL"}, def: []any{"https://controlplane.tailscale.com/derpmap/default"}},
 		{path: "derp.server.region_id", want: typeInfo{Label: "integer", Anchor: "#type-integer", Nix: "lib.types.int"}, def: 0},
-		{path: "listen_addr", want: typeInfo{Label: "listen address", Anchor: "#type-listen-address", Nix: "t.listenAddr"}, def: ""},
+		{path: "listen_addr", want: typeInfo{Label: "listen address", Anchor: "#type-listen-address", Nix: "t.listenAddr"}, def: "0.0.0.0:8080"},
 		{path: "dns.magic_dns", want: typeInfo{Label: "boolean", Anchor: "#type-boolean", Nix: "lib.types.bool"}, def: true},
 		{
 			path:    "tuning.batcher_workers",
@@ -243,7 +243,10 @@ func TestExamples(t *testing.T) {
 
 			example := jsonText(t, k.Example)
 			require.JSONEq(t, tag, example)
-			require.NotEqual(t, jsonText(t, k.Default), example, "example equals the default")
+			// Any other backend as the example would recommend postgres.
+			if k.Path != "database.type" {
+				require.NotEqual(t, jsonText(t, k.Default), example, "example equals the default")
+			}
 
 			if k.Field.Type == reflect.TypeFor[types.Secret]() {
 				require.True(t, strings.HasPrefix(k.Example.(string), "file:/run/secrets/"), k.Example) //nolint:forcetypeassert // a secret is text
@@ -286,13 +289,7 @@ func TestExamples(t *testing.T) {
 }
 
 func TestRequiredKeys(t *testing.T) {
-	want := map[string]string{
-		"server_url":             "",
-		"noise.private_key_path": "",
-		"database.type":          "",
-		"dns.base_domain":        "`dns.magic_dns` is true",
-		"dns.nameservers.global": "`dns.override_local_dns` is true",
-	}
+	want := map[string]string{"server_url": ""}
 
 	got, err := requiredKeys()
 	require.NoError(t, err)

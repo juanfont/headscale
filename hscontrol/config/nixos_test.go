@@ -188,7 +188,7 @@ func TestGenerateNixOptions(t *testing.T) {
 		hide []string
 	}{
 		{path: "server_url", want: []string{"\n  example = \"https://", "Required."}, hide: []string{"\n  default = "}},
-		{path: "dns.base_domain", want: []string{"\n  default = \"\";\n", "Required when `dns.magic_dns`"}},
+		{path: "dns.base_domain", want: []string{"\n  default = \"tailnet.internal\";\n"}, hide: []string{"Required"}},
 		{
 			path: "database.type",
 			want: []string{
@@ -257,6 +257,17 @@ func TestGenerateNixOptions(t *testing.T) {
 			}
 		})
 	}
+
+	// Built by hand, so the rendering is pinned whatever Default requires.
+	t.Run("required when", func(t *testing.T) {
+		k := schemaByPath(t)["dns.base_domain"]
+		k.Required, k.RequiredWhen = true, "`dns.magic_dns` is true"
+
+		opt, err := nixOption(k, 0)
+		require.NoError(t, err)
+		assert.Contains(t, opt, "\n  default = \"tailnet.internal\";\n")
+		assert.Contains(t, opt, "Required when `dns.magic_dns` is true.")
+	})
 }
 
 func TestNixLiteral(t *testing.T) {

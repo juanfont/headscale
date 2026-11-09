@@ -31,7 +31,7 @@ func DefaultConfigEnv() map[string]string {
 		// Tests should not depend on external DERP infrastructure.
 		// Use [WithPublicDERP] to opt out for tests that explicitly
 		// need public DERP relays.
-		"HEADSCALE_DERP_URLS":                    "",
+		"HEADSCALE_DERP_URLS":                    "[]",
 		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":     "false",
 		"HEADSCALE_DERP_UPDATE_FREQUENCY":        "1m",
 		"HEADSCALE_DERP_SERVER_ENABLED":          "true",

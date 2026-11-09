@@ -42,7 +42,7 @@
         "ParameterizedQueries": true
       },
       "Sqlite": {
-        "Path": "",
+        "Path": "/var/lib/headscale/db.sqlite",
         "WriteAheadLog": true,
         "WALAutoCheckPoint": 1000
       },

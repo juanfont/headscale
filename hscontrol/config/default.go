@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/netip"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -8,16 +9,22 @@ import (
 )
 
 // Default is the configuration before a file or variable sets
-// anything. database.type has no default.
+// anything. Every key but server_url has a value a server starts with.
 func Default() types.Config {
 	return types.Config{
+		Addr:                 "0.0.0.0:8080",
 		UnixSocket:           "/var/run/headscale/headscale.sock",
 		UnixSocketPermission: 0o770,
-		Prefixes:             types.PrefixesConfig{Allocation: types.IPAllocationStrategySequential},
-		Policy:               types.PolicyConfig{Mode: types.PolicyModeFile},
-		Log:                  types.LogConfig{Level: "info", Format: types.TextLogFormat},
+		Noise:                types.NoiseConfig{PrivateKeyPath: "/var/lib/headscale/noise_private.key"},
+		Prefixes: types.PrefixesConfig{
+			V4:         new(netip.MustParsePrefix("100.64.0.0/10")),
+			V6:         new(netip.MustParsePrefix("fd7a:115c:a1e0::/48")),
+			Allocation: types.IPAllocationStrategySequential,
+		},
+		Policy: types.PolicyConfig{Mode: types.PolicyModeFile},
+		Log:    types.LogConfig{Level: "info", Format: types.TextLogFormat},
 		Node: types.NodeConfig{
-			Ephemeral: types.EphemeralConfig{InactivityTimeout: 120 * time.Second},
+			Ephemeral: types.EphemeralConfig{InactivityTimeout: 30 * time.Minute},
 			Routes: types.RouteConfig{HA: types.HARouteConfig{
 				ProbeInterval: 10 * time.Second,
 				ProbeTimeout:  5 * time.Second,
@@ -29,10 +36,14 @@ func Default() types.Config {
 				VerifyClients:                      true,
 				AutomaticallyAddEmbeddedDerpRegion: true,
 			},
+			URLs:            []types.HTTPURL{"https://controlplane.tailscale.com/derpmap/default"},
+			AutoUpdate:      true,
 			UpdateFrequency: 3 * time.Hour,
 		},
 		Database: types.DatabaseConfig{
+			Type: types.DatabaseSqliteShort,
 			Sqlite: types.SqliteConfig{
+				Path:              "/var/lib/headscale/db.sqlite",
 				WriteAheadLog:     true,
 				WALAutoCheckPoint: 1000, // SQLite default
 			},
@@ -45,6 +56,7 @@ func Default() types.Config {
 		},
 		DNSConfig: types.DNSConfig{
 			MagicDNS:         true,
+			BaseDomain:       types.DefaultBaseDomain,
 			OverrideLocalDNS: true,
 			Nameservers:      types.Nameservers{Global: []string{}, Split: map[string][]string{}},
 			SearchDomains:    []string{},

@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
@@ -62,6 +63,9 @@ type configSource struct {
 	// keys is the file parsed for the positions of its keys, or nil.
 	keys     *keyNode
 	warnings []string
+	// nulls are the file's keys written with no value whose default
+	// clearableDefaults holds.
+	nulls []string
 	// envVars names the variable that set each key, for errors.
 	envVars map[string]string
 }
@@ -439,6 +443,9 @@ func Load(path string, isFile bool, environ []string) (*Loaded, error) {
 	}
 
 	l.Config, err = s.decode()
+	if err == nil {
+		l.Warnings = append(l.Warnings, s.nullWarnings()...)
+	}
 
 	return l, err
 }
@@ -504,6 +511,8 @@ func (s *configSource) loadFile() error {
 		return fmt.Errorf("fatal error reading config file %s: %w", s.file, err)
 	}
 
+	s.findNulls(m, "")
+
 	var errs []error
 
 	m = normaliseConfigMap(m, "", func(path, a, b string) {
@@ -527,6 +536,68 @@ func (s *configSource) loadFile() error {
 
 	return nil
 }
+
+// findNulls records each key of m, written below path, that is null where
+// clearableDefaults has its default.
+func (s *configSource) findNulls(m map[string]any, path string) {
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		p := joinConfigPath(path, keyCase(path, k))
+
+		switch v := m[k].(type) {
+		case map[string]any:
+			s.findNulls(v, p)
+		case nil:
+			if _, ok := clearableDefaults()[p]; ok {
+				s.nulls = append(s.nulls, p)
+			}
+		}
+	}
+}
+
+// nullWarnings warns for each of s.nulls no variable sets: null means
+// unset, so the key keeps a default its writer most likely meant to clear.
+func (s *configSource) nullWarnings() []string {
+	out := make([]string, 0, len(s.nulls))
+
+	for _, p := range s.nulls {
+		if _, env := s.envVars[p]; env {
+			continue
+		}
+
+		def := clearableDefaults()[p]
+
+		text, err := flowYAML(def)
+		if err != nil {
+			text = fmt.Sprint(def)
+		}
+
+		out = append(out, fmt.Sprintf("%s has no value in %s, so it takes its default %s", p, s.file, text))
+	}
+
+	return out
+}
+
+// clearableDefaults are the leaves of Default that "" or [] empties, by
+// path, each with its default as plainFields writes it: the non-empty
+// texts, lists and prefixes. An enum has no empty value.
+var clearableDefaults = sync.OnceValue(func() map[string]any {
+	d := Default()
+	out := map[string]any{}
+
+	for _, f := range types.ConfigFields(&d) {
+		_, enum := reflect.TypeAssert[interface{ Allowed() []string }](f.Value)
+
+		switch k := f.Value.Kind(); {
+		case enum:
+		case k == reflect.String && f.Value.Len() > 0,
+			k == reflect.Slice && f.Value.Len() > 0,
+			k == reflect.Pointer && !f.Value.IsNil():
+			out[f.Path] = plainValue(f.Value, true)
+		}
+	}
+
+	return out
+})
 
 // configKeySets derives the lookup sets the strict pass needs.
 func configKeySets() (map[string]bool, map[string]bool) {
@@ -1354,10 +1425,11 @@ func plainMap(cfg *types.Config, redact bool) map[string]any {
 }
 
 // plainFields is every leaf of cfg by path, as a parser writes it: nil
-// for a nil list or map, "" for a nil prefix. With redact, a secret shows
-// only a file: reference, a URL no userinfo, and every DNS provider
-// setting but a scalar name and file: references is hidden: any of them,
-// a number included, may be a credential.
+// for a nil list or map, [] for a nil list whose default is not empty, ""
+// for a nil prefix. With redact, a secret shows only a file: reference, a
+// URL no userinfo, and every DNS provider setting but a scalar name and
+// file: references is hidden: any of them, a number included, may be a
+// credential.
 func plainFields(cfg *types.Config, redact bool) map[string]any {
 	out := map[string]any{}
 
@@ -1374,6 +1446,9 @@ func plainFields(cfg *types.Config, redact bool) map[string]any {
 		case f.Field.Type == prefixPtrType && f.Value.IsNil():
 			// An explicit unset, which survives a default.
 			v = ""
+		case f.Value.Kind() == reflect.Slice && f.Value.IsNil() && clearableDefaults()[f.Path] != nil:
+			// An explicit empty list, which survives a non-empty default.
+			v = []any{}
 		case redact && isMap && f.Path == providerKey:
 			v = redactProvider(settings)
 		}

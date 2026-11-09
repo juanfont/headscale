@@ -1,3 +1,3 @@
 {
-  "error": "Fatal config error: dns.nameservers.global is required when dns.override_local_dns is true\n  current: dns.override_local_dns: true, dns.nameservers.global: \"[]\"\n  hint: list at least one upstream nameserver, or set dns.override_local_dns: false\n  see: https://headscale.net/stable/ref/dns/\n\nFatal config error: server_url is a subdomain of dns.base_domain\n  current: server_url: \"https://server.derp.no\", dns.base_domain: \"derp.no\"\n  hint: host headscale on a domain outside dns.base_domain (Tailscale takes over base_domain via MagicDNS)\n  see: https://headscale.net/stable/ref/dns/\n"
+  "error": "Fatal config error: server_url is a subdomain of dns.base_domain\n  current: server_url: \"https://server.derp.no\", dns.base_domain: \"derp.no\"\n  hint: host headscale on a domain outside dns.base_domain (Tailscale takes over base_domain via MagicDNS)\n  see: https://headscale.net/stable/ref/dns/\n"
 }

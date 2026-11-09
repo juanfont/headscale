@@ -277,9 +277,9 @@ func TestNewHeadscaleSecrets(t *testing.T) {
 	}
 }
 
-// validConfig is config.Default with what an operator must set, its files
-// under a fresh temp dir, and the batcher quick and single-threaded for
-// tests.
+// validConfig is config.Default with a local server URL, its files under a
+// fresh temp dir, the policy in the database, DNS off, and the batcher
+// quick and single-threaded for tests.
 func validConfig(t *testing.T) types.Config {
 	t.Helper()
 
@@ -297,6 +297,7 @@ func validConfig(t *testing.T) types.Config {
 	cfg.Policy.Mode = types.PolicyModeDB
 	cfg.DNSConfig.MagicDNS = false
 	cfg.DNSConfig.OverrideLocalDNS = false
+	cfg.DNSConfig.BaseDomain = ""
 	cfg.Tuning.BatchChangeDelay = 100 * time.Millisecond
 	cfg.Tuning.BatcherWorkers = 1
 

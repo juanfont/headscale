@@ -101,7 +101,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 		hsic.WithTestName("extrarecords"),
 		hsic.WithConfigEnv(map[string]string{
 			// Disable global nameservers to make the test run offline.
-			"HEADSCALE_DNS_NAMESERVERS_GLOBAL": "",
+			"HEADSCALE_DNS_NAMESERVERS_GLOBAL": "[]",
 			"HEADSCALE_DNS_EXTRA_RECORDS_PATH": erPath,
 		}),
 		hsic.WithFileInContainer(erPath, b),

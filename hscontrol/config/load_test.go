@@ -863,8 +863,171 @@ func TestDefaultsFitTypes(t *testing.T) {
 	cfg, err := decodeInput(t, "", "")
 	require.NoError(t, err)
 
-	if diff := gocmp.Diff(d, *cfg, cmpopts.IgnoreFields(types.Config{}, "ConfigDir"), cmpopts.IgnoreUnexported(types.Config{})); diff != "" {
+	if diff := gocmp.Diff(d, *cfg, cmpopts.IgnoreFields(types.Config{}, "ConfigDir"), cmpopts.IgnoreUnexported(types.Config{}), cmpopts.EquateComparable(netip.Prefix{})); diff != "" {
 		t.Errorf("defaults layer (-Default +decoded):\n%s", diff)
+	}
+}
+
+// TestDefaultsCanBeCleared: a key with a default can still be emptied, in
+// the file or, for a list, with "[]" in a variable. An empty variable
+// counts as unset, so a variable cannot empty a text or a prefix.
+func TestDefaultsCanBeCleared(t *testing.T) {
+	const serverURL = "server_url: https://headscale.example.com\n"
+
+	d := Default()
+
+	tests := []struct {
+		name    string
+		file    string
+		env     []string
+		check   func(*testing.T, *types.Config)
+		wantErr string // a reason Validate gives
+	}{
+		{
+			name:  "file derp urls",
+			file:  "derp:\n  urls: []\n",
+			check: func(t *testing.T, c *types.Config) { t.Helper(); assert.Empty(t, c.DERP.URLs) },
+		},
+		{
+			name: "file prefix v4",
+			file: "prefixes:\n  v4: \"\"\n",
+			check: func(t *testing.T, c *types.Config) {
+				t.Helper()
+				assert.Nil(t, c.Prefixes.V4)
+				require.NotNil(t, c.Prefixes.V6)
+				assert.Equal(t, *d.Prefixes.V6, *c.Prefixes.V6)
+			},
+		},
+		{
+			name:  "file base domain",
+			file:  "dns:\n  magic_dns: false\n  base_domain: \"\"\n",
+			check: func(t *testing.T, c *types.Config) { t.Helper(); assert.Empty(t, c.DNSConfig.BaseDomain) },
+		},
+		{
+			name:  "env derp urls",
+			env:   []string{"HEADSCALE_DERP_URLS=[]"},
+			check: func(t *testing.T, c *types.Config) { t.Helper(); assert.Empty(t, c.DERP.URLs) },
+		},
+		{
+			name:  "empty env keeps the default",
+			env:   []string{"HEADSCALE_DERP_URLS="},
+			check: func(t *testing.T, c *types.Config) { t.Helper(); assert.Equal(t, d.DERP.URLs, c.DERP.URLs) },
+		},
+		{
+			name: "empty env keeps a prefix",
+			env:  []string{"HEADSCALE_PREFIXES_V6="},
+			check: func(t *testing.T, c *types.Config) {
+				t.Helper()
+				require.NotNil(t, c.Prefixes.V6)
+				assert.Equal(t, *d.Prefixes.V6, *c.Prefixes.V6)
+			},
+		},
+		{
+			name:    "quotes in env are text",
+			env:     []string{"HEADSCALE_DNS_MAGIC_DNS=false", `HEADSCALE_DNS_BASE_DOMAIN=""`},
+			wantErr: "dns.base_domain is not a DNS name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l, err := Load(writeConfig(t, serverURL+tt.file), true, tt.env)
+			require.NoError(t, err)
+
+			err = Validate(l.Config)
+			if tt.wantErr != "" {
+				assert.Equal(t, []string{tt.wantErr}, reasons(types.ConfigErrors(err)))
+
+				return
+			}
+
+			require.NoError(t, err)
+			tt.check(t, l.Config)
+		})
+	}
+}
+
+// TestNullTakesDefault: a key written with no value is unset and takes its
+// default, so where that default is a non-empty text, list or prefix and
+// no variable sets the key, loading warns.
+func TestNullTakesDefault(t *testing.T) {
+	const serverURL = "server_url: https://headscale.example.com\n"
+
+	tests := []struct {
+		name  string
+		file  string
+		ext   string // ".yaml" when ""
+		env   []string
+		warns []string
+		check func(*testing.T, *types.Config)
+	}{
+		{
+			name:  "list",
+			file:  serverURL + "derp:\n  urls:\n",
+			warns: []string{"derp.urls has no value in $FILE, so it takes its default ['https://controlplane.tailscale.com/derpmap/default']"},
+			check: func(t *testing.T, c *types.Config) { t.Helper(); assert.Equal(t, Default().DERP.URLs, c.DERP.URLs) },
+		},
+		{
+			name:  "prefix",
+			file:  serverURL + "prefixes:\n  v6:\n",
+			warns: []string{`prefixes.v6 has no value in $FILE, so it takes its default fd7a:115c:a1e0::/48`},
+			check: func(t *testing.T, c *types.Config) { t.Helper(); assert.NotNil(t, c.Prefixes.V6) },
+		},
+		{
+			name:  "text, dotted",
+			file:  serverURL + "dns.magic_dns: false\ndns.base_domain:\n",
+			warns: []string{`dns.base_domain has no value in $FILE, so it takes its default tailnet.internal`},
+		},
+		{
+			name:  "required while magic_dns is on",
+			file:  serverURL + "dns:\n  base_domain:\n",
+			warns: []string{`dns.base_domain has no value in $FILE, so it takes its default tailnet.internal`},
+		},
+		{
+			name:  "required",
+			file:  serverURL + "noise:\n  private_key_path:\n",
+			warns: []string{`noise.private_key_path has no value in $FILE, so it takes its default /var/lib/headscale/noise_private.key`},
+		},
+		{
+			name:  "json null",
+			file:  `{"server_url": "https://headscale.example.com", "dns": {"magic_dns": false, "base_domain": null}}`,
+			ext:   ".json",
+			warns: []string{`dns.base_domain has no value in $FILE, so it takes its default tailnet.internal`},
+		},
+		{
+			name: "set by a variable",
+			file: serverURL + "derp:\n  urls:\n",
+			env:  []string{`HEADSCALE_DERP_URLS=["https://d.example.com/m.json"]`},
+			check: func(t *testing.T, c *types.Config) {
+				t.Helper()
+				assert.Equal(t, []types.HTTPURL{"https://d.example.com/m.json"}, c.DERP.URLs)
+			},
+		},
+		{name: "enum", file: serverURL + "log:\n  level:\n"},
+		{name: "empty default", file: serverURL + "derp:\n  paths:\n"},
+		{name: "section", file: serverURL + "derp:\n"},
+		{name: "empty list", file: serverURL + "derp:\n  urls: []\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config"+cmp.Or(tt.ext, ".yaml"))
+			require.NoError(t, os.WriteFile(path, []byte(tt.file), 0o600))
+
+			l, err := Load(path, true, tt.env)
+			require.NoError(t, err)
+
+			var want []string
+			for _, w := range tt.warns {
+				want = append(want, strings.ReplaceAll(w, "$FILE", path))
+			}
+
+			assert.Equal(t, want, l.Warnings)
+
+			if tt.check != nil {
+				tt.check(t, l.Config)
+			}
+		})
 	}
 }
 
@@ -1237,14 +1400,6 @@ func TestReadConfig(t *testing.T) {
 				"base_domain": "clients.derp.no",
 			},
 			wantErr: "",
-		},
-		{
-			name:       "dns-override-true-errors",
-			configPath: "testdata/dns-override-true-error.yaml",
-			setup: func(t *testing.T, cfg *types.Config) (any, error) { //nolint:thelper
-				return nil, Validate(cfg)
-			},
-			wantErr: "Fatal config error: dns.nameservers.global is required when dns.override_local_dns is true",
 		},
 		{
 			name:       "dns-override-true",
@@ -3054,7 +3209,10 @@ func unsetHeadscaleEnv(t *testing.T) {
 // hsic-* mirror integration/hsic's
 // MinimumConfigYAML and DefaultConfigEnv. <name>-strict is the same source
 // as updated for the strict loader, <name>-pruned without the keys removed
-// for having no effect.
+// for having no effect. hsic-default-derp-urls is hsic-default-strict with
+// HEADSCALE_DERP_URLS=[], as hsic writes it to clear the default map.
+// server-url-only and env-server-url-only set only server_url, in the file
+// and in a variable.
 func TestConfigCompat(t *testing.T) {
 	rows := compatRows(t)
 	update := os.Getenv("HEADSCALE_UPDATE_GOLDEN") != ""
@@ -3766,8 +3924,11 @@ dns:
 listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 0.0.0.0:8080
 trusted_proxies: [0.0.0.0/0]
+noise:
+  private_key_path: ""
 prefixes:
   v4: ""
+  v6: ""
   allocation: ""
 policy:
   mode: ""
@@ -3787,6 +3948,7 @@ database:
   type: ""
 dns:
   magic_dns: true
+  base_domain: ""
   override_local_dns: true
   extra_records: [{name: a.example.com, type: A, value: 100.64.0.1}]
   extra_records_path: /var/lib/headscale/records.json
@@ -3814,7 +3976,6 @@ oidc:
 				"tls.acme.challenge_type has an unsupported value",
 				"server_url is missing a scheme",
 				"node.ephemeral.inactivity_timeout is below the minimum",
-				"dns.nameservers.global is required when dns.override_local_dns is true",
 				"node.routes.ha.probe_interval is below the minimum",
 				"node.routes.ha.probe_timeout must be less than node.routes.ha.probe_interval",
 				"tuning.node_store_batch_size must be positive",

@@ -1,7 +1,7 @@
 {
   "config": {
     "ServerURL": "https://hs.example.com",
-    "Addr": "",
+    "Addr": "0.0.0.0:8080",
     "MetricsAddr": "",
     "TrustedProxies": [
       "10.0.0.0/8",
@@ -10,7 +10,7 @@
     "Node": {
       "Expiry": 7776000000000000,
       "Ephemeral": {
-        "InactivityTimeout": 120000000000
+        "InactivityTimeout": 1800000000000
       },
       "Routes": {
         "HA": {
@@ -23,10 +23,10 @@
       "RevokedRetention": 604800000000000
     },
     "PrefixV4": "100.64.0.0/10",
-    "PrefixV6": null,
+    "PrefixV6": "fd7a:115c:a1e0::/48",
     "IPAllocation": "sequential",
     "NoisePrivateKeyPath": "/var/lib/headscale/noise.key",
-    "BaseDomain": "",
+    "BaseDomain": "tailnet.internal",
     "Log": {
       "Format": "text",
       "Level": "info"
@@ -96,7 +96,7 @@
       ],
       "Paths": null,
       "DERPMap": null,
-      "AutoUpdate": false,
+      "AutoUpdate": true,
       "UpdateFrequency": 30000000000,
       "IPv4": "",
       "IPv6": ""
@@ -115,7 +115,7 @@
     },
     "DNSConfig": {
       "MagicDNS": false,
-      "BaseDomain": "",
+      "BaseDomain": "tailnet.internal",
       "OverrideLocalDNS": false,
       "Nameservers": {
         "Global": [
@@ -135,7 +135,7 @@
       "ExtraRecordsPath": "",
       "Certificates": {
         "Enabled": false,
-        "Zone": ""
+        "Zone": "tailnet.internal"
       }
     },
     "TailcfgDNSConfig": {

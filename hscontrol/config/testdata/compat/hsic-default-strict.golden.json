@@ -63,7 +63,21 @@
       "ServerPrivateKeyPath": "/tmp/derp.key",
       "ServerVerifyClients": true,
       "STUNAddr": "0.0.0.0:3478",
-      "URLs": [],
+      "URLs": [
+        {
+          "Scheme": "https",
+          "Opaque": "",
+          "User": null,
+          "Host": "controlplane.tailscale.com",
+          "Path": "/derpmap/default",
+          "Fragment": "",
+          "RawQuery": "",
+          "RawPath": "",
+          "RawFragment": "",
+          "ForceQuery": false,
+          "OmitHost": false
+        }
+      ],
       "Paths": null,
       "DERPMap": null,
       "AutoUpdate": false,

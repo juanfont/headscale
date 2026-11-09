@@ -56,16 +56,25 @@ var roundTripOpts = gocmp.Options{
 func TestRoundTrip(t *testing.T) {
 	unsetHeadscaleEnv(t)
 
-	rows := append([]compatRow{{name: "default"}}, compatRows(t)...)
+	rows := append([]compatRow{{name: "default"}, {name: "nil lists"}}, compatRows(t)...)
 
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			var cfg *types.Config
 
-			if row.name == "default" {
+			switch row.name {
+			case "default":
 				d := Default()
 				cfg = &d
-			} else {
+			case "nil lists":
+				// A Go-built config's nil lists must not reload as their defaults.
+				d := Default()
+				d.DERP.URLs = nil
+				d.DNSConfig.Nameservers.Global = nil
+				d.DNSConfig.Challenge.Resolvers = nil
+				d.OIDC.Scope = nil
+				cfg = &d
+			default:
 				l, err := Load(stageCompat(t, row.file, row.envFile), false, os.Environ())
 				if err != nil {
 					t.Skipf("does not load: %v", err)
@@ -210,7 +219,7 @@ func TestRoundTripValues(t *testing.T) {
 // which wins over a layer below that sets it.
 func TestMarshalNullablePrefix(t *testing.T) {
 	cfg := Default()
-	require.Nil(t, cfg.Prefixes.V4)
+	cfg.Prefixes.V4 = nil
 
 	yamlOut, err := Marshal(&cfg, ".yaml")
 	require.NoError(t, err)

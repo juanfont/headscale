@@ -187,5 +187,8 @@
       "NodeStoreBatchSize": 100,
       "NodeStoreBatchTimeout": 500000000
     }
-  }
+  },
+  "warnings": [
+    "tls.acme.http_listen has no value in $DIR/config.yaml, so it takes its default :http"
+  ]
 }

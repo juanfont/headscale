@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/config"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -200,6 +201,21 @@ func TestCheckConfig(t *testing.T) {
 		require.Equal(t, []string{"config.yaml"}, dirNames(t, dir))
 	})
 
+	t.Run("server_url only", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := writeFile(t, dir, "config.yaml", "server_url: https://headscale.example.com\n")
+
+		d := config.Default()
+		paths := []string{filepath.Dir(d.Noise.PrivateKeyPath), d.Noise.PrivateKeyPath, d.Database.Sqlite.Path}
+		before := existing(paths)
+
+		out, err := runCheck(t, checkConfigCmd, cfg)
+		require.NoError(t, err)
+		require.Equal(t, "Configuration "+cfg+" is valid\n", out)
+		require.Equal(t, []string{"config.yaml"}, dirNames(t, dir))
+		require.Equal(t, before, existing(paths), "the check created a default path")
+	})
+
 	t.Run("named files are not checked", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFile(t, dir, "policy.hujson", badGroupPolicy)
@@ -227,6 +243,25 @@ func TestCheckConfig(t *testing.T) {
 	t.Run("arguments are rejected", func(t *testing.T) {
 		require.Error(t, checkConfigCmd.Args(checkConfigCmd, []string{"other.yaml"}))
 	})
+}
+
+// TestCheckConfigEnvOnly: HEADSCALE_SERVER_URL alone, without a file, is a
+// valid configuration.
+func TestCheckConfigEnvOnly(t *testing.T) {
+	stdout, stderr, err := runHeadscale(t, []string{"HOME=" + t.TempDir(), "HEADSCALE_SERVER_URL=https://headscale.example.com"}, "check", "config")
+	require.NoError(t, err, stderr)
+	require.Equal(t, "Configuration (defaults and environment) is valid\n", stdout)
+}
+
+// existing reports, for each path, whether it exists.
+func existing(paths []string) []bool {
+	out := make([]bool, len(paths))
+	for i, p := range paths {
+		_, err := os.Stat(p)
+		out[i] = err == nil
+	}
+
+	return out
 }
 
 func TestCheckAll(t *testing.T) {

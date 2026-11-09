@@ -45,6 +45,10 @@ var (
 	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
 )
 
+// DefaultBaseDomain is dns.base_domain's default. `.internal` is reserved
+// for private use and never delegated, so MagicDNS shadows no public name.
+const DefaultBaseDomain = "tailnet.internal"
+
 // DefaultChallengeResolvers find a zone's nameservers when
 // dns.challenge.resolvers is empty. The system resolver is not used: on a
 // host running MagicDNS it answers for base_domain itself instead of
@@ -83,7 +87,7 @@ type EphemeralConfig struct {
 	// InactivityTimeout is how long an ephemeral node can be offline
 	// before it is automatically deleted. It must exceed 65s, the client
 	// keepalive plus a margin.
-	InactivityTimeout time.Duration `example:"\"30m\"" koanf:"inactivity_timeout"`
+	InactivityTimeout time.Duration `example:"\"1h\"" koanf:"inactivity_timeout"`
 }
 
 // HARouteConfig contains configuration for HA subnet router health probing.
@@ -152,8 +156,9 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 
 	// Addr is the host:port the server listens on for clients, the API and
 	// the web pages. It serves HTTPS when `tls.cert_path` or
-	// `tls.acme.hostname` is set, plain HTTP otherwise.
-	Addr ListenAddr `example:"\"0.0.0.0:8080\"" koanf:"listen_addr"`
+	// `tls.acme.hostname` is set, plain HTTP otherwise. The default listens
+	// on every address, IPv4 and IPv6 alike.
+	Addr ListenAddr `example:"\"127.0.0.1:8080\"" koanf:"listen_addr"`
 
 	// MetricsAddr is the host:port serving `/metrics` and `/debug`; keep
 	// it private. Empty disables this listener.
@@ -181,7 +186,7 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// Noise is the Noise protocol (TS2021) clients connect over.
 	Noise NoiseConfig `koanf:"noise"`
 
-	// Prefixes are the IP ranges node addresses are allocated from. Set at
+	// Prefixes are the IP ranges node addresses are allocated from. Keep at
 	// least one of `prefixes.v4` and `prefixes.v6`. Use the Tailscale
 	// ranges, `100.64.0.0/10` and `fd7a:115c:a1e0::/48`, or ranges inside
 	// them: the client assumes them, and other ranges are unsupported.
@@ -268,7 +273,7 @@ type NoiseConfig struct {
 	// PrivateKeyPath is the file holding the Noise private key, which
 	// encrypts traffic between headscale and clients, relative to the
 	// configuration file. A missing file is created with a new key.
-	PrivateKeyPath string `example:"\"/var/lib/headscale/noise_private.key\"" koanf:"private_key_path" nix:"external"`
+	PrivateKeyPath string `example:"\"/opt/headscale/noise_private.key\"" koanf:"private_key_path" nix:"external"`
 }
 
 // PrefixesConfig are the ranges node IPs are allocated from. At least one
@@ -278,11 +283,11 @@ type NoiseConfig struct {
 type PrefixesConfig struct {
 	// V4 is the IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no
 	// IPv4 address.
-	V4 *netip.Prefix `example:"\"100.64.0.0/10\"" koanf:"v4"`
+	V4 *netip.Prefix `example:"\"100.64.0.0/24\"" koanf:"v4"`
 
 	// V6 is the IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes
 	// no IPv6 address.
-	V6 *netip.Prefix `example:"\"fd7a:115c:a1e0::/48\"" koanf:"v6"`
+	V6 *netip.Prefix `example:"\"fd7a:115c:a1e0::/64\"" koanf:"v6"`
 
 	// Allocation is how a new node's addresses are picked.
 	Allocation IPAllocationStrategy `example:"\"random\"" koanf:"allocation"`
@@ -308,11 +313,14 @@ type DNSConfig struct {
 	// BaseDomain is the domain MagicDNS names live under, without a
 	// trailing dot, e.g. `example.com`. The host of `server_url` must not
 	// be this domain or a name below it: clients take the domain over.
+	// The default is a private-use name, so `dns.certificates` needs a
+	// public domain you control.
 	BaseDomain string `example:"\"tailnet.example.com\"" koanf:"base_domain"`
 
 	// OverrideLocalDNS makes clients use `dns.nameservers.global` instead
-	// of their local DNS settings, which then requires at least one global
-	// nameserver. False sends them only as fallback resolvers.
+	// of their local DNS settings; with no global nameserver there is
+	// nothing to override with, and clients keep their own. False sends
+	// them only as fallback resolvers.
 	OverrideLocalDNS bool `koanf:"override_local_dns"`
 
 	// Nameservers are the upstream DNS servers sent to clients. An entry
@@ -459,7 +467,8 @@ func (c DNSChallengeConfig) ResolverAddrs() []string {
 type Nameservers struct {
 	// Global are the nameservers for names `dns.nameservers.split` does not
 	// cover: IP addresses, or DNS-over-HTTPS URLs such as
-	// `https://dns.nextdns.io/<id>`.
+	// `https://dns.nextdns.io/<id>`. Empty by default, so clients keep
+	// their own DNS: headscale points them at no resolver you did not list.
 	Global []string `example:"[\"9.9.9.9\",\"149.112.112.112\",\"2620:fe::fe\",\"2620:fe::9\"]" koanf:"global"`
 
 	// Split maps a domain to the nameservers that answer for it (split
@@ -472,7 +481,7 @@ type Nameservers struct {
 type SqliteConfig struct {
 	// Path is the database file, relative to the configuration file;
 	// `:memory:` keeps the database in memory.
-	Path string `example:"\"/var/lib/headscale/db.sqlite\"" koanf:"path" nix:"external"`
+	Path string `example:"\"/opt/headscale/db.sqlite\"" koanf:"path" nix:"external"`
 
 	// WriteAheadLog applies `database.sqlite.wal_autocheckpoint` and
 	// compacts the database (`VACUUM`) on shutdown. SQLite runs in WAL
@@ -745,8 +754,10 @@ type DERPConfig struct {
 	Server DERPServerConfig `koanf:"server"`
 
 	// URLs are DERP maps in JSON to fetch. One that fails to load is
-	// logged and skipped; startup fails only when no region remains.
-	URLs []HTTPURL `example:"[\"https://controlplane.tailscale.com/derpmap/default\"]" koanf:"urls"`
+	// logged and skipped; startup fails only when no region remains. The
+	// default is Tailscale's map: headscale fetches it from Tailscale and
+	// clients relay through Tailscale's servers. `[]` keeps to your own.
+	URLs []HTTPURL `example:"[\"https://derp.example.com/derpmap.json\"]" koanf:"urls"`
 
 	// Paths are DERP map files. The extension picks the format: `.yaml` or
 	// `.yml`, or Tailscale JSON as `.json` or `.hujson`, both accepting
@@ -929,6 +940,23 @@ func (t Tuning) BatcherWorkerCount() int {
 	}
 
 	return DefaultBatcherWorkers()
+}
+
+// DERPShuffleSeed seeds the DERP node order: dns.base_domain, or the
+// server_url host while dns.base_domain is [DefaultBaseDomain]. Empty
+// seeds randomly on each start.
+func (c *Config) DERPShuffleSeed() string {
+	if c.DNSConfig.BaseDomain != DefaultBaseDomain {
+		return c.DNSConfig.BaseDomain
+	}
+
+	// A shared default domain would give every such server the same relay order.
+	u, err := url.Parse(c.ServerURL)
+	if err != nil {
+		return ""
+	}
+
+	return u.Hostname()
 }
 
 // Domain returns the hostname/domain part of the [Config.ServerURL].

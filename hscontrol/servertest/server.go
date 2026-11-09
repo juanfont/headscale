@@ -186,10 +186,11 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		cfg.Tuning.NodeStoreBatchTimeout = sc.nodeStoreBatchTimeout
 	}
 
-	// Off unless an option sets them: each needs a value Default leaves
-	// to the operator.
+	// Off unless an option sets them: tests get no DNS they did not ask
+	// for.
 	cfg.DNSConfig.MagicDNS = false
 	cfg.DNSConfig.OverrideLocalDNS = false
+	cfg.DNSConfig.BaseDomain = ""
 
 	if sc.magicDNSDomain != "" {
 		cfg.DNSConfig.MagicDNS = true
