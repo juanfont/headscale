@@ -6,8 +6,6 @@ let
 
   required = {
     server_url = "https://headscale.example.com";
-    dns.base_domain = "tailnet.example.com";
-    dns.nameservers.global = [ "192.0.2.53" ];
   };
   system =
     m:
@@ -22,6 +20,19 @@ let
       };
     };
   settings = s: system { services.headscale.settings = s; };
+  # Only server_url: headscale's defaults cover the rest.
+  minimal = system { };
+  # Between the module's 1200 and the options' defaults: a probe shows only
+  # where the module stops setting a distro fact, even one equal to Go's.
+  facts = settings (
+    lib.mapAttrsRecursive (_: lib.mkOverride 1300) {
+      noise.private_key_path = "/probe";
+      derp.server.private_key_path = "/probe";
+      database.sqlite.path = "/probe";
+      unix_socket = "/probe";
+      disable_check_updates = false;
+    }
+  );
 
   policy = pkgs.writeText "policy.json" "{}";
   derpMap = pkgs.writeText "derp.yaml" "regions: {}";
@@ -34,6 +45,8 @@ let
     derp.paths = [ derpMap ];
     unix_socket = "/run/headscale/moved.sock";
     dns = {
+      # Certificates need a domain you control.
+      base_domain = "tailnet.example.com";
       certificates.enabled = true;
       challenge.provider = {
         name = "rfc2136";
@@ -128,9 +141,8 @@ let
   );
   # A user's mkDefault and a plain assignment both replace the module's values.
   overrides = settings {
-    prefixes.v4 = lib.mkDefault "100.96.0.0/11";
-    derp.urls = lib.mkDefault [ "https://derp.example.com/map.json" ];
-    derp.update_frequency = "1h";
+    noise.private_key_path = lib.mkDefault "/opt/headscale/noise.key";
+    unix_socket = "/run/headscale/other.sock";
   };
   # Both spellings Go reads as cli.*.
   clis = settings {
@@ -217,23 +229,18 @@ assert lib.assertMsg (
   sessionVariables.HEADSCALE_DISABLE_CHECK_UPDATES or null == "true"
 ) "ok: HEADSCALE_DISABLE_CHECK_UPDATES is not true";
 assert lib.assertMsg (
-  overridden.prefixes.v4 == "100.96.0.0/11"
-) "overrides: a user's mkDefault does not replace prefixes.v4";
+  overridden.noise.private_key_path == "/opt/headscale/noise.key"
+) "overrides: a user's mkDefault does not replace noise.private_key_path";
 assert lib.assertMsg (
-  overridden.derp.urls == [
-    "https://derp.example.com/map.json"
-  ]
-) "overrides: a user's mkDefault does not replace derp.urls";
-assert lib.assertMsg (
-  overridden.derp.update_frequency == "1h"
-) "overrides: a plain assignment does not replace derp.update_frequency";
+  overridden.unix_socket == "/run/headscale/other.sock"
+) "overrides: a plain assignment does not replace unix_socket";
 assert lib.assertMsg (lib.any (
   a: !a.assertion && lib.hasPrefix "services.headscale.settings: remove cli, cli.api_key:" a.message
 ) clis.config.assertions) "clis: no failed assertion names every spelling of settings.cli";
 assert lib.assertMsg (
   !(ok.config.environment.etc ? "headscale/config.yaml")
 ) "ok: /etc/headscale/config.yaml is written";
-assert lib.assertMsg (!binds ok) "ok: 127.0.0.1:8080 grants CAP_NET_BIND_SERVICE";
+assert lib.assertMsg (!binds ok) "ok: 0.0.0.0:8080 grants CAP_NET_BIND_SERVICE";
 assert lib.assertMsg (binds http) "http: :http does not grant CAP_NET_BIND_SERVICE";
 assert lib.assertMsg (binds bad) "bad: [::]:443 does not grant CAP_NET_BIND_SERVICE";
 assert lib.assertMsg (
@@ -270,6 +277,7 @@ pkgs.runCommand "headscale-nixos-module"
   {
     # Built as an input: a config with a file: secret passes.
     okBuild = configCheckOf ok;
+    minimalBuild = configCheckOf minimal;
     badBuild = pkgs.testers.testBuildFailure (configCheckOf bad);
     badEnvBuild = pkgs.testers.testBuildFailure (configCheckOf badEnv);
     nativeBuildInputs = [
@@ -298,10 +306,14 @@ pkgs.runCommand "headscale-nixos-module"
     ok=${configFile ok}
     want $ok '.policy.path == "${policy}" and .derp.paths == ["${derpMap}"]'
     want $ok 'has("cli") | not'
-    want $ok '.listen_addr == "127.0.0.1:8080" and .disable_check_updates == true'
+    want $ok '.listen_addr == "0.0.0.0:8080" and .disable_check_updates == true'
     want $ok '.database.type == "sqlite"'
     want $ok '.derp.urls[0] == "https://controlplane.tailscale.com/derpmap/default"'
     want $ok '.dns.challenge.provider.key == "file:''${CREDENTIALS_DIRECTORY}/tsig"'
+    want ${configFile facts} '.noise.private_key_path == "/var/lib/headscale/noise_private.key"
+      and .derp.server.private_key_path == "/var/lib/headscale/derp_server_private.key"
+      and .database.sqlite.path == "/var/lib/headscale/db.sqlite"
+      and .unix_socket == "/run/headscale/headscale.sock" and .disable_check_updates == true'
     headscale check config -f $ok
 
     bad=${configFile bad}

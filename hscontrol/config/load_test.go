@@ -3308,7 +3308,9 @@ func unsetHeadscaleEnv(t *testing.T) {
 // dns.nameservers.global set; nixos-module-minimal.yaml is the flake module's
 // configFile with only those three set, before the module moved to the
 // generated options, and nixos-*-options.yaml the same two configFiles after
-// it; nixos-module-cli.env is what that module exports for the local CLI;
+// it; nixos-module-minimal-defaults.yaml is that module's configFile again once
+// it set only its state paths, socket and disable_check_updates;
+// nixos-module-cli.env is what that module exports for the local CLI;
 // hsic-* mirror integration/hsic's
 // MinimumConfigYAML and DefaultConfigEnv. <name>-strict is the same source
 // as updated for the strict loader, <name>-pruned without the keys removed

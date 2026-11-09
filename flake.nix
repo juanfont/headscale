@@ -172,8 +172,13 @@
         headscale-docker = pkgs.dockerTools.buildLayeredImage {
           name = "headscale";
           tag = headscaleVersion;
-          contents = [ pkgs.headscale ];
+          # CA certificates for outbound HTTPS, such as the DERP map.
+          contents = [
+            pkgs.headscale
+            pkgs.cacert
+          ];
           config.Entrypoint = [ (pkgs.headscale + "/bin/headscale") ];
+          config.Env = [ "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" ];
         };
 
         # Go flake checks from the flake-checks library. CI gates on
