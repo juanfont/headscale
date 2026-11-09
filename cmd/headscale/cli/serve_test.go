@@ -197,7 +197,7 @@ func TestServeExitCode(t *testing.T) {
 		{name: "rejected value", config: "server_url: ftp://headscale.example.com\ndisable_check_updates: true\n", args: []string{"serve"}, want: exitConfig, stderr: "server_url"},
 		{name: "unknown key", config: valid + "bogus_key: 1\n", args: []string{"serve"}, want: exitConfig, stderr: "unknown configuration key bogus_key"},
 		{name: "syntax error", config: valid + "derp: [\n", args: []string{"serve"}, want: exitConfig, stderr: "yaml: line 3"},
-		{name: "missing file", args: []string{"serve"}, want: 1, stderr: "error loading config"},
+		{name: "missing file", args: []string{"serve"}, want: 1, stderr: "Error: loading config file"},
 		{name: "no file found", search: true, args: []string{"serve"}, want: 1, stderr: "server_url is required"},
 		{name: "old format found", file: "config.toml", config: "server_url = \"https://headscale.example.com\"\n", search: true, args: []string{"serve"}, want: exitConfig, stderr: "unsupported config file format"},
 		{name: "unwritable noise key", config: valid + "noise:\n  private_key_path: " + notADir + "/noise.key\n", args: []string{"serve"}, want: 1, stderr: "Noise"},
