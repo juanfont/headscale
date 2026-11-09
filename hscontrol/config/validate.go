@@ -85,6 +85,13 @@ func Validate(c *types.Config) error {
 		})
 	}
 
+	if c.Addr == "" {
+		v.Add(&types.ConfigError{
+			Reason: "listen_addr is required",
+			Hint:   `set listen_addr, e.g. "0.0.0.0:8080", or remove it for that default; ":0" picks a random port`,
+		})
+	}
+
 	validateListenerCollisions(c, v)
 
 	// Unset only: validateValues reports an unknown value, here and in the
@@ -101,7 +108,13 @@ func Validate(c *types.Config) error {
 	// Shown without userinfo, which may be a credential.
 	serverURL := types.HTTPURL(c.ServerURL).Redacted()
 
-	if !strings.HasPrefix(c.ServerURL, "http://") && !strings.HasPrefix(c.ServerURL, "https://") {
+	switch {
+	case c.ServerURL == "":
+		v.Add(&types.ConfigError{
+			Reason: "server_url is required",
+			Hint:   "set server_url to the URL clients connect to, e.g. https://headscale.example.com",
+		})
+	case !strings.HasPrefix(c.ServerURL, "http://") && !strings.HasPrefix(c.ServerURL, "https://"):
 		// Without an @ it holds no userinfo; shown, the common mistake
 		// (headscale.example.com) is plain to see.
 		shown := c.ServerURL
@@ -387,20 +400,33 @@ func keyFile(p string) string {
 	return abs
 }
 
-// validateDatabase records a ConfigError when database.type is unset.
+// validateDatabase records a ConfigError when database.type is unset, or
+// is sqlite without a path to open.
 func validateDatabase(c *types.Config, v *configValidator) {
-	t := c.Database.Type
-	if t != "" {
-		return
-	}
+	const see = "https://headscale.net/stable/ref/database/"
 
-	v.Add(&types.ConfigError{
-		Reason:  "database.type has an unsupported value",
-		Current: []types.KV{{Key: "database.type", Value: string(t)}},
-		Allowed: t.Allowed(),
-		Hint:    "pick one of the allowed values; sqlite is the default for single-host deployments",
-		See:     "https://headscale.net/stable/ref/database/",
-	})
+	t := c.Database.Type
+
+	switch {
+	case t == "":
+		v.Add(&types.ConfigError{
+			Reason:  "database.type has an unsupported value",
+			Current: []types.KV{{Key: "database.type", Value: string(t)}},
+			Allowed: t.Allowed(),
+			Hint:    "pick one of the allowed values; sqlite is the default for single-host deployments",
+			See:     see,
+		})
+	case c.Database.IsSQLite() && c.Database.Sqlite.Path == "":
+		v.Add(&types.ConfigError{
+			Reason: "database.sqlite.path is required when database.type is sqlite",
+			Current: []types.KV{
+				{Key: "database.type", Value: string(t)},
+				{Key: "database.sqlite.path", Value: ""},
+			},
+			Hint: `set database.sqlite.path, e.g. "/var/lib/headscale/db.sqlite"`,
+			See:  see,
+		})
+	}
 }
 
 // validateMagicDNS records a ConfigError when MagicDNS is enabled without a
