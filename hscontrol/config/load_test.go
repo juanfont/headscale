@@ -1077,6 +1077,21 @@ func TestNullTakesDefault(t *testing.T) {
 			warns: []string{`noise.private_key_path has no value in $FILE, so it takes its default /var/lib/headscale/noise_private.key`},
 		},
 		{
+			name:  "required listen address",
+			file:  serverURL + "listen_addr:\n",
+			warns: []string{`listen_addr has no value in $FILE, so it takes its default 0.0.0.0:8080`},
+		},
+		{
+			name:  "required sqlite path",
+			file:  serverURL + "database:\n  sqlite:\n    path:\n",
+			warns: []string{`database.sqlite.path has no value in $FILE, so it takes its default /var/lib/headscale/db.sqlite`},
+		},
+		{
+			name:  "sqlite path unused by postgres",
+			file:  serverURL + "database:\n  type: postgres\n  sqlite:\n    path:\n",
+			warns: []string{`database.sqlite.path has no value in $FILE, so it takes its default /var/lib/headscale/db.sqlite`},
+		},
+		{
 			name:  "json null",
 			file:  `{"server_url": "https://headscale.example.com", "dns": {"magic_dns": false, "base_domain": null}}`,
 			ext:   ".json",
@@ -1669,7 +1684,7 @@ noise:
 	assert.Contains(
 		t,
 		err.Error(),
-		"Fatal config error: server_url is missing a scheme",
+		"Fatal config error: server_url is required",
 	)
 
 	// Check configuration validation errors (2)
@@ -3990,25 +4005,9 @@ dns:
   override_local_dns: false
 `
 
-	tests := []struct {
-		name string
-		file string
-		want []string // reasons, in order
-	}{
-		{name: "valid", file: valid},
-		{
-			// What the NixOS module writes: an explicit empty default.
-			name: "empty extra records next to a path",
-			file: valid + "  extra_records: []\n  extra_records_path: /var/lib/headscale/records.json\n",
-		},
-		{
-			name: "extra records next to a path",
-			file: valid + "  extra_records: [{name: a.example.com, type: A, value: 100.64.0.1}]\n  extra_records_path: /var/lib/headscale/records.json\n",
-			want: []string{"dns.extra_records and dns.extra_records_path are mutually exclusive"},
-		},
-		{
-			name: "every rule, in order",
-			file: `server_url: headscale.example.com
+	// Breaks every rule once; a rule whose empty value has its own reason
+	// is broken by a set value here.
+	const everyRule = `server_url: headscale.example.com
 listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 0.0.0.0:8080
 trusted_proxies: [0.0.0.0/0]
@@ -4054,7 +4053,27 @@ oidc:
   client_secret: secret
   pkce:
     method: ""
-`,
+`
+
+	tests := []struct {
+		name string
+		file string
+		want []string // reasons, in order
+	}{
+		{name: "valid", file: valid},
+		{
+			// What the NixOS module writes: an explicit empty default.
+			name: "empty extra records next to a path",
+			file: valid + "  extra_records: []\n  extra_records_path: /var/lib/headscale/records.json\n",
+		},
+		{
+			name: "extra records next to a path",
+			file: valid + "  extra_records: [{name: a.example.com, type: A, value: 100.64.0.1}]\n  extra_records_path: /var/lib/headscale/records.json\n",
+			want: []string{"dns.extra_records and dns.extra_records_path are mutually exclusive"},
+		},
+		{
+			name: "every rule, in order",
+			file: everyRule,
 			want: []string{
 				"OIDC configuration is invalid",
 				"dns.extra_records and dns.extra_records_path are mutually exclusive",
@@ -4069,6 +4088,36 @@ oidc:
 				"tuning.node_store_batch_size must be positive",
 				"derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
 				"database.type has an unsupported value",
+				"policy.mode has an unsupported value",
+				"dns.base_domain is required when dns.magic_dns is true",
+				"trusted_proxies contains an invalid CIDR",
+				"no IP prefix configured for the tailnet",
+				"prefixes.allocation has an unsupported value",
+				"dns.challenge.provider is invalid",
+			},
+		},
+		{
+			// Emptied, these keys give their required reason in place of the
+			// rule their set value broke.
+			name: "every rule, in order, required values empty",
+			file: strings.NewReplacer(
+				"server_url: headscale.example.com\nlisten_addr: 0.0.0.0:8080\n", "server_url: \"\"\nlisten_addr: \"\"\n",
+				"database:\n  type: \"\"\n", "database:\n  type: sqlite\n  sqlite:\n    path: \"\"\n",
+			).Replace(everyRule),
+			want: []string{
+				"OIDC configuration is invalid",
+				"dns.extra_records and dns.extra_records_path are mutually exclusive",
+				"tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
+				"noise.private_key_path is required",
+				"listen_addr is required",
+				"tls.acme.challenge_type has an unsupported value",
+				"server_url is required",
+				"node.ephemeral.inactivity_timeout is below the minimum",
+				"node.routes.ha.probe_interval is below the minimum",
+				"node.routes.ha.probe_timeout must be less than node.routes.ha.probe_interval",
+				"tuning.node_store_batch_size must be positive",
+				"derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
+				"database.sqlite.path is required when database.type is sqlite",
 				"policy.mode has an unsupported value",
 				"dns.base_domain is required when dns.magic_dns is true",
 				"trusted_proxies contains an invalid CIDR",

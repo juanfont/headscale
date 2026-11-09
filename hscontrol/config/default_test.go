@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,7 +88,7 @@ func TestValidateHintsNameDefaults(t *testing.T) {
 func TestValidateGoData(t *testing.T) {
 	t.Run("default needs the operator's values", func(t *testing.T) {
 		d := Default()
-		assert.Equal(t, []string{"server_url is missing a scheme"}, reasons(types.ConfigErrors(Validate(&d))))
+		assert.Equal(t, []string{"server_url is required"}, reasons(types.ConfigErrors(Validate(&d))))
 	})
 
 	t.Run("zero config", func(t *testing.T) {
@@ -120,6 +121,43 @@ func TestValidateGoData(t *testing.T) {
 			name:    "listen address",
 			set:     func(c *types.Config) { c.Addr = "nowhere" },
 			wantErr: "listen_addr is not a host:port address",
+		},
+		{
+			name:    "listen address empty",
+			set:     func(c *types.Config) { c.Addr = "" },
+			wantErr: "listen_addr is required",
+		},
+		{
+			name:    "listen address blank",
+			set:     func(c *types.Config) { c.Addr = " " },
+			wantErr: "listen_addr is not a host:port address",
+		},
+		{
+			name: "listen address random port",
+			set:  func(c *types.Config) { c.Addr = ":0" },
+		},
+		{
+			name: "sqlite path empty",
+			set: func(c *types.Config) {
+				c.Database.Type = types.DatabaseSqliteShort
+				c.Database.Sqlite.Path = ""
+			},
+			wantErr: "database.sqlite.path is required when database.type is sqlite",
+		},
+		{
+			name: "sqlite3 path empty",
+			set: func(c *types.Config) {
+				c.Database.Type = types.DatabaseSqlite
+				c.Database.Sqlite.Path = ""
+			},
+			wantErr: "database.sqlite.path is required when database.type is sqlite",
+		},
+		{
+			name: "postgres without sqlite path",
+			set: func(c *types.Config) {
+				c.Database.Type = types.DatabasePostgres
+				c.Database.Sqlite.Path = ""
+			},
 		},
 		{
 			name: "url",
@@ -337,6 +375,42 @@ func TestValidateGoData(t *testing.T) {
 			if tt.hidden != "" {
 				requireHidden(t, err, tt.hidden)
 			}
+		})
+	}
+}
+
+// TestRequiredWhenBlank: each key serve cannot run without, blanked, gets
+// one reason in the form requiredKeys reads, so a key whose default goes
+// away shows up as required.
+func TestRequiredWhenBlank(t *testing.T) {
+	for _, key := range []string{"server_url", "listen_addr", "noise.private_key_path", "database.sqlite.path"} {
+		t.Run(key, func(t *testing.T) {
+			cfg := Default()
+			if key != "server_url" {
+				cfg.ServerURL = "https://headscale.example.com"
+			}
+
+			blanked := false
+
+			for _, f := range types.ConfigFields(&cfg) {
+				if f.Path == key {
+					f.Value.SetZero()
+
+					blanked = true
+				}
+			}
+
+			require.True(t, blanked, "no leaf %s", key)
+
+			var got []string
+
+			for _, r := range reasons(types.ConfigErrors(Validate(&cfg))) {
+				if strings.HasPrefix(r, key+" is required") {
+					got = append(got, r)
+				}
+			}
+
+			assert.Len(t, got, 1, "reasons naming %s as required: %v", key, got)
 		})
 	}
 }

@@ -232,6 +232,28 @@ func TestCheckConfig(t *testing.T) {
 		require.ErrorContains(t, err, "server_url")
 	})
 
+	// Each problem once: an empty server_url is not also missing a scheme.
+	for _, tt := range []struct{ name, file, want string }{
+		{name: "empty file", file: "# empty\n", want: "server_url is required"},
+		{
+			name: "empty listen_addr",
+			file: "server_url: https://headscale.example.com\nlisten_addr: \"\"\n",
+			want: "listen_addr is required",
+		},
+		{
+			name: "empty sqlite path",
+			file: "server_url: https://headscale.example.com\ndatabase:\n  sqlite:\n    path: \"\"\n",
+			want: "database.sqlite.path is required when database.type is sqlite",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := runCheck(t, checkConfigCmd, writeFile(t, t.TempDir(), "config.yaml", tt.file))
+			require.ErrorContains(t, err, tt.want)
+			require.NotContains(t, err.Error(), "missing a scheme")
+			require.Equal(t, 1, strings.Count(err.Error(), "Fatal config error"), err.Error())
+		})
+	}
+
 	t.Run("derp server without key path", func(t *testing.T) {
 		dir := t.TempDir()
 
