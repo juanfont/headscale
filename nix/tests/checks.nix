@@ -67,6 +67,8 @@ let
   handGroupPolicy = "/var/lib/hshand/policy.json";
   # Readable only through the group hsread.
   groupPolicy = "/var/lib/hsread/policy.json";
+  # Written broken by the test: only the switch reads named files.
+  badRecords = "/var/lib/headscale/extra-records.json";
   badServerUrl = lib.mkForce "ftp://headscale";
 in
 {
@@ -79,7 +81,8 @@ in
       # Specialisations that set more than services.headscale.
       {
         specialisation = lib.mapAttrs (_: c: { configuration = c; }) {
-          unitEnv.systemd.services.headscale.environment.HEADSCALE_SERVER_URL = "ftp://headscale";
+          # A bad value here would fail the build check, which sees it too.
+          unitEnv.systemd.services.headscale.environment.HEADSCALE_DNS_EXTRA_RECORDS_PATH = badRecords;
           # hsnew is created by this switch, so the check leaves it out.
           supplementaryGroup = {
             services.headscale.settings.policy.path = lib.mkForce groupPolicy;
@@ -110,12 +113,13 @@ in
     };
     users.groups.hsread = { };
     specialisation = lib.mapAttrs (_: c: { configuration.services.headscale = c; }) {
-      badConfig.settings.server_url = badServerUrl;
+      badRecords.settings.dns.extra_records_path = badRecords;
       mutable.settings.policy.path = lib.mkForce mutablePolicy;
       policyOnly = {
         settings.policy.path = lib.mkForce mutablePolicy;
         check.config = false;
       };
+      # Builds only because check.config = false also drops the build check.
       unchecked = {
         settings.server_url = badServerUrl;
         check = {
@@ -184,8 +188,9 @@ in
       with subtest("rejected switches leave the running headscale alone"):
           pid = main_pid()
           before = served_policy()
-          assert_rejected("badConfig", "server_url is missing a scheme")
-          assert_rejected("unitEnv", "server_url is missing a scheme")
+          headscale.succeed("echo '{' > ${badRecords}")
+          assert_rejected("badRecords", "dns.extra_records_path")
+          assert_rejected("unitEnv", "dns.extra_records_path")
           put_policy("${undefinedGroup}")
           assert_rejected("mutable", 'group not found: "group:missing"')
           put_policy("${testsFail}")
@@ -225,7 +230,7 @@ in
 
       with subtest("escape hatches"):
           headscale.succeed(stc("unchecked", "check"))
-          headscale.succeed("NIXOS_NO_CHECK=1 " + stc("badConfig", "check"))
+          headscale.succeed("NIXOS_NO_CHECK=1 " + stc("badRecords", "check"))
 
       with subtest("a valid switch goes through and applies the policy"):
           pid = main_pid()

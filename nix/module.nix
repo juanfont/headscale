@@ -24,15 +24,28 @@ let
   # Interpolated as the config and the unit are, so a Nix path is the same store path.
   policyFile = if policyMode == "file" && policyPath != "" then "${policyPath}" else null;
   policyFileCheck = cfg.check.policy && policyFile != null;
-  # The build can read a store path, and must be able to run the binary.
-  buildTimePolicy =
-    policyFileCheck
-    && lib.hasPrefix "${builtins.storeDir}/" policyFile
-    && pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform;
+  # Build-time checks run the host's headscale.
+  canExecute = pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform;
+  # The build can read a store path.
+  buildTimePolicy = policyFileCheck && lib.hasPrefix "${builtins.storeDir}/" policyFile && canExecute;
   preSwitchPolicy = policyFileCheck && !buildTimePolicy;
+
+  # Interpolated as nixpkgs renders Environment=, so a Nix path is the same store path.
+  unitEnv = lib.mapAttrsToList (n: v: "${n}=${v}") (
+    lib.filterAttrs (_: v: v != null) config.systemd.services.headscale.environment
+  );
 
   policyCheck = pkgs.runCommand "headscale-policy-check" { } ''
     ${lib.getExe cfg.package} check policy -f ${lib.escapeShellArg policyFile}
+    touch $out
+  '';
+
+  # check config, not check all: the files the config names are not in the sandbox.
+  configCheck = pkgs.runCommand "headscale-config-check" { } ''
+    env -i ${lib.escapeShellArgs unitEnv} ${lib.getExe cfg.package} check config -f ${cfg.configFile} || {
+      echo "headscale: this check sees the unit's environment, not its EnvironmentFile or %-specifiers expanded; services.headscale.check.config = false skips it" >&2
+      exit 1
+    }
     touch $out
   '';
 
@@ -55,9 +68,6 @@ let
         )
       );
       declared = map (g: g.name) (lib.attrValues config.users.groups);
-      unitEnv = lib.mapAttrsToList (n: v: "${n}=${toString v}") (
-        lib.filterAttrs (_: v: v != null) config.systemd.services.headscale.environment
-      );
     in
     pkgs.writeShellApplication {
       name = "headscale-pre-switch-check";
@@ -163,17 +173,23 @@ in
         type = lib.types.bool;
         default = true;
         description = ''
+          While building the system (native builds only), run
+          `headscale check config -f` on
+          {option}`services.headscale.configFile`, so a configuration headscale
+          rejects fails `nixos-rebuild build`.
+
           Before a switch restarts headscale, run the new package's
           `headscale check all` on the new configuration and abort the switch
           if it fails. It checks the configuration and every file it names
           (policy, DERP maps, extra records, TLS pair, existing noise and DERP
           keys) as the `headscale` user. Keys are read, never created.
 
-          It runs outside the unit, and only when headscale's unit changes.
-          It never reads a `file:` secret, so credentials referenced with
-          `file:` pass. Turning off only {option}`services.headscale.check.policy`
-          does not skip the policy here. Skip all checks once with
-          `NIXOS_NO_CHECK=1`.
+          Both run outside the unit, with its `environment` but not its
+          `EnvironmentFile`; the switch check runs only when headscale's unit
+          changes. Neither reads a `file:` secret, so credentials referenced
+          with `file:` pass. Turning off only
+          {option}`services.headscale.check.policy` does not skip the policy
+          before a switch. Skip the switch check once with `NIXOS_NO_CHECK=1`.
         '';
       };
 
@@ -224,7 +240,9 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    system.checks = lib.optional buildTimePolicy policyCheck;
+    system.checks =
+      lib.optional buildTimePolicy policyCheck
+      ++ lib.optional (cfg.check.config && canExecute) configCheck;
 
     system.preSwitchChecks.headscale = lib.mkIf (
       cfg.check.config || preSwitchPolicy
