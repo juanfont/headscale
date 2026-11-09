@@ -4061,6 +4061,9 @@ prefixes:
   allocation: ""
 policy:
   mode: ""
+log:
+  level: ""
+  format: ""
 node:
   ephemeral:
     inactivity_timeout: 30s
@@ -4137,6 +4140,8 @@ oidc:
 				"derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
 				"database.type has an unsupported value",
 				"policy.mode has an unsupported value",
+				"log.level has an unsupported value",
+				"log.format has an unsupported value",
 				"dns.base_domain is required when dns.magic_dns is true",
 				"trusted_proxies contains an invalid CIDR",
 				"no IP prefix configured for the tailnet",
@@ -4171,6 +4176,8 @@ oidc:
 				"derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
 				"database.sqlite.path is required when database.type is sqlite",
 				"policy.mode has an unsupported value",
+				"log.level has an unsupported value",
+				"log.format has an unsupported value",
 				"dns.base_domain is required when dns.magic_dns is true",
 				"trusted_proxies contains an invalid CIDR",
 				"no IP prefix configured for the tailnet",

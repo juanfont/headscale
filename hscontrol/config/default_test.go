@@ -404,6 +404,16 @@ func TestValidateGoData(t *testing.T) {
 			wantErr: "policy.mode has an unsupported value",
 		},
 		{
+			name:    "log level empty",
+			set:     func(c *types.Config) { c.Log.Level = "" },
+			wantErr: "log.level has an unsupported value",
+		},
+		{
+			name:    "log format empty",
+			set:     func(c *types.Config) { c.Log.Format = "" },
+			wantErr: "log.format has an unsupported value",
+		},
+		{
 			name:    "database type",
 			set:     func(c *types.Config) { c.Database.Type = "bogus" },
 			wantErr: "database.type has an unsupported value",
