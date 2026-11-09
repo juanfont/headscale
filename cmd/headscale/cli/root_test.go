@@ -611,6 +611,22 @@ func TestInitConfigWarnings(t *testing.T) {
 			warnLine(t, stderr)
 			assert.Contains(t, stderr, "unknown configuration key bogus_key")
 			assert.NotContains(t, stderr, "panic")
+
+			// Reported as Execute reports any error, in the --output format.
+			if output == nil {
+				assert.Contains(t, stderr, "Error: loading config file "+invalid+": ")
+
+				return
+			}
+
+			_, obj, ok := strings.Cut(stderr, "{")
+			require.True(t, ok, stderr)
+
+			var out struct {
+				Error string `json:"error"`
+			}
+			require.NoError(t, json.Unmarshal([]byte("{"+obj), &out), stderr)
+			assert.Contains(t, out.Error, "unknown configuration key bogus_key")
 		})
 	}
 }
@@ -628,6 +644,6 @@ func TestClientCommandWithoutConfigFile(t *testing.T) {
 	_, stderr, err := runHeadscale(t, env, "users", "list")
 	require.Error(t, err, "no server listens on the socket")
 	assert.Contains(t, stderr, "listing users")
-	assert.NotContains(t, stderr, "error loading config")
+	assert.NotContains(t, stderr, "loading config")
 	assert.NotContains(t, stderr, "no config file")
 }

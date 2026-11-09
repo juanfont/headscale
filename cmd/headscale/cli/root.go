@@ -112,10 +112,10 @@ func initConfig() {
 	if err != nil {
 		// No log.format applies: main's console logger, on stderr.
 		logWarnings(l.Warnings)
-		log.WithLevel(zerolog.FatalLevel).Caller().Err(err).Msg("error loading config")
 
+		// A Cobra initializer cannot return err to Execute; report it the same way.
 		cmd, _, _ := rootCmd.Find(os.Args[1:])
-		os.Exit(exitCode(cmd, l.File, err))
+		exitWithError(cmd, l.File, err)
 	}
 
 	loaded = l
@@ -202,14 +202,19 @@ https://github.com/juanfont/headscale`,
 func Execute() {
 	cmd, err := rootCmd.ExecuteC()
 	if err != nil {
-		outputFormat, _ := cmd.Flags().GetString("output")
-		printError(err, outputFormat)
-
 		var file string
 		if loaded != nil {
 			file = loaded.File
 		}
 
-		os.Exit(exitCode(cmd, file, err))
+		exitWithError(cmd, file, err)
 	}
+}
+
+// exitWithError prints err in cmd's --output format and exits with
+// exitCode; file is the configuration file loaded, if any.
+func exitWithError(cmd *cobra.Command, file string, err error) {
+	outputFormat, _ := cmd.Flags().GetString("output")
+	printError(err, outputFormat)
+	os.Exit(exitCode(cmd, file, err))
 }
