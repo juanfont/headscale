@@ -29,7 +29,10 @@ const (
 	referenceEnv = "### Environment variables { #env }\n\n" +
 		"Every key can also be set with an environment variable: `HEADSCALE_` and the key's path in capitals, with `_` for\n" +
 		"`.`, e.g. `HEADSCALE_LOG_LEVEL` for `log.level`. Each key below names its variable. A variable wins over the\n" +
-		"configuration file, which wins over the default; an empty variable counts as unset.\n\n" +
+		"configuration file, which wins over the default. An empty variable, like a key written with no value in the\n" +
+		"file, counts as unset and keeps the default. Clear a list with `[]`, as in `HEADSCALE_DERP_URLS='[]'` or\n" +
+		"`HEADSCALE_DNS_NAMESERVERS_GLOBAL='[]'`; any other key with a default clears only in the configuration file, as\n" +
+		"in `prefixes.v6: \"\"`.\n\n" +
 		"A list is a JSON array or, unless its values are objects, its values separated by spaces. A map is a JSON object,\n" +
 		"which replaces the map in the configuration file instead of merging into it. The examples below write every list\n" +
 		"and map as JSON.\n\n" +

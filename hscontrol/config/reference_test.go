@@ -188,10 +188,10 @@ func TestReferenceKeys(t *testing.T) {
 		{path: "server_url", want: []string{"\n- **Required**\n", "\n    export HEADSCALE_SERVER_URL=https://headscale.example.com\n"}},
 		{path: "database.type", want: []string{
 			"- **Type:** [enum](#type-enum): `sqlite`, `sqlite3`, `postgres`\n",
-			"- **Required**\n",
+			"- **Default:** `sqlite`\n",
 			"| `postgres` | PostgreSQL, at [`database.postgres.host`](#database.postgres.host). ",
 		}},
-		{path: "dns.base_domain", want: []string{"- **Default:** `\"\"`; required when [`dns.magic_dns`](#dns.magic_dns) is true\n"}},
+		{path: "dns.base_domain", want: []string{"- **Default:** `tailnet.internal`\n"}, hide: []string{"required"}},
 		{path: "tuning.batcher_workers", want: []string{"- **Default:** `0` (three quarters of the CPU cores, at least one)\n"}},
 		{path: "unix_socket_permission", want: []string{"- **Type:** [file mode](#type-file-mode)\n", "- **Default:** `\"0770\"`\n"}},
 		{path: "dns.nameservers.split", want: []string{
@@ -242,6 +242,16 @@ func TestReferenceKeys(t *testing.T) {
 			}
 		})
 	}
+
+	// Built by hand, so the rendering is pinned whatever Default requires.
+	t.Run("required when", func(t *testing.T) {
+		k := schemaByPath(t)["dns.base_domain"]
+		k.Required, k.RequiredWhen = true, "`dns.magic_dns` is true"
+
+		r := &reference{paths: map[string]bool{"dns.magic_dns": true}}
+		require.NoError(t, r.facts(k))
+		require.Contains(t, r.String(), "- **Default:** `tailnet.internal`; required when [`dns.magic_dns`](#dns.magic_dns) is true\n")
+	})
 }
 
 // TestOpenMapDocs: the page prints an open map's key case only through its

@@ -259,7 +259,7 @@ func WithDERPConfig(derpMap tailcfg.DERPMap) Option {
 			})
 
 		// Disable global DERP server and embedded DERP server
-		hsic.env["HEADSCALE_DERP_URLS"] = ""
+		hsic.env["HEADSCALE_DERP_URLS"] = "[]"
 		hsic.env["HEADSCALE_DERP_SERVER_ENABLED"] = "false"
 
 		// Envknob for enabling DERP debug logs

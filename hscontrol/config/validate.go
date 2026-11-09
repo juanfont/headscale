@@ -138,18 +138,6 @@ func Validate(c *types.Config) error {
 		})
 	}
 
-	if c.DNSConfig.OverrideLocalDNS && len(c.DNSConfig.Nameservers.Global) == 0 {
-		v.Add(&types.ConfigError{
-			Reason: "dns.nameservers.global is required when dns.override_local_dns is true",
-			Current: []types.KV{
-				{Key: "dns.override_local_dns", Value: true},
-				{Key: "dns.nameservers.global", Value: "[]"},
-			},
-			Hint: "list at least one upstream nameserver, or set dns.override_local_dns: false",
-			See:  dnsDocsURL,
-		})
-	}
-
 	// Validate HA health probing parameters
 	if ha := c.Node.Routes.HA; ha.ProbeInterval > 0 {
 		if ha.ProbeInterval < 2*time.Second {
@@ -212,6 +200,7 @@ func Validate(c *types.Config) error {
 	validateDatabase(c, v)
 	validatePolicy(c, v)
 	validateMagicDNS(c, v)
+	validateBaseDomain(c, v)
 	validateCertificates(c, v)
 	validatePrefixes(c, v)
 	validateDNSProvider(c, v)
@@ -430,6 +419,22 @@ func validateMagicDNS(c *types.Config, v *configValidator) {
 	}
 }
 
+// validateBaseDomain records a ConfigError for a dns.base_domain that is
+// not a DNS name, such as `""` in a variable, which is the text itself.
+func validateBaseDomain(c *types.Config, v *configValidator) {
+	base := strings.TrimSuffix(c.DNSConfig.BaseDomain, ".")
+	if base == "" || dnsname.ValidHostname(base) == nil {
+		return
+	}
+
+	v.Add(&types.ConfigError{
+		Reason:  "dns.base_domain is not a DNS name",
+		Current: []types.KV{{Key: "dns.base_domain", Value: c.DNSConfig.BaseDomain}},
+		Hint:    `use letters, digits, "-" and "."; to clear it, write dns.base_domain: "" in the configuration file, as a variable cannot`,
+		See:     dnsDocsURL,
+	})
+}
+
 // validateCertificates records ConfigErrors when node certificates are
 // enabled without what the Tailscale client needs: a MagicDNS name it can
 // match exactly, and a provider to publish the challenge.
@@ -470,8 +475,9 @@ func validateCertificates(c *types.Config, v *configValidator) {
 		})
 	}
 
+	// validateBaseDomain reports a non-empty name that is not a DNS name.
 	base := strings.TrimSuffix(c.DNSConfig.BaseDomain, ".")
-	if base != strings.ToLower(base) || dnsname.ValidHostname(base) != nil {
+	if base == "" || (base != strings.ToLower(base) && dnsname.ValidHostname(base) == nil) {
 		v.Add(&types.ConfigError{
 			Reason:  "dns.base_domain must be a lowercase DNS name for dns.certificates",
 			Current: []types.KV{{Key: "dns.base_domain", Value: base}},

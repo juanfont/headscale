@@ -1,13 +1,13 @@
 {
   "config": {
     "ServerURL": "https://derp.no",
-    "Addr": "",
+    "Addr": "0.0.0.0:8080",
     "MetricsAddr": "",
     "TrustedProxies": null,
     "Node": {
       "Expiry": 0,
       "Ephemeral": {
-        "InactivityTimeout": 120000000000
+        "InactivityTimeout": 1800000000000
       },
       "Routes": {
         "HA": {
@@ -39,7 +39,7 @@
         "ParameterizedQueries": false
       },
       "Sqlite": {
-        "Path": "",
+        "Path": "/var/lib/headscale/db.sqlite",
         "WriteAheadLog": true,
         "WALAutoCheckPoint": 1000
       },
@@ -63,10 +63,24 @@
       "ServerPrivateKeyPath": "",
       "ServerVerifyClients": true,
       "STUNAddr": "",
-      "URLs": [],
+      "URLs": [
+        {
+          "Scheme": "https",
+          "Opaque": "",
+          "User": null,
+          "Host": "controlplane.tailscale.com",
+          "Path": "/derpmap/default",
+          "Fragment": "",
+          "RawQuery": "",
+          "RawPath": "",
+          "RawFragment": "",
+          "ForceQuery": false,
+          "OmitHost": false
+        }
+      ],
       "Paths": null,
       "DERPMap": null,
-      "AutoUpdate": false,
+      "AutoUpdate": true,
       "UpdateFrequency": 10800000000000,
       "IPv4": "",
       "IPv6": ""

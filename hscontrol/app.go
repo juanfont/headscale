@@ -443,7 +443,7 @@ func (h *Headscale) refreshDERPMap(ctx context.Context) {
 		log.Info().Msg("fetching DERPMap updates")
 
 		derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) { //nolint:contextcheck
-			derpMap, err := derp.GetDERPMap(h.cfg.DERP, h.cfg.DNSConfig.BaseDomain)
+			derpMap, err := derp.GetDERPMap(h.cfg.DERP, h.cfg.DERPShuffleSeed())
 			if err != nil {
 				return nil, err
 			}
@@ -628,7 +628,7 @@ func (h *Headscale) Serve() error {
 
 	// Start on the sources that loaded; only a map with no region at all,
 	// after the embedded region and the policy's derpMap, is fatal.
-	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP, h.cfg.DNSConfig.BaseDomain)
+	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP, h.cfg.DERPShuffleSeed())
 	if derpErr != nil {
 		log.Warn().Err(derpErr).Msg("skipping DERP map sources that failed to load")
 	}

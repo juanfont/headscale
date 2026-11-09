@@ -73,6 +73,9 @@ func TestGenerateConfigRunningRoundTrip(t *testing.T) {
 		written[f.Path] = v
 	}
 
+	// database.type's example is its default, which would hide a dropped key.
+	written["database.type"] = string(types.DatabasePostgres)
+
 	// literal is written with a credential in every place one can hide.
 	literal := maps.Clone(written)
 	markers := []string{"marker-user", "marker-pass"}

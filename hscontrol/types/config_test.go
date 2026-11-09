@@ -192,6 +192,12 @@ func TestTailcfgDNSConfig(t *testing.T) {
 			},
 		},
 		{
+			// Nothing to override with: clients keep their own DNS.
+			name: "override local dns without global nameservers",
+			cfg:  Config{DNSConfig: DNSConfig{OverrideLocalDNS: true}},
+			want: &tailcfg.DNSConfig{Routes: map[string][]*dnstype.Resolver{}},
+		},
+		{
 			name: "fallback resolvers",
 			cfg:  Config{DNSConfig: DNSConfig{Nameservers: Nameservers{Global: []string{"1.1.1.1"}}}},
 			want: &tailcfg.DNSConfig{
@@ -426,6 +432,30 @@ func TestServesRoute(t *testing.T) {
 	// Only the configured ranges hold nodes.
 	narrow := netip.MustParsePrefix("100.64.0.0/24")
 	assert.True(t, (&Config{Prefixes: PrefixesConfig{V4: &narrow}}).ServesRoute(netip.MustParsePrefix("100.100.0.1/32")))
+}
+
+// TestDERPShuffleSeed: servers left on the default base domain do not all
+// share one DERP order; any other domain seeds it.
+func TestDERPShuffleSeed(t *testing.T) {
+	tests := []struct {
+		name       string
+		serverURL  string
+		baseDomain string
+		want       string
+	}{
+		{name: "default domain a", serverURL: "https://a.example.com", baseDomain: DefaultBaseDomain, want: "a.example.com"},
+		{name: "default domain b", serverURL: "https://b.example.com:8443", baseDomain: DefaultBaseDomain, want: "b.example.com"},
+		{name: "default domain unparsable url", serverURL: "https://a.example.com/%zz", baseDomain: DefaultBaseDomain, want: ""},
+		{name: "operator domain", serverURL: "https://a.example.com", baseDomain: "corp.example.com", want: "corp.example.com"},
+		{name: "empty domain", serverURL: "https://a.example.com", baseDomain: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Config{ServerURL: tt.serverURL, DNSConfig: DNSConfig{BaseDomain: tt.baseDomain}}
+			assert.Equal(t, tt.want, c.DERPShuffleSeed())
+		})
+	}
 }
 
 // TestDNSDomainsCompat: SaaS sends the tailnet domain as a search domain with

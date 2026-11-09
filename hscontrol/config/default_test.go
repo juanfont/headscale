@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// validConfig is Default with the values it leaves to the operator set, so
-// it passes Validate.
+// validConfig is Default with a server URL, the one key Default leaves
+// empty, so it passes Validate, and its own DNS base domain and resolver.
 func validConfig() types.Config {
 	v4 := netip.MustParsePrefix("100.64.0.0/10")
 
@@ -40,8 +40,30 @@ func TestDefaultHoldsDefaults(t *testing.T) {
 	assert.Zero(t, d.Tuning.BatcherWorkers, "auto: its count depends on the host")
 	require.Equal(t, []string{"9.9.9.9:53", "149.112.112.112:53"}, d.DNSConfig.Challenge.Resolvers)
 
+	assert.Equal(t, types.ListenAddr("0.0.0.0:8080"), d.Addr)
+	assert.Empty(t, d.MetricsAddr)
+	assert.Equal(t, "/var/lib/headscale/noise_private.key", d.Noise.PrivateKeyPath)
+	require.NotNil(t, d.Prefixes.V4)
+	require.NotNil(t, d.Prefixes.V6)
+	assert.Equal(t, netip.MustParsePrefix("100.64.0.0/10"), *d.Prefixes.V4)
+	assert.Equal(t, netip.MustParsePrefix("fd7a:115c:a1e0::/48"), *d.Prefixes.V6)
+	assert.Equal(t, types.DatabaseSqliteShort, d.Database.Type)
+	assert.Equal(t, "/var/lib/headscale/db.sqlite", d.Database.Sqlite.Path)
+	assert.Equal(t, []types.HTTPURL{"https://controlplane.tailscale.com/derpmap/default"}, d.DERP.URLs)
+	assert.True(t, d.DERP.AutoUpdate)
+	assert.Equal(t, 3*time.Hour, d.DERP.UpdateFrequency)
+	assert.Equal(t, 30*time.Minute, d.Node.Ephemeral.InactivityTimeout)
+	assert.Equal(t, "tailnet.internal", d.DNSConfig.BaseDomain)
+	assert.Empty(t, d.DNSConfig.Nameservers.Global, "no third-party resolver unless the operator lists one")
+
 	d.DNSConfig.Challenge.Resolvers[0] = "changed"
-	assert.Equal(t, "9.9.9.9:53", Default().DNSConfig.Challenge.Resolvers[0], "each Default is its own copy")
+	d.DERP.URLs[0] = "https://changed.example.com/derpmap"
+	*d.Prefixes.V4 = netip.MustParsePrefix("10.0.0.0/8")
+
+	fresh := Default()
+	assert.Equal(t, "9.9.9.9:53", fresh.DNSConfig.Challenge.Resolvers[0], "each Default is its own copy")
+	assert.Equal(t, types.HTTPURL("https://controlplane.tailscale.com/derpmap/default"), fresh.DERP.URLs[0], "each Default is its own copy")
+	assert.Equal(t, netip.MustParsePrefix("100.64.0.0/10"), *fresh.Prefixes.V4, "each Default is its own copy")
 }
 
 // TestValidateHintsNameDefaults: the defaults Validate's hints quote, which
@@ -65,14 +87,7 @@ func TestValidateHintsNameDefaults(t *testing.T) {
 func TestValidateGoData(t *testing.T) {
 	t.Run("default needs the operator's values", func(t *testing.T) {
 		d := Default()
-		assert.Equal(t, []string{
-			"noise.private_key_path is required",
-			"server_url is missing a scheme",
-			"dns.nameservers.global is required when dns.override_local_dns is true",
-			"database.type has an unsupported value",
-			"dns.base_domain is required when dns.magic_dns is true",
-			"no IP prefix configured for the tailnet",
-		}, reasons(types.ConfigErrors(Validate(&d))))
+		assert.Equal(t, []string{"server_url is missing a scheme"}, reasons(types.ConfigErrors(Validate(&d))))
 	})
 
 	t.Run("zero config", func(t *testing.T) {
@@ -211,6 +226,25 @@ func TestValidateGoData(t *testing.T) {
 			name:    "server url without scheme shown",
 			set:     func(c *types.Config) { c.ServerURL = "headscale.example.com" },
 			wantErr: `server_url: "headscale.example.com"`,
+		},
+		// A variable cannot clear a key: `""` in one is the text itself.
+		{
+			name:    "base domain quotes",
+			set:     func(c *types.Config) { c.DNSConfig.BaseDomain = `""` },
+			wantErr: "dns.base_domain is not a DNS name",
+		},
+		{
+			name:    "base domain underscore",
+			set:     func(c *types.Config) { c.DNSConfig.BaseDomain = "tail_net.example.com" },
+			wantErr: "dns.base_domain is not a DNS name",
+		},
+		{
+			name: "base domain trailing dot",
+			set:  func(c *types.Config) { c.DNSConfig.BaseDomain = "tailnet.example.com." },
+		},
+		{
+			name: "base domain uppercase",
+			set:  func(c *types.Config) { c.DNSConfig.BaseDomain = "Tailnet.Example.com" },
 		},
 		// One error per problem: the rules that predate the value checks
 		// keep only the empty value.

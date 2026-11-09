@@ -1,0 +1,180 @@
+{
+  "config": {
+    "ServerURL": "https://headscale.example.com",
+    "Addr": "0.0.0.0:8080",
+    "MetricsAddr": "",
+    "TrustedProxies": null,
+    "Node": {
+      "Expiry": 0,
+      "Ephemeral": {
+        "InactivityTimeout": 1800000000000
+      },
+      "Routes": {
+        "HA": {
+          "ProbeInterval": 10000000000,
+          "ProbeTimeout": 5000000000
+        }
+      }
+    },
+    "PreAuthKeys": {
+      "RevokedRetention": 604800000000000
+    },
+    "PrefixV4": "100.64.0.0/10",
+    "PrefixV6": "fd7a:115c:a1e0::/48",
+    "IPAllocation": "sequential",
+    "NoisePrivateKeyPath": "/var/lib/headscale/noise_private.key",
+    "BaseDomain": "tailnet.internal",
+    "Log": {
+      "Format": "text",
+      "Level": "info"
+    },
+    "DisableUpdateCheck": false,
+    "Database": {
+      "Type": "sqlite3",
+      "Debug": false,
+      "Gorm": {
+        "Debug": false,
+        "SlowThreshold": 0,
+        "SkipErrRecordNotFound": false,
+        "ParameterizedQueries": false
+      },
+      "Sqlite": {
+        "Path": "/var/lib/headscale/db.sqlite",
+        "WriteAheadLog": true,
+        "WALAutoCheckPoint": 1000
+      },
+      "Postgres": {
+        "Host": "",
+        "Port": 0,
+        "Name": "",
+        "User": "",
+        "Ssl": "false",
+        "MaxOpenConnections": 10,
+        "MaxIdleConnections": 10,
+        "ConnMaxIdleTimeSecs": 3600
+      }
+    },
+    "DERP": {
+      "ServerEnabled": false,
+      "AutomaticallyAddEmbeddedDerpRegion": true,
+      "ServerRegionID": 0,
+      "ServerRegionCode": "",
+      "ServerRegionName": "",
+      "ServerPrivateKeyPath": "",
+      "ServerVerifyClients": true,
+      "STUNAddr": "",
+      "URLs": [
+        {
+          "Scheme": "https",
+          "Opaque": "",
+          "User": null,
+          "Host": "controlplane.tailscale.com",
+          "Path": "/derpmap/default",
+          "Fragment": "",
+          "RawQuery": "",
+          "RawPath": "",
+          "RawFragment": "",
+          "ForceQuery": false,
+          "OmitHost": false
+        }
+      ],
+      "Paths": null,
+      "DERPMap": null,
+      "AutoUpdate": true,
+      "UpdateFrequency": 10800000000000,
+      "IPv4": "",
+      "IPv6": ""
+    },
+    "TLS": {
+      "CertPath": "",
+      "KeyPath": "",
+      "ACME": {
+        "Hostname": "",
+        "ChallengeType": "HTTP-01",
+        "HTTPListen": ":http",
+        "URL": "",
+        "Email": "",
+        "CacheDir": "/var/lib/headscale/cache"
+      }
+    },
+    "DNSConfig": {
+      "MagicDNS": true,
+      "BaseDomain": "tailnet.internal",
+      "OverrideLocalDNS": true,
+      "Nameservers": {
+        "Global": [],
+        "Split": {}
+      },
+      "SearchDomains": [],
+      "ExtraRecords": null,
+      "ExtraRecordsPath": "",
+      "Certificates": {
+        "Enabled": false,
+        "Zone": "tailnet.internal"
+      }
+    },
+    "TailcfgDNSConfig": {
+      "Domains": [
+        "tailnet.internal"
+      ],
+      "Proxied": true
+    },
+    "DNSChallenge": {
+      "PropagationTimeout": 120000000000,
+      "Resolvers": [
+        "9.9.9.9:53",
+        "149.112.112.112:53"
+      ],
+      "ProviderName": ""
+    },
+    "UnixSocket": "/var/run/headscale/headscale.sock",
+    "UnixSocketPermission": 504,
+    "OIDC": {
+      "OnlyStartIfOIDCIsAvailable": true,
+      "Issuer": "",
+      "ClientID": "",
+      "Scope": [
+        "openid",
+        "profile",
+        "email"
+      ],
+      "ExtraParams": {},
+      "AllowedDomains": null,
+      "AllowedUsers": null,
+      "AllowedGroups": null,
+      "EmailVerifiedRequired": true,
+      "UseExpiryFromToken": false,
+      "PKCE": {
+        "Enabled": false,
+        "Method": "S256"
+      }
+    },
+    "LogTail": {
+      "Enabled": false
+    },
+    "Taildrop": {
+      "Enabled": true
+    },
+    "AutoUpdate": {
+      "Enabled": false
+    },
+    "CLI": {
+      "Address": "",
+      "Timeout": 5000000000,
+      "Insecure": false
+    },
+    "Policy": {
+      "Path": "",
+      "Mode": "file"
+    },
+    "Tuning": {
+      "BatchChangeDelay": 800000000,
+      "NodeMapSessionBufferedChanSize": 30,
+      "BatcherWorkers": 0,
+      "RegisterCacheExpiration": 900000000000,
+      "RegisterCacheMaxEntries": 1024,
+      "NodeStoreBatchSize": 100,
+      "NodeStoreBatchTimeout": 500000000
+    }
+  }
+}
