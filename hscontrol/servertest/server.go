@@ -208,6 +208,25 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		cfg.DNSConfig.Nameservers.Global = sc.dnsResolvers
 	}
 
+	return start(tb, cfg, sc.ephemeralTimeout, sc.realListener)
+}
+
+// NewServerFromConfig starts cfg, as loaded, as a test server. Only the
+// server URL, set to the in-memory listener, and the DERP map, set
+// in-process, differ from serving cfg; the DERP map is never fetched.
+// [hscontrol.Headscale.Serve] never runs: no configured listeners, no unix
+// socket and no scheduled tasks, so this is not `headscale serve`.
+func NewServerFromConfig(tb testing.TB, cfg types.Config) *TestServer {
+	tb.Helper()
+
+	return start(tb, cfg, cfg.Node.Ephemeral.InactivityTimeout, false)
+}
+
+// start runs cfg through [hscontrol.NewHeadscale], then sets the ephemeral
+// timeout and starts the server's subsystems and listener.
+func start(tb testing.TB, cfg types.Config, ephemeralTimeout time.Duration, realListener bool) *TestServer {
+	tb.Helper()
+
 	app, err := hscontrol.NewHeadscale(&cfg)
 	if err != nil {
 		tb.Fatalf("servertest: NewHeadscale: %v", err)
@@ -215,7 +234,7 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 
 	// Validate's floor is for clients that reconnect over real networks;
 	// tests shorten it once the configuration has been validated.
-	cfg.Node.Ephemeral.InactivityTimeout = sc.ephemeralTimeout
+	cfg.Node.Ephemeral.InactivityTimeout = ephemeralTimeout
 
 	// Registered first so clients, HTTP, and background subsystems stop first.
 	tb.Cleanup(func() {
@@ -255,7 +274,7 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		ln         net.Listener
 	)
 
-	if sc.realListener {
+	if realListener {
 		var lc net.ListenConfig
 
 		ln, err = lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
