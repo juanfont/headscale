@@ -9,8 +9,8 @@ server_url: ""
 
 # The host:port the server listens on for clients, the API and the web pages. It
 # serves HTTPS when `tls.cert_path` or `tls.acme.hostname` is set, plain HTTP
-# otherwise.
-listen_addr: ""
+# otherwise. The default listens on every address, IPv4 and IPv6 alike.
+listen_addr: 0.0.0.0:8080
 
 # The host:port serving `/metrics` and `/debug`; keep it private. Empty disables
 # this listener.
@@ -38,19 +38,18 @@ noise:
   # The file holding the Noise private key, which encrypts traffic between
   # headscale and clients, relative to the configuration file. A missing file is
   # created with a new key.
-  # Required. Example: /var/lib/headscale/noise_private.key
-  private_key_path: ""
+  private_key_path: /var/lib/headscale/noise_private.key
 
-# The IP ranges node addresses are allocated from. Set at least one of
+# The IP ranges node addresses are allocated from. Keep at least one of
 # `prefixes.v4` and `prefixes.v6`. Use the Tailscale ranges, `100.64.0.0/10` and
 # `fd7a:115c:a1e0::/48`, or ranges inside them: the client assumes them, and
 # other ranges are unsupported.
 prefixes:
   # The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address.
-  v4: ""
+  v4: 100.64.0.0/10
   # The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6
   # address.
-  v6: ""
+  v6: fd7a:115c:a1e0::/48
   # How a new node's addresses are picked.
   # One of: `sequential`, `random`.
   allocation: sequential
@@ -90,7 +89,7 @@ node:
   ephemeral:
     # How long an ephemeral node can be offline before it is automatically
     # deleted. It must exceed 65s, the client keepalive plus a margin.
-    inactivity_timeout: 2m
+    inactivity_timeout: 30m
   # Covers the routes nodes advertise. See
   # [Routes](https://headscale.net/stable/ref/routes/).
   routes:
@@ -156,14 +155,17 @@ derp:
     # there yourself.
     automatically_add_embedded_derp_region: true
   # DERP maps in JSON to fetch. One that fails to load is logged and skipped;
-  # startup fails only when no region remains.
-  urls: []
+  # startup fails only when no region remains. The default is Tailscale's map:
+  # headscale fetches it from Tailscale and clients relay through Tailscale's
+  # servers. `[]` keeps to your own.
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
   # DERP map files. The extension picks the format: `.yaml` or `.yml`, or
   # Tailscale JSON as `.json` or `.hujson`, both accepting comments and trailing
   # commas.
   paths: []
   # Reloads `derp.urls` and `derp.paths` every `derp.update_frequency`.
-  auto_update_enabled: false
+  auto_update_enabled: true
   # How often `derp.auto_update_enabled` reloads the DERP map. Zero disables
   # reloading.
   update_frequency: 3h
@@ -175,8 +177,7 @@ database:
   # The database backend. SQLite is recommended; PostgreSQL is supported for
   # legacy deployments only.
   # One of: `sqlite`, `sqlite3`, `postgres`.
-  # Required. Example: sqlite
-  type: ""
+  type: sqlite
   # Turns on query logging: ordinary queries at log level debug, shown only when
   # `log.level` is `debug` or `trace`, slow ones at warn and failed ones at
   # error. Off, no query is logged. `database.gorm` shapes the query log. See
@@ -196,7 +197,7 @@ database:
   sqlite:
     # The database file, relative to the configuration file; `:memory:` keeps
     # the database in memory.
-    path: ""
+    path: /var/lib/headscale/db.sqlite
     # Applies `database.sqlite.wal_autocheckpoint` and compacts the database
     # (`VACUUM`) on shutdown. SQLite runs in WAL mode either way; false keeps
     # SQLite's default checkpoint of 1000 frames.
@@ -243,19 +244,20 @@ dns:
   magic_dns: true
   # The domain MagicDNS names live under, without a trailing dot, e.g.
   # `example.com`. The host of `server_url` must not be this domain or a name
-  # below it: clients take the domain over.
-  # Required when `dns.magic_dns` is true.
-  base_domain: ""
+  # below it: clients take the domain over. The default is a private-use name,
+  # so `dns.certificates` needs a public domain you control.
+  base_domain: tailnet.internal
   # Makes clients use `dns.nameservers.global` instead of their local DNS
-  # settings, which then requires at least one global nameserver. False sends
-  # them only as fallback resolvers.
+  # settings; with no global nameserver there is nothing to override with, and
+  # clients keep their own. False sends them only as fallback resolvers.
   override_local_dns: true
   # The upstream DNS servers sent to clients. An entry that is neither an IP
   # address nor a URL is skipped with a warning.
   nameservers:
     # The nameservers for names `dns.nameservers.split` does not cover: IP
     # addresses, or DNS-over-HTTPS URLs such as `https://dns.nextdns.io/<id>`.
-    # Required when `dns.override_local_dns` is true.
+    # Empty by default, so clients keep their own DNS: headscale points them at
+    # no resolver you did not list.
     global: []
     # Maps a domain to the nameservers that answer for it (split DNS). Domains
     # are lowercased on load; two that differ only in case are an error.

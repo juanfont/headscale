@@ -35,7 +35,25 @@ finds its configuration, how to check it, and shows the full example.
 
 Every key can also be set with an environment variable: `HEADSCALE_` and the key's path in capitals, with `_` for
 `.`, e.g. `HEADSCALE_LOG_LEVEL` for `log.level`. Each key below names its variable. A variable wins over the
-configuration file, which wins over the default; an empty variable counts as unset.
+configuration file, which wins over the default. An empty variable, like a key written with no value in the
+file, counts as unset and keeps the default. A variable set to `""` means what `""` means in the configuration
+file: it clears a key with a default, as `prefixes.v6: ""` does, and is an error where the file's `""` is one. A
+list also clears with `[]`. Quote the value so the quotes reach headscale:
+
+```shell
+export HEADSCALE_PREFIXES_V6='""'
+export HEADSCALE_DERP_URLS='[]'
+```
+
+```yaml title="docker-compose.yaml"
+environment:
+  HEADSCALE_PREFIXES_V6: '""'
+  HEADSCALE_DERP_URLS: '[]'
+```
+
+An env file (a Compose `env_file`, a systemd `EnvironmentFile=`) and a systemd `Environment=` strip one level of
+quotes, so `KEY=""` there arrives empty and keeps the default: write `KEY='""'` in an env file and
+`Environment='KEY=""'` in a unit.
 
 A list is a JSON array or, unless its values are objects, its values separated by spaces. A map is a JSON object,
 which replaces the map in the configuration file instead of merging into it. The examples below write every list
@@ -93,27 +111,27 @@ The URL clients connect to, with its `http://` or `https://` scheme, e.g. `https
 ## `listen_addr` { #listen_addr data-toc-label="listen_addr" }
 
 - **Type:** [listen address](#type-listen-address)
-- **Default:** `""`
+- **Default:** `0.0.0.0:8080`
 - **Env:** `HEADSCALE_LISTEN_ADDR`
 
-The host:port the server listens on for clients, the API and the web pages. It serves HTTPS when [`tls.cert_path`](#tls.cert_path) or [`tls.acme.hostname`](#tls.acme.hostname) is set, plain HTTP otherwise.
+The host:port the server listens on for clients, the API and the web pages. It serves HTTPS when [`tls.cert_path`](#tls.cert_path) or [`tls.acme.hostname`](#tls.acme.hostname) is set, plain HTTP otherwise. The default listens on every address, IPv4 and IPv6 alike.
 
 === "YAML"
 
     ```yaml
-    listen_addr: 0.0.0.0:8080
+    listen_addr: 127.0.0.1:8080
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_LISTEN_ADDR=0.0.0.0:8080
+    export HEADSCALE_LISTEN_ADDR=127.0.0.1:8080
     ```
 
 === "NixOS"
 
     ```nix
-    services.headscale.settings.listen_addr = "0.0.0.0:8080";
+    services.headscale.settings.listen_addr = "127.0.0.1:8080";
     ```
 
 ## `metrics_listen_addr` { #metrics_listen_addr data-toc-label="metrics_listen_addr" }
@@ -259,13 +277,13 @@ The Noise protocol (TS2021) clients connect over.
 
     ```yaml
     noise:
-      private_key_path: ""
+      private_key_path: /var/lib/headscale/noise_private.key
     ```
 
 ### `noise.private_key_path` { #noise.private_key_path data-toc-label="private_key_path" }
 
 - **Type:** [string](#type-string)
-- **Required**
+- **Default:** `/var/lib/headscale/noise_private.key`
 - **Env:** `HEADSCALE_NOISE_PRIVATE_KEY_PATH`
 
 The file holding the Noise private key, which encrypts traffic between headscale and clients, relative to the configuration file. A missing file is created with a new key.
@@ -274,19 +292,19 @@ The file holding the Noise private key, which encrypts traffic between headscale
 
     ```yaml
     noise:
-      private_key_path: /var/lib/headscale/noise_private.key
+      private_key_path: /opt/headscale/noise_private.key
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_NOISE_PRIVATE_KEY_PATH=/var/lib/headscale/noise_private.key
+    export HEADSCALE_NOISE_PRIVATE_KEY_PATH=/opt/headscale/noise_private.key
     ```
 
 === "NixOS"
 
     ```nix
-    services.headscale.settings.noise.private_key_path = "/var/lib/headscale/noise_private.key";
+    services.headscale.settings.noise.private_key_path = "/opt/headscale/noise_private.key";
     ```
 
 Replaces `private_key_path` ([removed](#private_key_path)).
@@ -294,21 +312,21 @@ Replaces `noise_private_key_path` ([removed](#noise_private_key_path)).
 
 ## `prefixes` { #prefixes data-toc-label="prefixes" }
 
-The IP ranges node addresses are allocated from. Set at least one of [`prefixes.v4`](#prefixes.v4) and [`prefixes.v6`](#prefixes.v6). Use the Tailscale ranges, `100.64.0.0/10` and `fd7a:115c:a1e0::/48`, or ranges inside them: the client assumes them, and other ranges are unsupported.
+The IP ranges node addresses are allocated from. Keep at least one of [`prefixes.v4`](#prefixes.v4) and [`prefixes.v6`](#prefixes.v6). Use the Tailscale ranges, `100.64.0.0/10` and `fd7a:115c:a1e0::/48`, or ranges inside them: the client assumes them, and other ranges are unsupported.
 
 ??? example "All `prefixes` keys and defaults"
 
     ```yaml
     prefixes:
-      v4: ""
-      v6: ""
+      v4: 100.64.0.0/10
+      v6: fd7a:115c:a1e0::/48
       allocation: sequential
     ```
 
 ### `prefixes.v4` { #prefixes.v4 data-toc-label="v4" }
 
 - **Type:** [prefix](#type-prefix)
-- **Default:** `""`
+- **Default:** `100.64.0.0/10`
 - **Env:** `HEADSCALE_PREFIXES_V4`
 
 The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address.
@@ -317,19 +335,19 @@ The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address.
 
     ```yaml
     prefixes:
-      v4: 100.64.0.0/10
+      v4: 100.64.0.0/24
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_PREFIXES_V4=100.64.0.0/10
+    export HEADSCALE_PREFIXES_V4=100.64.0.0/24
     ```
 
 === "NixOS"
 
     ```nix
-    services.headscale.settings.prefixes.v4 = "100.64.0.0/10";
+    services.headscale.settings.prefixes.v4 = "100.64.0.0/24";
     ```
 
 Replaces `ip_prefixes` ([removed](#ip_prefixes)).
@@ -337,7 +355,7 @@ Replaces `ip_prefixes` ([removed](#ip_prefixes)).
 ### `prefixes.v6` { #prefixes.v6 data-toc-label="v6" }
 
 - **Type:** [prefix](#type-prefix)
-- **Default:** `""`
+- **Default:** `fd7a:115c:a1e0::/48`
 - **Env:** `HEADSCALE_PREFIXES_V6`
 
 The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6 address.
@@ -346,19 +364,19 @@ The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6 address.
 
     ```yaml
     prefixes:
-      v6: fd7a:115c:a1e0::/48
+      v6: fd7a:115c:a1e0::/64
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_PREFIXES_V6=fd7a:115c:a1e0::/48
+    export HEADSCALE_PREFIXES_V6=fd7a:115c:a1e0::/64
     ```
 
 === "NixOS"
 
     ```nix
-    services.headscale.settings.prefixes.v6 = "fd7a:115c:a1e0::/48";
+    services.headscale.settings.prefixes.v6 = "fd7a:115c:a1e0::/64";
     ```
 
 Replaces `ip_prefixes` ([removed](#ip_prefixes)).
@@ -553,7 +571,7 @@ Covers node key expiry, ephemeral nodes and subnet routes.
     node:
       expiry: 0s
       ephemeral:
-        inactivity_timeout: 2m
+        inactivity_timeout: 30m
       routes:
         ha:
           probe_interval: 10s
@@ -598,13 +616,13 @@ Covers ephemeral nodes, which register with an ephemeral auth key and are delete
     ```yaml
     node:
       ephemeral:
-        inactivity_timeout: 2m
+        inactivity_timeout: 30m
     ```
 
 #### `node.ephemeral.inactivity_timeout` { #node.ephemeral.inactivity_timeout data-toc-label="inactivity_timeout" }
 
 - **Type:** [duration](#type-duration)
-- **Default:** `2m`
+- **Default:** `30m`
 - **Env:** `HEADSCALE_NODE_EPHEMERAL_INACTIVITY_TIMEOUT`
 
 How long an ephemeral node can be offline before it is automatically deleted. It must exceed 65s, the client keepalive plus a margin.
@@ -614,19 +632,19 @@ How long an ephemeral node can be offline before it is automatically deleted. It
     ```yaml
     node:
       ephemeral:
-        inactivity_timeout: 30m
+        inactivity_timeout: 1h
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_NODE_EPHEMERAL_INACTIVITY_TIMEOUT=30m
+    export HEADSCALE_NODE_EPHEMERAL_INACTIVITY_TIMEOUT=1h
     ```
 
 === "NixOS"
 
     ```nix
-    services.headscale.settings.node.ephemeral.inactivity_timeout = "30m";
+    services.headscale.settings.node.ephemeral.inactivity_timeout = "1h";
     ```
 
 Replaces `ephemeral_node_inactivity_timeout` ([removed](#ephemeral_node_inactivity_timeout)).
@@ -774,9 +792,10 @@ The DERP map: the relay servers clients use when they cannot connect directly, f
         ipv4: ""
         ipv6: ""
         automatically_add_embedded_derp_region: true
-      urls: []
+      urls:
+        - https://controlplane.tailscale.com/derpmap/default
       paths: []
-      auto_update_enabled: false
+      auto_update_enabled: true
       update_frequency: 3h
     ```
 
@@ -1084,30 +1103,30 @@ Adds the embedded server's region to the DERP map. When it is false and [`derp.s
 ### `derp.urls` { #derp.urls data-toc-label="urls" }
 
 - **Type:** [list of URLs](#type-list)
-- **Default:** `[]`
+- **Default:** `['https://controlplane.tailscale.com/derpmap/default']`
 - **Env:** `HEADSCALE_DERP_URLS` ([space-separated or JSON array](#env))
 
-DERP maps in JSON to fetch. One that fails to load is logged and skipped; startup fails only when no region remains.
+DERP maps in JSON to fetch. One that fails to load is logged and skipped; startup fails only when no region remains. The default is Tailscale's map: headscale fetches it from Tailscale and clients relay through Tailscale's servers. `[]` keeps to your own.
 
 === "YAML"
 
     ```yaml
     derp:
       urls:
-        - https://controlplane.tailscale.com/derpmap/default
+        - https://derp.example.com/derpmap.json
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_DERP_URLS='["https://controlplane.tailscale.com/derpmap/default"]'
+    export HEADSCALE_DERP_URLS='["https://derp.example.com/derpmap.json"]'
     ```
 
 === "NixOS"
 
     ```nix
     services.headscale.settings.derp.urls = [
-      "https://controlplane.tailscale.com/derpmap/default"
+      "https://derp.example.com/derpmap.json"
     ];
     ```
 
@@ -1146,7 +1165,7 @@ Replaces `derp_map_path` ([removed](#derp_map_path)).
 ### `derp.auto_update_enabled` { #derp.auto_update_enabled data-toc-label="auto_update_enabled" }
 
 - **Type:** [boolean](#type-boolean)
-- **Default:** `false`
+- **Default:** `true`
 - **Env:** `HEADSCALE_DERP_AUTO_UPDATE_ENABLED`
 
 Reloads [`derp.urls`](#derp.urls) and [`derp.paths`](#derp.paths) every [`derp.update_frequency`](#derp.update_frequency).
@@ -1155,19 +1174,19 @@ Reloads [`derp.urls`](#derp.urls) and [`derp.paths`](#derp.paths) every [`derp.u
 
     ```yaml
     derp:
-      auto_update_enabled: true
+      auto_update_enabled: false
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_DERP_AUTO_UPDATE_ENABLED=true
+    export HEADSCALE_DERP_AUTO_UPDATE_ENABLED=false
     ```
 
 === "NixOS"
 
     ```nix
-    services.headscale.settings.derp.auto_update_enabled = true;
+    services.headscale.settings.derp.auto_update_enabled = false;
     ```
 
 ### `derp.update_frequency` { #derp.update_frequency data-toc-label="update_frequency" }
@@ -1205,14 +1224,14 @@ Where headscale stores nodes, users and keys. SQLite is recommended; PostgreSQL 
 
     ```yaml
     database:
-      type: ""
+      type: sqlite
       debug: false
       gorm:
         slow_threshold: 0
         skip_err_record_not_found: false
         parameterized_queries: false
       sqlite:
-        path: ""
+        path: /var/lib/headscale/db.sqlite
         write_ahead_log: true
         wal_autocheckpoint: 1000
       postgres:
@@ -1230,7 +1249,7 @@ Where headscale stores nodes, users and keys. SQLite is recommended; PostgreSQL 
 ### `database.type` { #database.type data-toc-label="type" }
 
 - **Type:** [enum](#type-enum): `sqlite`, `sqlite3`, `postgres`
-- **Required**
+- **Default:** `sqlite`
 - **Env:** `HEADSCALE_DATABASE_TYPE`
 
 The database backend. SQLite is recommended; PostgreSQL is supported for legacy deployments only.
@@ -1396,7 +1415,7 @@ SQLite, read only when [`database.type`](#database.type) is `sqlite` or `sqlite3
     ```yaml
     database:
       sqlite:
-        path: ""
+        path: /var/lib/headscale/db.sqlite
         write_ahead_log: true
         wal_autocheckpoint: 1000
     ```
@@ -1404,7 +1423,7 @@ SQLite, read only when [`database.type`](#database.type) is `sqlite` or `sqlite3
 #### `database.sqlite.path` { #database.sqlite.path data-toc-label="path" }
 
 - **Type:** [string](#type-string)
-- **Default:** `""`
+- **Default:** `/var/lib/headscale/db.sqlite`
 - **Env:** `HEADSCALE_DATABASE_SQLITE_PATH`
 
 The database file, relative to the configuration file; `:memory:` keeps the database in memory.
@@ -1414,19 +1433,19 @@ The database file, relative to the configuration file; `:memory:` keeps the data
     ```yaml
     database:
       sqlite:
-        path: /var/lib/headscale/db.sqlite
+        path: /opt/headscale/db.sqlite
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_DATABASE_SQLITE_PATH=/var/lib/headscale/db.sqlite
+    export HEADSCALE_DATABASE_SQLITE_PATH=/opt/headscale/db.sqlite
     ```
 
 === "NixOS"
 
     ```nix
-    services.headscale.settings.database.sqlite.path = "/var/lib/headscale/db.sqlite";
+    services.headscale.settings.database.sqlite.path = "/opt/headscale/db.sqlite";
     ```
 
 Replaces `db_path` ([removed](#db_path)).
@@ -1785,7 +1804,7 @@ Replaces `dns_config` ([removed](#dns_config)).
     ```yaml
     dns:
       magic_dns: true
-      base_domain: ""
+      base_domain: tailnet.internal
       override_local_dns: true
       nameservers:
         global: []
@@ -1836,10 +1855,10 @@ Replaces `dns_config.magic_dns` ([removed](#dns_config.magic_dns)).
 ### `dns.base_domain` { #dns.base_domain data-toc-label="base_domain" }
 
 - **Type:** [string](#type-string)
-- **Default:** `""`; required when [`dns.magic_dns`](#dns.magic_dns) is true
+- **Default:** `tailnet.internal`
 - **Env:** `HEADSCALE_DNS_BASE_DOMAIN`
 
-The domain MagicDNS names live under, without a trailing dot, e.g. `example.com`. The host of [`server_url`](#server_url) must not be this domain or a name below it: clients take the domain over.
+The domain MagicDNS names live under, without a trailing dot, e.g. `example.com`. The host of [`server_url`](#server_url) must not be this domain or a name below it: clients take the domain over. The default is a private-use name, so [`dns.certificates`](#dns.certificates) needs a public domain you control.
 
 === "YAML"
 
@@ -1868,7 +1887,7 @@ Replaces `dns_config.base_domain` ([removed](#dns_config.base_domain)).
 - **Default:** `true`
 - **Env:** `HEADSCALE_DNS_OVERRIDE_LOCAL_DNS`
 
-Makes clients use [`dns.nameservers.global`](#dns.nameservers.global) instead of their local DNS settings, which then requires at least one global nameserver. False sends them only as fallback resolvers.
+Makes clients use [`dns.nameservers.global`](#dns.nameservers.global) instead of their local DNS settings; with no global nameserver there is nothing to override with, and clients keep their own. False sends them only as fallback resolvers.
 
 === "YAML"
 
@@ -1907,10 +1926,10 @@ The upstream DNS servers sent to clients. An entry that is neither an IP address
 #### `dns.nameservers.global` { #dns.nameservers.global data-toc-label="global" }
 
 - **Type:** [list of strings](#type-list)
-- **Default:** `[]`; required when [`dns.override_local_dns`](#dns.override_local_dns) is true
+- **Default:** `[]`
 - **Env:** `HEADSCALE_DNS_NAMESERVERS_GLOBAL` ([space-separated or JSON array](#env))
 
-The nameservers for names [`dns.nameservers.split`](#dns.nameservers.split) does not cover: IP addresses, or DNS-over-HTTPS URLs such as `https://dns.nextdns.io/<id>`.
+The nameservers for names [`dns.nameservers.split`](#dns.nameservers.split) does not cover: IP addresses, or DNS-over-HTTPS URLs such as `https://dns.nextdns.io/<id>`. Empty by default, so clients keep their own DNS: headscale points them at no resolver you did not list.
 
 === "YAML"
 
