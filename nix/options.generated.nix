@@ -32,11 +32,11 @@ in
   };
   listen_addr = lib.mkOption {
     type = t.listenAddr;
-    default = "";
+    default = "0.0.0.0:8080";
     description = ''
-      The host:port the server listens on for clients, the API and the web pages. It serves HTTPS when `tls.cert_path` or `tls.acme.hostname` is set, plain HTTP otherwise.
+      The host:port the server listens on for clients, the API and the web pages. It serves HTTPS when `tls.cert_path` or `tls.acme.hostname` is set, plain HTTP otherwise. The default listens on every address, IPv4 and IPv6 alike.
     '';
-    example = "0.0.0.0:8080";
+    example = "127.0.0.1:8080";
   };
   metrics_listen_addr = lib.mkOption {
     type = t.listenAddr;
@@ -86,32 +86,31 @@ in
   noise = {
     private_key_path = lib.mkOption {
       type = t.stateFile;
+      default = "/var/lib/headscale/noise_private.key";
       description = ''
         The file holding the Noise private key, which encrypts traffic between headscale and clients, relative to the configuration file. A missing file is created with a new key.
 
-        Required.
-
         On NixOS, paths must be absolute and outside the Nix store.
       '';
-      example = "/var/lib/headscale/noise_private.key";
+      example = "/opt/headscale/noise_private.key";
     };
   };
   prefixes = {
     v4 = lib.mkOption {
       type = t.prefix;
-      default = "";
+      default = "100.64.0.0/10";
       description = ''
         The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address.
       '';
-      example = "100.64.0.0/10";
+      example = "100.64.0.0/24";
     };
     v6 = lib.mkOption {
       type = t.prefix;
-      default = "";
+      default = "fd7a:115c:a1e0::/48";
       description = ''
         The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6 address.
       '';
-      example = "fd7a:115c:a1e0::/48";
+      example = "fd7a:115c:a1e0::/64";
     };
     allocation = lib.mkOption {
       type = lib.types.enum [
@@ -220,11 +219,11 @@ in
     ephemeral = {
       inactivity_timeout = lib.mkOption {
         type = t.duration;
-        default = "2m";
+        default = "30m";
         description = ''
           How long an ephemeral node can be offline before it is automatically deleted. It must exceed 65s, the client keepalive plus a margin.
         '';
-        example = "30m";
+        example = "1h";
       };
     };
     routes = {
@@ -345,12 +344,14 @@ in
     };
     urls = lib.mkOption {
       type = lib.types.listOf t.httpURL;
-      default = [ ];
+      default = [
+        "https://controlplane.tailscale.com/derpmap/default"
+      ];
       description = ''
-        DERP maps in JSON to fetch. One that fails to load is logged and skipped; startup fails only when no region remains.
+        DERP maps in JSON to fetch. One that fails to load is logged and skipped; startup fails only when no region remains. The default is Tailscale's map: headscale fetches it from Tailscale and clients relay through Tailscale's servers. `[]` keeps to your own.
       '';
       example = [
-        "https://controlplane.tailscale.com/derpmap/default"
+        "https://derp.example.com/derpmap.json"
       ];
     };
     paths = lib.mkOption {
@@ -367,11 +368,11 @@ in
     };
     auto_update_enabled = lib.mkOption {
       type = lib.types.bool;
-      default = false;
+      default = true;
       description = ''
         Reloads `derp.urls` and `derp.paths` every `derp.update_frequency`.
       '';
-      example = true;
+      example = false;
     };
     update_frequency = lib.mkOption {
       type = t.duration;
@@ -390,6 +391,7 @@ in
         "postgres"
         ""
       ];
+      default = "sqlite";
       description = ''
         The database backend. SQLite is recommended; PostgreSQL is supported for legacy deployments only.
 
@@ -398,8 +400,6 @@ in
         - `sqlite`: SQLite, in the file `database.sqlite.path`.
         - `sqlite3`: The same as `sqlite`.
         - `postgres`: PostgreSQL, at `database.postgres.host`.
-
-        Required.
       '';
       example = "sqlite";
     };
@@ -440,13 +440,13 @@ in
     sqlite = {
       path = lib.mkOption {
         type = t.stateFile;
-        default = "";
+        default = "/var/lib/headscale/db.sqlite";
         description = ''
           The database file, relative to the configuration file; `:memory:` keeps the database in memory.
 
           On NixOS, paths must be absolute and outside the Nix store.
         '';
-        example = "/var/lib/headscale/db.sqlite";
+        example = "/opt/headscale/db.sqlite";
       };
       write_ahead_log = lib.mkOption {
         type = lib.types.bool;
@@ -553,11 +553,9 @@ in
     };
     base_domain = lib.mkOption {
       type = lib.types.str;
-      default = "";
+      default = "tailnet.internal";
       description = ''
-        The domain MagicDNS names live under, without a trailing dot, e.g. `example.com`. The host of `server_url` must not be this domain or a name below it: clients take the domain over.
-
-        Required when `dns.magic_dns` is true.
+        The domain MagicDNS names live under, without a trailing dot, e.g. `example.com`. The host of `server_url` must not be this domain or a name below it: clients take the domain over. The default is a private-use name, so `dns.certificates` needs a public domain you control.
       '';
       example = "tailnet.example.com";
     };
@@ -565,7 +563,7 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Makes clients use `dns.nameservers.global` instead of their local DNS settings, which then requires at least one global nameserver. False sends them only as fallback resolvers.
+        Makes clients use `dns.nameservers.global` instead of their local DNS settings; with no global nameserver there is nothing to override with, and clients keep their own. False sends them only as fallback resolvers.
       '';
       example = false;
     };
@@ -574,9 +572,7 @@ in
         type = lib.types.listOf lib.types.str;
         default = [ ];
         description = ''
-          The nameservers for names `dns.nameservers.split` does not cover: IP addresses, or DNS-over-HTTPS URLs such as `https://dns.nextdns.io/<id>`.
-
-          Required when `dns.override_local_dns` is true.
+          The nameservers for names `dns.nameservers.split` does not cover: IP addresses, or DNS-over-HTTPS URLs such as `https://dns.nextdns.io/<id>`. Empty by default, so clients keep their own DNS: headscale points them at no resolver you did not list.
         '';
         example = [
           "9.9.9.9"
