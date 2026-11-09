@@ -26,6 +26,8 @@ builds:
       - linux_arm64
     flags:
       - -mod=readonly
+      # Log callers and panic traces name module paths, not the CI checkout.
+      - -trimpath
     hooks:
       pre: bash tools/release-check.sh
       post: bash tools/release-check.sh "{{ .Path }}"
