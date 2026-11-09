@@ -796,9 +796,17 @@ func (s *configSource) loadEnv(environ []string) error {
 	for _, kv := range environ {
 		name, val, _ := strings.Cut(kv, "=")
 		// Empty means unset, so a blank variable never overrides the file.
-		if val != "" && strings.HasPrefix(name, configEnvPrefix) {
-			env[name] = val
+		if val == "" || !strings.HasPrefix(name, configEnvPrefix) {
+			continue
 		}
+
+		// `""` is the empty value, as in a file: a defaulted key can be
+		// cleared without one.
+		if val == `""` {
+			val = ""
+		}
+
+		env[name] = val
 	}
 
 	layer := map[string]any{}
@@ -905,7 +913,7 @@ func (s *configSource) foldProviderEnv(env map[string]string) error {
 	folded := false
 	fold := func(setting string) {
 		key := providerKey + "." + setting
-		if v := env[configEnvName(key)]; v != "" {
+		if v, ok := env[configEnvName(key)]; ok {
 			settings[setting] = v
 			s.envVars[key] = configEnvName(key)
 			folded = true
