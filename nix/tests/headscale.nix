@@ -39,9 +39,13 @@ in
           server = "127.0.0.1:53";
           key_name = "headscale.";
           key_alg = "hmac-sha256.";
-          key = "c2VjcmV0";
+          key = "file:\${CREDENTIALS_DIRECTORY}/tsig";
         };
       };
+      # Read by serve, never by the checks.
+      systemd.services.headscale.serviceConfig.LoadCredential = [
+        "tsig:${pkgs.writeText "tsig" "c2VjcmV0"}"
+      ];
     };
     # All of peer1's noise goes over the kit's TLS listener, not plain :80.
     peer1 = {
