@@ -303,6 +303,10 @@ func TestGenerateConfigCommand(t *testing.T) {
 		{name: "example", args: []string{"generate", "config"}, wantStdout: []string{"# Every key"}, wantLoaded: true},
 		{name: "alias", args: []string{"gen", "config"}, wantLoaded: true},
 		{name: "no docs", args: []string{"generate", "config", "--no-docs"}, hideStdout: []string{"#"}, wantLoaded: true},
+		{name: "minimal", args: []string{"generate", "config", "--minimal"}, wantStdout: []string{`server_url: ""`}, hideStdout: []string{"listen_addr"}, wantLoaded: true},
+		{name: "minimal no docs", args: []string{"generate", "config", "--minimal", "--no-docs"}, wantExact: "server_url: \"\"\n"},
+		// Cobra's flag-group error.
+		{name: "minimal running", args: []string{"-c", ok, "generate", "config", "--minimal", "--running"}, wantErr: true, wantStderr: []string{"none of the others can be"}},
 		{name: "running", args: []string{"-c", ok, "generate", "config", "--running"}, wantExact: running, wantStderr: []string{warning}},
 		{name: "running no docs", args: []string{"-c", ok, "generate", "config", "--running", "--no-docs"}, wantExact: runningNoDocs, wantStderr: []string{warning}},
 		{name: "running log level error", args: []string{"-c", logging("error", "level: error"), "generate", "config", "--running"}, wantExact: running, wantStderr: []string{warning}},

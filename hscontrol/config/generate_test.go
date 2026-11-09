@@ -346,3 +346,83 @@ func TestGenerateExampleSubtree(t *testing.T) {
 		})
 	}
 }
+
+// TestGenerateExampleMinimal: the minimal example holds only the keys every
+// server must set, under their sections; it and the full example, with
+// server_url set, load without warnings and validate.
+func TestGenerateExampleMinimal(t *testing.T) {
+	d := Default()
+
+	tests := []struct {
+		name       string
+		opts       ExampleOptions
+		wantExact  string // all of the output, when set
+		wantPrefix string
+		wantText   string
+		wantKeys   []string // top-level keys and leaves, when set
+	}{
+		{name: "minimal", opts: ExampleOptions{Minimal: true}, wantExact: "server_url: \"\"\n"},
+		{
+			name:       "minimal docs",
+			opts:       ExampleOptions{Docs: true, Minimal: true},
+			wantPrefix: minimalHeader + "\n",
+			wantText:   "Required. Example: https://headscale.example.com",
+			wantKeys:   []string{"server_url"},
+		},
+		{name: "full docs", opts: ExampleOptions{Docs: true}, wantPrefix: exampleHeader + "\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := GenerateExample(&d, tt.opts)
+			require.NoError(t, err)
+
+			text := string(out)
+
+			if tt.wantExact != "" {
+				assert.Equal(t, tt.wantExact, text)
+			}
+
+			assert.True(t, strings.HasPrefix(text, tt.wantPrefix), text)
+			assert.Contains(t, text, tt.wantText)
+
+			if tt.wantKeys != nil {
+				top, leaves := exampleKeys(t, out)
+				assert.Equal(t, tt.wantKeys, top)
+				assert.Equal(t, tt.wantKeys, leaves)
+			}
+
+			// The leading newline matches a first line too.
+			require.Contains(t, "\n"+text, "\nserver_url: \"\"\n")
+			set := strings.Replace("\n"+text, "\nserver_url: \"\"\n", "\nserver_url: https://headscale.example.com\n", 1)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(set), 0o600))
+
+			l, err := Load(path, true, nil)
+			require.NoError(t, err, set)
+			assert.Empty(t, l.Warnings)
+			assert.NoError(t, Validate(l.Config))
+		})
+	}
+
+	t.Run("nested", func(t *testing.T) {
+		keys, err := schema()
+		require.NoError(t, err)
+
+		for _, k := range []struct{ path, when string }{
+			{path: "noise.private_key_path"},
+			{path: "database.sqlite.path", when: "`database.type` is `sqlite`"},
+		} {
+			i := slices.IndexFunc(keys, func(ki keyInfo) bool { return ki.Path == k.path })
+			require.GreaterOrEqual(t, i, 0, k.path)
+			keys[i].Required, keys[i].RequiredWhen = true, k.when
+		}
+
+		out, err := exampleOf(keys, &d, ExampleOptions{Minimal: true}, "")
+		require.NoError(t, err)
+
+		top, leaves := exampleKeys(t, out)
+		assert.Equal(t, []string{"server_url", "noise"}, top)
+		assert.Equal(t, []string{"server_url", "noise.private_key_path"}, leaves)
+	})
+}

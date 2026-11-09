@@ -20,6 +20,8 @@ func init() {
 
 	generateConfigCmd.Flags().Bool("no-docs", false, "Leave out the documentation comments")
 	generateConfigCmd.Flags().Bool("running", false, "Print the running server's configuration, secrets redacted, instead of the defaults")
+	generateConfigCmd.Flags().Bool("minimal", false, "Print only the keys every server must set")
+	generateConfigCmd.MarkFlagsMutuallyExclusive("minimal", "running")
 	generateCmd.AddCommand(generateConfigCmd)
 
 	generateNixOSOptionsCmd.Flags().Bool("release", false, "Stamp the version and commit of this binary, which must be a clean build of a known commit")
@@ -57,7 +59,8 @@ var generateConfigCmd = &cobra.Command{
 	Short: "Print a configuration file with every key",
 	Long: `Print a YAML configuration with every key, its default and its
 documentation as comments, e.g. for "> /etc/headscale/config.yaml". Set the
-keys marked "Required" before starting headscale.
+keys marked "Required" before starting headscale. With --minimal, print only
+those keys.
 
 With --running, print instead the configuration of the running server,
 without the client-only cli section: literal secrets, DNS provider settings
@@ -67,6 +70,7 @@ kept as written.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		noDocs, _ := cmd.Flags().GetBool("no-docs")
 		running, _ := cmd.Flags().GetBool("running")
+		minimal, _ := cmd.Flags().GetBool("minimal")
 
 		if running {
 			return printRunningConfig(cmd, !noDocs)
@@ -74,7 +78,7 @@ kept as written.`,
 
 		d := config.Default()
 
-		out, err := config.GenerateExample(&d, config.ExampleOptions{Docs: !noDocs})
+		out, err := config.GenerateExample(&d, config.ExampleOptions{Docs: !noDocs, Minimal: minimal})
 		if err != nil {
 			return fmt.Errorf("generating config: %w", err)
 		}
