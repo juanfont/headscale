@@ -141,7 +141,7 @@ let
     || (listenDigits != null && lib.toIntBase10 (lib.head listenDigits) < 1024);
 
   # Below lib.mkDefault, so a user's own mkDefault replaces these values
-  # instead of conflicting with a scalar or merging into a list.
+  # instead of conflicting with them.
   distroDefault = lib.mkOverride 1200;
 
   # Go reads cli, nested or dotted, as the client-only cli.*; written to the
@@ -256,24 +256,13 @@ in
     ];
 
     services.headscale.settings = lib.mapAttrsRecursive (_: distroDefault) {
-      # Where this module keeps state and the socket. Nix pins the package, so
-      # an update notice cannot be acted on.
+      # Where NixOS keeps headscale's state and socket. Nix pins the package,
+      # so an update notice cannot be acted on.
       noise.private_key_path = "${dataDir}/noise_private.key";
       derp.server.private_key_path = "${dataDir}/derp_server_private.key";
-      database.type = "sqlite";
       database.sqlite.path = "${dataDir}/db.sqlite";
       unix_socket = "${runDir}/headscale.sock";
       disable_check_updates = true;
-
-      # Earlier defaults of this module that headscale's own do not match,
-      # kept so an upgrade does not change a running configuration.
-      listen_addr = "127.0.0.1:8080";
-      prefixes.v4 = "100.64.0.0/10";
-      prefixes.v6 = "fd7a:115c:a1e0::/48";
-      derp.urls = [ "https://controlplane.tailscale.com/derpmap/default" ];
-      derp.auto_update_enabled = true;
-      derp.update_frequency = "24h";
-      node.ephemeral.inactivity_timeout = "30m";
     };
 
     environment = {
