@@ -40,10 +40,28 @@ case "$1" in
       # Bounce service
       if [ -d /run/systemd/system ]; then
         systemctl --system daemon-reload >/dev/null || true
-        if [ -n "$2" ]; then
-          deb-systemd-invoke restart "$HEADSCALE_SERVICE" >/dev/null || true
+        # Check what the unit would load: its user, working directory and
+        # HOME, and no HEADSCALE_* variables from this shell. A rejected
+        # configuration is not restarted, so an upgraded headscale keeps the
+        # previous version until something else restarts it.
+        if (cd "$HEADSCALE_HOME_DIR" && setpriv --reuid="$HEADSCALE_USER" --regid="$HEADSCALE_GROUP" --init-groups env -i HOME="$HEADSCALE_HOME_DIR" /usr/bin/headscale check config) >/dev/null; then
+          if [ -n "$2" ]; then
+            deb-systemd-invoke restart "$HEADSCALE_SERVICE" >/dev/null || true
+          else
+            deb-systemd-invoke start "$HEADSCALE_SERVICE" >/dev/null || true
+          fi
         else
-          deb-systemd-invoke start "$HEADSCALE_SERVICE" >/dev/null || true
+          if [ -n "$2" ]; then
+            echo 'headscale was not restarted after the upgrade: its configuration does not pass "headscale check config" (errors above).' >&2
+            echo 'A running headscale keeps the previous version only until it restarts: needrestart after apt, a reboot or a crash starts this version, which refuses the configuration.' >&2
+          else
+            echo 'headscale was not started: its configuration does not pass "headscale check config" (errors above).' >&2
+          fi
+          echo 'Fix what it names in /etc/headscale/config.yaml; a new install needs server_url.' >&2
+          echo '"headscale generate config --minimal" prints the keys every server must set.' >&2
+          echo 'Then run: sudo systemctl restart headscale' >&2
+          echo 'The check does not see "systemctl edit" drop-ins (variables, an EnvironmentFile, or an ExecStart that points at another config);' >&2
+          echo "if headscale's configuration is set there, start it yourself." >&2
         fi
       fi
     ;;
