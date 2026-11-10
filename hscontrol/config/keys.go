@@ -1,6 +1,11 @@
 package config
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -96,6 +101,45 @@ func dottedPosition(n *yaml.Node, prefix string, path []string) (int, int, bool)
 	}
 
 	return 0, 0, false
+}
+
+// yamlSyntaxError is the shape of a YAML syntax error, whose text after the
+// line is one of libyaml's fixed problem descriptions.
+var yamlSyntaxError = regexp.MustCompile(`^yaml: line [0-9]+: `)
+
+// parseDetail is where and why err, from parsing b, a configuration file in
+// format ext, found it invalid, in words that quote nothing from b: parser
+// messages may quote a value, and a configuration holds secrets.
+func parseDetail(ext string, b []byte, err error) string {
+	var (
+		jsonSyntax *json.SyntaxError
+		jsonType   *json.UnmarshalTypeError
+		yamlType   *yaml.TypeError
+		line, col  int
+	)
+
+	switch ext = strings.ToLower(ext); {
+	case errors.As(err, &jsonSyntax):
+		// Offset counts the byte at fault.
+		n := min(max(int(jsonSyntax.Offset)-1, 0), len(b))
+		line = 1 + bytes.Count(b[:n], []byte("\n"))
+		col = n - bytes.LastIndexByte(b[:n], '\n')
+	case errors.As(err, &jsonType), errors.As(err, &yamlType):
+		// Also a YAML key given twice; both messages quote the file.
+		return "the file is not a map of unique keys"
+	case (ext == ".yaml" || ext == ".yml") && yamlSyntaxError.MatchString(err.Error()):
+		return err.Error()
+	case ext == ".hujson":
+		// hujson has no error type, only this prefix before its message.
+		_, _ = fmt.Sscanf(err.Error(), "hujson: line %d, column %d:", &line, &col)
+	}
+
+	what := map[string]string{".json": "JSON", ".hujson": "HuJSON", ".yaml": "YAML", ".yml": "YAML"}[ext]
+	if line == 0 {
+		return "not valid " + what
+	}
+
+	return fmt.Sprintf("line %d, column %d: not valid %s", line, col, what)
 }
 
 // removedKey is a key that once worked and is now rejected. In files Old

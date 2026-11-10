@@ -10,6 +10,9 @@ ExecStart=/usr/bin/headscale serve
 ExecReload=/usr/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5
+# headscale serve exits 78 (EX_CONFIG) on a configuration it rejects, which
+# a restart cannot fix.
+RestartPreventExitStatus=78
 
 WorkingDirectory=/var/lib/headscale
 ReadWritePaths=/var/lib/headscale

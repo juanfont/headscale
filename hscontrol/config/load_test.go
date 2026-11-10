@@ -204,7 +204,7 @@ func TestConfigSource(t *testing.T) {
 			name:     "hujson syntax error",
 			fileName: "config.hujson",
 			file:     "{\n // c\n \"server_url\": x,\n}",
-			errs:     []string{"config.hujson", "hujson: line 3, column 16"},
+			errs:     []string{"config.hujson", "line 3, column 16: not valid HuJSON"},
 		},
 		{
 			name:     "toml is found and rejected",
@@ -343,6 +343,39 @@ func TestConfigSource(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFileContentErrors: a file that cannot be parsed or has an unsupported
+// format is a ConfigError, so serve does not retry it, and the error quotes
+// nothing from the file, which may hold secrets, whatever the parser says.
+func TestFileContentErrors(t *testing.T) {
+	for _, tt := range []struct{ name, file, content, want string }{
+		{name: "yaml syntax", file: "config.yaml", content: "oidc:\n  client_secret: marker-secret\nderp: [\n", want: "yaml: line 3: did not find expected node content"},
+		{name: "yaml scalar document", file: "config.yaml", content: "marker-secret\n", want: "why: the file is not a map of unique keys"},
+		{name: "yaml duplicate key", file: "config.yaml", content: "marker-secret: 1\nmarker-secret: 2\n", want: "why: the file is not a map of unique keys"},
+		{name: "yaml unknown anchor", file: "config.yaml", content: "server_url: *marker-secret\n", want: "why: not valid YAML"},
+		{name: "hujson literal", file: "config.hujson", content: "{\"server_url\": marker-secret}\n", want: "why: line 1, column 16: not valid HuJSON"},
+		{name: "json literal", file: "config.json", content: "{\"server_url\": marker-secret}\n", want: "why: line 1, column 16: not valid JSON"},
+		{name: "json scalar document", file: "config.json", content: "\"marker-secret\"\n", want: "why: the file is not a map of unique keys"},
+		{name: "unsupported format", file: "config.ini", content: "a=marker-secret\n", want: "unsupported config file format"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tt.file)
+			require.NoError(t, os.WriteFile(path, []byte(tt.content), 0o600))
+
+			_, err := Load(path, true, nil)
+			require.ErrorIs(t, err, types.ErrConfig)
+			require.ErrorContains(t, err, tt.want)
+			// Not even a truncated value: YAML cuts a quoted value to 7 characters.
+			assert.NotContains(t, err.Error(), "marker")
+		})
+	}
+
+	t.Run("unreadable", func(t *testing.T) {
+		_, err := Load(filepath.Join(t.TempDir(), "config.yaml"), true, nil)
+		require.ErrorIs(t, err, fs.ErrNotExist)
+		assert.NotErrorIs(t, err, types.ErrConfig)
+	})
 }
 
 const yamlSample = "server_url: https://x\nnode:\n  expiry: 1h\ndns:\n  magic_dns: false\n  nameservers:\n    global: [1.1.1.1, 8.8.8.8]\noidc:\n  extra_params:\n    domain_hint: example.com\n"

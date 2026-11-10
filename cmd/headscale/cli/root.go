@@ -112,7 +112,10 @@ func initConfig() {
 	if err != nil {
 		// No log.format applies: main's console logger, on stderr.
 		logWarnings(l.Warnings)
-		log.Fatal().Caller().Err(err).Msg("error loading config")
+		log.WithLevel(zerolog.FatalLevel).Caller().Err(err).Msg("error loading config")
+
+		cmd, _, _ := rootCmd.Find(os.Args[1:])
+		os.Exit(exitCode(cmd, l.File, err))
 	}
 
 	loaded = l
@@ -201,6 +204,12 @@ func Execute() {
 	if err != nil {
 		outputFormat, _ := cmd.Flags().GetString("output")
 		printError(err, outputFormat)
-		os.Exit(1)
+
+		var file string
+		if loaded != nil {
+			file = loaded.File
+		}
+
+		os.Exit(exitCode(cmd, file, err))
 	}
 }

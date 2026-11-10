@@ -53,7 +53,7 @@ case "$1" in
         else
           if [ -n "$2" ]; then
             echo 'headscale was not restarted after the upgrade: its configuration does not pass "headscale check config" (errors above).' >&2
-            echo 'A running headscale keeps the previous version only until it restarts: needrestart after apt, a reboot or a crash starts this version, which refuses the configuration.' >&2
+            echo 'A running headscale keeps the previous version only until it restarts: needrestart after apt, a reboot or a crash starts this version, which refuses the configuration and stays stopped until it is fixed.' >&2
           else
             echo 'headscale was not started: its configuration does not pass "headscale check config" (errors above).' >&2
           fi

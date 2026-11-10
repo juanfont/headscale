@@ -305,6 +305,9 @@ in
           ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
           Restart = "always";
           RestartSec = "5s";
+          # headscale serve exits 78 (EX_CONFIG) on a configuration it rejects,
+          # which a restart cannot fix.
+          RestartPreventExitStatus = 78;
           Type = "simple";
           # Read here, so setting either read-only option fails evaluation.
           User = cfg.user;

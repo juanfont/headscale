@@ -42,6 +42,24 @@ var serveCmd = &cobra.Command{
 	},
 }
 
+// exitConfig is EX_CONFIG from sysexits.h. serve exits with it when its
+// configuration is the cause, which a restart with the same inputs cannot
+// fix, so the systemd units set RestartPreventExitStatus to it.
+const exitConfig = 78
+
+// exitCode is how cmd exits on err, file being the configuration file it
+// loaded: exitConfig when serve stops on what that configuration says; 1
+// otherwise. Without a file, the one expected may be on a mount not yet up,
+// and a database, a port or a file the configuration names may yet become
+// available, so systemd keeps retrying those.
+func exitCode(cmd *cobra.Command, file string, err error) int {
+	if cmd == serveCmd && file != "" && errors.Is(err, types.ErrConfig) {
+		return exitConfig
+	}
+
+	return 1
+}
+
 // logNoConfigFile says when the server runs without a file. The loader does
 // not warn: client commands need no file unless they use an API key.
 func logNoConfigFile(l *config.Loaded) {
