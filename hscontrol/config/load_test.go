@@ -4081,6 +4081,7 @@ dns:
   extra_records: [{name: a.example.com, type: A, value: 100.64.0.1}]
   extra_records_path: /var/lib/headscale/records.json
   challenge:
+    resolvers: [""]
     provider:
       name: bogus
 tls:
@@ -4117,6 +4118,7 @@ oidc:
 			name: "every rule, in order",
 			file: everyRule,
 			want: []string{
+				"dns.challenge.resolvers[0] is empty",
 				"OIDC configuration is invalid",
 				"dns.extra_records and dns.extra_records_path are mutually exclusive",
 				"tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
@@ -4149,6 +4151,7 @@ oidc:
 				"database:\n  type: \"\"\n", "database:\n  type: sqlite\n  sqlite:\n    path: \"\"\n",
 			).Replace(everyRule),
 			want: []string{
+				"dns.challenge.resolvers[0] is empty",
 				"OIDC configuration is invalid",
 				"dns.extra_records and dns.extra_records_path are mutually exclusive",
 				"tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",

@@ -146,7 +146,7 @@ var leafTypes = []leafType{
 	},
 	{
 		Kinds: []reflect.Kind{reflect.Slice}, Label: "list",
-		Format: "A list. A variable holds it as a JSON array or, unless its values are objects, separated by spaces.",
+		Format: "A list. A variable holds it as a JSON array or, unless its values are objects, separated by spaces. An empty item is an error.",
 		Sample: "`[9.9.9.9, 2620:fe::fe]`", Nix: "lib.types.listOf",
 	},
 	{
