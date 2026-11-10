@@ -1,6 +1,6 @@
 // Replay golden HuJSON captures under testdata/sshtest_results/*.hujson with
-// the checks of [runTesterCompat]. Divergences are listed in
-// knownSSHTesterDivergences with the engine gap each represents.
+// the checks of [runTesterCompat]. Skips are listed in
+// sshTesterSkipReasons with the engine gap each represents.
 
 package v2
 
@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// knownSSHTesterDivergences names the engine gap for each check where
+// sshTesterSkipReasons names the engine gap for each check where
 // headscale and upstream disagree, keyed <test_id>/<check>.
-var knownSSHTesterDivergences = map[string]string{}
+var sshTesterSkipReasons = map[string]string{}
 
 func TestSSHTesterCompat(t *testing.T) {
 	t.Parallel()
@@ -30,7 +30,7 @@ func TestSSHTesterCompat(t *testing.T) {
 		t.Run(c.TestID, func(t *testing.T) {
 			t.Parallel()
 
-			runTesterCompat(t, c, knownSSHTesterDivergences)
+			runTesterCompat(t, c, sshTesterSkipReasons)
 		})
 	}
 }
