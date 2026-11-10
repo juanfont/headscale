@@ -87,6 +87,9 @@ type TestClient struct {
 	frames  int
 	stamped bool
 
+	// firstMap closes on the first netmap, without taking it from updates.
+	firstMap chan struct{}
+
 	// updates is a buffered channel that receives a signal
 	// each time a new [netmap.NetworkMap] arrives.
 	updates chan *netmap.NetworkMap
@@ -188,7 +191,9 @@ func WithUser(user *types.User) ClientOption {
 }
 
 // NewClient creates a [TestClient], registers it with the [TestServer]
-// using a pre-auth key, and starts long-polling for map updates.
+// using a pre-auth key, starts long-polling for map updates, and returns
+// once the first map arrives. That map is still queued for
+// [TestClient.WaitForUpdate].
 func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOption) *TestClient {
 	tb.Helper()
 
@@ -265,6 +270,7 @@ func TryNewClient(tb testing.TB, server *TestServer, name string, opts ...Client
 		endpoints:  cc.endpoints,
 		c2nHandler: cc.c2nHandler,
 		updates:    make(chan *netmap.NetworkMap, updateBuffer),
+		firstMap:   make(chan struct{}),
 		bus:        bus,
 		dialer:     dialer,
 		tracker:    tracker,
@@ -317,6 +323,16 @@ func TryNewClient(tb testing.TB, server *TestServer, name string, opts ...Client
 
 	// Start long-polling in the background.
 	tc.startPoll(tb)
+
+	// The first map follows [state.State.Connect], so clients created in
+	// turn open their control sessions in that order: the HA election
+	// ranks routers by session age.
+	select {
+	case <-tc.firstMap:
+	case <-tc.pollDone:
+	case <-time.After(10 * time.Second):
+		tb.Fatalf("servertest: NewClient(%s): no map after 10s", name)
+	}
 
 	return tc, nil
 }
@@ -470,6 +486,11 @@ func (c *TestClient) UpdateFullNetmap(nm *netmap.NetworkMap) {
 	c.netmap = nm
 	c.updatesReceived++
 	c.streamMaps++
+
+	// A client built without TryNewClient has no firstMap.
+	if c.updatesReceived == 1 && c.firstMap != nil {
+		close(c.firstMap)
+	}
 
 	if !c.noHistory {
 		c.history = append(c.history, nm)
