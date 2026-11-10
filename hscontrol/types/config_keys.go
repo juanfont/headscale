@@ -9,7 +9,7 @@ import (
 
 // keyPosition returns the 1-based position of the key at path in src.
 // JSON and hujson.Standardize output are valid YAML, so one parser serves all.
-// Keys match case-insensitively, as viper lowercased them.
+// Keys match case-insensitively, as the loader lowercases them.
 func keyPosition(src []byte, path []string) (int, int, bool) {
 	var doc yaml.Node
 	if yaml.Unmarshal(src, &doc) != nil || len(doc.Content) == 0 {

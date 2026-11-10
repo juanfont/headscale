@@ -2,21 +2,17 @@ package types
 
 import (
 	"cmp"
-	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/spf13/cast"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -367,127 +363,27 @@ func TestConfigSourceSearch(t *testing.T) {
 }
 
 func TestConfigSourceUnmarshalKey(t *testing.T) {
-	p := writeConfig(t, "config.yaml", "dns:\n  extra_records:\n    - name: a.example.com\n      type: A\n      value: 1.2.3.4\n")
-	s, err := newConfigSource(p, true, nil)
-	require.NoError(t, err)
-
-	var recs []struct {
-		Name, Type, Value string
-	}
-
-	require.NoError(t, s.UnmarshalKey("dns.extra_records", &recs))
-	require.Len(t, recs, 1)
-	assert.Equal(t, "a.example.com", recs[0].Name)
-}
-
-// parityRejected lists the fixtures the source must reject, with every key it
-// must name. All other fixtures must load.
-var parityRejected = func() map[string][]string {
-	core := []string{
-		"acme_email", "acme_url", "database.gorm.prepare_stmt", "grpc_allow_insecure", "grpc_listen_addr",
-		"tls_cert_path", "tls_key_path", "tls_letsencrypt_cache_dir", "tls_letsencrypt_challenge_type",
-		"tls_letsencrypt_hostname", "tls_letsencrypt_listen",
-	}
-	mid := append([]string{"ephemeral_node_inactivity_timeout", "randomize_client_port"}, core...)
-
-	return map[string][]string{
-		"example-v0.23.0":                append([]string{"dns.use_username_in_magic_dns"}, mid...),
-		"example-v0.24.0":                mid,
-		"example-v0.25.0":                mid,
-		"example-v0.26.0":                mid,
-		"example-v0.27.0":                mid,
-		"example-v0.28.0":                mid,
-		"example-v0.29.0":                core,
-		"example-v0.29.7":                core,
-		"hsic-default":                   {"private_key_path"},
-		"hsic-postgres":                  {"private_key_path"},
-		"testdata-policy-path-is-loaded": {"acl_policy_path", "policy.type"},
-		"bad-values":                     {"dns.magic_dsn", "ephemeral_node_inactivity_timeout"},
-		"nixos-nixpkgs": {
-			"tls_letsencrypt_cache_dir", "tls_letsencrypt_challenge_type", "tls_letsencrypt_hostname", "tls_letsencrypt_listen",
-		},
-		"file-everything": {"oidc.client_secret_path"},
-	}
-}()
-
-var removedKeyInReason = regexp.MustCompile(`configuration key (\S+) was removed|unknown configuration key (\S+)`)
-
-// TestConfigSourceParity checks the source against viper on every Phase-0
-// fixture: same set-ness and same value for each coercion.
-func TestConfigSourceParity(t *testing.T) {
-	// The shipped example is the only fixture with every current key and no
-	// removed ones.
-	rows := append(compatRows(t), compatRow{name: "config-example", file: "../../config-example.yaml"})
-
-	unsetHeadscaleEnv(t)
-
-	for _, tt := range rows {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := stageCompat(t, tt.file, tt.envFile)
-			loadViper(t, dir)
-
-			s, err := newConfigSource(dir, false, os.Environ())
-
-			if want, rejected := parityRejected[tt.name]; rejected {
-				require.Error(t, err)
-
-				var got []string
-
-				for _, ce := range ConfigErrors(err) {
-					m := removedKeyInReason.FindStringSubmatch(ce.Reason)
-					require.NotNil(t, m, ce.Reason)
-
-					got = append(got, m[1]+m[2])
-				}
-
-				assert.ElementsMatch(t, want, got)
-
-				return
-			}
-
-			require.NoError(t, err)
-
-			for _, key := range configKeys {
-				v := viper.Get(key)
-
-				assert.Equalf(t, viper.IsSet(key), s.IsSet(key), "IsSet %s", key)
-				assert.Equalf(t, cast.ToString(v), s.String(key), "String %s", key)
-				assert.Equalf(t, cast.ToBool(v), s.Bool(key), "Bool %s", key)
-				assert.Equalf(t, cast.ToInt(v), s.Int(key), "Int %s", key)
-				assert.Equalf(t, cast.ToDuration(v), s.Duration(key), "Duration %s", key)
-				assert.Equalf(t, cast.ToStringSlice(v), s.StringSlice(key), "StringSlice %s", key)
-				assert.Equalf(t, cast.ToStringMapString(v), s.StringMapString(key), "StringMapString %s", key)
-				assert.Equalf(t, cast.ToStringMapStringSlice(v), s.StringMapStringSlice(key), "StringMapStringSlice %s", key)
-			}
-		})
-	}
-}
-
-// TestConfigSourceUnmarshalParity checks UnmarshalKey against viper's decoder.
-func TestConfigSourceUnmarshalParity(t *testing.T) {
 	type rec struct{ Name, Type, Value string }
 
-	for _, content := range []string{
-		"dns:\n  extra_records: \"\"\n",
-		"dns:\n  extra_records:\n    - {name: a.example.com, type: A, value: 1.2.3.4}\n",
-	} {
-		dir := t.TempDir()
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(content), 0o600))
+	tests := []struct {
+		name, file string
+		want       []rec
+	}{
+		// An empty string decodes to an empty, non-nil slice.
+		{"empty string", "dns:\n  extra_records: \"\"\n", []rec{}},
+		{"list", "dns:\n  extra_records:\n    - {name: a.example.com, type: A, value: 1.2.3.4}\n", []rec{{"a.example.com", "A", "1.2.3.4"}}},
+	}
 
-		loadViper(t, dir)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, err := newConfigSource(writeConfig(t, "config.yaml", tt.file), true, nil)
+			require.NoError(t, err)
 
-		var want []rec
+			var got []rec
 
-		wantErr := viper.UnmarshalKey("dns.extra_records", &want)
-
-		s, err := newConfigSource(dir, false, nil)
-		require.NoError(t, err)
-
-		var got []rec
-
-		gotErr := s.UnmarshalKey("dns.extra_records", &got)
-		require.Equal(t, wantErr == nil, gotErr == nil, "viper: %v, source: %v", wantErr, gotErr)
-		assert.Equal(t, want, got)
+			require.NoError(t, s.UnmarshalKey("dns.extra_records", &got))
+			assert.Equal(t, tt.want, got)
+		})
 	}
 }
 
@@ -552,30 +448,6 @@ func TestConfigKeysComplete(t *testing.T) {
 	}
 }
 
-// loadViper loads the config file in dir as the viper loader did, for the
-// parity checks.
-func loadViper(t *testing.T, dir string) {
-	t.Helper()
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-
-	viper.SetConfigName("config")
-	viper.AddConfigPath(dir)
-
-	viper.SetEnvPrefix("headscale")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
-
-	for k, v := range configDefaults {
-		viper.SetDefault(k, v)
-	}
-
-	err := viper.ReadInConfig()
-	if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
-		require.NoError(t, err)
-	}
-}
-
 // TestConfigSourceDottedOverlap reloads the file each time: map iteration
 // order differs per load, so a single load could hide a nondeterministic result.
 func TestConfigSourceDottedOverlap(t *testing.T) {
@@ -607,14 +479,13 @@ func TestConfigSourceDottedKeyAlone(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"),
 		[]byte("log.level: debug\ndns:\n  magic_dns: false\ndns.nameservers.global: [1.1.1.1]\n"), 0o600))
-	loadViper(t, dir)
 
 	for range 50 {
 		s, err := newConfigSource(dir, false, nil)
 		require.NoError(t, err)
-		require.Equal(t, viper.GetString("log.level"), s.String("log.level"))
-		require.Equal(t, viper.GetBool("dns.magic_dns"), s.Bool("dns.magic_dns"))
-		require.Equal(t, viper.GetStringSlice("dns.nameservers.global"), s.StringSlice("dns.nameservers.global"))
+		require.Equal(t, "debug", s.String("log.level"))
+		require.False(t, s.Bool("dns.magic_dns"))
+		require.Equal(t, []string{"1.1.1.1"}, s.StringSlice("dns.nameservers.global"))
 	}
 }
 
@@ -706,27 +577,23 @@ func TestConfigSourceStrictBeforeExpansion(t *testing.T) {
 	}
 }
 
-func TestConfigSourceProviderEnvParity(t *testing.T) {
+func TestConfigSourceProviderEnv(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"),
 		[]byte("dns:\n  challenge:\n    provider:\n      name: file\n      other: x\n"), 0o600))
 
 	t.Setenv("HEADSCALE_DNS_CHALLENGE_PROVIDER", `{"api_token":"x"}`)
 	t.Setenv("HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME", "cloudflare")
-	loadViper(t, dir)
 
 	s, err := newConfigSource(dir, false, os.Environ())
 	require.NoError(t, err)
 	assert.Empty(t, s.Warnings())
 
-	assert.Equal(t, viper.GetString("dns.challenge.provider.name"), s.String("dns.challenge.provider.name"))
+	assert.Equal(t, "cloudflare", s.String("dns.challenge.provider.name"))
 
-	// The env value replaces the file's map, as in viper; the per-field
+	// The env value replaces the file's map; the per-field
 	// variable is layered on top of it.
 	got := s.StringMap("dns.challenge.provider")
-	for k, v := range viper.GetStringMap("dns.challenge.provider") {
-		assert.Equal(t, v, got[k])
-	}
-
+	assert.Equal(t, "x", got["api_token"])
 	assert.NotContains(t, got, "other")
 }

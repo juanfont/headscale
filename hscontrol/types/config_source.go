@@ -42,7 +42,8 @@ var reservedEnvNames = []string{
 }
 
 // configSource is the layered configuration: defaults, then file, then
-// environment. Keys are lowercase; values coerce like viper's.
+// environment. Keys are lowercase; accessors coerce values, so a string from
+// the environment reads as a bool, number or duration.
 type configSource struct {
 	k         *koanf.Koanf
 	file      string
@@ -134,8 +135,8 @@ func configParser(file string) (koanf.Parser, error) {
 	return nil, fmt.Errorf("unsupported config file format %q: use .json, .yaml, .yml or .hujson", filepath.Ext(file)) //nolint:err113
 }
 
-// normaliseConfigMap lowercases keys at every depth and drops nulls, as
-// viper does, so lookups are case-insensitive and null means unset.
+// normaliseConfigMap lowercases keys at every depth and drops nulls, so
+// lookups are case-insensitive and null means unset.
 func normaliseConfigMap(m map[string]any) map[string]any {
 	out := make(map[string]any, len(m))
 
@@ -535,7 +536,7 @@ func (s *configSource) loadEnv(environ []string) error {
 
 	for _, kv := range environ {
 		name, val, _ := strings.Cut(kv, "=")
-		// Empty means unset, as with viper.
+		// Empty means unset, so a blank variable never overrides the file.
 		if val != "" && strings.HasPrefix(name, configEnvPrefix) {
 			env[name] = val
 		}
@@ -683,7 +684,8 @@ func (s *configSource) StringMapStringSlice(key string) map[string][]string {
 	return cast.ToStringMapStringSlice(s.Get(key))
 }
 
-// UnmarshalKey decodes key into out with viper's decoder settings.
+// UnmarshalKey decodes key into out, weakly typed: values from the
+// environment are strings.
 func (s *configSource) UnmarshalKey(key string, out any) error {
 	if !s.IsSet(key) {
 		return nil
@@ -716,8 +718,7 @@ type keyEntry struct {
 func (e keyEntry) spelling() string { return strings.Join(e.names, " > ") }
 
 // checkOverlaps rejects a path given both dotted and nested ("log.level" next
-// to "log: {level: ...}"): viper resolved such pairs by lookup order, which
-// nothing here reproduces.
+// to "log: {level: ...}"): no rule says which of the two should win.
 func (s *configSource) checkOverlaps(v *configValidator, m map[string]any) {
 	var entries []keyEntry
 
