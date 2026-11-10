@@ -143,6 +143,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 - Each node supports four map streams. A fifth stream closes the oldest. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Map entries carry no machine keys. Peer entries leave `MachineAuthorized` unset. Self entries have no `Cap`, `Online` or `LastSeen`. [#3636](https://github.com/juanfont/headscale/pull/3636)
 - Without MagicDNS, `dns.base_domain` is not a search domain. [#3649](https://github.com/juanfont/headscale/pull/3649)
+- A deleted node's map requests get a 404, as from Tailscale. Its client no longer polls `/machine/map` in a tight loop. Tailscale 1.106 and later show "Device removed" and need a new login; older clients keep retrying until `tailscale up --force-reauth`. [#3688](https://github.com/juanfont/headscale/issues/3688)
 - A tagged node sees itself as its own user, with the node name. `tailscale status` shows this name, not `tagged-devices`. Tagged nodes are not devices of one owner for Taildrop. [#3649](https://github.com/juanfont/headscale/pull/3649)
 
 #### API
