@@ -2035,9 +2035,6 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// This is necessary for WaitForTailscaleSyncPerUser to calculate correct peer counts
 		t.Logf("Iteration %d: Phase 2b - Removing deleted client from scenario", iteration)
 
-		// Match on hostname, not on Status().Self.ID: a deleted node is served
-		// an expired self node carrying no StableID, so Self.ID is empty by the
-		// time this runs.
 		for clientName, client := range scenario.users["user1"].Clients {
 			if client.Hostname() == nodeToDeleteName {
 				delete(scenario.users["user1"].Clients, clientName)

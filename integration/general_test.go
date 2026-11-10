@@ -22,6 +22,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/types/key"
+	"tailscale.com/util/cmpver"
 	"tailscale.com/util/dnsname"
 )
 
@@ -1759,12 +1760,17 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 }
 
 // TestNodeDeletionEndsLongPoll verifies that deleting a node ends its map
-// session and tells the client to re-authenticate. Before the fix the deleted
-// node's long poll was orphaned: the client stayed Running forever against a
-// node that no longer existed, and the server could not shut down while that
-// stream was open.
+// session without disturbing its peers. Before the fix the deleted node's long
+// poll was orphaned: the client stayed Running forever against a node that no
+// longer existed, and the server could not shut down while that stream was
+// open.
+//
+// The reconnecting client then gets a bare 404, as from Tailscale's control
+// server. Only clients that read a map 404 as removal reach NeedsLogin; older
+// ones keep retrying, as they do against Tailscale.
 //
 // See: https://github.com/juanfont/headscale/issues/3410
+// See: https://github.com/juanfont/headscale/issues/3688
 func TestNodeDeletionEndsLongPoll(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
@@ -1825,8 +1831,11 @@ func TestNodeDeletionEndsLongPoll(t *testing.T) {
 		require.True(t, ok, "node list must contain client %s", deleted.Hostname())
 		require.NoError(t, headscale.DeleteNode(deletedID))
 
-		require.NoError(t, deleted.WaitForNeedsLogin(integrationutil.StatusReadyTimeout),
-			"deleted client %s must stop polling and ask for a new login", deleted.Hostname())
+		// Clients read a map 404 as removal since 1.106; "unstable" may predate it.
+		if v := deleted.Version(); v == "head" || (v != "unstable" && cmpver.Compare(v, "1.106") >= 0) {
+			require.NoError(t, deleted.WaitForNeedsLogin(integrationutil.StatusReadyTimeout),
+				"deleted client %s must stop polling and ask for a new login", deleted.Hostname())
+		}
 
 		for _, client := range allClients[i+1:] {
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
