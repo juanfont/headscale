@@ -466,7 +466,7 @@ func TestLoadConfig(t *testing.T) {
 			t.Cleanup(func() { cfgFile = old })
 
 			require.NoError(t, loadConfig(tt.path))
-			require.Equal(t, tt.want, viper.ConfigFileUsed())
+			require.Equal(t, tt.want, types.ConfigFile())
 		})
 	}
 }

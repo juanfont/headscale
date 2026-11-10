@@ -161,8 +161,10 @@
   },
   "warnings": [
     "no config file found, using defaults",
-    "configuration key \"dns_config.magic_dns\" is deprecated; use \"dns.magic_dns\" instead",
-    "configuration key \"ephemeral_node_inactivity_timeout\" is deprecated; use \"node.ephemeral.inactivity_timeout\" instead",
-    "configuration key \"database.gorm.prepare_stmt\" is ignored"
+    "configuration variable HEADSCALE_DATABASE_GORM_PREPARE_STMT was removed in 0.30; remove HEADSCALE_DATABASE_GORM_PREPARE_STMT; see the CHANGELOG for context",
+    "configuration variable HEADSCALE_DB_TYPE was removed in 0.30; use HEADSCALE_DATABASE_TYPE",
+    "configuration variable HEADSCALE_DNS_CONFIG_MAGIC_DNS was removed in 0.30; use HEADSCALE_DNS_MAGIC_DNS",
+    "configuration variable HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT was removed in 0.30; use HEADSCALE_NODE_EPHEMERAL_INACTIVITY_TIMEOUT",
+    "configuration variable HEADSCALE_PRIVATE_KEY_PATH was removed in 0.23; use HEADSCALE_NOISE_PRIVATE_KEY_PATH"
   ]
 }

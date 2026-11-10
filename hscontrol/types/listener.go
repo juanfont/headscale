@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-
-	"github.com/spf13/viper"
 )
 
 var errEmptyListenAddr = errors.New("address is empty")
@@ -106,21 +104,19 @@ func validateListenerCollisions(v *configValidator) {
 		active    bool
 	}
 
-	listenAddr := viper.GetString("listen_addr")
-	grpcAddr := viper.GetString("grpc_listen_addr")
-	metricsAddr := viper.GetString("metrics_listen_addr")
-	acmeAddr := tlsKey("tls.acme.http_listen")
+	listenAddr := src.String("listen_addr")
+	metricsAddr := src.String("metrics_listen_addr")
+	acmeAddr := src.String("tls.acme.http_listen")
 
 	listeners := []spec{
 		{key: "listen_addr", addr: listenAddr, active: listenAddr != ""},
-		{key: "grpc_listen_addr", addr: grpcAddr, active: grpcAddr != ""},
 		{key: "metrics_listen_addr", addr: metricsAddr, active: metricsAddr != ""},
 		{
 			key:  "tls.acme.http_listen",
 			addr: acmeAddr,
 			active: acmeAddr != "" &&
-				tlsKey("tls.acme.hostname") != "" &&
-				tlsKey("tls.acme.challenge_type") == HTTP01ChallengeType,
+				src.String("tls.acme.hostname") != "" &&
+				src.String("tls.acme.challenge_type") == HTTP01ChallengeType,
 		},
 	}
 

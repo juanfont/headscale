@@ -2,6 +2,7 @@ package types
 
 import (
 	"cmp"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -61,9 +62,9 @@ func TestConfigSource(t *testing.T) {
 			errs: []string{"grpc_listen_addr", "bogus"},
 		},
 		{
-			name: "removed env",
-			env:  []string{"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT=30m"},
-			errs: []string{"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT", "HEADSCALE_NODE_EPHEMERAL_INACTIVITY_TIMEOUT"},
+			name:  "removed env warns",
+			env:   []string{"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT=30m"},
+			warns: []string{"configuration variable HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT was removed in 0.30; use HEADSCALE_NODE_EPHEMERAL_INACTIVITY_TIMEOUT"},
 		},
 		{
 			name:  "unknown env warns",
@@ -77,6 +78,12 @@ func TestConfigSource(t *testing.T) {
 				"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN=x", "HEADSCALE_CONFIG=/x", "HEADSCALE_TEST_X=1",
 				"HEADSCALE_INTEGRATION_X=1", "HEADSCALE_UPDATE_GOLDEN=1",
 			},
+		},
+		{
+			// What Kubernetes sets for a Service named headscale-db.
+			name:  "service variable named like a removed key warns",
+			env:   []string{"HEADSCALE_DB_PORT=tcp://10.0.0.5:5432"},
+			warns: []string{"configuration variable HEADSCALE_DB_PORT was removed in 0.30; use HEADSCALE_DATABASE_POSTGRES_PORT"},
 		},
 		{
 			name: "env shared with a removed key still sets the new key",
@@ -242,14 +249,22 @@ func TestConfigSource(t *testing.T) {
 			},
 		},
 		{
-			name: "removed dns_config env",
+			name: "removed dns_config env warns",
 			env:  []string{"HEADSCALE_DNS_CONFIG_MAGIC_DNS=false", "HEADSCALE_DNS_CONFIG_NAMESERVERS=1.1.1.1"},
-			errs: []string{"variable HEADSCALE_DNS_CONFIG_MAGIC_DNS was removed", "HEADSCALE_DNS_CONFIG_NAMESERVERS", "use HEADSCALE_DNS_MAGIC_DNS"},
+			warns: []string{
+				"variable HEADSCALE_DNS_CONFIG_MAGIC_DNS was removed in 0.30; use HEADSCALE_DNS_MAGIC_DNS",
+				"variable HEADSCALE_DNS_CONFIG_NAMESERVERS was removed in 0.30; use HEADSCALE_DNS_NAMESERVERS_GLOBAL",
+			},
 		},
 		{
-			name: "removed env names the new variable",
-			env:  []string{"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT=30m"},
-			errs: []string{"variable HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT was removed in 0.29", "use HEADSCALE_NODE_EPHEMERAL_INACTIVITY_TIMEOUT"},
+			name: "removed block env names the variables replacing it",
+			env:  []string{`HEADSCALE_DNS_CONFIG={"magic_dns":true}`, "HEADSCALE_RANDOMIZE_CLIENT_PORT=true"},
+			warns: []string{
+				"variable HEADSCALE_DNS_CONFIG was removed in 0.30; use HEADSCALE_DNS_MAGIC_DNS, HEADSCALE_DNS_BASE_DOMAIN, " +
+					"HEADSCALE_DNS_OVERRIDE_LOCAL_DNS, HEADSCALE_DNS_NAMESERVERS_GLOBAL, HEADSCALE_DNS_NAMESERVERS_SPLIT, " +
+					"HEADSCALE_DNS_SEARCH_DOMAINS and HEADSCALE_DNS_EXTRA_RECORDS",
+				`variable HEADSCALE_RANDOMIZE_CLIENT_PORT was removed in 0.29; set "randomizeClientPort": true at the top level of the policy file`,
+			},
 		},
 		{
 			name:  "exact reserved names do not exempt near misses",
@@ -391,15 +406,11 @@ var parityRejected = func() map[string][]string {
 		"nixos-nixpkgs": {
 			"tls_letsencrypt_cache_dir", "tls_letsencrypt_challenge_type", "tls_letsencrypt_hostname", "tls_letsencrypt_listen",
 		},
-		"env-legacy-ignored": {
-			"HEADSCALE_DATABASE_GORM_PREPARE_STMT", "HEADSCALE_DB_TYPE", "HEADSCALE_DNS_CONFIG_MAGIC_DNS",
-			"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT", "HEADSCALE_PRIVATE_KEY_PATH",
-		},
-		"env-legacy-removed": {"HEADSCALE_ACL_POLICY_PATH", "HEADSCALE_OIDC_EXPIRY", "HEADSCALE_RANDOMIZE_CLIENT_PORT"},
+		"file-everything": {"oidc.client_secret_path"},
 	}
 }()
 
-var removedKeyInReason = regexp.MustCompile(`configuration (?:key|variable) (\S+) was removed|unknown configuration key (\S+)`)
+var removedKeyInReason = regexp.MustCompile(`configuration key (\S+) was removed|unknown configuration key (\S+)`)
 
 // TestConfigSourceParity checks the source against viper on every Phase-0
 // fixture: same set-ness and same value for each coercion.
@@ -412,11 +423,8 @@ func TestConfigSourceParity(t *testing.T) {
 
 	for _, tt := range rows {
 		t.Run(tt.name, func(t *testing.T) {
-			viper.Reset()
-			t.Cleanup(viper.Reset)
-
 			dir := stageCompat(t, tt.file, tt.envFile)
-			require.NoError(t, LoadConfig(dir, false))
+			loadViper(t, dir)
 
 			s, err := newConfigSource(dir, false, os.Environ())
 
@@ -466,9 +474,7 @@ func TestConfigSourceUnmarshalParity(t *testing.T) {
 		dir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(content), 0o600))
 
-		viper.Reset()
-		t.Cleanup(viper.Reset)
-		require.NoError(t, LoadConfig(dir, false))
+		loadViper(t, dir)
 
 		var want []rec
 
@@ -485,9 +491,6 @@ func TestConfigSourceUnmarshalParity(t *testing.T) {
 	}
 }
 
-// pendingKeys are read by the viper loader but replaced by file: secrets later.
-var pendingKeys = map[string]bool{"oidc.client_secret_path": true}
-
 func TestConfigKeysComplete(t *testing.T) {
 	read := map[string]bool{}
 
@@ -501,23 +504,13 @@ func TestConfigKeysComplete(t *testing.T) {
 				return true
 			}
 
-			var name string
-
-			switch fn := call.Fun.(type) {
-			case *ast.SelectorExpr:
-				if obj, ok := fn.X.(*ast.Ident); !ok || obj.Name != "viper" {
-					return true
-				}
-
-				name = fn.Sel.Name
-			case *ast.Ident:
-				name = fn.Name
-			default:
+			// Every src accessor takes the key first.
+			fn, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
 				return true
 			}
 
-			if !strings.HasPrefix(name, "Get") && name != "IsSet" && name != "InConfig" &&
-				name != "UnmarshalKey" && name != "tlsKey" {
+			if obj, ok := fn.X.(*ast.Ident); !ok || obj.Name != "src" {
 				return true
 			}
 
@@ -532,23 +525,17 @@ func TestConfigKeysComplete(t *testing.T) {
 		})
 	}
 
-	removed := map[string]bool{}
-	for _, r := range removedKeys {
-		removed[r.Old] = true
-	}
-
 	all := slices.Concat(configKeys, openMapKeys)
 
 	for key := range read {
-		ok := slices.Contains(all, key) || removed[key] || key == "dns" ||
-			strings.HasPrefix(key, "dns.challenge.provider")
+		ok := slices.Contains(all, key) || strings.HasPrefix(key, "dns.challenge.provider")
 
 		assert.Truef(t, ok, "%s is read but missing from the key tables", key)
 	}
 
 	for _, key := range configKeys {
 		_, hasDefault := configDefaults[key]
-		assert.Truef(t, read[key] || hasDefault || pendingKeys[key], "%s is listed but never read", key)
+		assert.Truef(t, read[key] || hasDefault, "%s is listed but never read", key)
 	}
 
 	for key := range configDefaults {
@@ -565,11 +552,28 @@ func TestConfigKeysComplete(t *testing.T) {
 	}
 }
 
+// loadViper loads the config file in dir as the viper loader did, for the
+// parity checks.
 func loadViper(t *testing.T, dir string) {
 	t.Helper()
 	viper.Reset()
 	t.Cleanup(viper.Reset)
-	require.NoError(t, LoadConfig(dir, false))
+
+	viper.SetConfigName("config")
+	viper.AddConfigPath(dir)
+
+	viper.SetEnvPrefix("headscale")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
+
+	for k, v := range configDefaults {
+		viper.SetDefault(k, v)
+	}
+
+	err := viper.ReadInConfig()
+	if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
+		require.NoError(t, err)
+	}
 }
 
 // TestConfigSourceDottedOverlap reloads the file each time: map iteration
@@ -671,6 +675,23 @@ func TestConfigSourceDottedNoOverlap(t *testing.T) {
 				require.NoError(t, err)
 				tt.check(t, s)
 			}
+		})
+	}
+}
+
+// TestConfigSourceShapeErrorsHideValues: a block in the wrong shape may hold
+// credentials, so the error names the key without its value.
+func TestConfigSourceShapeErrorsHideValues(t *testing.T) {
+	for name, file := range map[string]string{
+		"list under oidc":            "oidc:\n  - client_secret: marker-secret\n",
+		"scalar under postgres":      "database:\n  postgres: \"pass: marker-secret\"\n",
+		"scalar under oidc.pkce":     "oidc:\n  pkce: marker-secret\n",
+		"list under database.sqlite": "database:\n  sqlite: [marker-secret]\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := newConfigSource(writeConfig(t, "config.yaml", file), true, nil)
+			require.ErrorContains(t, err, "must be a mapping")
+			assert.NotContains(t, err.Error(), "marker-secret")
 		})
 	}
 }

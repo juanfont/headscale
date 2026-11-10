@@ -231,7 +231,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 	headscale, err := scenario.Headscale(
 		hsic.WithTestName("ephemeral2006"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": "1m6s",
+			"HEADSCALE_NODE_EPHEMERAL_INACTIVITY_TIMEOUT": "1m6s",
 		}),
 	)
 	requireNoErrHeadscaleEnv(t, err)

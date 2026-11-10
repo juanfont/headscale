@@ -273,6 +273,91 @@ func TestCheckAll(t *testing.T) {
 	})
 }
 
+// No check reads a file: secret: its file may exist only for the service
+// (systemd credentials, sops, agenix). check all lists each one as skipped.
+func TestCheckSecretsUnread(t *testing.T) {
+	const acmeDNS = `  challenge:
+    provider:
+      name: acmedns
+`
+
+	t.Run("missing secret files", func(t *testing.T) {
+		dir := t.TempDir()
+		missing := filepath.Join(dir, "missing")
+
+		for k, v := range map[string]string{
+			"HEADSCALE_OIDC_ISSUER":                      "https://idp.example.com",
+			"HEADSCALE_OIDC_CLIENT_ID":                   "headscale",
+			"HEADSCALE_OIDC_CLIENT_SECRET":               "file:" + missing,
+			"HEADSCALE_DATABASE_TYPE":                    "postgres",
+			"HEADSCALE_DATABASE_POSTGRES_PASS":           "file:" + missing,
+			"HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME":      "cloudflare",
+			"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN": "file:" + missing,
+		} {
+			t.Setenv(k, v)
+		}
+
+		cfg := writeServerConfig(t, dir, "")
+
+		_, err := runCheck(t, checkConfigCmd, cfg)
+		require.NoError(t, err)
+
+		out, err := runCheck(t, checkAllCmd, cfg)
+		require.NoError(t, err)
+
+		lines := strings.Split(out, "\n")
+		for _, key := range []string{"oidc.client_secret", "database.postgres.pass", "dns.challenge.provider.api_token"} {
+			require.Contains(t, lines, fmt.Sprintf("skip  %-32s  %s (secret, not read)", key, missing))
+		}
+	})
+
+	// A URL from a file cannot be validated unread.
+	for name, provider := range map[string]string{
+		"account": acmeDNS + `      username: user
+      password: pass
+      subdomain: reg
+      server_url: "file:%s"
+`,
+		"registration": acmeDNS + `      config:
+        laptop.example.com:
+          username: user
+          password: pass
+          subdomain: reg
+          server_url: "file:%s"
+`,
+	} {
+		t.Run("acme-dns "+name+" url from file", func(t *testing.T) {
+			dir := t.TempDir()
+			cfg := writeServerConfig(t, dir, fmt.Sprintf(provider, filepath.Join(dir, "missing")))
+
+			for _, c := range []*cobra.Command{checkConfigCmd, checkAllCmd} {
+				_, err := runCheck(t, c, cfg)
+				require.NoError(t, err, c.Name())
+			}
+		})
+	}
+
+	// Setting names match case-insensitively, as the decoder matches them;
+	// only the environment's JSON keeps their case.
+	for _, field := range []string{"server_url", "SERVER_URL", "Server_URL"} {
+		t.Run("acme-dns registration "+field+" from file in env json", func(t *testing.T) {
+			dir := t.TempDir()
+
+			t.Setenv("HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME", "acmedns")
+			t.Setenv("HEADSCALE_DNS_CHALLENGE_PROVIDER", fmt.Sprintf(
+				`{"config":{"Node.Example.com":{"username":"user","password":"pass","subdomain":"reg",%q:"file:%s"}}}`,
+				field, filepath.Join(dir, "missing")))
+
+			cfg := writeServerConfig(t, dir, "")
+
+			for _, c := range []*cobra.Command{checkConfigCmd, checkAllCmd} {
+				_, err := runCheck(t, c, cfg)
+				require.NoError(t, err, c.Name())
+			}
+		})
+	}
+}
+
 func TestCheckFileCommands(t *testing.T) {
 	dir := t.TempDir()
 

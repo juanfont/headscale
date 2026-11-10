@@ -21,7 +21,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/spf13/viper"
 	"tailscale.com/tailcfg"
 )
 
@@ -270,12 +269,12 @@ func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 	}
 
 	derpMap := mergeDERPMaps(derpMaps)
-	shuffleDERPMap(derpMap)
+	shuffleDERPMap(derpMap, cfg.ShuffleSeed)
 
 	return derpMap, errors.Join(errs...)
 }
 
-func shuffleDERPMap(dm *tailcfg.DERPMap) {
+func shuffleDERPMap(dm *tailcfg.DERPMap, seed string) {
 	if dm == nil || len(dm.Regions) == 0 {
 		return
 	}
@@ -293,7 +292,7 @@ func shuffleDERPMap(dm *tailcfg.DERPMap) {
 	// A new generator per call gives the same input the same order. Clients
 	// close their home relay when its node order changes, so a refresh that
 	// finds no change must not reorder anything.
-	rng := rand.New(rand.NewSource(derpShuffleSeed())) //nolint:gosec // weak random is fine for DERP scrambling
+	rng := rand.New(rand.NewSource(derpShuffleSeed(seed))) //nolint:gosec // weak random is fine for DERP scrambling
 
 	for _, id := range ids {
 		region := dm.Regions[id]
@@ -313,12 +312,12 @@ var (
 	derpSeedMu  sync.Mutex
 )
 
-func derpShuffleSeed() int64 {
+func derpShuffleSeed(seed string) int64 {
 	derpSeedMu.Lock()
 	defer derpSeedMu.Unlock()
 
 	if !derpSeedSet {
-		seed := cmp.Or(viper.GetString("dns.base_domain"), time.Now().String())
+		seed = cmp.Or(seed, time.Now().String())
 		derpSeed = int64(crc64.Checksum([]byte(seed), crc64Table)) //nolint:gosec // only a seed, overflow is harmless
 		derpSeedSet = true
 	}

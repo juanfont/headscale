@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
+	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
@@ -363,30 +364,105 @@ func removedConfigKey(path string) (removedKey, bool) {
 		}
 	}
 
-	return removedKey{}, false
+	return removedProviderPath(path)
 }
 
-func (r removedKey) hint() string {
+// removedProviderPath matches a DNS provider's <setting>_path, nested ones
+// included, the file form "file:<path>" replaced. Provider settings have no
+// fixed list, so the form is matched by name, for every provider, selected
+// or not.
+func removedProviderPath(path string) (removedKey, bool) {
+	const prefix = "dns.challenge.provider."
+
+	field, ok := strings.CutPrefix(path, prefix)
+	setting := field[strings.LastIndex(field, ".")+1:]
+
+	if !ok || !strings.HasSuffix(setting, "_path") || hsdns.IsProviderSetting(setting) {
+		return removedKey{}, false
+	}
+
+	return removedKey{
+		Old:   path,
+		New:   prefix + strings.TrimSuffix(field, "_path"),
+		Value: "file:<path>",
+		Since: "0.30",
+	}, true
+}
+
+// walkRemoved calls add for every removed key below path, an open map
+// whose contents are otherwise the user's, and deletes it from m, so a
+// caller that only warns loads the rest. labels says m's keys are names,
+// such as acme-dns's registrations: data, kept as written and not checked.
+func walkRemoved(path string, m map[string]any, labels bool, add func(path string, r removedKey)) {
+	for _, name := range slices.Sorted(maps.Keys(m)) {
+		key := name
+		if !labels {
+			key = strings.ToLower(name)
+		}
+
+		p := path + "." + key
+		if r, removed := removedConfigKey(p); removed && !labels {
+			add(p, r)
+			delete(m, name)
+
+			continue
+		}
+
+		if child, ok := m[name].(map[string]any); ok {
+			walkRemoved(p, child, !labels && hsdns.IsProviderMapSetting(key), add)
+		}
+	}
+}
+
+// hintAs says what replaces r, spelling each key with name and a key set
+// to Value with assign, so one table serves files and the environment.
+func (r removedKey) hintAs(name func(string) string, assign string) string {
 	switch {
 	case r.Hint != "":
 		return r.Hint
+	case r.Value != "":
+		return "use " + fmt.Sprintf(assign, name(r.New), r.Value)
 	case r.New != "":
-		return "use " + r.New
+		keys := strings.Fields(r.New)
+		for i, k := range keys {
+			keys[i] = name(k)
+		}
+
+		last := len(keys) - 1
+		if last == 0 {
+			return "use " + keys[0]
+		}
+
+		return "use " + strings.Join(keys[:last], ", ") + " and " + keys[last]
 	}
 
-	return fmt.Sprintf("remove %s; see the CHANGELOG for context", r.Old)
+	return fmt.Sprintf("remove %s; see the CHANGELOG for context", name(r.Old))
+}
+
+func (r removedKey) hint() string {
+	return r.hintAs(func(key string) string { return key }, `%s: %q`)
+}
+
+// envHint is hint for a variable. A removed block has no variable of its
+// own, so it names the variables replacing its removed keys.
+func (r removedKey) envHint() string {
+	var leaves []string
+
+	for _, l := range removedKeys {
+		if strings.HasPrefix(l.Old, r.Old+".") && l.New != "" {
+			leaves = append(leaves, l.New)
+		}
+	}
+
+	if len(leaves) > 0 {
+		r = removedKey{Old: r.Old, New: strings.Join(leaves, " ")}
+	}
+
+	return r.hintAs(configEnvName, "%s=%s")
 }
 
 func (r removedKey) reason(what, name string) string {
 	return fmt.Sprintf("configuration %s %s was removed in %s", what, name, r.Since)
-}
-
-func (r removedKey) envHint() string {
-	if r.New != "" && r.Hint == "" {
-		return "use " + configEnvName(r.New)
-	}
-
-	return r.hint()
 }
 
 // checkKeys adds an error for every removed or unknown key in the file.
@@ -412,15 +488,27 @@ func (s *configSource) checkKeys(v *configValidator, m map[string]any) {
 					Hint:   r.hint(),
 				})
 			case isOpenMapPath(path):
-				// The contents are the user's.
+				// The contents are the user's, but for a removed form. A dotted
+				// key below the open map (provider.config) is walked from the
+				// map, so its contents get the role they have when nested.
+				root, below := path, child
+				if !slices.Contains(openMapKeys, path) {
+					parts := configPathParts(path)
+					root = strings.Join(parts[:len(parts)-1], ".")
+					below = map[string]any{parts[len(parts)-1]: val}
+				}
+
+				walkRemoved(root, below, false, func(p string, r removedKey) {
+					v.Add(&ConfigError{Reason: r.reason("key", p) + s.position(p), Hint: r.hint()})
+				})
 			case leaf[path] && !isMap:
 			case (leaf[path] || branch[path]) && isMap:
 				// Under a plain setting every child is unknown.
 				walk(path, child)
 			case branch[path]:
+				// The value is not shown: a misplaced block may hold secrets.
 				v.Add(&ConfigError{
-					Reason:  fmt.Sprintf("configuration key %s must be a mapping%s", path, s.position(path)),
-					Current: []KV{{path, val}},
+					Reason: fmt.Sprintf("configuration key %s must be a mapping%s", path, s.position(path)),
 				})
 			default:
 				v.Add(&ConfigError{Reason: fmt.Sprintf("unknown configuration key %s%s", path, s.position(path))})
@@ -472,44 +560,57 @@ func (s *configSource) loadEnv(environ []string) error {
 		}
 	}
 
-	v := &configValidator{}
-
+	// Other software shares the prefix (a Kubernetes Service named
+	// headscale-db sets HEADSCALE_DB_PORT), so variables only ever warn.
 	for _, name := range slices.Sorted(maps.Keys(env)) {
-		if names[name] || reservedEnv(name) {
+		if names[name] {
 			continue
 		}
 
+		// Before reservedEnv, which spares every provider variable.
 		if r, ok := removedEnv(name); ok {
-			v.Add(&ConfigError{
-				Reason: r.reason("variable", name),
-				Hint:   r.envHint(),
-			})
+			s.warnings = append(s.warnings, r.reason("variable", name)+"; "+r.envHint())
 
+			continue
+		}
+
+		if reservedEnv(name) {
 			continue
 		}
 
 		s.warnings = append(s.warnings, "unknown environment variable "+name)
 	}
 
-	if v.HasErrors() {
-		return v.Err()
-	}
-
 	// A variable for an open map replaces the file's map instead of merging
 	// into it. The value stays a raw string, which the cast accessors parse as
-	// JSON, unless a per-field variable (HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME)
-	// has to be layered on top: then the JSON object is parsed here.
-	for key, val := range openLayer {
+	// JSON, unless the JSON object held a removed form, dropped here, or a
+	// per-field variable (HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME) has to be
+	// layered on top: then the parsed object is set.
+	for _, key := range slices.Sorted(maps.Keys(openLayer)) {
+		val := openLayer[key]
 		s.k.Delete(key)
 
 		var parsed map[string]any
+
+		dropped := false
+
+		// A failed decode may still have filled part of parsed: never used.
+		decoded := stdjson.Unmarshal([]byte(val), &parsed) == nil && parsed != nil
+		if decoded {
+			// The hint names keys: inside the JSON they are keys, not variables.
+			name := configEnvName(key)
+			walkRemoved(key, parsed, false, func(p string, r removedKey) {
+				s.warnings = append(s.warnings, r.reason("key", p+" in "+name)+"; "+r.hint())
+				dropped = true
+			})
+		}
 
 		shared := slices.ContainsFunc(slices.Collect(maps.Keys(layer)), func(k string) bool {
 			return strings.HasPrefix(k, key+".")
 		})
 
 		var v any = val
-		if shared && stdjson.Unmarshal([]byte(val), &parsed) == nil && parsed != nil {
+		if decoded && (dropped || shared) {
 			v = parsed
 		}
 
@@ -541,6 +642,10 @@ func removedEnv(name string) (removedKey, bool) {
 		if configEnvName(r.Old) == name {
 			return r, true
 		}
+	}
+
+	if field, ok := strings.CutPrefix(name, configEnvName("dns.challenge.provider")+"_"); ok {
+		return removedProviderPath("dns.challenge.provider." + strings.ToLower(field))
 	}
 
 	return removedKey{}, false

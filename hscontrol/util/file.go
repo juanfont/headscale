@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/spf13/viper"
 	"github.com/tailscale/hujson"
 	"gopkg.in/yaml.v3"
 )
@@ -99,14 +98,11 @@ func ReadFileByExt[T any](path string) (T, error) {
 	return UnmarshalByExt[T](path, data)
 }
 
-func AbsolutePathFromConfigPath(path string) string {
-	// If a relative path is provided, prefix it with the directory where
-	// the config file was found.
-	if (path != "") && !strings.HasPrefix(path, string(os.PathSeparator)) {
-		dir, _ := filepath.Split(viper.ConfigFileUsed())
-		if dir != "" {
-			path = filepath.Join(dir, path)
-		}
+// AbsolutePath resolves a relative path from the configuration against
+// configDir, the directory relative paths are read from.
+func AbsolutePath(configDir, path string) string {
+	if path != "" && configDir != "" && !filepath.IsAbs(path) {
+		return filepath.Join(configDir, path)
 	}
 
 	return path

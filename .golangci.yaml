@@ -104,6 +104,12 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # Config key names repeat across the key tables, validation and error
+      # reports until the config reshape gives each key one home.
+      - path: hscontrol/types/(config|config_keys|listener)\.go
+        linters:
+          - goconst
     paths:
       - third_party$
       - builtin$

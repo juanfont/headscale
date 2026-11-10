@@ -11,7 +11,6 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var errCheckFailed = errors.New("check failed")
@@ -24,7 +23,7 @@ func init() {
 	checkCmd.AddCommand(checkPolicyCmd)
 
 	for _, c := range []*cobra.Command{checkConfigCmd, checkAllCmd} {
-		c.Flags().StringP("file", "f", "", "Path to the config file (default: found as serve finds it: -c, HEADSCALE_CONFIG, /etc/headscale, ~/.headscale, .)")
+		c.Flags().StringP("file", "f", "", "Path to the config file (default: found as serve finds it: -c, HEADSCALE_CONFIG, /etc/headscale, $XDG_CONFIG_HOME/headscale, headscale under each $XDG_CONFIG_DIRS entry, ~/.headscale, .)")
 		checkCmd.AddCommand(c)
 	}
 
@@ -74,9 +73,7 @@ var checkConfigCmd = &cobra.Command{
 	Long: `
 	Config validates the configuration: its syntax, keys and values. It does
 	not check the files the configuration names; "headscale check all" does.
-	Without --file it finds the configuration as "headscale serve" does. Secret
-	files named by oidc.client_secret_path and the DNS provider *_path settings
-	are read while the configuration loads.`,
+	Without --file it finds the configuration as "headscale serve" does.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		_, src, err := loadCheckedConfig(cmd)
@@ -96,7 +93,8 @@ var checkAllCmd = &cobra.Command{
 	Long: `
 	All checks the configuration, then each file it names, and lists every file
 	with ok, FAIL (the error below it) or skip. Skip is a key file that startup
-	creates when it is missing. It exits non-zero when any line is FAIL.
+	creates when it is missing, or a "file:<path>" secret. It exits non-zero
+	when any line is FAIL.
 
 	A derp.paths file that fails to parse is FAIL here, although startup only
 	skips it with a warning.`,
@@ -130,6 +128,8 @@ var checkAllCmd = &cobra.Command{
 				printCheckLine(out, "ok", f.Key, f.Path, width, nil)
 			case f.CreatedAtStartup && errors.Is(err, os.ErrNotExist):
 				printCheckLine(out, "skip", f.Key, f.Path+" (missing; startup creates it)", width, nil)
+			case errors.Is(err, config.ErrSecretNotRead):
+				printCheckLine(out, "skip", f.Key, f.Path+" ("+err.Error()+")", width, nil)
 			default:
 				failed++
 
@@ -180,7 +180,7 @@ func loadCheckedConfig(cmd *cobra.Command) (*types.Config, string, error) {
 
 	err := loadConfig(path)
 
-	src := viper.ConfigFileUsed()
+	src := types.ConfigFile()
 	if src == "" {
 		src = "(defaults and environment)"
 	}
@@ -189,7 +189,7 @@ func loadCheckedConfig(cmd *cobra.Command) (*types.Config, string, error) {
 		return nil, src, err
 	}
 
-	cfg, err := types.LoadServerConfig()
+	cfg, err := types.CheckServerConfig()
 
 	return cfg, src, err
 }

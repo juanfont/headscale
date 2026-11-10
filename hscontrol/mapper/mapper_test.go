@@ -1291,7 +1291,8 @@ func TestCertDomains(t *testing.T) {
 			"subdomain":  "reg",
 			"server_url": "https://auth.acme-dns.io",
 		},
-	}}, func(string) (any, bool) { return nil, false })
+	}}, func(string) (any, bool) { return nil, false },
+		func(_, v string) (string, error) { return v, nil })
 	require.NoError(t, err)
 
 	tests := []struct {

@@ -2,9 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func init() {
@@ -16,7 +17,12 @@ var dumpConfigCmd = &cobra.Command{
 	Short:  "dump current config to /etc/headscale/config.dump.yaml, integration test only",
 	Hidden: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		err := viper.WriteConfigAs("/etc/headscale/config.dump.yaml")
+		out, err := types.DumpConfig()
+		if err != nil {
+			return fmt.Errorf("dumping config: %w", err)
+		}
+
+		err = os.WriteFile("/etc/headscale/config.dump.yaml", out, 0o600)
 		if err != nil {
 			return fmt.Errorf("dumping config: %w", err)
 		}

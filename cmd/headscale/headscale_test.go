@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,19 +30,7 @@ func TestConfigFileLoading(t *testing.T) {
 	err = types.LoadConfig(cfgFile, true)
 	require.NoError(t, err)
 
-	// Test that config file was interpreted correctly
-	assert.Equal(t, "http://127.0.0.1:8080", viper.GetString("server_url"))
-	assert.Equal(t, "127.0.0.1:8080", viper.GetString("listen_addr"))
-	assert.Equal(t, "127.0.0.1:9090", viper.GetString("metrics_listen_addr"))
-	assert.Equal(t, "sqlite", viper.GetString("database.type"))
-	assert.Equal(t, "/var/lib/headscale/db.sqlite", viper.GetString("database.sqlite.path"))
-	assert.Empty(t, viper.GetString("tls.acme.hostname"))
-	assert.Equal(t, ":http", viper.GetString("tls.acme.http_listen"))
-	assert.Equal(t, "HTTP-01", viper.GetString("tls.acme.challenge_type"))
-	mode, err := util.ParseFileMode(viper.GetString("unix_socket_permission"))
-	require.NoError(t, err)
-	assert.Equal(t, fs.FileMode(0o770), mode)
-	assert.False(t, viper.GetBool("logtail.enabled"))
+	assertExampleConfig(t)
 }
 
 func TestConfigLoading(t *testing.T) {
@@ -64,17 +50,25 @@ func TestConfigLoading(t *testing.T) {
 	err = types.LoadConfig(tmpDir, false)
 	require.NoError(t, err)
 
-	// Test that config file was interpreted correctly
-	assert.Equal(t, "http://127.0.0.1:8080", viper.GetString("server_url"))
-	assert.Equal(t, "127.0.0.1:8080", viper.GetString("listen_addr"))
-	assert.Equal(t, "127.0.0.1:9090", viper.GetString("metrics_listen_addr"))
-	assert.Equal(t, "sqlite", viper.GetString("database.type"))
-	assert.Equal(t, "/var/lib/headscale/db.sqlite", viper.GetString("database.sqlite.path"))
-	assert.Empty(t, viper.GetString("tls.acme.hostname"))
-	assert.Equal(t, ":http", viper.GetString("tls.acme.http_listen"))
-	assert.Equal(t, "HTTP-01", viper.GetString("tls.acme.challenge_type"))
-	mode, err := util.ParseFileMode(viper.GetString("unix_socket_permission"))
+	assertExampleConfig(t)
+}
+
+// assertExampleConfig checks the loaded config-example.yaml was interpreted
+// correctly.
+func assertExampleConfig(t *testing.T) {
+	t.Helper()
+
+	cfg, err := types.LoadServerConfig()
 	require.NoError(t, err)
-	assert.Equal(t, fs.FileMode(0o770), mode)
-	assert.False(t, viper.GetBool("logtail.enabled"))
+
+	assert.Equal(t, "http://127.0.0.1:8080", cfg.ServerURL)
+	assert.Equal(t, "127.0.0.1:8080", cfg.Addr)
+	assert.Equal(t, "127.0.0.1:9090", cfg.MetricsAddr)
+	assert.Equal(t, types.DatabaseSqlite, cfg.Database.Type)
+	assert.Equal(t, "/var/lib/headscale/db.sqlite", cfg.Database.Sqlite.Path)
+	assert.Empty(t, cfg.TLS.ACME.Hostname)
+	assert.Equal(t, ":http", cfg.TLS.ACME.HTTPListen)
+	assert.Equal(t, "HTTP-01", cfg.TLS.ACME.ChallengeType)
+	assert.Equal(t, fs.FileMode(0o770), cfg.UnixSocketPermission)
+	assert.False(t, cfg.LogTail.Enabled)
 }

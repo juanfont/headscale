@@ -37,6 +37,9 @@ in
         challenge.provider = {
           name = "rfc2136";
           server = "127.0.0.1:53";
+          key_name = "headscale.";
+          key_alg = "hmac-sha256.";
+          key = "c2VjcmV0";
         };
       };
     };

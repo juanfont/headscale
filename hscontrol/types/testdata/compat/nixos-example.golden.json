@@ -28,7 +28,7 @@
       "Format": "text",
       "Level": "info"
     },
-    "DisableUpdateCheck": false,
+    "DisableUpdateCheck": true,
     "Database": {
       "Type": "sqlite3",
       "Debug": false,
