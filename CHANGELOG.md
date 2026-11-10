@@ -92,6 +92,128 @@ the Tailscale admin console. `GET /api/v2/device/{id}/update-status` reports the
 update. Both answer as Tailscale does: a node that does not allow remote updates,
 is not connected, or refuses is "not found". See [the client docs](https://headscale.net/stable/about/clients/#update-clients). [#3632](https://github.com/juanfont/headscale/pull/3632)
 
+### Check configuration and policy files
+
+The `headscale check` commands check a file before you deploy it, and say what
+to fix:
+
+```shell
+headscale check config -f /etc/headscale/config.yaml
+headscale check policy -f policy.hujson
+headscale check all
+```
+
+`check config` checks the configuration: its syntax, keys and values.
+`check policy` checks a policy file and runs its `tests` and `sshTests` against
+one node for each user and tag the policy names. `check all` checks the
+configuration and then every file it names (the policy, DERP maps, extra
+records, TLS pair and keys), with one line per file. `check derp-map` and
+`check extra-records` check a single file.
+
+[#3668](https://github.com/juanfont/headscale/pull/3668)
+[#3669](https://github.com/juanfont/headscale/pull/3669)
+
+### Strict configuration
+
+Headscale used to ignore a key it did not know and read a bad value as a
+default, so a typo could quietly change what the server did. It now stops on an
+unknown or removed key, or on a value that does not fit its key. The error names
+the key, where it was set and, for a removed key, what replaces it. Run the new
+version's `headscale check config` on your configuration before you upgrade:
+one based on a shipped example from 0.23 to 0.29 fails on its flat `tls_*`,
+`acme_*` and `grpc_*` keys and on `database.gorm.prepare_stmt`.
+
+Secrets can stay out of the configuration file. `oidc.client_secret`,
+`database.postgres.pass`, `cli.api_key` and every text setting of
+`dns.challenge.provider` take `file:<path>`:
+
+```yaml
+oidc:
+  client_secret: "file:${CREDENTIALS_DIRECTORY}/oidc_client_secret"
+```
+
+Every key can also be set with a `HEADSCALE_*` variable, such as
+`HEADSCALE_LOG_LEVEL=debug` for `log.level`. The configuration file may be
+YAML, JSON or HuJSON.
+
+[#3674](https://github.com/juanfont/headscale/pull/3674)
+[#3677](https://github.com/juanfont/headscale/pull/3677)
+
+### Only `server_url` is required
+
+Every key but `server_url` now has a working default, so this is a complete
+configuration:
+
+```yaml
+server_url: https://headscale.example.com
+```
+
+`HEADSCALE_SERVER_URL` alone works too, e.g. in a container. Headscale then
+listens on `0.0.0.0:8080`, keeps its keys and SQLite database in
+`/var/lib/headscale`, gives nodes addresses from both Tailscale ranges and uses
+Tailscale's DERP relays. MagicDNS stays on by default, now under
+`tailnet.internal`. `headscale generate config --minimal` prints the keys every
+server must set.
+
+[#3683](https://github.com/juanfont/headscale/pull/3683)
+
+### Generated configuration reference
+
+The root `config-example.yaml` is gone. `headscale generate config` prints the
+example for the installed version, every key with its default and
+documentation:
+
+```shell
+headscale generate config > /etc/headscale/config.yaml
+```
+
+[Configuration options](https://headscale.net/stable/ref/configuration-options/)
+lists every key with its type, default and environment variable, examples for
+the configuration file, the environment and NixOS, and what replaced each
+removed key. Both are generated from headscale's source, so they match the
+version they describe. `headscale generate config --running` prints the
+configuration of the running server, with secrets redacted.
+
+[#3680](https://github.com/juanfont/headscale/pull/3680)
+
+### NixOS module
+
+The NixOS module in this repository is rebuilt on headscale's own
+configuration. `services.headscale.settings` has one typed option per key, with
+headscale's default and documentation, so a wrong value fails evaluation and
+names the option. Keep secrets out of the Nix store with systemd credentials:
+
+```nix
+imports = [ inputs.headscale.nixosModules.default ];
+
+services.headscale = {
+  enable = true;
+  settings = {
+    server_url = "https://headscale.example.com";
+    oidc = {
+      issuer = "https://sso.example.com";
+      client_id = "headscale";
+      client_secret = "file:\${CREDENTIALS_DIRECTORY}/oidc-client-secret";
+    };
+  };
+};
+systemd.services.headscale.serviceConfig.LoadCredential = [
+  "oidc-client-secret:/run/secrets/oidc-client-secret"
+];
+```
+
+A configuration or policy that headscale rejects fails `nixos-rebuild build`,
+and a switch stops before it restarts headscale with files it would reject.
+Many options are removed or renamed; `nix/README.md` maps each one to its
+replacement.
+
+nixpkgs' `services.headscale` module is not ready for this release: it writes
+keys that headscale now rejects. Use this repository's module until nixpkgs
+follows. Each release attaches `headscale-nixos-options.nix`, the options
+nixpkgs can import.
+
+[#3682](https://github.com/juanfont/headscale/pull/3682)
+
 ### BREAKING
 
 #### Database
@@ -167,23 +289,54 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 - A `derp.paths` file with a key `tailcfg.DERPMap` has no field for (e.g. a misspelt `regionscore`) fails to load instead of the key being ignored, as Tailscale SaaS rejects such a policy `derpMap` [#2932](https://github.com/juanfont/headscale/pull/2932)
 - A DERP map from `derp.paths` or `derp.urls` must meet the region rules Tailscale SaaS applies to a policy `derpMap`: each region's `regionid` matches its key, each node's `regionid` matches its region, and a region has at least one node. A map that breaks one fails to load. Clients count latency by `regionid`, so a mismatch made them pick a home region the map did not have [#2932](https://github.com/juanfont/headscale/pull/2932)
 - `unix_socket_permission` must be a quoted octal string no higher than `"0777"`, e.g. `"0770"`; an unquoted number or an invalid value now stops headscale from starting instead of silently using `0700` [#3540](https://github.com/juanfont/headscale/pull/3540)
-- `tls_cert_path`, `tls_key_path`, `tls_letsencrypt_*`, `acme_url` and `acme_email` are deprecated in favour of `tls.cert_path`, `tls.key_path` and `tls.acme.*` [#3554](https://github.com/juanfont/headscale/pull/3554)
-  - The old keys continue to work, with a warning, but will be removed in a future release
+- `tls_cert_path`, `tls_key_path`, `tls_letsencrypt_*`, `acme_url` and `acme_email` are replaced by `tls.cert_path`, `tls.key_path` and `tls.acme.*`; the old keys are rejected [#3554](https://github.com/juanfont/headscale/pull/3554) [#3674](https://github.com/juanfont/headscale/pull/3674)
 - Headscale's own ACME certificate is managed by CertMagic instead of autocert; the first start registers a new ACME account and obtains a new certificate in `tls.acme.cache_dir`, which now defaults to `/var/lib/headscale/cache` [#3554](https://github.com/juanfont/headscale/pull/3554)
 
-- Invalid booleans stop startup or CLI commands. Use `true` or `false`. Remove ignored `database.gorm.prepare_stmt`; Headscale logs a warning. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- Invalid booleans stop startup or CLI commands. Use `true` or `false`. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Debug hosts must be localhost, an IP, or the configured `server_url`/`metrics_listen_addr` host. `/metrics` accepts other hosts. [#3619](https://github.com/juanfont/headscale/pull/3619)
+
+- The configuration file is YAML (`.yaml`, `.yml`), JSON (`.json`) or HuJSON (`.hujson`). A TOML or `.env` file stops headscale: convert it to YAML; `HEADSCALE_*` variables are unaffected. [#3674](https://github.com/juanfont/headscale/pull/3674)
+- An unknown key in the configuration file stops headscale. An unknown `HEADSCALE_*` variable only logs a warning, as other software uses the prefix. [#3674](https://github.com/juanfont/headscale/pull/3674)
+- A removed key stops headscale and names its replacement. Remove these, which have none: `changes_check_interval`, `database.gorm.prepare_stmt`, `grpc_allow_insecure`, `grpc_listen_addr`, `metrics_enabled`, `node_update_check_interval`, `oidc.namespace`, `oidc.user` and `tls_client_auth_mode`. [#3674](https://github.com/juanfont/headscale/pull/3674)
+- `/debug/config` prints the configuration as `headscale generate config --running` does, in JSON: key names such as `server_url` instead of Go field names such as `ServerURL`, and durations as text such as `3h` instead of nanoseconds. Update scripts that read it. [#3677](https://github.com/juanfont/headscale/pull/3677)
+- `derp.server.stun.enabled` and `tuning.notifier_send_timeout` are removed: they had no effect. [#3677](https://github.com/juanfont/headscale/pull/3677)
+- Configuration keys are lower case: `Server_URL:` is an unknown key. A setting written both dotted and nested, such as `log.level` next to `log: {level: …}`, is an error. [#3674](https://github.com/juanfont/headscale/pull/3674) [#3677](https://github.com/juanfont/headscale/pull/3677)
+- Every value must fit its key's type, even when its feature is off. A duration needs a unit (`30s`, not `30`), and `log.level` must be a level name. [#3677](https://github.com/juanfont/headscale/pull/3677)
+- `oidc.client_secret_path` is removed. Set `oidc.client_secret: "file:<path>"` instead. [#3674](https://github.com/juanfont/headscale/pull/3674)
+- `policy.mode` must be `file` or `database`. Another value used to start headscale with no policy, allowing all traffic. [#3669](https://github.com/juanfont/headscale/pull/3669)
+- The root `config-example.yaml` is removed; `headscale generate config` prints it. Packagers can run it at build time. [#3680](https://github.com/juanfont/headscale/pull/3680)
+- `listen_addr` defaults to `0.0.0.0:8080`, every IPv4 and IPv6 address; without it, headscale used to listen on a random port. A firewall that covers only IPv4 leaves the port open on IPv6. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- `derp.urls` defaults to Tailscale's DERP map, and `derp.auto_update_enabled` to `true`. Set `derp.urls: []` to use only your own relays. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- `prefixes.v4` and `prefixes.v6` default to the Tailscale ranges, so a configuration with one family now gives new nodes both; `headscale nodes backfillips` adds the other to existing nodes. Set the other to `""` to keep one, e.g. `prefixes.v6: ""`. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- MagicDNS stays on by default, now under `tailnet.internal`, the new default of `dns.base_domain`. With `dns.magic_dns: false`, node names become FQDNs under it; set `dns.base_domain: ""` to keep bare names. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- `node.ephemeral.inactivity_timeout` defaults to `30m`, the value of every shipped example since 0.23; it was `120s`. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- A key with no value, such as `v6:`, takes its default, and headscale warns about it. Write `""` or `[]` to clear a key. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- A `HEADSCALE_*` variable set to `""` clears a key, as `""` does in the file: `HEADSCALE_PREFIXES_V6='""'`. An empty variable still counts as unset. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- `headscale serve` exits with status 78 when it rejects the configuration file it loaded, and the deb package and the NixOS module leave it stopped instead of restarting it. The deb package starts or restarts headscale only when `headscale check config` passes. [#3683](https://github.com/juanfont/headscale/pull/3683)
 
 #### CLI
 
 - `--output json` / `--output yaml` now emit the API's shape — camelCase fields, string-encoded IDs, RFC3339 timestamps — instead of the old Protobuf encoding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - `headscale policy` renames the database-bypass flag from `--bypass-grpc-and-access-database-directly` to `--bypass-server-and-access-database-directly` [#3324](https://github.com/juanfont/headscale/pull/3324)
+- `headscale policy check` is now `headscale check policy`. Like `headscale policy set`, it refuses an empty file: use `{}` to allow all. [#3668](https://github.com/juanfont/headscale/pull/3668)
+- `headscale configtest` is now `headscale check config`, which checks only the configuration. `headscale check all` also checks every file it names. [#3669](https://github.com/juanfont/headscale/pull/3669)
+- The hidden `dumpConfig` command is removed. `headscale generate config --running` prints the running server's configuration. [#3680](https://github.com/juanfont/headscale/pull/3680)
 
 #### NixOS module
 
 - `settings.ephemeral_node_inactivity_timeout` is removed; set `settings.node.ephemeral.inactivity_timeout`, which headscale reads instead
 - `settings.dns.split` is removed; headscale never read it, set `settings.dns.nameservers.split`
-- `settings.tls_*` options move to `settings.tls.*`; old `settings.tls_*` values still work [#3554](https://github.com/juanfont/headscale/pull/3554)
+- `settings.tls_*` options move to `settings.tls.*`; old `settings.tls_*` values are rejected [#3554](https://github.com/juanfont/headscale/pull/3554) [#3674](https://github.com/juanfont/headscale/pull/3674)
+- The module is rebuilt on headscale's configuration, and `settings.server_url` has no default: set it. `nix/README.md` maps each removed or renamed option, such as `address`, `port`, `serverUrl`, `openIdConnect.*` and `tls.letsencrypt.*`, to its replacement. [#3682](https://github.com/juanfont/headscale/pull/3682)
+- `services.headscale.package` defaults to this flake's headscale, as the checks need `headscale check`. [#3682](https://github.com/juanfont/headscale/pull/3682)
+- Every `settings` value is typed, and one that does not fit fails evaluation and names the option: `null`, a listen address without a port, a duration without a unit, or a key or state path, such as `noise.private_key_path`, that is relative or in the Nix store. [#3680](https://github.com/juanfont/headscale/pull/3680) [#3682](https://github.com/juanfont/headscale/pull/3682)
+- `settings.oidc.client_secret` and `settings.database.postgres.pass` take only a `file:` reference, not a literal secret, and replace `settings.oidc.client_secret_path` and `settings.database.postgres.password_file`. Load the secret with `LoadCredential`, as `nix/README.md` shows. [#3680](https://github.com/juanfont/headscale/pull/3680) [#3682](https://github.com/juanfont/headscale/pull/3682)
+- `services.headscale.user` and `services.headscale.group` are read-only: headscale always runs as `headscale:headscale`. Remove both settings. [#3682](https://github.com/juanfont/headscale/pull/3682)
+- A `settings.cli` key fails evaluation: headscale never read it, and `cli.api_key` landed in the Nix store. Move it to `~/.config/headscale/config.yaml` or `HEADSCALE_CLI_*` variables. [#3682](https://github.com/juanfont/headscale/pull/3682)
+- `/etc/headscale/config.yaml` is no longer written. Drop `-c /etc/headscale/config.yaml` from scripts: the CLI finds the socket without it. [#3682](https://github.com/juanfont/headscale/pull/3682)
+- A configuration or policy that headscale rejects fails `nixos-rebuild build` and stops a switch. The checks do not see the unit's `EnvironmentFile`: move secrets from there to `file:`, or set `check.config = false`. [#3682](https://github.com/juanfont/headscale/pull/3682)
+- Other settings take headscale's defaults: `listen_addr` is `0.0.0.0:8080`, not `127.0.0.1:8080`, `derp.update_frequency` is `3h`, not `24h`, and `dns.base_domain` is `tailnet.internal`, not empty. Set `settings.listen_addr = "127.0.0.1:8080"` to keep the old bind. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- nixpkgs' `services.headscale` writes the flat `tls_letsencrypt_*` keys by default, which headscale now rejects, so bumping only the package there breaks it. Use this repository's module until nixpkgs follows. [#3674](https://github.com/juanfont/headscale/pull/3674)
 
 ### Changes
 
@@ -257,6 +410,17 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 - The v1 API stores an API key or pre-auth key created without `expiration` as one that never expires, and reports its expiration as `null`. It was stored as already expired and rejected on first use. The CLI always sends an expiration and was not affected. Keys created this way before stay expired; create new ones [#3254](https://github.com/juanfont/headscale/pull/3254)
 - The v2 API accepts an auth key create that leaves out `tags`, as Tailscale does [#3254](https://github.com/juanfont/headscale/pull/3254)
 - The v2 API refuses an auth key `expirySeconds` below 0 or above 90 days, as Tailscale does; a negative value used to mean 90 days [#3254](https://github.com/juanfont/headscale/pull/3254)
+
+- Headscale also finds `config.hujson`, and looks in `$XDG_CONFIG_HOME/headscale` and `$XDG_CONFIG_DIRS`. [#3674](https://github.com/juanfont/headscale/pull/3674)
+- `HEADSCALE_DEBUG_DUMP_CONFIG` prints the configuration as YAML, with secrets redacted. [#3677](https://github.com/juanfont/headscale/pull/3677)
+- Programs that embed headscale start from `config.Default()`, set `server_url` and pass it to `hscontrol.NewHeadscale`, which validates it. [#3677](https://github.com/juanfont/headscale/pull/3677) [#3683](https://github.com/juanfont/headscale/pull/3683)
+- Add `GET /api/v1/config`, the running configuration with secrets redacted. [#3680](https://github.com/juanfont/headscale/pull/3680)
+- Add `headscale generate nixos-options`. Each release attaches its output as `headscale-nixos-options.nix`. [#3680](https://github.com/juanfont/headscale/pull/3680)
+- `dns.challenge.resolvers` defaults to Quad9 (`9.9.9.9:53`, `149.112.112.112:53`). [#3680](https://github.com/juanfont/headscale/pull/3680)
+- The NixOS unit no longer has `CAP_CHOWN`: its capability set is empty unless `listen_addr` needs `CAP_NET_BIND_SERVICE`. [#3682](https://github.com/juanfont/headscale/pull/3682)
+- `dns.override_local_dns` no longer needs `dns.nameservers.global`. Without one, clients keep their own DNS. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- A DERP map refresh that retries an unreachable source no longer delays node expiry and other scheduled tasks. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- The flake's `headscale-docker` image carries CA certificates, so it can fetch HTTPS DERP maps. [#3683](https://github.com/juanfont/headscale/pull/3683)
 
 ## 0.29.7 (2026-10-30)
 
