@@ -24,8 +24,13 @@ distributions are Ubuntu 22.04 or newer, Debian 12 or newer.
     sudo apt install ./headscale.deb
     ```
 
-1. [Configure headscale by editing the configuration file](../../ref/configuration.md). An up-to date example
-   configuration file is also available in `/usr/share/doc/headscale/examples/config-example.yaml`:
+1. [Configure headscale by editing the configuration file](../../ref/configuration.md). A new install gets the output
+   of `headscale generate config`: every key with its default and documentation. Set `server_url`, the only key without
+   a default. The package starts or restarts headscale only when `headscale check config` passes, and otherwise prints
+   what to fix. The check reads `/etc/headscale/config.yaml`, not `systemctl edit` drop-ins: if you configure headscale
+   there, start it yourself. A headscale that refuses its configuration, after a reboot for instance, stays stopped
+   until you fix the configuration and restart it. A copy of the shipped file is in
+   `/usr/share/doc/headscale/examples/config-example.yaml`:
 
     ```shell
     sudo nano /etc/headscale/config.yaml
@@ -82,24 +87,19 @@ managed by systemd.
      headscale
     ```
 
-1. Download the example configuration for your chosen version and save it as: `/etc/headscale/config.yaml`. Adjust the
-   configuration to suit your local environment. See [Configuration](../../ref/configuration.md) for details.
+1. Write the example configuration of the installed version to `/etc/headscale/config.yaml`. Adjust the configuration
+   to suit your local environment: set `server_url`, the only key without a default; `headscale check config` names
+   anything else it rejects. See [Configuration](../../ref/configuration.md) for details.
 
     ```shell
     sudo mkdir -p /etc/headscale
+    headscale generate config | sudo tee /etc/headscale/config.yaml > /dev/null
     sudo nano /etc/headscale/config.yaml
     ```
 
 1. Copy [headscale's systemd service file](https://github.com/juanfont/headscale/blob/main/packaging/systemd/headscale.service)
    to `/etc/systemd/system/headscale.service` and adjust it to suit your local setup. The following parameters likely need
    to be modified: `ExecStart`, `WorkingDirectory`, `ReadWritePaths`.
-
-1. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with a path that is writable by the
-   `headscale` user or group:
-
-    ```yaml title="config.yaml"
-    unix_socket: /var/run/headscale/headscale.sock
-    ```
 
 1. Reload systemd to load the new configuration file:
 

@@ -24,8 +24,21 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
     cd ./headscale
     ```
 
-1. Download the example configuration for your chosen version and save it as: `$(pwd)/config/config.yaml`. Adjust the
-   configuration to suit your local environment. See [Configuration](../../ref/configuration.md) for details.
+1. Write a configuration to `./config/config.yaml`. `server_url`, the URL clients reach headscale at, is the only key
+   without a default, so one line is a configuration:
+
+    ```shell
+    echo 'server_url: https://headscale.example.com' > ./config/config.yaml
+    ```
+
+    Or write the example configuration of your chosen version, every key with its default and documentation, and set
+    `server_url` in it. See [Configuration](../../ref/configuration.md) for details.
+
+    ```shell
+    docker run --rm headscale/headscale:<VERSION> generate config > ./config/config.yaml
+    ```
+
+    The published port 9090 serves `/metrics` only with `metrics_listen_addr: 0.0.0.0:9090` in the configuration.
 
 1. Start headscale from within the previously created `./headscale` directory:
 
