@@ -2,23 +2,31 @@ package types
 
 import (
 	"bytes"
+	"cmp"
+	"encoding"
 	stdjson "encoding/json"
+	"errors"
 	"fmt"
 	"maps"
+	"math"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/v2"
+	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/cast"
 	"github.com/tailscale/hujson"
 )
 
@@ -45,13 +53,17 @@ var reservedEnvNames = []string{
 }
 
 // configSource is the layered configuration: defaults, then file, then
-// environment. Keys are lowercase; accessors coerce values, so a string from
-// the environment reads as a bool, number or duration.
+// environment, with lowercase keys. [configSource.decode] turns it into a
+// [Config].
 type configSource struct {
 	k         *koanf.Koanf
 	file      string
 	fileBytes []byte
-	warnings  []string
+	// keys is the file parsed for the positions of its keys, or nil.
+	keys     *keyNode
+	warnings []string
+	// envVars names the variable that set each key, for errors.
+	envVars map[string]string
 }
 
 func configEnvName(key string) string {
@@ -178,8 +190,38 @@ func normaliseConfigValue(v any) any {
 	return v
 }
 
+// schemaKey is a key of the configuration; an open map's keys are the
+// user's.
+type schemaKey struct {
+	Path string
+	Open bool
+}
+
+func schemaKeys() []schemaKey {
+	fields := ConfigFields(&Config{})
+
+	keys := make([]schemaKey, len(fields))
+	for i, f := range fields {
+		keys[i] = schemaKey{Path: f.Path, Open: f.Open}
+	}
+
+	return keys
+}
+
+func openMapKeys() []string {
+	var open []string
+
+	for _, k := range schemaKeys() {
+		if k.Open {
+			open = append(open, k.Path)
+		}
+	}
+
+	return open
+}
+
 func isOpenMapPath(path string) bool {
-	for _, o := range openMapKeys {
+	for _, o := range openMapKeys() {
 		if path == o || strings.HasPrefix(path, o+".") {
 			return true
 		}
@@ -194,7 +236,7 @@ func isOpenMapPath(path string) bool {
 func configPathParts(path string) []string {
 	parts := strings.Split(path, ".")
 	for i := 1; i < len(parts); i++ {
-		if slices.Contains(openMapKeys, strings.Join(parts[:i], ".")) {
+		if slices.Contains(openMapKeys(), strings.Join(parts[:i], ".")) {
 			return append(parts[:i], strings.Join(parts[i:], "."))
 		}
 	}
@@ -267,9 +309,11 @@ func joinConfigPath(prefix, name string) string {
 // newConfigSource loads defaults, the config file found via path/isFile and
 // environ (os.Environ form), and rejects removed and unknown file keys.
 func newConfigSource(path string, isFile bool, environ []string) (*configSource, error) {
-	s := &configSource{k: koanf.New(".")}
+	s := &configSource{k: koanf.New("."), envVars: map[string]string{}}
 
-	err := s.k.Load(confmap.Provider(configDefaults, "."), nil)
+	d := defaultConfig()
+
+	err := s.k.Load(confmap.Provider(plainMap(&d, false), ""), nil)
 	if err != nil {
 		return nil, fmt.Errorf("loading defaults: %w", err)
 	}
@@ -314,6 +358,7 @@ func (s *configSource) loadFile() error {
 	}
 
 	s.fileBytes = raw
+	s.keys = keyTree(raw)
 
 	var m map[string]any
 	if err == nil {
@@ -349,7 +394,8 @@ func (s *configSource) loadFile() error {
 func configKeySets() (map[string]bool, map[string]bool) {
 	leaf, branch := map[string]bool{}, map[string]bool{}
 
-	for _, k := range slices.Concat(configKeys, openMapKeys) {
+	for _, key := range schemaKeys() {
+		k := key.Path
 		leaf[k] = true
 
 		parts := strings.Split(k, ".")
@@ -496,7 +542,7 @@ func (s *configSource) checkKeys(v *configValidator, m map[string]any) {
 				// key below the open map (provider.config) is walked from the
 				// map, so its contents get the role they have when nested.
 				root, below := path, child
-				if !slices.Contains(openMapKeys, path) {
+				if !slices.Contains(openMapKeys(), path) {
 					parts := configPathParts(path)
 					root = strings.Join(parts[:len(parts)-1], ".")
 					below = map[string]any{parts[len(parts)-1]: val}
@@ -524,9 +570,10 @@ func (s *configSource) checkKeys(v *configValidator, m map[string]any) {
 	s.checkOverlaps(v, m)
 }
 
-// position renders " (file:line:col)" when the key can be located.
+// position renders " (file:line:col)" when the key can be located, written
+// nested, dotted or mixed, else " (file)".
 func (s *configSource) position(path string) string {
-	line, col, ok := keyPosition(s.fileBytes, strings.Split(path, "."))
+	line, col, ok := dottedPosition(s.keys, strings.Split(path, "."))
 	if !ok {
 		return " (" + s.file + ")"
 	}
@@ -550,18 +597,21 @@ func (s *configSource) loadEnv(environ []string) error {
 
 	openLayer := map[string]string{}
 
-	for _, key := range slices.Concat(configKeys, openMapKeys) {
-		name := configEnvName(key)
+	for _, key := range schemaKeys() {
+		name := configEnvName(key.Path)
 		names[name] = true
 
 		val, ok := env[name]
 		switch {
 		case !ok:
-		case slices.Contains(openMapKeys, key):
-			openLayer[key] = val
+			continue
+		case key.Open:
+			openLayer[key.Path] = val
 		default:
-			layer[key] = val
+			layer[key.Path] = val
 		}
+
+		s.envVars[key.Path] = name
 	}
 
 	// Other software shares the prefix (a Kubernetes Service named
@@ -586,42 +636,26 @@ func (s *configSource) loadEnv(environ []string) error {
 	}
 
 	// A variable for an open map replaces the file's map instead of merging
-	// into it. The value stays a raw string, which the cast accessors parse as
-	// JSON, unless the JSON object held a removed form, dropped here, or a
-	// per-field variable (HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME) has to be
-	// layered on top: then the parsed object is set. The provider's is always
-	// parsed, as its name is looked up inside it; one that does not decode is
-	// no provider.
+	// into it. Its JSON object is set without the removed forms it holds;
+	// a value that is not one stays a string, which decode reports.
 	for _, key := range slices.Sorted(maps.Keys(openLayer)) {
 		val := openLayer[key]
 		s.k.Delete(key)
 
-		var parsed map[string]any
-
-		dropped := false
+		var (
+			v      any = val
+			parsed map[string]any
+		)
 
 		// A failed decode may still have filled part of parsed: never used.
-		decoded := stdjson.Unmarshal([]byte(val), &parsed) == nil && parsed != nil
-		if decoded {
+		if stdjson.Unmarshal([]byte(val), &parsed) == nil && parsed != nil {
 			// The hint names keys: inside the JSON they are keys, not variables.
 			name := configEnvName(key)
 			walkRemoved(key, parsed, false, func(p string, r removedKey) {
 				s.warnings = append(s.warnings, r.reason("key", p+" in "+name)+"; "+r.hint())
-				dropped = true
 			})
-		}
 
-		shared := slices.ContainsFunc(slices.Collect(maps.Keys(layer)), func(k string) bool {
-			return strings.HasPrefix(k, key+".")
-		})
-
-		var v any = val
-
-		switch {
-		case decoded && (dropped || shared || key == providerKey):
 			v = parsed
-		case key == providerKey:
-			continue
 		}
 
 		err := s.k.Set(key, v)
@@ -638,19 +672,36 @@ func (s *configSource) loadEnv(environ []string) error {
 	return s.foldProviderEnv(env)
 }
 
-// foldProviderEnv sets each HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING> of
-// the provider named once the rest is loaded. Settings depend on the
-// provider, so configKeys cannot list them; a variable no setting of it has
-// is ignored, as the prefix is reserved.
+// foldProviderEnv sets HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME, then each
+// HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING> of the provider named once the
+// rest is loaded. Settings depend on the provider, so the schema cannot list
+// them; a variable no setting of it has is ignored, as the prefix is
+// reserved.
 func (s *configSource) foldProviderEnv(env map[string]string) error {
-	settings := cast.ToStringMap(s.k.Get(providerKey))
-	folded := false
+	settings, ok := s.k.Get(providerKey).(map[string]any)
+	if !ok {
+		if s.k.Exists(providerKey) {
+			// Not an object: decode reports it.
+			return nil
+		}
 
-	for _, setting := range hsdns.SettingNames(cast.ToString(settings["name"])) {
-		if v := env[configEnvName(providerKey+"."+setting)]; v != "" {
+		settings = map[string]any{}
+	}
+
+	folded := false
+	fold := func(setting string) {
+		key := providerKey + "." + setting
+		if v := env[configEnvName(key)]; v != "" {
 			settings[setting] = v
+			s.envVars[key] = configEnvName(key)
 			folded = true
 		}
+	}
+
+	fold("name")
+
+	for _, setting := range hsdns.SettingNames(DNSChallengeConfig{ProviderSettings: settings}.ProviderName()) {
+		fold(setting)
 	}
 
 	if !folded {
@@ -693,51 +744,6 @@ func (s *configSource) File() string { return s.file }
 
 // Warnings returns non-fatal findings from loading.
 func (s *configSource) Warnings() []string { return s.warnings }
-
-func (s *configSource) Get(key string) any { return s.k.Get(strings.ToLower(key)) }
-
-func (s *configSource) IsSet(key string) bool { return s.k.Exists(strings.ToLower(key)) }
-
-func (s *configSource) String(key string) string { return cast.ToString(s.Get(key)) }
-
-func (s *configSource) Bool(key string) bool { return cast.ToBool(s.Get(key)) }
-
-func (s *configSource) Int(key string) int { return cast.ToInt(s.Get(key)) }
-
-func (s *configSource) Int64(key string) int64 { return cast.ToInt64(s.Get(key)) }
-
-func (s *configSource) Duration(key string) time.Duration { return cast.ToDuration(s.Get(key)) }
-
-func (s *configSource) StringSlice(key string) []string { return cast.ToStringSlice(s.Get(key)) }
-
-func (s *configSource) StringMap(key string) map[string]any { return cast.ToStringMap(s.Get(key)) }
-
-func (s *configSource) StringMapString(key string) map[string]string {
-	return cast.ToStringMapString(s.Get(key))
-}
-
-func (s *configSource) StringMapStringSlice(key string) map[string][]string {
-	return cast.ToStringMapStringSlice(s.Get(key))
-}
-
-// UnmarshalKey decodes key into out, weakly typed: values from the
-// environment are strings.
-func (s *configSource) UnmarshalKey(key string, out any) error {
-	if !s.IsSet(key) {
-		return nil
-	}
-
-	return s.k.UnmarshalWithConf(strings.ToLower(key), out, koanf.UnmarshalConf{
-		DecoderConfig: &mapstructure.DecoderConfig{
-			WeaklyTypedInput: true,
-			TagName:          "mapstructure",
-			DecodeHook: mapstructure.ComposeDecodeHookFunc(
-				mapstructure.StringToTimeDurationHookFunc(),
-				mapstructure.StringToWeakSliceHookFunc(","),
-			),
-		},
-	})
-}
 
 // keyEntry is one key of the file as written, for finding paths that the file
 // spells in more than one form.
@@ -828,10 +834,528 @@ func (s *configSource) checkOverlaps(v *configValidator, m map[string]any) {
 
 // positionOf renders " (file:line:col)" for a key written as names.
 func (s *configSource) positionOf(names []string) string {
-	line, col, ok := keyPosition(s.fileBytes, names)
+	line, col, ok := keyPosition(s.keys, names)
 	if !ok {
 		return ""
 	}
 
 	return fmt.Sprintf(" (%s:%d:%d)", s.file, line, col)
+}
+
+// decode decodes the layers into a Config. Every value that does not fit
+// its key is reported, in one error.
+func (s *configSource) decode() (*Config, error) {
+	var cfg Config
+
+	err := s.k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{
+		Tag: "koanf",
+		DecoderConfig: &mapstructure.DecoderConfig{
+			ErrorUnused: true,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.DecodeHookFuncValue(scalarHook),
+				mapstructure.TextUnmarshallerHookFunc(),
+			),
+		},
+	})
+	if err != nil {
+		return nil, s.decodeErrors(err)
+	}
+
+	cfg.ServerURL = strings.TrimRight(cfg.ServerURL, "/")
+	for i, p := range cfg.TrustedProxies {
+		cfg.TrustedProxies[i] = p.Masked()
+	}
+
+	cfg.ConfigDir = s.configDir()
+
+	return &cfg, nil
+}
+
+// configDir is where relative paths in the configuration are resolved: the
+// config file's directory, or the working directory without a file.
+func (s *configSource) configDir() string {
+	dir := "."
+	if s.file != "" {
+		dir = filepath.Dir(s.file)
+	}
+
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return dir
+	}
+
+	return abs
+}
+
+// decodeErrors turns each value mapstructure rejected into a ConfigError
+// naming its key and where it was set.
+func (s *configSource) decodeErrors(err error) error {
+	v := &configValidator{}
+	seen := map[string]bool{}
+
+	walkErrTree(err, func(e error) {
+		de, ok := e.(*mapstructure.DecodeError) //nolint:errorlint // every node is visited
+		if !ok {
+			return
+		}
+
+		// An element or entry is reported on its key.
+		key, _, _ := strings.Cut(de.Name(), "[")
+
+		var leaf *ConfigError
+		if !errors.As(de.Unwrap(), &leaf) {
+			leaf = &ConfigError{Reason: de.Unwrap().Error(), Cause: de.Unwrap()}
+
+			// The decoder's own error keeps the value (UnconvertibleTypeError's
+			// Value); its text does not.
+			if hiddenValue(key) {
+				leaf.Cause = nil
+			}
+		}
+
+		ce := *leaf
+		ce.Reason = key + " " + leaf.Reason + s.origin(key)
+
+		if !hiddenValue(key) {
+			ce.Current = []KV{{key, s.k.Get(key)}}
+		}
+
+		if !seen[ce.Reason] {
+			seen[ce.Reason] = true
+			v.Add(&ce)
+		}
+	})
+
+	if !v.HasErrors() {
+		return err
+	}
+
+	return v.Err()
+}
+
+// origin renders where key's value came from: its variable, else its
+// position in the file.
+func (s *configSource) origin(key string) string {
+	if name, ok := s.envVars[key]; ok {
+		return " (env " + name + ")"
+	}
+
+	if s.file == "" {
+		return ""
+	}
+
+	return s.position(key)
+}
+
+// hiddenValue reports whether key's value may be a credential, which errors
+// do not show: a secret, a URL (its userinfo) or a DNS provider setting.
+func hiddenValue(key string) bool {
+	if key == providerKey || strings.HasPrefix(key, providerKey+".") || slices.Contains(URLKeys, key) {
+		return true
+	}
+
+	for _, f := range ConfigFields(&Config{}) {
+		if f.Path != key {
+			continue
+		}
+
+		return f.Field.Type == reflect.TypeFor[Secret]()
+	}
+
+	return false
+}
+
+var (
+	durationType  = reflect.TypeFor[time.Duration]()
+	fileModeType  = reflect.TypeFor[FileMode]()
+	prefixType    = reflect.TypeFor[netip.Prefix]()
+	prefixPtrType = reflect.TypeFor[*netip.Prefix]()
+)
+
+// scalarHook converts a value as written into what its field's type takes,
+// before mapstructure and TextUnmarshaler see it. A string is the form
+// variables take, so it may stand for a number, bool, list or map.
+func scalarHook(from, to reflect.Value) (any, error) {
+	data := from.Interface()
+	s, isString := data.(string)
+
+	switch t := to.Type(); {
+	case t == durationType:
+		return toDuration(from)
+	case t == fileModeType && !isString:
+		// YAML reads an unquoted 0770 as the integer 504, which cannot be
+		// told apart from a literal 504.
+		return nil, &ConfigError{
+			Reason:  "must be quoted",
+			Maximum: `"0777"`,
+			Hint:    `quote the value, e.g. "0770"; unquoted, YAML reads 0770 as the number 504`,
+			Cause:   util.ErrInvalidFileMode,
+		}
+	case t == prefixPtrType && isString && s == "":
+		// Unset. Typed: the next hook reads its type.
+		return (*netip.Prefix)(nil), nil
+	case t == prefixType && isString:
+		_, err := netip.ParsePrefix(s)
+		if err != nil {
+			return nil, &ConfigError{
+				Reason: "is not a valid CIDR",
+				Detail: err.Error(),
+				Hint:   `use CIDR form, e.g. "100.64.0.0/10"`,
+				Cause:  err,
+			}
+		}
+	case t.Kind() == reflect.String:
+		if text, ok := scalarText(from); ok {
+			return text, nil
+		}
+	case t.Kind() == reflect.Bool:
+		return toBool(from)
+	case t.Kind() >= reflect.Int && t.Kind() <= reflect.Int64:
+		return toInt(from, t)
+	case t.Kind() == reflect.Slice && isString:
+		return toList(s, t.Elem())
+	case t.Kind() == reflect.Map && isString:
+		return toObject(s)
+	}
+
+	return data, nil
+}
+
+// scalarText is a number or bool as text.
+func scalarText(v reflect.Value) (string, bool) {
+	switch {
+	case v.Kind() == reflect.Bool:
+		return strconv.FormatBool(v.Bool()), true
+	case v.CanInt():
+		return strconv.FormatInt(v.Int(), 10), true
+	case v.CanUint():
+		return strconv.FormatUint(v.Uint(), 10), true
+	case v.CanFloat():
+		return strconv.FormatFloat(v.Float(), 'f', -1, 64), true
+	}
+
+	return "", false
+}
+
+func toDuration(v reflect.Value) (any, error) {
+	unit := &ConfigError{Reason: "needs a unit", Hint: `write the unit, e.g. "30s", "5m" or "90d"`}
+
+	if v.Kind() != reflect.String {
+		if _, ok := scalarText(v); !ok || v.Kind() == reflect.Bool {
+			return v.Interface(), nil
+		}
+
+		if v.IsZero() {
+			return time.Duration(0), nil
+		}
+
+		return nil, unit
+	}
+
+	s := v.String()
+
+	d, err := time.ParseDuration(s)
+	if err == nil {
+		return d, nil
+	}
+
+	md, err := model.ParseDuration(s)
+	if err == nil {
+		return time.Duration(md), nil
+	}
+
+	_, err = strconv.ParseFloat(s, 64)
+	if err == nil {
+		return nil, unit
+	}
+
+	return nil, &ConfigError{Reason: "is not a duration", Hint: unit.Hint}
+}
+
+func toBool(v reflect.Value) (any, error) {
+	text, ok := reflect.TypeAssert[string](v)
+	if !ok {
+		if text, ok = scalarText(v); !ok || v.Kind() == reflect.Bool {
+			return v.Interface(), nil
+		}
+	}
+
+	b, err := strconv.ParseBool(text)
+	if err != nil {
+		return nil, &ConfigError{Reason: "is not a boolean", Hint: "use true or false", Cause: err}
+	}
+
+	return b, nil
+}
+
+// toInt takes a whole number in t's range, written as one or as text.
+func toInt(v reflect.Value, t reflect.Type) (any, error) {
+	var (
+		n     int64
+		whole bool
+	)
+
+	switch {
+	case v.Kind() == reflect.String:
+		i, err := strconv.ParseInt(v.String(), 10, 64)
+		if errors.Is(err, strconv.ErrRange) {
+			return nil, &ConfigError{Reason: "is out of range"}
+		}
+
+		n, whole = i, err == nil
+	case v.CanInt():
+		n, whole = v.Int(), true
+	case v.CanUint():
+		if v.Uint() > math.MaxInt64 {
+			return nil, &ConfigError{Reason: "is out of range"}
+		}
+
+		n, whole = int64(v.Uint()), true //nolint:gosec // bounded above
+	case v.CanFloat():
+		f := v.Float()
+		if f < math.MinInt64 || f >= math.MaxInt64 {
+			return nil, &ConfigError{Reason: "is out of range"}
+		}
+
+		n, whole = int64(f), f == math.Trunc(f)
+	default:
+		return v.Interface(), nil
+	}
+
+	if !whole {
+		return nil, &ConfigError{Reason: "is not an integer"}
+	}
+
+	if reflect.Zero(t).OverflowInt(n) {
+		return nil, &ConfigError{Reason: "is out of range"}
+	}
+
+	return n, nil
+}
+
+// toList splits a list written as one string: as JSON when it starts with
+// "[", as a list of objects must, else on whitespace.
+func toList(s string, elem reflect.Type) (any, error) {
+	object := elem.Kind() == reflect.Struct && !reflect.PointerTo(elem).Implements(textUnmarshalerType)
+
+	if !object && !strings.HasPrefix(strings.TrimSpace(s), "[") {
+		fields := strings.Fields(s)
+
+		list := make([]any, len(fields))
+		for i, f := range fields {
+			list[i] = f
+		}
+
+		return list, nil
+	}
+
+	var list []any
+
+	err := stdjson.Unmarshal([]byte(s), &list)
+	if err != nil {
+		hint := `write the list as JSON, e.g. ["a", "b"]`
+		if object {
+			hint = `write the list as JSON, e.g. [{"name": "a.example.com", "type": "A", "value": "100.64.0.1"}]`
+		}
+
+		return nil, &ConfigError{Reason: "is not a JSON list", Hint: hint, Cause: err}
+	}
+
+	return list, nil
+}
+
+func toObject(s string) (any, error) {
+	var m map[string]any
+
+	err := stdjson.Unmarshal([]byte(s), &m)
+	if err != nil || m == nil {
+		return nil, &ConfigError{
+			Reason: "is not a JSON object",
+			Hint:   `write the map as JSON, e.g. {"example.com": ["1.1.1.1"]}`,
+			Cause:  err,
+		}
+	}
+
+	return m, nil
+}
+
+// plainMap is cfg as nested maps of plain values, keyed as in a file: what
+// the defaults layer loads and a parser marshals. With redact, a secret
+// shows only a file: reference, a URL no userinfo, and every DNS provider
+// setting but a scalar name and file: references is hidden: any of them, a
+// number included, may be a credential.
+func plainMap(cfg *Config, redact bool) map[string]any {
+	out := map[string]any{}
+
+	if redact {
+		// HTTPURL and Secret values redact themselves, plain strings not.
+		r := cfg.RedactedURLs()
+		cfg = &r
+	}
+
+	for _, f := range ConfigFields(cfg) {
+		v := plainValue(f.Value, redact)
+
+		switch settings, isMap := v.(map[string]any); {
+		case f.Field.Type == prefixPtrType && f.Value.IsNil():
+			// An explicit unset, which survives a default.
+			v = ""
+		case redact && isMap && f.Path == providerKey:
+			v = redactProvider(settings)
+		}
+
+		if v == nil {
+			continue
+		}
+
+		parts := strings.Split(f.Path, ".")
+		m := out
+
+		for _, p := range parts[:len(parts)-1] {
+			child, ok := m[p].(map[string]any)
+			if !ok {
+				child = map[string]any{}
+				m[p] = child
+			}
+
+			m = child
+		}
+
+		m[parts[len(parts)-1]] = v
+	}
+
+	return out
+}
+
+// maxExactJSONInt is the largest integer a float64, as JSON parsers read
+// numbers, holds exactly.
+const maxExactJSONInt = 1 << 53
+
+// plainValue is v as a parser writes it, or nil to leave it out.
+func plainValue(v reflect.Value, redact bool) any {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return nil
+		}
+
+		v = v.Elem()
+	}
+
+	switch x := v.Interface().(type) {
+	case time.Duration:
+		return x.String()
+	case Secret:
+		if redact {
+			return x.Redacted()
+		}
+
+		return string(x)
+	case HTTPURL:
+		// As written: its JSON form drops userinfo.
+		if redact {
+			return x.Redacted()
+		}
+
+		return string(x)
+	case encoding.TextMarshaler:
+		text, err := x.MarshalText()
+		if err != nil {
+			return nil
+		}
+
+		return string(text)
+	}
+
+	switch v.Kind() { //nolint:exhaustive // the kinds Config holds; default keeps the rest as is
+	case reflect.String:
+		return v.String()
+	case reflect.Bool:
+		return v.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if n := v.Int(); n > maxExactJSONInt || n < -maxExactJSONInt {
+			// The integer hook takes it back from text.
+			return strconv.FormatInt(n, 10)
+		}
+
+		return int(v.Int())
+	case reflect.Slice:
+		if v.IsNil() {
+			return nil
+		}
+
+		list := make([]any, v.Len())
+		for i := range list {
+			list[i] = plainValue(v.Index(i), redact)
+		}
+
+		return list
+	case reflect.Map:
+		if v.IsNil() {
+			return nil
+		}
+
+		m := make(map[string]any, v.Len())
+
+		for iter := v.MapRange(); iter.Next(); {
+			if e := plainValue(iter.Value(), redact); e != nil {
+				m[fmt.Sprint(iter.Key().Interface())] = e
+			}
+		}
+
+		return m
+	case reflect.Struct:
+		// Without koanf tags (tailcfg.DNSRecord): its field names, lowercased.
+		m := map[string]any{}
+
+		for f, fv := range v.Fields() {
+			if f.IsExported() {
+				m[cmp.Or(f.Tag.Get("koanf"), strings.ToLower(f.Name))] = plainValue(fv, redact)
+			}
+		}
+
+		return m
+	default:
+		return v.Interface()
+	}
+}
+
+func redactProvider(settings map[string]any) map[string]any {
+	out := make(map[string]any, len(settings))
+	for k, v := range settings {
+		out[k] = redactLeaves(v)
+	}
+
+	// A name that is a map or list stays hidden: it is no name.
+	if _, ok := (DNSChallengeConfig{ProviderSettings: settings}).providerName(); ok {
+		if name, set := settings["name"]; set {
+			out["name"] = name
+		}
+	}
+
+	return out
+}
+
+func redactLeaves(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = redactLeaves(e)
+		}
+
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = redactLeaves(e)
+		}
+
+		return out
+	case string:
+		if strings.HasPrefix(x, "file:") {
+			return x
+		}
+	}
+
+	return "<redacted>"
 }

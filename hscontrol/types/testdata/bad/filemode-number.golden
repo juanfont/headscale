@@ -1,0 +1,4 @@
+Fatal config error: unix_socket_permission must be quoted ($DIR/config.yaml:1:1)
+  current: unix_socket_permission: 504
+  maximum: "0777"
+  hint: quote the value, e.g. "0770"; unquoted, YAML reads 0770 as the number 504

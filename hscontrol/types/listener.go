@@ -30,7 +30,7 @@ func (e *ListenerBindError) Error() string {
 func (e *ListenerBindError) Unwrap() error { return e.Err }
 
 // PortFromAddr resolves the numeric port of a TCP listen address.
-// Accepts host:port form with either a numeric port or one of the named
+// Accepts host:port form with either a numeric port from 0 to 65535 or one of the named
 // services "http" / "https". The named-service table is intentionally
 // hardcoded so this stays a pure string->int mapping with no network or
 // /etc/services lookups.
@@ -51,12 +51,12 @@ func PortFromAddr(addr string) (int, error) {
 		return 443, nil
 	}
 
-	p, err := strconv.Atoi(port)
+	p, err := strconv.ParseUint(port, 10, 16)
 	if err != nil {
 		return 0, fmt.Errorf("parse port from %q: %w", addr, err)
 	}
 
-	return p, nil
+	return int(p), nil
 }
 
 // listenersOverlap reports whether two parsed TCP listen addresses would
@@ -95,7 +95,7 @@ func isWildcardHost(h string) bool {
 // produces a ConfigError tied to its own YAML key, so an operator can
 // see exactly which value to fix instead of guessing from a paired
 // comparison.
-func validateListenerCollisions(v *configValidator) {
+func (c *Config) validateListenerCollisions(v *configValidator) {
 	type spec struct {
 		key, addr string
 		host      string
@@ -104,9 +104,9 @@ func validateListenerCollisions(v *configValidator) {
 		active    bool
 	}
 
-	listenAddr := src.String("listen_addr")
-	metricsAddr := src.String("metrics_listen_addr")
-	acmeAddr := src.String("tls.acme.http_listen")
+	listenAddr := string(c.Addr)
+	metricsAddr := string(c.MetricsAddr)
+	acmeAddr := string(c.TLS.ACME.HTTPListen)
 
 	listeners := []spec{
 		{key: "listen_addr", addr: listenAddr, active: listenAddr != ""},
@@ -115,8 +115,8 @@ func validateListenerCollisions(v *configValidator) {
 			key:  "tls.acme.http_listen",
 			addr: acmeAddr,
 			active: acmeAddr != "" &&
-				src.String("tls.acme.hostname") != "" &&
-				ACMEChallenge(src.String("tls.acme.challenge_type")) == HTTP01ChallengeType,
+				c.TLS.ACME.Hostname != "" &&
+				c.TLS.ACME.ChallengeType == HTTP01ChallengeType,
 		},
 	}
 

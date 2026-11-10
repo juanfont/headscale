@@ -1,0 +1,4 @@
+derp:
+  urls:
+    - https://derp.example.com/derp.json
+    - "://not-a-url"

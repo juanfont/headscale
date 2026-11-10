@@ -1,0 +1,6 @@
+dns:
+  extra_records:
+    - name: a.example.com
+      type: A
+      value: 100.64.0.1
+      ttl: 60

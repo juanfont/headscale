@@ -2,25 +2,29 @@ package types
 
 import (
 	"cmp"
-	"go/ast"
-	"go/parser"
-	"go/token"
+	"fmt"
+	"math"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	gocmp "github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 )
 
-func writeConfig(t *testing.T, name, content string) string {
+// writeConfig writes content as config.yaml and returns its path.
+func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 
-	p := filepath.Join(t.TempDir(), name)
+	p := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(p, []byte(content), 0o600))
 
 	return p
@@ -35,7 +39,7 @@ func TestConfigSource(t *testing.T) {
 		env       []string
 		errs      []string // substrings of the error
 		warns     []string // substrings, one per expected warning
-		check     func(t *testing.T, s *configSource)
+		check     func(t *testing.T, cfg *Config)
 	}{
 		{
 			name: "unknown file key",
@@ -84,40 +88,40 @@ func TestConfigSource(t *testing.T) {
 		{
 			name: "env shared with a removed key still sets the new key",
 			env:  []string{"HEADSCALE_LOG_LEVEL=debug", "HEADSCALE_TLS_CERT_PATH=/c"},
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.Equal(t, "debug", s.String("log.level"))
-				assert.Equal(t, "/c", s.String("tls.cert_path"))
+				assert.Equal(t, LogLevel("debug"), cfg.Log.Level)
+				assert.Equal(t, "/c", cfg.TLS.CertPath)
 			},
 		},
 		{
 			name: "keys are case-insensitive",
 			file: "Server_URL: https://x\ndns:\n  Nameservers:\n    Split:\n      Corp.Example.com: [10.0.0.1]\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.Equal(t, "https://x", s.String("server_url"))
+				assert.Equal(t, "https://x", cfg.ServerURL)
 				assert.Equal(t,
 					map[string][]string{"corp.example.com": {"10.0.0.1"}},
-					s.StringMapStringSlice("dns.nameservers.split"))
+					cfg.DNSConfig.Nameservers.Split)
 			},
 		},
 		{
 			name: "null is unset, default stays",
 			file: "server_url:\nlog:\n  level: ~\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.False(t, s.IsSet("server_url"))
-				assert.Equal(t, "info", s.String("log.level"))
+				assert.Empty(t, cfg.ServerURL)
+				assert.Equal(t, LogLevel("info"), cfg.Log.Level)
 			},
 		},
 		{
 			name: "empty env is unset, env beats file",
 			file: "server_url: http://file\nlisten_addr: 1.1.1.1:1\n",
 			env:  []string{"HEADSCALE_SERVER_URL=http://env", "HEADSCALE_LISTEN_ADDR="},
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.Equal(t, "http://env", s.String("server_url"))
-				assert.Equal(t, "1.1.1.1:1", s.String("listen_addr"))
+				assert.Equal(t, "http://env", cfg.ServerURL)
+				assert.Equal(t, ListenAddr("1.1.1.1:1"), cfg.Addr)
 			},
 		},
 		{
@@ -126,19 +130,19 @@ func TestConfigSource(t *testing.T) {
 				"HEADSCALE_DNS_NAMESERVERS_GLOBAL=1.1.1.1 8.8.8.8",
 				`HEADSCALE_OIDC_EXTRA_PARAMS={"domain_hint":"example.com"}`,
 			},
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.Equal(t, []string{"1.1.1.1", "8.8.8.8"}, s.StringSlice("dns.nameservers.global"))
-				assert.Equal(t, map[string]string{"domain_hint": "example.com"}, s.StringMapString("oidc.extra_params"))
+				assert.Equal(t, []string{"1.1.1.1", "8.8.8.8"}, cfg.DNSConfig.Nameservers.Global)
+				assert.Equal(t, map[string]string{"domain_hint": "example.com"}, cfg.OIDC.ExtraParams)
 			},
 		},
 		{
 			name: "open maps accept any key",
 			file: "dns:\n  challenge:\n    provider:\n      name: cloudflare\n      whatever: 1\noidc:\n  extra_params:\n    a: b\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.Equal(t, "cloudflare", s.String("dns.challenge.provider.name"))
-				assert.Equal(t, 1, s.Int("dns.challenge.provider.whatever"))
+				assert.Equal(t, "cloudflare", cfg.DNSConfig.Challenge.ProviderName())
+				assert.Equal(t, 1, cfg.DNSConfig.Challenge.ProviderSettings["whatever"])
 			},
 		},
 		{
@@ -192,27 +196,23 @@ func TestConfigSource(t *testing.T) {
 		{
 			name: "nested keys that share leaf names with removed keys",
 			file: "noise:\n  private_key_path: /n\nderp:\n  server:\n    private_key_path: /d\nlog:\n  level: debug\ntls:\n  cert_path: /c\ndatabase:\n  sqlite:\n    path: /db\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.Equal(t, "/n", s.String("noise.private_key_path"))
-				assert.Equal(t, "/d", s.String("derp.server.private_key_path"))
-				assert.Equal(t, "debug", s.String("log.level"))
-				assert.Equal(t, "/c", s.String("tls.cert_path"))
-				assert.Equal(t, "/db", s.String("database.sqlite.path"))
+				assert.Equal(t, "/n", cfg.Noise.PrivateKeyPath)
+				assert.Equal(t, "/d", cfg.DERP.Server.PrivateKeyPath)
+				assert.Equal(t, LogLevel("debug"), cfg.Log.Level)
+				assert.Equal(t, "/c", cfg.TLS.CertPath)
+				assert.Equal(t, "/db", cfg.Database.Sqlite.Path)
 			},
 		},
 		{
 			name: "dotted file keys override nested defaults",
 			file: "log.level: debug\ndns.magic_dns: false\ndns:\n  nameservers.split:\n    Corp.Example.com: [10.0.0.1]\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-
-				for range 50 {
-					assert.Equal(t, "debug", s.String("log.level"))
-					assert.False(t, s.Bool("dns.magic_dns"))
-				}
-
-				assert.Equal(t, map[string][]string{"corp.example.com": {"10.0.0.1"}}, s.StringMapStringSlice("dns.nameservers.split"))
+				assert.Equal(t, LogLevel("debug"), cfg.Log.Level)
+				assert.False(t, cfg.DNSConfig.MagicDNS)
+				assert.Equal(t, map[string][]string{"corp.example.com": {"10.0.0.1"}}, cfg.DNSConfig.Nameservers.Split)
 			},
 		},
 		{
@@ -228,20 +228,11 @@ func TestConfigSource(t *testing.T) {
 		{
 			name: "non-string yaml keys are normalised",
 			file: "dns:\n  nameservers:\n    split:\n      123: [1.1.1.1]\n      Corp.Example.com: [10.0.0.1]\n      Empty.Example.com: ~\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
 				assert.Equal(t,
 					map[string][]string{"123": {"1.1.1.1"}, "corp.example.com": {"10.0.0.1"}},
-					s.StringMapStringSlice("dns.nameservers.split"))
-			},
-		},
-		{
-			name: "key arguments are case-insensitive",
-			file: "server_url: https://x\n",
-			check: func(t *testing.T, s *configSource) {
-				t.Helper()
-				assert.True(t, s.IsSet("Server_URL"))
-				assert.Equal(t, "https://x", s.String("SERVER_URL"))
+					cfg.DNSConfig.Nameservers.Split)
 			},
 		},
 		{
@@ -270,9 +261,9 @@ func TestConfigSource(t *testing.T) {
 		{
 			name:      "empty file",
 			emptyFile: true,
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.Equal(t, "info", s.String("log.level"))
+				assert.Equal(t, LogLevel("info"), cfg.Log.Level)
 			},
 		},
 		{
@@ -317,7 +308,9 @@ func TestConfigSource(t *testing.T) {
 			}
 
 			if tt.check != nil {
-				tt.check(t, s)
+				cfg, err := s.decode()
+				require.NoError(t, err)
+				tt.check(t, cfg)
 			}
 		})
 	}
@@ -325,13 +318,13 @@ func TestConfigSource(t *testing.T) {
 
 const yamlSample = "server_url: https://x\nnode:\n  expiry: 1h\ndns:\n  magic_dns: false\n  nameservers:\n    global: [1.1.1.1, 8.8.8.8]\noidc:\n  extra_params:\n    domain_hint: example.com\n"
 
-func checkSameValues(t *testing.T, s *configSource) {
+func checkSameValues(t *testing.T, cfg *Config) {
 	t.Helper()
-	assert.Equal(t, "https://x", s.String("server_url"))
-	assert.Equal(t, time.Hour, s.Duration("node.expiry"))
-	assert.False(t, s.Bool("dns.magic_dns"))
-	assert.Equal(t, []string{"1.1.1.1", "8.8.8.8"}, s.StringSlice("dns.nameservers.global"))
-	assert.Equal(t, map[string]string{"domain_hint": "example.com"}, s.StringMapString("oidc.extra_params"))
+	assert.Equal(t, "https://x", cfg.ServerURL)
+	assert.Equal(t, time.Hour, cfg.Node.Expiry)
+	assert.False(t, cfg.DNSConfig.MagicDNS)
+	assert.Equal(t, []string{"1.1.1.1", "8.8.8.8"}, cfg.DNSConfig.Nameservers.Global)
+	assert.Equal(t, map[string]string{"domain_hint": "example.com"}, cfg.OIDC.ExtraParams)
 }
 
 func TestConfigSearchDirs(t *testing.T) {
@@ -355,97 +348,14 @@ func TestConfigSourceSearch(t *testing.T) {
 	s, err := newConfigSource(dir, false, nil)
 	require.NoError(t, err)
 	assert.True(t, strings.HasSuffix(s.File(), "config.json"))
-	assert.Equal(t, "http://json", s.String("server_url"))
+
+	cfg, err := s.decode()
+	require.NoError(t, err)
+	assert.Equal(t, "http://json", cfg.ServerURL)
 
 	s, err = newConfigSource(t.TempDir(), false, nil)
 	require.NoError(t, err)
 	assert.Empty(t, s.File())
-}
-
-func TestConfigSourceUnmarshalKey(t *testing.T) {
-	type rec struct{ Name, Type, Value string }
-
-	tests := []struct {
-		name, file string
-		want       []rec
-	}{
-		// An empty string decodes to an empty, non-nil slice.
-		{"empty string", "dns:\n  extra_records: \"\"\n", []rec{}},
-		{"list", "dns:\n  extra_records:\n    - {name: a.example.com, type: A, value: 1.2.3.4}\n", []rec{{"a.example.com", "A", "1.2.3.4"}}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s, err := newConfigSource(writeConfig(t, "config.yaml", tt.file), true, nil)
-			require.NoError(t, err)
-
-			var got []rec
-
-			require.NoError(t, s.UnmarshalKey("dns.extra_records", &got))
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-func TestConfigKeysComplete(t *testing.T) {
-	read := map[string]bool{}
-
-	for _, f := range []string{"config.go", "listener.go"} {
-		file, err := parser.ParseFile(token.NewFileSet(), f, nil, 0)
-		require.NoError(t, err)
-
-		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok || len(call.Args) == 0 {
-				return true
-			}
-
-			// Every src accessor takes the key first.
-			fn, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-
-			if obj, ok := fn.X.(*ast.Ident); !ok || obj.Name != "src" {
-				return true
-			}
-
-			if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
-				key, err := strconv.Unquote(lit.Value)
-				require.NoError(t, err)
-
-				read[key] = true
-			}
-
-			return true
-		})
-	}
-
-	all := slices.Concat(configKeys, openMapKeys)
-
-	for key := range read {
-		ok := slices.Contains(all, key) || strings.HasPrefix(key, "dns.challenge.provider")
-
-		assert.Truef(t, ok, "%s is read but missing from the key tables", key)
-	}
-
-	for _, key := range configKeys {
-		_, hasDefault := configDefaults[key]
-		assert.Truef(t, read[key] || hasDefault, "%s is listed but never read", key)
-	}
-
-	for key := range configDefaults {
-		assert.Contains(t, configKeys, key, "default without a key entry")
-	}
-
-	// Two keys sharing one environment variable would shadow each other.
-	envs := map[string]string{}
-
-	for _, key := range configKeys {
-		name := configEnvName(key)
-		assert.Emptyf(t, envs[name], "%s and %s share %s", envs[name], key, name)
-		envs[name] = key
-	}
 }
 
 // TestConfigSourceDottedOverlap reloads the file each time: map iteration
@@ -483,9 +393,12 @@ func TestConfigSourceDottedKeyAlone(t *testing.T) {
 	for range 50 {
 		s, err := newConfigSource(dir, false, nil)
 		require.NoError(t, err)
-		require.Equal(t, "debug", s.String("log.level"))
-		require.False(t, s.Bool("dns.magic_dns"))
-		require.Equal(t, []string{"1.1.1.1"}, s.StringSlice("dns.nameservers.global"))
+
+		cfg, err := s.decode()
+		require.NoError(t, err)
+		require.Equal(t, LogLevel("debug"), cfg.Log.Level)
+		require.False(t, cfg.DNSConfig.MagicDNS)
+		require.Equal(t, []string{"1.1.1.1"}, cfg.DNSConfig.Nameservers.Global)
 	}
 }
 
@@ -494,44 +407,44 @@ func TestConfigSourceDottedKeyAlone(t *testing.T) {
 func TestConfigSourceDottedNoOverlap(t *testing.T) {
 	tests := []struct {
 		name, file string
-		check      func(t *testing.T, s *configSource)
+		check      func(t *testing.T, cfg *Config)
 	}{
 		{
 			name: "dotted split domains",
 			file: "dns.nameservers.split.corp.example.com: [10.0.0.1]\ndns.nameservers.split.corp.example.com.au: [10.0.0.2]\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
 				assert.Equal(t,
 					map[string][]string{"corp.example.com": {"10.0.0.1"}, "corp.example.com.au": {"10.0.0.2"}},
-					s.StringMapStringSlice("dns.nameservers.split"))
+					cfg.DNSConfig.Nameservers.Split)
 			},
 		},
 		{
 			name: "dotted extra params",
 			file: "oidc.extra_params.domain_hint: a\noidc.extra_params.domain_hint.extra: b\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.Equal(t, map[string]string{"domain_hint": "a", "domain_hint.extra": "b"}, s.StringMapString("oidc.extra_params"))
+				assert.Equal(t, map[string]string{"domain_hint": "a", "domain_hint.extra": "b"}, cfg.OIDC.ExtraParams)
 			},
 		},
 		{
 			name: "nested split domains",
 			file: "dns:\n  nameservers:\n    split:\n      corp.example.com: [10.0.0.1]\n      corp.example.com.au: [10.0.0.2]\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
 				assert.Equal(t,
 					map[string][]string{"corp.example.com": {"10.0.0.1"}, "corp.example.com.au": {"10.0.0.2"}},
-					s.StringMapStringSlice("dns.nameservers.split"))
+					cfg.DNSConfig.Nameservers.Split)
 			},
 		},
 		{
 			name: "log and logtail",
 			file: "log:\n  level: debug\nlog.format: json\nlogtail.enabled: true\n",
-			check: func(t *testing.T, s *configSource) {
+			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				assert.Equal(t, "debug", s.String("log.level"))
-				assert.Equal(t, "json", s.String("log.format"))
-				assert.True(t, s.Bool("logtail.enabled"))
+				assert.Equal(t, LogLevel("debug"), cfg.Log.Level)
+				assert.Equal(t, JSONLogFormat, cfg.Log.Format)
+				assert.True(t, cfg.LogTail.Enabled)
 			},
 		},
 	}
@@ -544,7 +457,10 @@ func TestConfigSourceDottedNoOverlap(t *testing.T) {
 			for range 50 {
 				s, err := newConfigSource(dir, false, nil)
 				require.NoError(t, err)
-				tt.check(t, s)
+
+				cfg, err := s.decode()
+				require.NoError(t, err)
+				tt.check(t, cfg)
 			}
 		})
 	}
@@ -560,7 +476,7 @@ func TestConfigSourceShapeErrorsHideValues(t *testing.T) {
 		"list under database.sqlite": "database:\n  sqlite: [marker-secret]\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := newConfigSource(writeConfig(t, "config.yaml", file), true, nil)
+			_, err := newConfigSource(writeConfig(t, file), true, nil)
 			require.ErrorContains(t, err, "must be a mapping")
 			assert.NotContains(t, err.Error(), "marker-secret")
 		})
@@ -589,11 +505,13 @@ func TestConfigSourceProviderEnv(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, s.Warnings())
 
-	assert.Equal(t, "cloudflare", s.String("dns.challenge.provider.name"))
+	cfg, err := s.decode()
+	require.NoError(t, err)
+	assert.Equal(t, "cloudflare", cfg.DNSConfig.Challenge.ProviderName())
 
 	// The env value replaces the file's map; the per-field
 	// variable is layered on top of it.
-	got := s.StringMap("dns.challenge.provider")
+	got := cfg.DNSConfig.Challenge.ProviderSettings
 	assert.Equal(t, "x", got["api_token"])
 	assert.NotContains(t, got, "other")
 }
@@ -696,5 +614,403 @@ dns:
 
 			assert.Equal(t, tt.want, cfg.DNSConfig.Challenge.ProviderSettings)
 		})
+	}
+}
+
+// decodeInput writes content as name (none when empty) and decodes it with
+// env, as the loaders do.
+func decodeInput(t *testing.T, name, content string, env ...string) (*Config, error) {
+	t.Helper()
+
+	dir := t.TempDir()
+	if content != "" {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
+	}
+
+	s, err := newConfigSource(dir, false, env)
+	require.NoError(t, err)
+
+	return s.decode()
+}
+
+func TestDecodeScalars(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string // config.yaml unless it starts with "{"
+		env     []string
+		check   func(t *testing.T, cfg *Config)
+		wantErr []string
+	}{
+		{name: "yaml expiry 0", file: "node:\n  expiry: 0\n", check: func(t *testing.T, c *Config) { t.Helper(); assert.Zero(t, c.Node.Expiry) }},
+		{name: "json expiry 0", file: `{"node": {"expiry": 0}}`, check: func(t *testing.T, c *Config) { t.Helper(); assert.Zero(t, c.Node.Expiry) }},
+		{name: "env expiry 0", env: []string{"HEADSCALE_NODE_EXPIRY=0"}, check: func(t *testing.T, c *Config) { t.Helper(); assert.Zero(t, c.Node.Expiry) }},
+		{name: "prometheus duration", file: "node:\n  expiry: 90d\n", check: func(t *testing.T, c *Config) {
+			t.Helper()
+			assert.Equal(t, 2160*time.Hour, c.Node.Expiry)
+		}},
+		{name: "duration without unit", file: "node:\n  expiry: 90\n", wantErr: []string{"node.expiry needs a unit (", "config.yaml:2:3)"}},
+		{name: "env duration without unit", env: []string{"HEADSCALE_TUNING_BATCH_CHANGE_DELAY=800"}, wantErr: []string{"tuning.batch_change_delay needs a unit (env HEADSCALE_TUNING_BATCH_CHANGE_DELAY)"}},
+		{name: "unquoted file mode", file: "unix_socket_permission: 0770\n", wantErr: []string{"unix_socket_permission must be quoted"}},
+		{name: "quoted file mode", file: "unix_socket_permission: \"0770\"\n", check: func(t *testing.T, c *Config) {
+			t.Helper()
+			assert.Equal(t, FileMode(0o770), c.UnixSocketPermission)
+		}},
+		{name: "bool in a string field", file: "database:\n  postgres:\n    ssl: false\n", check: func(t *testing.T, c *Config) {
+			t.Helper()
+			assert.Equal(t, "false", c.Database.Postgres.Ssl)
+		}},
+		{name: "milliseconds stay a number", file: "database:\n  gorm:\n    slow_threshold: 1000\n", check: func(t *testing.T, c *Config) {
+			t.Helper()
+			assert.Equal(t, 1000, c.Database.Gorm.SlowThreshold)
+		}},
+		{name: "json integer", file: `{"database": {"postgres": {"port": 5432}}}`, check: func(t *testing.T, c *Config) {
+			t.Helper()
+			assert.Equal(t, 5432, c.Database.Postgres.Port)
+		}},
+		{name: "json fraction", file: `{"database": {"postgres": {"port": 5432.5}}}`, wantErr: []string{"database.postgres.port is not an integer"}},
+		{name: "json out of range", file: `{"database": {"postgres": {"port": 1e20}}}`, wantErr: []string{"database.postgres.port is out of range"}},
+		{name: "number 1 for a bool", file: "taildrop:\n  enabled: 1\nlogtail:\n  enabled: 1\n", check: func(t *testing.T, c *Config) {
+			t.Helper()
+			assert.True(t, c.Taildrop.Enabled)
+			assert.True(t, c.LogTail.Enabled)
+		}},
+		{name: "number 0 for a bool", file: "taildrop:\n  enabled: 0\n", check: func(t *testing.T, c *Config) { t.Helper(); assert.False(t, c.Taildrop.Enabled) }},
+		{name: "number 2 for a bool", file: "taildrop:\n  enabled: 2\n", wantErr: []string{"taildrop.enabled is not a boolean"}},
+		{name: "env yes for a bool", env: []string{"HEADSCALE_TAILDROP_ENABLED=yes"}, wantErr: []string{"taildrop.enabled is not a boolean (env HEADSCALE_TAILDROP_ENABLED)"}},
+		{name: "empty prefix is unset", file: "prefixes:\n  v4: \"\"\n", check: func(t *testing.T, c *Config) { t.Helper(); assert.Nil(t, c.Prefixes.V4) }},
+		{name: "empty enum is unset", file: "log:\n  format: \"\"\n", check: func(t *testing.T, c *Config) { t.Helper(); assert.Empty(t, c.Log.Format) }},
+		{name: "env json list", env: []string{`HEADSCALE_DNS_SEARCH_DOMAINS=["a","b"]`}, check: func(t *testing.T, c *Config) {
+			t.Helper()
+			assert.Equal(t, []string{"a", "b"}, c.DNSConfig.SearchDomains)
+		}},
+		{name: "env whitespace list", env: []string{"HEADSCALE_DNS_SEARCH_DOMAINS=a  b"}, check: func(t *testing.T, c *Config) {
+			t.Helper()
+			assert.Equal(t, []string{"a", "b"}, c.DNSConfig.SearchDomains)
+		}},
+		{name: "env map not json", env: []string{"HEADSCALE_DNS_NAMESERVERS_SPLIT=x=y"}, wantErr: []string{"dns.nameservers.split is not a JSON object (env HEADSCALE_DNS_NAMESERVERS_SPLIT)"}},
+		{name: "level is case-insensitive", file: "log:\n  level: INFO\n", check: func(t *testing.T, c *Config) { t.Helper(); assert.Equal(t, LogLevel("info"), c.Log.Level) }},
+		{name: "unknown extra record field", file: "dns:\n  extra_records:\n    - {name: a.example.com, type: A, value: 100.64.0.1, ttl: 60}\n", wantErr: []string{
+			"dns.extra_records has invalid keys: ttl",
+			`current: dns.extra_records: [{"name":"a.example.com","ttl":60,"type":"A","value":"100.64.0.1"}]`,
+		}},
+		{name: "empty duration", file: "node:\n  expiry: \"\"\n", wantErr: []string{"node.expiry is not a duration"}},
+		{name: "empty integer", file: "database:\n  postgres:\n    port: \"\"\n", wantErr: []string{"database.postgres.port is not an integer"}},
+		{name: "empty bool", file: "taildrop:\n  enabled: \"\"\n", wantErr: []string{"taildrop.enabled is not a boolean"}},
+		{name: "empty string is a value", file: "server_url: \"\"\n", check: func(t *testing.T, c *Config) { t.Helper(); assert.Empty(t, c.ServerURL) }},
+		{name: "env list not json", env: []string{"HEADSCALE_DNS_SEARCH_DOMAINS=[a"}, wantErr: []string{"dns.search_domains is not a JSON list", `hint: write the list as JSON, e.g. ["a", "b"]`}},
+		{name: "dotted top-level key", file: "log.level: verbose\n", wantErr: []string{"log.level has an unsupported value (", "config.yaml:1:1)"}},
+		{name: "nested then dotted key", file: "dns:\n  magic_dns: false\n  certificates.enabled: maybe\n", wantErr: []string{"dns.certificates.enabled is not a boolean (", "config.yaml:3:3)"}},
+		{name: "dotted then nested key", file: "dns:\n  magic_dns: false\ndns.certificates:\n  enabled: maybe\n", wantErr: []string{"dns.certificates.enabled is not a boolean (", "config.yaml:4:3)"}},
+		{name: "dotted inner list", file: "dns:\n  nameservers.global: 1\n", wantErr: []string{"dns.nameservers.global ", "config.yaml:2:3)"}},
+		{name: "env extra records", env: []string{`HEADSCALE_DNS_EXTRA_RECORDS=[{"name":"a.example.com","type":"A","value":"100.64.0.1"}]`}, check: func(t *testing.T, c *Config) {
+			t.Helper()
+			assert.Equal(t, []tailcfg.DNSRecord{{Name: "a.example.com", Type: "A", Value: "100.64.0.1"}}, c.DNSConfig.ExtraRecords)
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name := "config.yaml"
+			if strings.HasPrefix(tt.file, "{") {
+				name = "config.json"
+			}
+
+			cfg, err := decodeInput(t, name, tt.file, tt.env...)
+			if len(tt.wantErr) > 0 {
+				for _, want := range tt.wantErr {
+					require.ErrorContains(t, err, want)
+				}
+
+				return
+			}
+
+			require.NoError(t, err)
+			tt.check(t, cfg)
+		})
+	}
+}
+
+// TestDecodeErrors pins that every bad value is reported at once, before
+// any rule runs, and that a credential's value never is.
+func TestDecodeErrors(t *testing.T) {
+	t.Run("all bad values in one error", func(t *testing.T) {
+		require.NoError(t, LoadConfig(writeConfig(t, "log:\n  level: verbose\nnode:\n  expiry: 90\ntaildrop:\n  enabled: maybe\n"), true))
+
+		_, err := LoadServerConfig()
+		require.Error(t, err)
+
+		got := reasons(ConfigErrors(err))
+		require.Len(t, got, 3, "%v", got)
+		assert.Contains(t, got[0], "log.level")
+		assert.Contains(t, got[1], "node.expiry")
+		assert.Contains(t, got[2], "taildrop.enabled")
+		// No rule ran: server_url and the noise key are missing too.
+		assert.NotContains(t, err.Error(), "server_url")
+	})
+
+	for name, tt := range map[string]struct {
+		file string
+		env  []string
+		key  string
+	}{
+		"postgres pass":         {file: "database:\n  postgres:\n    pass: [marker-secret]\n", key: "database.postgres.pass"},
+		"oidc client secret":    {file: "oidc:\n  client_secret: [marker-secret]\n", key: "oidc.client_secret"},
+		"cli api key":           {file: "cli:\n  api_key: [marker-secret]\n", key: "cli.api_key"},
+		"derp url with a token": {file: "derp:\n  urls: [\"https://marker-secret@:443\"]\n", key: "derp.urls"},
+		"derp url unparsable":   {env: []string{"HEADSCALE_DERP_URLS=https://alice:marker-secret?@h"}, key: "derp.urls"},
+		"oidc issuer":           {file: "oidc:\n  issuer: https://alice:marker-secret?@idp.example.com\n", key: "oidc.issuer"},
+		"acme url":              {file: "tls:\n  acme:\n    url: https://alice:marker-secret@acme.example.com:port\n", key: "tls.acme.url"},
+		"server url list":       {file: "server_url: [\"https://alice:marker-secret@h\"]\n", key: "server_url"},                                                         //nolint:gosec // a test marker, not a credential
+		"cli address list":      {file: "cli:\n  address: [\"https://alice:marker-secret@h\"]\n", key: "cli.address"},                                                   //nolint:gosec // a test marker, not a credential
+		"nameserver element":    {file: "dns:\n  nameservers:\n    global: [{url: \"https://alice:marker-secret@h\"}]\n", key: "dns.nameservers.global"},                //nolint:gosec // a test marker, not a credential
+		"split element":         {file: "dns:\n  nameservers:\n    split:\n      a.example.com: [[\"https://alice:marker-secret@h\"]]\n", key: "dns.nameservers.split"}, //nolint:gosec // a test marker, not a credential
+		"provider json":         {env: []string{`HEADSCALE_DNS_CHALLENGE_PROVIDER={"api_token":"marker-secret"`}, key: "dns.challenge.provider is not a JSON object (env HEADSCALE_DNS_CHALLENGE_PROVIDER)"},
+		"provider scalar":       {file: "dns:\n  challenge:\n    provider: marker-secret\n", key: "dns.challenge.provider"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := decodeInput(t, "config.yaml", tt.file, tt.env...)
+			require.ErrorContains(t, err, tt.key)
+			requireHidden(t, err, "marker-secret")
+		})
+	}
+}
+
+func TestSchemaKeys(t *testing.T) {
+	open := map[string]bool{}
+	paths := map[string]bool{}
+
+	for _, k := range schemaKeys() {
+		paths[k.Path] = true
+		open[k.Path] = k.Open
+	}
+
+	for _, k := range []string{"dns.nameservers.split", "oidc.extra_params", "dns.challenge.provider"} {
+		assert.Truef(t, open[k], "%s is open", k)
+	}
+
+	assert.False(t, open["dns.extra_records"])
+	assert.NotContains(t, paths, "derp.server.stun.enabled")
+	assert.NotContains(t, paths, "dns.challenge.provider.name")
+
+	// Two keys sharing one environment variable would shadow each other.
+	envs := map[string]string{}
+
+	for _, k := range schemaKeys() {
+		name := configEnvName(k.Path)
+		assert.Emptyf(t, envs[name], "%s and %s share %s", envs[name], k.Path, name)
+		envs[name] = k.Path
+	}
+}
+
+// TestDefaultsFitTypes: every default is a value its field's type accepts,
+// so the defaults layer decodes back to defaultConfig.
+func TestDefaultsFitTypes(t *testing.T) {
+	d := defaultConfig()
+
+	for _, f := range ConfigFields(&d) {
+		e, ok := reflect.TypeAssert[interface{ Allowed() []string }](f.Value)
+		if !ok {
+			continue
+		}
+
+		v := f.Value.String()
+		assert.Truef(t, v == "" || slices.Contains(e.Allowed(), v), "%s defaults to %q, not in %v", f.Path, v, e.Allowed())
+	}
+
+	cfg, err := decodeInput(t, "", "")
+	require.NoError(t, err)
+
+	if diff := gocmp.Diff(d, *cfg, cmpopts.IgnoreFields(Config{}, "ConfigDir"), cmpopts.IgnoreUnexported(Config{})); diff != "" {
+		t.Errorf("defaults layer (-defaultConfig +decoded):\n%s", diff)
+	}
+}
+
+func TestPlainMap(t *testing.T) {
+	v4 := netip.MustParsePrefix("100.64.0.0/10")
+	cfg := &Config{
+		ServerURL:            "https://h",
+		UnixSocketPermission: 0,
+		TrustedProxies:       []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+		Prefixes:             PrefixesConfig{V4: &v4},
+		Node:                 NodeConfig{Expiry: 90 * time.Minute},
+		DERP:                 DERPConfig{URLs: []HTTPURL{"https://user:pass@derp.example/map"}},
+		Database:             DatabaseConfig{Postgres: PostgresConfig{Pass: "marker-pass"}},
+		OIDC:                 OIDCConfig{ClientSecret: "file:/run/secret"},
+		DNSConfig: DNSConfig{
+			ExtraRecords: []tailcfg.DNSRecord{{Name: "a.example.com", Type: "A", Value: "100.64.0.1"}},
+			Challenge: DNSChallengeConfig{ProviderSettings: map[string]any{ //nolint:gosec // test markers, not credentials
+				"name":      "acmedns",
+				"api_token": 123456,
+				"token":     "file:/run/token",
+				"config":    map[string]any{"a.example.com": map[string]any{"password": "marker-pw", "name": "x"}},
+				"list":      []any{"marker-item"},
+			}},
+		},
+	}
+
+	cfg.OIDC.Issuer = "https://client:marker-issuer@idp.example.com/realm"
+	cfg.TLS.ACME.URL = "https://marker-token@acme.example.com/dir?x=1"
+	cfg.DERP.URLs = append(cfg.DERP.URLs, "https://marker-only@derp.example/token", "https://h/%zz")
+	cfg.DNSConfig.Challenge.ProviderSettings["unset"] = (*netip.Prefix)(nil)
+	cfg.DNSConfig.Challenge.ProviderSettings["nothing"] = (*string)(nil)
+
+	plain := plainMap(cfg, false)
+	assert.Equal(t, "https://h", plain["server_url"])
+	assert.Equal(t, "0000", plain["unix_socket_permission"])
+	assert.Equal(t, []any{"10.0.0.0/8"}, plain["trusted_proxies"])
+
+	prefixes, _ := plain["prefixes"].(map[string]any)
+	assert.Equal(t, "100.64.0.0/10", prefixes["v4"])
+	assert.Empty(t, prefixes["v6"], "a nil prefix prints as an explicit unset")
+	assert.Contains(t, prefixes, "v6")
+
+	node, _ := plain["node"].(map[string]any)
+	assert.Equal(t, "1h30m0s", node["expiry"])
+
+	derp, _ := plain["derp"].(map[string]any)
+	assert.Equal(t, []any{
+		"https://user:pass@derp.example/map", "https://marker-only@derp.example/token", "https://h/%zz",
+	}, derp["urls"], "written as is, not as its JSON")
+
+	oidc, _ := plain["oidc"].(map[string]any)
+	assert.Equal(t, "https://client:marker-issuer@idp.example.com/realm", oidc["issuer"])
+
+	tls, _ := plain["tls"].(map[string]any)
+	acme, _ := tls["acme"].(map[string]any)
+	assert.Equal(t, "https://marker-token@acme.example.com/dir?x=1", acme["url"])
+	assert.NotContains(t, derp, "derpmap")
+
+	db, _ := plain["database"].(map[string]any)
+	pg, _ := db["postgres"].(map[string]any)
+	assert.Equal(t, "marker-pass", pg["pass"])
+
+	dns, _ := plain["dns"].(map[string]any)
+	assert.Equal(t, []any{map[string]any{"name": "a.example.com", "type": "A", "value": "100.64.0.1"}}, dns["extra_records"])
+
+	redacted := plainMap(cfg, true)
+	db, _ = redacted["database"].(map[string]any)
+	pg, _ = db["postgres"].(map[string]any)
+	assert.Equal(t, "<redacted>", pg["pass"])
+
+	oidc, _ = redacted["oidc"].(map[string]any)
+	assert.Equal(t, "file:/run/secret", oidc["client_secret"])
+	assert.Equal(t, "https://idp.example.com/realm", oidc["issuer"])
+
+	tls, _ = redacted["tls"].(map[string]any)
+	acme, _ = tls["acme"].(map[string]any)
+	assert.Equal(t, "https://acme.example.com/dir?x=1", acme["url"])
+
+	derp, _ = redacted["derp"].(map[string]any)
+	assert.Equal(t, []any{"https://derp.example/map", "https://derp.example/token", "<redacted>"}, derp["urls"])
+
+	dns, _ = redacted["dns"].(map[string]any)
+	challenge, _ := dns["challenge"].(map[string]any)
+	assert.Equal(t, map[string]any{ //nolint:gosec // test markers, not credentials
+		"name":      "acmedns",
+		"api_token": "<redacted>",
+		"token":     "file:/run/token",
+		"config":    map[string]any{"a.example.com": map[string]any{"password": "<redacted>", "name": "<redacted>"}},
+		"list":      []any{"<redacted>"},
+	}, challenge["provider"])
+	// The caller's config is left alone.
+	assert.Equal(t, 123456, cfg.DNSConfig.Challenge.ProviderSettings["api_token"])
+	assert.Equal(t, HTTPURL("https://user:pass@derp.example/map"), cfg.DERP.URLs[0])
+	assert.Equal(t, HTTPURL("https://client:marker-issuer@idp.example.com/realm"), cfg.OIDC.Issuer)
+
+	plainProvider, _ := plain["dns"].(map[string]any)["challenge"].(map[string]any)["provider"].(map[string]any)
+	assert.NotContains(t, plainProvider, "unset", "a typed nil is left out")
+	assert.NotContains(t, plainProvider, "nothing", "a typed nil is left out")
+}
+
+// TestPlainMapLargeIntegers: JSON parsers read numbers as float64, so an
+// integer past 2^53 is written as text, which the integer hook takes back.
+func TestPlainMapLargeIntegers(t *testing.T) {
+	for _, n := range []int{1<<53 + 1, math.MaxInt64} {
+		for _, ext := range []string{".json", ".hujson"} {
+			t.Run(fmt.Sprintf("%d%s", n, ext), func(t *testing.T) {
+				loaded, err := decodeInput(t, "config.yaml", fmt.Sprintf("tuning:\n  register_cache_max_entries: %d\n", n))
+				require.NoError(t, err)
+				require.Equal(t, n, loaded.Tuning.RegisterCacheMaxEntries)
+
+				parser, err := configParser(ext)
+				require.NoError(t, err)
+
+				out, err := parser.Marshal(plainMap(loaded, false))
+				require.NoError(t, err)
+
+				again, err := decodeInput(t, "config"+ext, string(out))
+				require.NoError(t, err)
+				assert.Equal(t, n, again.Tuning.RegisterCacheMaxEntries)
+			})
+		}
+	}
+}
+
+// TestBadConfigs pins how a bad value is reported: its key, what is wrong
+// and where it was set. Every testdata/bad/<name>.{yaml,env} is one row;
+// refresh with HEADSCALE_UPDATE_GOLDEN=1.
+func TestBadConfigs(t *testing.T) {
+	dir := filepath.Join("testdata", "bad")
+	update := os.Getenv("HEADSCALE_UPDATE_GOLDEN") != ""
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	unsetHeadscaleEnv(t)
+
+	for _, e := range entries {
+		ext := filepath.Ext(e.Name())
+		if ext == ".golden" {
+			continue
+		}
+
+		name := strings.TrimSuffix(e.Name(), ext)
+		t.Run(name, func(t *testing.T) {
+			var file, envFile string
+			if ext == ".env" {
+				envFile = filepath.Join(dir, e.Name())
+			} else {
+				file = filepath.Join(dir, e.Name())
+			}
+
+			staged := stageCompat(t, file, envFile)
+			require.NoError(t, LoadConfig(staged, false))
+
+			_, err := LoadServerConfig()
+			require.Error(t, err)
+
+			got := strings.ReplaceAll(err.Error(), staged, "$DIR")
+			gpath := filepath.Join(dir, name+".golden")
+
+			if update {
+				require.NoError(t, os.WriteFile(gpath, []byte(got), 0o600))
+
+				return
+			}
+
+			want, err := os.ReadFile(gpath)
+			require.NoErrorf(t, err, "missing golden %s: run with HEADSCALE_UPDATE_GOLDEN=1", gpath)
+			assert.Equal(t, string(want), got)
+		})
+	}
+}
+
+// TestPositionBounded: finding where a key is written follows the keys the
+// file has, so a long dotted unknown key is located at once.
+func TestPositionBounded(t *testing.T) {
+	key := strings.Repeat("x.", 29) + "x"
+	path := writeConfig(t, key+": 1\n")
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := newConfigSource(path, true, nil)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorContains(t, err, "unknown configuration key "+key+" ("+path+":1:1)")
+	case <-time.After(5 * time.Second):
+		t.Fatal("locating a dotted key took longer than reading the file")
 	}
 }

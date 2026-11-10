@@ -1,0 +1,251 @@
+{
+  "config": {
+    "ServerURL": "https://headscale.example.com",
+    "Addr": "0.0.0.0:8443",
+    "MetricsAddr": "127.0.0.1:9091",
+    "TrustedProxies": [
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
+    "Node": {
+      "Expiry": 7776000000000000,
+      "Ephemeral": {
+        "InactivityTimeout": 2700000000000
+      },
+      "Routes": {
+        "HA": {
+          "ProbeInterval": 20000000000,
+          "ProbeTimeout": 7000000000
+        }
+      }
+    },
+    "PreAuthKeys": {
+      "RevokedRetention": 259200000000000
+    },
+    "PrefixV4": "100.64.0.0/10",
+    "PrefixV6": "fd7a:115c:a1e0::/48",
+    "IPAllocation": "random",
+    "NoisePrivateKeyPath": "$DIR/noise_private.key",
+    "BaseDomain": "tailnet.example.net",
+    "Log": {
+      "Format": "json",
+      "Level": "debug"
+    },
+    "DisableUpdateCheck": true,
+    "Database": {
+      "Type": "postgres",
+      "Debug": true,
+      "Gorm": {
+        "Debug": true,
+        "SlowThreshold": 2000000000,
+        "SkipErrRecordNotFound": false,
+        "ParameterizedQueries": true
+      },
+      "Sqlite": {
+        "Path": "",
+        "WriteAheadLog": true,
+        "WALAutoCheckPoint": 1000
+      },
+      "Postgres": {
+        "Host": "db.example.com",
+        "Port": 5433,
+        "Name": "headscale",
+        "User": "headscale",
+        "Ssl": "true",
+        "MaxOpenConnections": 20,
+        "MaxIdleConnections": 5,
+        "ConnMaxIdleTimeSecs": 1800
+      }
+    },
+    "DERP": {
+      "ServerEnabled": true,
+      "AutomaticallyAddEmbeddedDerpRegion": false,
+      "ServerRegionID": 900,
+      "ServerRegionCode": "hs",
+      "ServerRegionName": "Headscale Embedded DERP",
+      "ServerPrivateKeyPath": "$DIR/derp_server_private.key",
+      "ServerVerifyClients": false,
+      "STUNAddr": "0.0.0.0:3479",
+      "URLs": [
+        {
+          "Scheme": "https",
+          "Opaque": "",
+          "User": null,
+          "Host": "controlplane.tailscale.com",
+          "Path": "/derpmap/default",
+          "Fragment": "",
+          "RawQuery": "",
+          "RawPath": "",
+          "RawFragment": "",
+          "ForceQuery": false,
+          "OmitHost": false
+        },
+        {
+          "Scheme": "https",
+          "Opaque": "",
+          "User": null,
+          "Host": "derp.example.com",
+          "Path": "/map.json",
+          "Fragment": "",
+          "RawQuery": "",
+          "RawPath": "",
+          "RawFragment": "",
+          "ForceQuery": false,
+          "OmitHost": false
+        }
+      ],
+      "Paths": [
+        "/etc/headscale/derp.yaml"
+      ],
+      "DERPMap": null,
+      "AutoUpdate": false,
+      "UpdateFrequency": 3600000000000,
+      "IPv4": "198.51.100.1",
+      "IPv6": "2001:db8::1"
+    },
+    "TLS": {
+      "CertPath": "",
+      "KeyPath": "",
+      "ACME": {
+        "Hostname": "headscale.example.com",
+        "ChallengeType": "TLS-ALPN-01",
+        "HTTPListen": ":8081",
+        "URL": "https://acme-staging-v02.api.letsencrypt.org/directory",
+        "Email": "admin@example.com",
+        "CacheDir": "$DIR/acme-cache"
+      }
+    },
+    "DNSConfig": {
+      "MagicDNS": true,
+      "BaseDomain": "tailnet.example.net",
+      "OverrideLocalDNS": true,
+      "Nameservers": {
+        "Global": [
+          "1.1.1.1",
+          "https://dns.nextdns.io/abc123"
+        ],
+        "Split": {
+          "corp.example.com": [
+            "10.0.0.1"
+          ]
+        }
+      },
+      "SearchDomains": [
+        "corp.example.com"
+      ],
+      "ExtraRecords": [
+        {
+          "Name": "grafana.tailnet.example.net",
+          "Type": "A",
+          "Value": "100.64.0.3"
+        }
+      ],
+      "ExtraRecordsPath": "",
+      "Certificates": {
+        "Enabled": false,
+        "Zone": "tailnet.example.net"
+      }
+    },
+    "TailcfgDNSConfig": {
+      "Resolvers": [
+        {
+          "Addr": "1.1.1.1"
+        },
+        {
+          "Addr": "https://dns.nextdns.io/abc123"
+        }
+      ],
+      "Routes": {
+        "corp.example.com": [
+          {
+            "Addr": "10.0.0.1"
+          }
+        ]
+      },
+      "Domains": [
+        "tailnet.example.net",
+        "corp.example.com"
+      ],
+      "Proxied": true,
+      "ExtraRecords": [
+        {
+          "Name": "grafana.tailnet.example.net",
+          "Type": "A",
+          "Value": "100.64.0.3"
+        }
+      ]
+    },
+    "DNSChallenge": {
+      "PropagationTimeout": 180000000000,
+      "Resolvers": [
+        "9.9.9.9:53"
+      ],
+      "ProviderName": ""
+    },
+    "UnixSocket": "/run/headscale/headscale.sock",
+    "UnixSocketPermission": 448,
+    "OIDC": {
+      "OnlyStartIfOIDCIsAvailable": false,
+      "Issuer": "https://idp.example.com",
+      "ClientID": "headscale",
+      "Scope": [
+        "openid",
+        "profile",
+        "email",
+        "groups"
+      ],
+      "ExtraParams": {
+        "login_hint": "file"
+      },
+      "AllowedDomains": [
+        "example.com"
+      ],
+      "AllowedUsers": [
+        "alice@example.com"
+      ],
+      "AllowedGroups": [
+        "/headscale"
+      ],
+      "EmailVerifiedRequired": false,
+      "UseExpiryFromToken": true,
+      "PKCE": {
+        "Enabled": true,
+        "Method": "plain"
+      }
+    },
+    "LogTail": {
+      "Enabled": true
+    },
+    "Taildrop": {
+      "Enabled": false
+    },
+    "AutoUpdate": {
+      "Enabled": true
+    },
+    "CLI": {
+      "Address": "headscale.example.com:443",
+      "Timeout": 15000000000,
+      "Insecure": true
+    },
+    "Policy": {
+      "Path": "",
+      "Mode": "database"
+    },
+    "Tuning": {
+      "BatchChangeDelay": 500000000,
+      "NodeMapSessionBufferedChanSize": 50,
+      "BatcherWorkers": 4096,
+      "RegisterCacheExpiration": 1200000000000,
+      "RegisterCacheMaxEntries": 2000,
+      "NodeStoreBatchSize": 50,
+      "NodeStoreBatchTimeout": 250000000
+    }
+  },
+  "secrets": {
+    "database.postgres.pass": "marker-postgres-pass",
+    "oidc.client_secret": "marker-oidc-secret-from-file"
+  },
+  "warnings": [
+    "Warning: when using tls.acme.hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443"
+  ]
+}

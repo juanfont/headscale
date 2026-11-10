@@ -2,12 +2,41 @@ package types
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestURLKeys: every key that may hold a URL is listed, so its userinfo is
+// redacted and never shown in an error, and every listed key exists.
+func TestURLKeys(t *testing.T) {
+	paths := map[string]bool{}
+
+	for _, f := range ConfigFields(&Config{}) {
+		paths[f.Path] = true
+
+		typ := f.Field.Type
+		if typ.Kind() == reflect.Slice {
+			typ = typ.Elem()
+		}
+
+		// shortcut: catches only HTTPURL leaves, lists of them and names ending
+		// in url, urls or address, not maps or pointers; list any other URL
+		// key in URLKeys by hand.
+		name := f.Path[strings.LastIndex(f.Path, ".")+1:]
+		if typ == reflect.TypeFor[HTTPURL]() || strings.HasSuffix(name, "url") || strings.HasSuffix(name, "urls") ||
+			strings.HasSuffix(name, "address") {
+			assert.Contains(t, URLKeys, f.Path)
+		}
+	}
+
+	for _, k := range URLKeys {
+		assert.True(t, paths[k], "%s is no key", k)
+	}
+}
 
 func TestConfigFields(t *testing.T) {
 	// Written out, not derived from the loader's key tables, so it pins the
@@ -105,7 +134,6 @@ func TestConfigFields(t *testing.T) {
 		"cli.api_key",
 		"cli.timeout",
 		"cli.insecure",
-		"tuning.notifier_send_timeout",
 		"tuning.batch_change_delay",
 		"tuning.node_mapsession_buffered_chan_size",
 		"tuning.batcher_workers",

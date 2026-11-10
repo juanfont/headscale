@@ -30,6 +30,10 @@ func TestPortFromAddr(t *testing.T) {
 		{"empty", "", 0, true},
 		{"no-port", "0.0.0.0", 0, true},
 		{"unknown-named", ":bogus", 0, true},
+		{"highest-port", ":65535", 65535, false},
+		{"port-above-range", ":65536", 0, true},
+		{"negative-port", ":-1", 0, true},
+		{"signed-port", ":+80", 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -86,10 +90,19 @@ func TestValidateListenerCollisions_BlamesParseFailure(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			useConfig(t, map[string]any{tt.bad: tt.badAddr, tt.good: ":9999"})
+			// Decoding rejects these; Go data reaches the rule as is.
+			cfg := &Config{}
+			for _, f := range ConfigFields(cfg) {
+				switch f.Path {
+				case tt.bad:
+					f.Value.SetString(tt.badAddr)
+				case tt.good:
+					f.Value.SetString(":9999")
+				}
+			}
 
 			v := &configValidator{}
-			validateListenerCollisions(v)
+			cfg.validateListenerCollisions(v)
 
 			err := v.Err()
 			require.Error(t, err)

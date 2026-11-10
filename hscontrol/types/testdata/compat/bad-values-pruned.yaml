@@ -1,0 +1,21 @@
+# Input today's loader accepts but mangles or ignores.
+server_url: https://hs.example.com
+noise:
+  private_key_path: /var/lib/headscale/noise.key
+prefixes:
+  v4: 10.0.0.0/8
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+dns:
+  magic_dns: false
+  override_local_dns: false
+log:
+  level: verbose
+  format: xml
+tuning:
+  batch_change_delay: abc
+derp:
+  urls:
+    - "://not-a-url"

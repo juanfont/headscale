@@ -2,6 +2,7 @@ package types
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -10,20 +11,19 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/knadh/koanf/parsers/yaml"
-	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/cast"
-	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -126,7 +126,7 @@ type NodeConfig struct {
 
 // Config is the Headscale configuration, nested like the configuration
 // file; koanf tags name the keys.
-type Config struct {
+type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Config value is redacted too
 	ServerURL            string            `koanf:"server_url"`
 	Addr                 ListenAddr        `koanf:"listen_addr"`
 	MetricsAddr          ListenAddr        `koanf:"metrics_listen_addr"`
@@ -222,7 +222,22 @@ type DNSChallengeConfig struct {
 
 // ProviderName is the provider ProviderSettings names, or "".
 func (c DNSChallengeConfig) ProviderName() string {
-	return cast.ToString(c.ProviderSettings["name"])
+	name, _ := c.providerName()
+
+	return name
+}
+
+// providerName is the name as text, and false when it is a map or list:
+// its contents may be credentials, so it is never formatted.
+func (c DNSChallengeConfig) providerName() (string, bool) {
+	switch name := c.ProviderSettings["name"].(type) {
+	case nil:
+		return "", true
+	case string:
+		return name, true
+	default:
+		return scalarText(reflect.ValueOf(name))
+	}
 }
 
 // NewProvider builds the provider ProviderSettings names, handing secret
@@ -469,10 +484,6 @@ type LogConfig struct {
 // need adjustment. Changes to these values can significantly impact performance
 // and resource usage.
 type Tuning struct {
-	// NotifierSendTimeout is the maximum time to wait when sending notifications
-	// to connected clients about network changes.
-	NotifierSendTimeout time.Duration `koanf:"notifier_send_timeout"`
-
 	// BatchChangeDelay controls how long to wait before sending batched updates
 	// to clients when multiple changes occur in rapid succession.
 	BatchChangeDelay time.Duration `koanf:"batch_change_delay"`
@@ -541,29 +552,27 @@ func validatePKCEMethod(method PKCEMethod) error {
 	return nil
 }
 
-// validateOIDCConfig validates the OIDC settings, called when oidc.issuer is
-// set. It fails fast on a setup that cannot work: an invalid PKCE method, a
+// validate checks the OIDC settings, called when oidc.issuer is set. It
+// fails fast on a setup that cannot work: an invalid PKCE method, a
 // malformed issuer URL (which would otherwise surface as an opaque discovery
 // error or, worse, resolve to an unintended provider), or a missing client
 // id/secret.
-func validateOIDCConfig() error {
-	err := validatePKCEMethod(PKCEMethod(src.String("oidc.pkce.method")))
+func (o OIDCConfig) validate() error {
+	err := validatePKCEMethod(o.PKCE.Method)
 	if err != nil {
 		return err
 	}
 
-	issuer := src.String("oidc.issuer")
-
-	u, err := url.Parse(issuer)
+	u, err := url.Parse(string(o.Issuer))
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return fmt.Errorf("%w: got %q", errOIDCIssuerInvalid, issuer)
+		return fmt.Errorf("%w: got %q", errOIDCIssuerInvalid, string(o.Issuer))
 	}
 
-	if src.String("oidc.client_id") == "" {
+	if o.ClientID == "" {
 		return errOIDCClientIDRequired
 	}
 
-	if src.String("oidc.client_secret") == "" {
+	if o.ClientSecret == "" {
 		return errOIDCClientSecretRequired
 	}
 
@@ -584,6 +593,76 @@ func (c *Config) Domain() string {
 // AbsPath resolves a path from the configuration against [Config.ConfigDir].
 func (c *Config) AbsPath(p string) string {
 	return util.AbsolutePath(c.ConfigDir, p)
+}
+
+// URLKeys are the keys that may hold a URL, whose userinfo may be a
+// credential: [Config.RedactedURLs] redacts it and errors never show their
+// values.
+var URLKeys = []string{
+	"server_url", "cli.address", "dns.nameservers.global", "dns.nameservers.split",
+	"tls.acme.url", "oidc.issuer", "derp.urls",
+}
+
+// RedactedURLs returns c with the userinfo of the URLs that URLKeys hold
+// redacted as [HTTPURL.Redacted] does; a value without an @ has none and is
+// kept, a host:port or an IP included. c keeps its values.
+func (c Config) RedactedURLs() Config {
+	for _, f := range ConfigFields(&c) {
+		if slices.Contains(URLKeys, f.Path) {
+			f.Value.Set(redactedURLs(f.Value))
+		}
+	}
+
+	return c
+}
+
+// redactedURLs is v, a text or a list or map of texts, with each redacted;
+// a list or map is a copy.
+func redactedURLs(v reflect.Value) reflect.Value {
+	switch v.Kind() { //nolint:exhaustive // the kinds URLKeys hold
+	case reflect.String:
+		return reflect.ValueOf(redactedURL(v.String())).Convert(v.Type())
+	case reflect.Slice:
+		if v.IsNil() {
+			return v
+		}
+
+		out := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
+		for i := range v.Len() {
+			out.Index(i).Set(redactedURLs(v.Index(i)))
+		}
+
+		return out
+	case reflect.Map:
+		if v.IsNil() {
+			return v
+		}
+
+		out := reflect.MakeMapWithSize(v.Type(), v.Len())
+		for k, e := range v.Seq2() {
+			out.SetMapIndex(k, redactedURLs(e))
+		}
+
+		return out
+	}
+
+	return v
+}
+
+func redactedURL(s string) string {
+	if !strings.Contains(s, "@") {
+		return s
+	}
+
+	return HTTPURL(s).Redacted()
+}
+
+// MarshalJSON writes c without credentials, for debug output and logs:
+// secrets are left out and URLs lose their userinfo.
+func (c Config) MarshalJSON() ([]byte, error) {
+	type plain Config // without this method
+
+	return json.Marshal(plain(c.RedactedURLs()))
 }
 
 // SQLitePath is database.sqlite.path resolved, keeping SQLite's in-memory
@@ -619,7 +698,7 @@ var configFile string
 
 // LoadConfig loads defaults, the configuration file and HEADSCALE_*
 // environment variables, rejecting unknown and removed keys. It has to be
-// called before [LoadServerConfig] and [LoadCLIConfig], which validate the
+// called before [LoadServerConfig] and [LoadCLIConfig], which decode the
 // values.
 func LoadConfig(path string, isFile bool) error {
 	configFile = findConfigFile(path, isFile, os.Environ())
@@ -638,31 +717,29 @@ func LoadConfig(path string, isFile bool) error {
 	return nil
 }
 
-// configDir is where relative paths in the configuration are resolved: the
-// config file's directory, or the working directory without a file.
-func configDir() string {
-	dir := "."
-	if src.File() != "" {
-		dir = filepath.Dir(src.File())
-	}
-
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return dir
-	}
-
-	return abs
-}
-
 // ConfigFile returns the file the last [LoadConfig] loaded or failed to
 // load, or "" when it found none.
 func ConfigFile() string { return configFile }
 
-// LogFormatSetting returns the configured log.format.
-func LogFormatSetting() LogFormat { return LogFormat(src.String("log.format")) }
+// LogFormatSetting returns the configured log.format, or "" when the
+// configuration does not decode.
+func LogFormatSetting() LogFormat {
+	cfg, err := src.decode()
+	if err != nil {
+		return ""
+	}
+
+	return cfg.Log.Format
+}
 
 // UpdateCheckDisabled reports whether disable_check_updates is set.
-func UpdateCheckDisabled() bool { return src.Bool("disable_check_updates") }
+// A configuration that does not decode disables it too: the command reports
+// the error instead.
+func UpdateCheckDisabled() bool {
+	cfg, err := src.decode()
+
+	return err != nil || cfg.DisableUpdateCheck
+}
 
 // DumpConfig renders the loaded configuration, defaults included, as YAML.
 func DumpConfig() ([]byte, error) {
@@ -673,91 +750,81 @@ func DumpConfig() ([]byte, error) {
 	return src.k.Marshal(yaml.Parser())
 }
 
-// resolveNodeExpiry parses the node.expiry config value.
-// Returns 0 if set to "0" (no default expiry) or on parse failure.
-func resolveNodeExpiry() time.Duration {
-	value := src.String("node.expiry")
-	if value == "" || value == "0" {
-		return 0
+// defaultConfig is the configuration before a file or variable sets
+// anything. database.type has no default.
+func defaultConfig() Config {
+	return Config{
+		UnixSocket:           "/var/run/headscale/headscale.sock",
+		UnixSocketPermission: 0o770,
+		Prefixes:             PrefixesConfig{Allocation: IPAllocationStrategySequential},
+		Policy:               PolicyConfig{Mode: PolicyModeFile},
+		Log:                  LogConfig{Level: "info", Format: TextLogFormat},
+		Node: NodeConfig{
+			Ephemeral: EphemeralConfig{InactivityTimeout: 120 * time.Second},
+			Routes: RouteConfig{HA: HARouteConfig{
+				ProbeInterval: 10 * time.Second,
+				ProbeTimeout:  5 * time.Second,
+			}},
+		},
+		PreAuthKeys: PreAuthKeysConfig{RevokedRetention: 168 * time.Hour},
+		DERP: DERPConfig{
+			Server: DERPServerConfig{
+				VerifyClients:                      true,
+				AutomaticallyAddEmbeddedDerpRegion: true,
+			},
+			UpdateFrequency: 3 * time.Hour,
+		},
+		Database: DatabaseConfig{
+			Sqlite: SqliteConfig{
+				WriteAheadLog:     true,
+				WALAutoCheckPoint: 1000, // SQLite default
+			},
+			Postgres: PostgresConfig{
+				Ssl:                 "false",
+				MaxOpenConnections:  10,
+				MaxIdleConnections:  10,
+				ConnMaxIdleTimeSecs: 3600,
+			},
+		},
+		DNSConfig: DNSConfig{
+			MagicDNS:         true,
+			OverrideLocalDNS: true,
+			Nameservers:      Nameservers{Global: []string{}, Split: map[string][]string{}},
+			SearchDomains:    []string{},
+			Challenge:        DNSChallengeConfig{PropagationTimeout: 2 * time.Minute},
+		},
+		TLS: TLSConfig{ACME: ACMEConfig{
+			ChallengeType: HTTP01ChallengeType,
+			HTTPListen:    ":http",
+			CacheDir:      "/var/lib/headscale/cache",
+		}},
+		OIDC: OIDCConfig{
+			OnlyStartIfOIDCIsAvailable: true,
+			Scope:                      []string{oidc.ScopeOpenID, "profile", "email"},
+			EmailVerifiedRequired:      true,
+			PKCE:                       PKCEConfig{Method: PKCEMethodS256},
+		},
+		Taildrop: TaildropConfig{Enabled: true},
+		CLI:      CLIConfig{Timeout: 5 * time.Second},
+		Tuning: Tuning{
+			BatchChangeDelay:               800 * time.Millisecond,
+			NodeMapSessionBufferedChanSize: 30,
+			NodeStoreBatchSize:             defaultNodeStoreBatchSize,
+			NodeStoreBatchTimeout:          500 * time.Millisecond,
+		},
 	}
-
-	expiry, err := model.ParseDuration(value)
-	if err != nil {
-		log.Warn().
-			Str("value", value).
-			Msg("failed to parse node.expiry, defaulting to no expiry")
-
-		return 0
-	}
-
-	return time.Duration(expiry)
 }
 
-// validateServerConfig is the test-only entry point. Production code
-// goes through LoadServerConfig, which lifts the validator to span
-// every config-time sub-builder so the operator sees every problem
-// in one render.
-func validateServerConfig() error {
+// Validate reports every rule c breaks, in one error. It reads no file and
+// logs nothing; [Config.Warnings] holds the advisories.
+func (c *Config) Validate() error {
 	v := &configValidator{}
-	validateServerConfigInto(v)
-
-	return v.Err()
-}
-
-var boolConfigKeys = []string{
-	"auto_update.enabled",
-	"cli.insecure",
-	"database.debug",
-	"database.gorm.parameterized_queries",
-	"database.gorm.skip_err_record_not_found",
-	"database.sqlite.write_ahead_log",
-	"derp.auto_update_enabled",
-	"derp.server.automatically_add_embedded_derp_region",
-	"derp.server.enabled",
-	"derp.server.verify_clients",
-	"disable_check_updates",
-	"dns.certificates.enabled",
-	"dns.magic_dns",
-	"dns.override_local_dns",
-	"logtail.enabled",
-	"oidc.email_verified_required",
-	"oidc.only_start_if_oidc_is_available",
-	"oidc.pkce.enabled",
-	"oidc.use_expiry_from_token",
-	"taildrop.enabled",
-}
-
-// Validate raw values before GetBool can discard conversion errors.
-func validateBoolConfig(v *configValidator, keys ...string) {
-	for _, key := range keys {
-		value := src.Get(key)
-		if value == nil {
-			continue
-		}
-
-		_, err := strconv.ParseBool(fmt.Sprint(value))
-		if err != nil {
-			v.Add(&ConfigError{
-				Reason:  key + " is not a boolean",
-				Current: []KV{{key, value}},
-				Hint:    "use true or false",
-				Cause:   err,
-			})
-		}
-	}
-}
-
-// validateServerConfigInto runs every config-level validation rule
-// against the provided validator. Caller owns the validator and is
-// responsible for inspecting v.Err() once all sub-builders have run.
-func validateServerConfigInto(v *configValidator) {
-	validateBoolConfig(v, boolConfigKeys...)
 
 	// OIDC is activated by setting oidc.issuer (see app.go), not by a
 	// dedicated oidc.enabled key. Gate validation on the real activation
 	// condition so a misconfiguration fails at startup.
-	if src.String("oidc.issuer") != "" {
-		err := validateOIDCConfig()
+	if c.OIDC.Issuer != "" {
+		err := c.OIDC.validate()
 		if err != nil {
 			v.Add(&ConfigError{
 				Reason: "OIDC configuration is invalid",
@@ -768,32 +835,32 @@ func validateServerConfigInto(v *configValidator) {
 		}
 	}
 
-	if src.IsSet("dns.extra_records") && src.IsSet("dns.extra_records_path") {
+	if len(c.DNSConfig.ExtraRecords) > 0 && c.DNSConfig.ExtraRecordsPath != "" {
 		v.Add(&ConfigError{
 			Reason: "dns.extra_records and dns.extra_records_path are mutually exclusive",
 			Current: []KV{
-				{"dns.extra_records_path", src.String("dns.extra_records_path")},
+				{"dns.extra_records_path", c.DNSConfig.ExtraRecordsPath},
 				{"dns.extra_records", "<inline records>"},
 			},
 			Hint: "keep one (a path is recommended for production); remove the other",
 		})
 	}
 
-	if src.String("tls.acme.hostname") != "" &&
-		(src.String("tls.cert_path") != "" || src.String("tls.key_path") != "") {
+	acme := c.TLS.ACME
+	if acme.Hostname != "" && (c.TLS.CertPath != "" || c.TLS.KeyPath != "") {
 		v.Add(&ConfigError{
 			Reason:  "tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
-			Current: []KV{{"tls.acme.hostname", src.String("tls.acme.hostname")}},
+			Current: []KV{{"tls.acme.hostname", acme.Hostname}},
 			ConflictsWith: []KV{
-				{"tls.cert_path", src.String("tls.cert_path")},
-				{"tls.key_path", src.String("tls.key_path")},
+				{"tls.cert_path", c.TLS.CertPath},
+				{"tls.key_path", c.TLS.KeyPath},
 			},
 			Hint: "choose one TLS strategy and unset the other (Let's Encrypt OR a static keypair)",
 			See:  "https://headscale.net/stable/ref/tls/",
 		})
 	}
 
-	if src.String("noise.private_key_path") == "" {
+	if c.Noise.PrivateKeyPath == "" {
 		v.Add(&ConfigError{
 			Reason: "noise.private_key_path is required",
 			Hint:   "set noise.private_key_path: /var/lib/headscale/noise_private.key (or any writable path)",
@@ -801,17 +868,9 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	if src.String("tls.acme.hostname") != "" &&
-		ACMEChallenge(src.String("tls.acme.challenge_type")) == TLSALPN01ChallengeType &&
-		!strings.HasSuffix(src.String("listen_addr"), ":443") {
-		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
-		log.Warn().
-			Msg("Warning: when using tls.acme.hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
-	}
+	c.validateListenerCollisions(v)
 
-	validateListenerCollisions(v)
-
-	if ct := ACMEChallenge(src.String("tls.acme.challenge_type")); ct != HTTP01ChallengeType &&
+	if ct := acme.ChallengeType; ct != HTTP01ChallengeType &&
 		ct != TLSALPN01ChallengeType && ct != DNS01ChallengeType {
 		v.Add(&ConfigError{
 			Reason:  "tls.acme.challenge_type has an unsupported value",
@@ -821,11 +880,10 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	serverURL := src.String("server_url")
-	if !strings.HasPrefix(serverURL, "http://") && !strings.HasPrefix(serverURL, "https://") {
+	if !strings.HasPrefix(c.ServerURL, "http://") && !strings.HasPrefix(c.ServerURL, "https://") {
 		v.Add(&ConfigError{
 			Reason:  "server_url is missing a scheme",
-			Current: []KV{{"server_url", serverURL}},
+			Current: []KV{{"server_url", c.ServerURL}},
 			Hint:    "prefix the URL with https:// (recommended) or http://",
 		})
 	}
@@ -834,8 +892,7 @@ func validateServerConfigInto(v *configValidator) {
 	// to avoid races
 	minInactivityTimeout := 65 * time.Second
 
-	ephemeralTimeout := src.Duration("node.ephemeral.inactivity_timeout")
-	if ephemeralTimeout <= minInactivityTimeout {
+	if ephemeralTimeout := c.Node.Ephemeral.InactivityTimeout; ephemeralTimeout <= minInactivityTimeout {
 		v.Add(&ConfigError{
 			Reason:  "node.ephemeral.inactivity_timeout is below the minimum",
 			Current: []KV{{"node.ephemeral.inactivity_timeout", ephemeralTimeout.String()}},
@@ -844,47 +901,44 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	if src.Bool("dns.override_local_dns") {
-		if global := src.StringSlice("dns.nameservers.global"); len(global) == 0 {
-			v.Add(&ConfigError{
-				Reason: "dns.nameservers.global is required when dns.override_local_dns is true",
-				Current: []KV{
-					{"dns.override_local_dns", true},
-					{"dns.nameservers.global", "[]"},
-				},
-				Hint: "list at least one upstream nameserver, or set dns.override_local_dns: false",
-				See:  dnsDocsURL,
-			})
-		}
+	if c.DNSConfig.OverrideLocalDNS && len(c.DNSConfig.Nameservers.Global) == 0 {
+		v.Add(&ConfigError{
+			Reason: "dns.nameservers.global is required when dns.override_local_dns is true",
+			Current: []KV{
+				{"dns.override_local_dns", true},
+				{"dns.nameservers.global", "[]"},
+			},
+			Hint: "list at least one upstream nameserver, or set dns.override_local_dns: false",
+			See:  dnsDocsURL,
+		})
 	}
 
 	// Validate HA health probing parameters
-	if haInterval := src.Duration("node.routes.ha.probe_interval"); haInterval > 0 {
-		if haInterval < 2*time.Second {
+	if ha := c.Node.Routes.HA; ha.ProbeInterval > 0 {
+		if ha.ProbeInterval < 2*time.Second {
 			v.Add(&ConfigError{
 				Reason:  "node.routes.ha.probe_interval is below the minimum",
-				Current: []KV{{"node.routes.ha.probe_interval", haInterval.String()}},
+				Current: []KV{{"node.routes.ha.probe_interval", ha.ProbeInterval.String()}},
 				Minimum: "2s",
 				Hint:    "raise the value to at least the minimum",
 			})
 		}
 
-		haTimeout := src.Duration("node.routes.ha.probe_timeout")
-		if haTimeout < 1*time.Second {
+		if ha.ProbeTimeout < 1*time.Second {
 			v.Add(&ConfigError{
 				Reason:  "node.routes.ha.probe_timeout is below the minimum",
-				Current: []KV{{"node.routes.ha.probe_timeout", haTimeout.String()}},
+				Current: []KV{{"node.routes.ha.probe_timeout", ha.ProbeTimeout.String()}},
 				Minimum: "1s",
 				Hint:    "raise the value to at least the minimum",
 			})
 		}
 
-		if haTimeout >= haInterval {
+		if ha.ProbeTimeout >= ha.ProbeInterval {
 			v.Add(&ConfigError{
 				Reason: "node.routes.ha.probe_timeout must be less than node.routes.ha.probe_interval",
 				Current: []KV{
-					{"node.routes.ha.probe_timeout", haTimeout.String()},
-					{"node.routes.ha.probe_interval", haInterval.String()},
+					{"node.routes.ha.probe_timeout", ha.ProbeTimeout.String()},
+					{"node.routes.ha.probe_interval", ha.ProbeInterval.String()},
 				},
 				Hint: "lower probe_timeout below probe_interval (a probe must finish before the next one starts)",
 			})
@@ -892,7 +946,7 @@ func validateServerConfigInto(v *configValidator) {
 	}
 
 	// Validate tuning parameters
-	if size := src.Int("tuning.node_store_batch_size"); size <= 0 {
+	if size := c.Tuning.NodeStoreBatchSize; size <= 0 {
 		v.Add(&ConfigError{
 			Reason:  "tuning.node_store_batch_size must be positive",
 			Current: []KV{{"tuning.node_store_batch_size", size}},
@@ -900,7 +954,7 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	if timeout := src.Duration("tuning.node_store_batch_timeout"); timeout <= 0 {
+	if timeout := c.Tuning.NodeStoreBatchTimeout; timeout <= 0 {
 		v.Add(&ConfigError{
 			Reason:  "tuning.node_store_batch_timeout must be positive",
 			Current: []KV{{"tuning.node_store_batch_timeout", timeout.String()}},
@@ -908,17 +962,35 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	validateDERPConfig(v)
-	validateDatabaseConfig(v)
-	validatePolicyConfig(v)
-	validateMagicDNSConfig(v)
-	validateCertificatesConfig(v)
+	c.validateDERP(v)
+	c.validateDatabase(v)
+	c.validatePolicy(v)
+	c.validateMagicDNS(v)
+	c.validateCertificates(v)
+	c.validatePrefixes(v)
+	c.validateDNSProvider(v)
+
+	// BaseDomain cannot be the same as the server URL.
+	// This is because Tailscale takes over the domain in BaseDomain,
+	// causing the headscale server and DERP to be unreachable.
+	// For Tailscale upstream, the following is true:
+	// - DERP run on their own domains
+	// - Control plane runs on login.tailscale.com/controlplane.tailscale.com
+	// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
+	if base := c.DNSConfig.BaseDomain; base != "" {
+		err := isSafeServerURL(c.ServerURL, base)
+		if err != nil {
+			addServerURLConfigError(v, c.ServerURL, base, err)
+		}
+	}
+
+	return v.Err()
 }
 
-// validatePolicyConfig records a ConfigError for an unknown policy.mode:
+// validatePolicy records a ConfigError for an unknown policy.mode:
 // startup would load no policy at all and allow all traffic.
-func validatePolicyConfig(v *configValidator) {
-	m := PolicyMode(src.String("policy.mode"))
+func (c *Config) validatePolicy(v *configValidator) {
+	m := c.Policy.Mode
 	if m == PolicyModeFile || m == PolicyModeDB {
 		return
 	}
@@ -931,14 +1003,15 @@ func validatePolicyConfig(v *configValidator) {
 	})
 }
 
-// validateDERPConfig records ConfigErrors when the embedded DERP server
-// is enabled without the addresses or paths it needs.
-func validateDERPConfig(v *configValidator) {
-	if !src.Bool("derp.server.enabled") {
+// validateDERP records ConfigErrors when the embedded DERP server is
+// enabled without the addresses or paths it needs.
+func (c *Config) validateDERP(v *configValidator) {
+	server := c.DERP.Server
+	if !server.Enabled {
 		return
 	}
 
-	if src.String("derp.server.stun_listen_addr") == "" {
+	if server.STUNAddr == "" {
 		v.Add(&ConfigError{
 			Reason: "derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
 			Current: []KV{
@@ -950,7 +1023,7 @@ func validateDERPConfig(v *configValidator) {
 		})
 	}
 
-	derpKey, noiseKey := src.String("derp.server.private_key_path"), src.String("noise.private_key_path")
+	derpKey, noiseKey := server.PrivateKeyPath, c.Noise.PrivateKeyPath
 	switch {
 	case derpKey == "":
 		v.Add(&ConfigError{
@@ -975,8 +1048,7 @@ func validateDERPConfig(v *configValidator) {
 		})
 	}
 
-	if !src.Bool("derp.server.automatically_add_embedded_derp_region") &&
-		len(src.StringSlice("derp.paths")) == 0 {
+	if !server.AutomaticallyAddEmbeddedDerpRegion && len(c.DERP.Paths) == 0 {
 		v.Add(&ConfigError{
 			Reason: "derp.paths is required when derp.server.automatically_add_embedded_derp_region is false",
 			Current: []KV{
@@ -988,10 +1060,10 @@ func validateDERPConfig(v *configValidator) {
 	}
 }
 
-// validateDatabaseConfig records a ConfigError when database.type is not
-// one of the supported backends.
-func validateDatabaseConfig(v *configValidator) {
-	t := DatabaseType(src.String("database.type"))
+// validateDatabase records a ConfigError when database.type is not one of
+// the supported backends.
+func (c *Config) validateDatabase(v *configValidator) {
+	t := c.Database.Type
 	switch t {
 	case DatabaseSqlite, DatabasePostgres, "sqlite":
 		return
@@ -1006,14 +1078,10 @@ func validateDatabaseConfig(v *configValidator) {
 	})
 }
 
-// validateMagicDNSConfig records a ConfigError when MagicDNS is enabled
-// without a base_domain.
-func validateMagicDNSConfig(v *configValidator) {
-	if !src.Bool("dns.magic_dns") {
-		return
-	}
-
-	if src.String("dns.base_domain") == "" {
+// validateMagicDNS records a ConfigError when MagicDNS is enabled without a
+// base_domain.
+func (c *Config) validateMagicDNS(v *configValidator) {
+	if c.DNSConfig.MagicDNS && c.DNSConfig.BaseDomain == "" {
 		v.Add(&ConfigError{
 			Reason: "dns.base_domain is required when dns.magic_dns is true",
 			Current: []KV{
@@ -1026,11 +1094,12 @@ func validateMagicDNSConfig(v *configValidator) {
 	}
 }
 
-// validateCertificatesConfig records ConfigErrors when node certificates
-// are enabled without what the Tailscale client needs: a MagicDNS name
-// it can match exactly, and a provider to publish the challenge.
-func validateCertificatesConfig(v *configValidator) {
-	if timeout := src.Duration("dns.challenge.propagation_timeout"); timeout < 0 {
+// validateCertificates records ConfigErrors when node certificates are
+// enabled without what the Tailscale client needs: a MagicDNS name it can
+// match exactly, and a provider to publish the challenge.
+func (c *Config) validateCertificates(v *configValidator) {
+	ch := c.DNSConfig.Challenge
+	if timeout := ch.PropagationTimeout; timeout < 0 {
 		v.Add(&ConfigError{
 			Reason:  "dns.challenge.propagation_timeout must not be negative",
 			Current: []KV{{"dns.challenge.propagation_timeout", timeout.String()}},
@@ -1038,11 +1107,11 @@ func validateCertificatesConfig(v *configValidator) {
 		})
 	}
 
-	enabled := src.Bool("dns.certificates.enabled")
-	challengeType := ACMEChallenge(src.String("tls.acme.challenge_type"))
-	ownDNS01 := src.String("tls.acme.hostname") != "" && challengeType == DNS01ChallengeType
+	enabled := c.DNSConfig.Certificates.Enabled
+	challengeType := c.TLS.ACME.ChallengeType
+	ownDNS01 := c.TLS.ACME.Hostname != "" && challengeType == DNS01ChallengeType
 
-	if (enabled || ownDNS01) && src.String("dns.challenge.provider.name") == "" {
+	if name, ok := ch.providerName(); (enabled || ownDNS01) && ok && name == "" && ch.Provider == nil {
 		v.Add(&ConfigError{
 			Reason:  "dns.certificates and tls.acme DNS-01 require dns.challenge.provider",
 			Current: []KV{{"dns.certificates.enabled", enabled}, {"tls.acme.challenge_type", string(challengeType)}},
@@ -1056,7 +1125,7 @@ func validateCertificatesConfig(v *configValidator) {
 		return
 	}
 
-	if !src.Bool("dns.magic_dns") {
+	if !c.DNSConfig.MagicDNS {
 		v.Add(&ConfigError{
 			Reason:  "dns.certificates requires dns.magic_dns",
 			Current: []KV{{"dns.certificates.enabled", true}, {"dns.magic_dns", false}},
@@ -1065,7 +1134,7 @@ func validateCertificatesConfig(v *configValidator) {
 		})
 	}
 
-	base := strings.TrimSuffix(src.String("dns.base_domain"), ".")
+	base := strings.TrimSuffix(c.DNSConfig.BaseDomain, ".")
 	if base != strings.ToLower(base) || dnsname.ValidHostname(base) != nil {
 		v.Add(&ConfigError{
 			Reason:  "dns.base_domain must be a lowercase DNS name for dns.certificates",
@@ -1075,7 +1144,7 @@ func validateCertificatesConfig(v *configValidator) {
 		})
 	}
 
-	zone := strings.TrimSuffix(src.String("dns.certificates.zone"), ".")
+	zone := strings.TrimSuffix(c.DNSConfig.Certificates.Zone, ".")
 	if zone != "" && base != zone && !strings.HasSuffix(base, "."+zone) {
 		v.Add(&ConfigError{
 			Reason:  "dns.base_domain is not inside dns.certificates.zone",
@@ -1086,200 +1155,145 @@ func validateCertificatesConfig(v *configValidator) {
 	}
 }
 
-// dnsChallengeConfig reads dns.challenge and builds the provider it names,
-// its secrets unread, only to report bad settings; startup builds the one
-// it uses.
-func dnsChallengeConfig() (DNSChallengeConfig, error) {
-	cfg := DNSChallengeConfig{
-		PropagationTimeout: src.Duration("dns.challenge.propagation_timeout"),
-		Resolvers:          src.StringSlice("dns.challenge.resolvers"),
-		ProviderSettings:   src.StringMap("dns.challenge.provider"),
+// validatePrefixes records ConfigErrors for a catch-all trusted proxy, no
+// node range, and no allocation strategy.
+func (c *Config) validatePrefixes(v *configValidator) {
+	// 0.0.0.0/0 and ::/0 defeat the peer-trust gate and almost always
+	// indicate misconfiguration.
+	for i, p := range c.TrustedProxies {
+		if p.Bits() == 0 {
+			err := fmt.Errorf("trusted_proxies[%d] %q: %w", i, p.String(), errTrustedProxyZeroRange)
+			v.Add(&ConfigError{
+				Reason:  "trusted_proxies contains an invalid CIDR",
+				Current: []KV{{"trusted_proxies", c.TrustedProxies}},
+				Detail:  err.Error(),
+				Hint:    "use specific proxy CIDRs; catch-all ranges are not allowed",
+				Cause:   err,
+			})
+
+			break
+		}
 	}
 
-	if cfg.ProviderName() == "" {
-		return cfg, nil
+	if c.Prefixes.V4 == nil && c.Prefixes.V6 == nil {
+		v.Add(&ConfigError{
+			Reason: "no IP prefix configured for the tailnet",
+			Current: []KV{
+				{"prefixes.v4", ""},
+				{"prefixes.v6", ""},
+			},
+			Hint:  `set at least one of prefixes.v4 (default: "100.64.0.0/10") or prefixes.v6 (default: "fd7a:115c:a1e0::/48")`,
+			Cause: ErrNoPrefixConfigured,
+		})
 	}
 
-	provider, err := cfg.NewProvider(keepSecret)
-	if err != nil {
-		return cfg, err
+	switch alloc := c.Prefixes.Allocation; alloc {
+	case IPAllocationStrategySequential, IPAllocationStrategyRandom:
+	default:
+		v.Add(&ConfigError{
+			Reason:  "prefixes.allocation has an unsupported value",
+			Current: []KV{{"prefixes.allocation", string(alloc)}},
+			Allowed: alloc.Allowed(),
+			Hint:    "pick one of the allowed values; sequential is the default",
+			Cause:   ErrInvalidAllocationStrategy,
+		})
+	}
+}
+
+// validateDNSProvider builds the provider dns.challenge names, its secrets
+// unread, only to report bad settings; startup builds the one it uses. A
+// Go-only provider is used as it is.
+func (c *Config) validateDNSProvider(v *configValidator) {
+	ch := c.DNSConfig.Challenge
+	if ch.Provider != nil {
+		return
 	}
 
+	name, ok := ch.providerName()
+	if !ok {
+		v.Add(&ConfigError{
+			Reason:  "dns.challenge.provider.name must be a provider name",
+			Allowed: hsdns.ProviderNames(),
+			See:     dnsDocsURL,
+		})
+
+		return
+	}
+
+	if name == "" {
+		return
+	}
+
+	provider, err := ch.NewProvider(keepSecret)
 	// Only node certificates let a client pick what is published; a record
 	// shared by headscale's own certificate alone is harmless.
-	if iso, ok := provider.(hsdns.Isolator); ok && src.Bool("dns.certificates.enabled") {
+	if iso, ok := provider.(hsdns.Isolator); ok && err == nil && c.DNSConfig.Certificates.Enabled {
 		err = iso.CheckIsolation()
 		if err != nil {
-			return cfg, fmt.Errorf("%w for %s: %w", hsdns.ErrProviderConfig, cfg.ProviderName(), err)
+			err = fmt.Errorf("%w for %s: %w", hsdns.ErrProviderConfig, ch.ProviderName(), err)
 		}
 	}
 
-	return cfg, nil
+	if err == nil {
+		return
+	}
+
+	// The provider names only help when the name is what is wrong.
+	var allowed []string
+	if errors.Is(err, hsdns.ErrUnknownProvider) {
+		allowed = hsdns.ProviderNames()
+	}
+
+	v.Add(&ConfigError{
+		Reason:  "dns.challenge.provider is invalid",
+		Current: []KV{{"dns.challenge.provider.name", ch.ProviderName()}},
+		Detail:  err.Error(),
+		Allowed: allowed,
+		Hint:    `check the provider name and its settings; any string setting can be read from a file with "file:<path>"`,
+		See:     dnsDocsURL,
+		Cause:   err,
+	})
 }
 
-func tlsConfig() TLSConfig {
-	return TLSConfig{
-		CertPath: src.String("tls.cert_path"),
-		KeyPath:  src.String("tls.key_path"),
-		ACME: ACMEConfig{
-			Hostname:      src.String("tls.acme.hostname"),
-			ChallengeType: ACMEChallenge(src.String("tls.acme.challenge_type")),
-			HTTPListen:    ListenAddr(src.String("tls.acme.http_listen")),
-			URL:           HTTPURL(src.String("tls.acme.url")),
-			Email:         src.String("tls.acme.email"),
-			CacheDir:      src.String("tls.acme.cache_dir"),
-		},
+// Warnings are advisories about c that do not stop headscale.
+func (c *Config) Warnings() []string {
+	var warnings []string
+
+	if c.TLS.ACME.Hostname != "" && c.TLS.ACME.ChallengeType == TLSALPN01ChallengeType &&
+		!strings.HasSuffix(string(c.Addr), ":443") {
+		// Only a warning: something in front of headscale may redirect the
+		// traffic (e.g. an iptables rule).
+		warnings = append(warnings, "Warning: when using tls.acme.hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
+
+	if v4, v6 := c.Prefixes.V4, c.Prefixes.V6; (v4 != nil && outsideRange(*v4, tsaddr.CGNATRange())) ||
+		(v6 != nil && outsideRange(*v6, tsaddr.TailscaleULARange())) {
+		warnings = append(warnings, bannerText([]string{
+			"You have overridden the default Headscale IP prefixes",
+			"with a range outside of the standard CGNAT and/or ULA",
+			"ranges. This is NOT a supported configuration.",
+			"",
+			"Using subsets of the default ranges (100.64.0.0/10 for",
+			"IPv4, fd7a:115c:a1e0::/48 for IPv6) is fine. Using",
+			"ranges outside of these will cause undefined behaviour",
+			"as the Tailscale client is NOT designed to operate on",
+			"any other ranges.",
+			"",
+			"Please revert your prefixes to subsets of the standard",
+			"ranges as described in the example configuration.",
+			"",
+			"Any issue raised using a range outside of the",
+			"supported range will be labelled as wontfix",
+			"and closed.",
+		}))
+	}
+
+	return append(warnings, c.DNSConfig.nameserverWarnings()...)
 }
 
-func derpConfig() DERPConfig {
-	urlStrs := src.StringSlice("derp.urls")
-
-	urls := make([]HTTPURL, 0, len(urlStrs))
-	for _, urlStr := range urlStrs {
-		_, err := url.Parse(urlStr)
-		if err != nil {
-			log.Error().
-				Caller().
-				Str("url", urlStr).
-				Err(err).
-				Msg("Failed to parse url, ignoring...")
-
-			continue
-		}
-
-		urls = append(urls, HTTPURL(urlStr))
-	}
-
-	return DERPConfig{
-		Server: DERPServerConfig{
-			Enabled:        src.Bool("derp.server.enabled"),
-			RegionID:       tailcfg.DERPRegionID(src.Int64("derp.server.region_id")),
-			RegionCode:     src.String("derp.server.region_code"),
-			RegionName:     src.String("derp.server.region_name"),
-			VerifyClients:  src.Bool("derp.server.verify_clients"),
-			STUNAddr:       ListenAddr(src.String("derp.server.stun_listen_addr")),
-			PrivateKeyPath: src.String("derp.server.private_key_path"),
-			IPv4:           src.String("derp.server.ipv4"),
-			IPv6:           src.String("derp.server.ipv6"),
-			AutomaticallyAddEmbeddedDerpRegion: src.Bool(
-				"derp.server.automatically_add_embedded_derp_region",
-			),
-		},
-		URLs:            urls,
-		Paths:           src.StringSlice("derp.paths"),
-		AutoUpdate:      src.Bool("derp.auto_update_enabled"),
-		UpdateFrequency: src.Duration("derp.update_frequency"),
-	}
-}
-
-func logtailConfig() LogTailConfig {
-	enabled := src.Bool("logtail.enabled")
-
-	return LogTailConfig{
-		Enabled: enabled,
-	}
-}
-
-func policyConfig() PolicyConfig {
-	policyPath := src.String("policy.path")
-	policyMode := src.String("policy.mode")
-
-	return PolicyConfig{
-		Path: policyPath,
-		Mode: PolicyMode(policyMode),
-	}
-}
-
-// logConfig keeps log.level as written; [LogLevel.Zerolog] reads one it
-// does not know as debug.
-func logConfig() LogConfig {
-	logFormatOpt := LogFormat(src.String("log.format"))
-
-	var logFormat LogFormat
-
-	switch logFormatOpt {
-	case JSONLogFormat:
-		logFormat = JSONLogFormat
-	case TextLogFormat:
-		logFormat = TextLogFormat
-	case "":
-		logFormat = TextLogFormat
-	default:
-		log.Error().
-			Caller().
-			Str("func", "GetLogConfig").
-			Msgf("Could not parse log format: %s. Valid choices are 'json' or 'text'", logFormatOpt)
-	}
-
-	return LogConfig{
-		Level:  LogLevel(src.String("log.level")),
-		Format: logFormat,
-	}
-}
-
-func databaseConfig() DatabaseConfig {
-	return DatabaseConfig{
-		Type:  DatabaseType(src.String("database.type")),
-		Debug: src.Bool("database.debug"),
-		Gorm: GormConfig{
-			SkipErrRecordNotFound: src.Bool("database.gorm.skip_err_record_not_found"),
-			SlowThreshold:         src.Int("database.gorm.slow_threshold"),
-			ParameterizedQueries:  src.Bool("database.gorm.parameterized_queries"),
-		},
-		Sqlite: SqliteConfig{
-			Path:              src.String("database.sqlite.path"),
-			WriteAheadLog:     src.Bool("database.sqlite.write_ahead_log"),
-			WALAutoCheckPoint: src.Int("database.sqlite.wal_autocheckpoint"),
-		},
-		Postgres: PostgresConfig{
-			Host:               src.String("database.postgres.host"),
-			Port:               src.Int("database.postgres.port"),
-			Name:               src.String("database.postgres.name"),
-			User:               src.String("database.postgres.user"),
-			Pass:               Secret(src.String("database.postgres.pass")),
-			Ssl:                src.String("database.postgres.ssl"),
-			MaxOpenConnections: src.Int("database.postgres.max_open_conns"),
-			MaxIdleConnections: src.Int("database.postgres.max_idle_conns"),
-			ConnMaxIdleTimeSecs: src.Int(
-				"database.postgres.conn_max_idle_time_secs",
-			),
-		},
-	}
-}
-
-func dns() (DNSConfig, error) {
-	var dns DNSConfig
-
-	// TODO: Use this instead of manually getting settings when
-	// UnmarshalKey is compatible with Environment Variables.
-	// err := src.UnmarshalKey("dns", &dns)
-	// if err != nil {
-	// 	return DNSConfig{}, fmt.Errorf("unmarshalling dns config: %w", err)
-	// }
-
-	dns.MagicDNS = src.Bool("dns.magic_dns")
-	dns.BaseDomain = src.String("dns.base_domain")
-	dns.OverrideLocalDNS = src.Bool("dns.override_local_dns")
-	dns.Nameservers.Global = src.StringSlice("dns.nameservers.global")
-	dns.Nameservers.Split = src.StringMapStringSlice("dns.nameservers.split")
-	dns.SearchDomains = src.StringSlice("dns.search_domains")
-	dns.ExtraRecordsPath = src.String("dns.extra_records_path")
-	dns.Certificates.Enabled = src.Bool("dns.certificates.enabled")
-	dns.Certificates.Zone = src.String("dns.certificates.zone")
-
-	if src.IsSet("dns.extra_records") {
-		var extraRecords []tailcfg.DNSRecord
-
-		err := src.UnmarshalKey("dns.extra_records", &extraRecords)
-		if err != nil {
-			return DNSConfig{}, fmt.Errorf("unmarshalling dns extra records: %w", err)
-		}
-
-		dns.ExtraRecords = extraRecords
-	}
-
-	return dns, nil
+// outsideRange reports whether p holds addresses outside r.
+func outsideRange(p, r netip.Prefix) bool {
+	return p.Bits() < r.Bits() || !r.Contains(p.Addr())
 }
 
 // parseResolvers converts nameserver strings into DNS resolvers: an IP is a
@@ -1312,7 +1326,7 @@ func (d DNSConfig) nameserverWarnings() []string {
 	check := func(key string, nameservers []string) {
 		for _, ns := range nameservers {
 			if !validNameserver(ns) {
-				warnings = append(warnings, fmt.Sprintf("invalid nameserver %q in %s, ignoring", ns, key))
+				warnings = append(warnings, fmt.Sprintf("invalid nameserver %q in %s, ignoring", redactedURL(ns), key))
 			}
 		}
 	}
@@ -1381,16 +1395,12 @@ func (c *Config) TailcfgDNSConfig() *tailcfg.DNSConfig {
 	// Clients route reverse lookups for the Tailscale ranges themselves
 	// (magicDNSRootDomains in tailscale.com/ipn/ipnlocal) and SaaS sends
 	// no reverse routes, so only a prefix outside those ranges needs them.
-	outside := func(p, r netip.Prefix) bool {
-		return p.Bits() < r.Bits() || !r.Contains(p.Addr())
-	}
-
 	var reverse []dnsname.FQDN
-	if v4 := c.Prefixes.V4; v4 != nil && outside(*v4, tsaddr.CGNATRange()) {
+	if v4 := c.Prefixes.V4; v4 != nil && outsideRange(*v4, tsaddr.CGNATRange()) {
 		reverse = append(reverse, util.GenerateIPv4DNSRootDomain(*v4)...)
 	}
 
-	if v6 := c.Prefixes.V6; v6 != nil && outside(*v6, tsaddr.TailscaleULARange()) {
+	if v6 := c.Prefixes.V6; v6 != nil && outsideRange(*v6, tsaddr.TailscaleULARange()) {
 		reverse = append(reverse, util.GenerateIPv6DNSRootDomain(*v6)...)
 	}
 
@@ -1412,10 +1422,9 @@ func (c *Config) TailcfgDNSConfig() *tailcfg.DNSConfig {
 	return cfg
 }
 
-// warnBanner prints a highly visible warning banner to the log output.
-// It wraps the provided lines in an ASCII-art box with a "Warning!" header.
-// This is intended for critical configuration issues that users must not ignore.
-func warnBanner(lines []string) {
+// bannerText wraps lines in an ASCII-art box with a "Warning!" header, for
+// critical configuration issues that users must not ignore.
+func bannerText(lines []string) string {
 	var b strings.Builder
 
 	b.WriteString("\n")
@@ -1438,361 +1447,56 @@ func warnBanner(lines []string) {
 	b.WriteString("###                                                          ###\n")
 	b.WriteString("################################################################")
 
-	log.Warn().Msg(b.String())
+	return b.String()
 }
 
-func parsePrefixConfig(key string, standardRange netip.Prefix, family string) (*netip.Prefix, bool, error) {
-	s := src.String(key)
-
-	if s == "" {
-		return nil, false, nil
-	}
-
-	prefix, err := netip.ParsePrefix(s)
-	if err != nil {
-		return nil, false, fmt.Errorf("parsing %s prefix from config: %w", family, err)
-	}
-
-	builder := netipx.IPSetBuilder{}
-	builder.AddPrefix(standardRange)
-
-	ipSet, _ := builder.IPSet()
-
-	return &prefix, !ipSet.ContainsPrefix(prefix), nil
-}
-
-// trustedProxies rejects 0.0.0.0/0 and ::/0 because they defeat the
-// peer-trust gate and almost always indicate misconfiguration.
-func trustedProxies() ([]netip.Prefix, error) {
-	raw := src.StringSlice("trusted_proxies")
-	if len(raw) == 0 {
-		return nil, nil
-	}
-
-	out := make([]netip.Prefix, 0, len(raw))
-	for i, s := range raw {
-		p, err := netip.ParsePrefix(s)
-		if err != nil {
-			return nil, fmt.Errorf("trusted_proxies[%d] %q: %w", i, s, err)
-		}
-
-		if p.Bits() == 0 {
-			return nil, fmt.Errorf("trusted_proxies[%d] %q: %w", i, s, errTrustedProxyZeroRange)
-		}
-
-		out = append(out, p.Masked())
-	}
-
-	return out, nil
-}
-
-// LoadCLIConfig returns the needed configuration for the CLI client
-// of Headscale to connect to a Headscale server.
+// LoadCLIConfig decodes the configuration [LoadConfig] loaded, for client
+// commands, which need no server rule to hold.
 func LoadCLIConfig() (*Config, error) {
 	if src == nil {
 		return nil, errConfigNotLoaded
 	}
 
-	v := &configValidator{}
-	validateBoolConfig(v, "cli.insecure", "disable_check_updates")
-
-	err := v.Err()
+	cfg, err := src.decode()
 	if err != nil {
 		return nil, err
 	}
 
-	logConfig := logConfig()
-	zerolog.SetGlobalLevel(logConfig.Level.Zerolog())
+	zerolog.SetGlobalLevel(cfg.Log.Level.Zerolog())
 
-	return &Config{
-		DisableUpdateCheck: src.Bool("disable_check_updates"),
-		UnixSocket:         src.String("unix_socket"),
-		CLI: CLIConfig{
-			Address:  src.String("cli.address"),
-			APIKey:   Secret(src.String("cli.api_key")),
-			Timeout:  src.Duration("cli.timeout"),
-			Insecure: src.Bool("cli.insecure"),
-		},
-		Log: logConfig,
-	}, nil
+	return cfg, nil
 }
 
-// LoadServerConfig returns the full Headscale configuration to host a
-// Headscale server. It reads no file: secret; each consumer reads its own.
+// LoadServerConfig decodes the configuration [LoadConfig] loaded and, when
+// every value decoded, validates it and logs its warnings. It reads no
+// file: secret; each consumer reads its own.
 func LoadServerConfig() (*Config, error) {
 	if src == nil {
 		return nil, errConfigNotLoaded
 	}
 
-	v := &configValidator{}
-	validateServerConfigInto(v)
-
-	logConfig := logConfig()
-	zerolog.SetGlobalLevel(logConfig.Level.Zerolog())
-
-	prefix4, v4NonStandard, err := parsePrefixConfig("prefixes.v4", tsaddr.CGNATRange(), "IPv4")
-	if err != nil {
-		v.Add(&ConfigError{
-			Reason:  "prefixes.v4 is not a valid CIDR",
-			Current: []KV{{"prefixes.v4", src.String("prefixes.v4")}},
-			Detail:  err.Error(),
-			Hint:    `use CIDR form, e.g. "100.64.0.0/10" (CGNAT, headscale default)`,
-			Cause:   err,
-		})
-	}
-
-	prefix6, v6NonStandard, err := parsePrefixConfig("prefixes.v6", tsaddr.TailscaleULARange(), "IPv6")
-	if err != nil {
-		v.Add(&ConfigError{
-			Reason:  "prefixes.v6 is not a valid CIDR",
-			Current: []KV{{"prefixes.v6", src.String("prefixes.v6")}},
-			Detail:  err.Error(),
-			Hint:    `use CIDR form, e.g. "fd7a:115c:a1e0::/48" (Tailscale ULA, headscale default)`,
-			Cause:   err,
-		})
-	}
-
-	trusted, err := trustedProxies()
-	if err != nil {
-		v.Add(&ConfigError{
-			Reason:  "trusted_proxies contains an invalid CIDR",
-			Current: []KV{{"trusted_proxies", src.StringSlice("trusted_proxies")}},
-			Detail:  err.Error(),
-			Hint:    "use specific proxy CIDRs; catch-all ranges are not allowed",
-			Cause:   err,
-		})
-	}
-
-	if prefix4 == nil && prefix6 == nil {
-		v.Add(&ConfigError{
-			Reason: "no IP prefix configured for the tailnet",
-			Current: []KV{
-				{"prefixes.v4", src.String("prefixes.v4")},
-				{"prefixes.v6", src.String("prefixes.v6")},
-			},
-			Hint:  `set at least one of prefixes.v4 (default: "100.64.0.0/10") or prefixes.v6 (default: "fd7a:115c:a1e0::/48")`,
-			Cause: ErrNoPrefixConfigured,
-		})
-	}
-
-	if v4NonStandard || v6NonStandard {
-		warnBanner([]string{
-			"You have overridden the default Headscale IP prefixes",
-			"with a range outside of the standard CGNAT and/or ULA",
-			"ranges. This is NOT a supported configuration.",
-			"",
-			"Using subsets of the default ranges (100.64.0.0/10 for",
-			"IPv4, fd7a:115c:a1e0::/48 for IPv6) is fine. Using",
-			"ranges outside of these will cause undefined behaviour",
-			"as the Tailscale client is NOT designed to operate on",
-			"any other ranges.",
-			"",
-			"Please revert your prefixes to subsets of the standard",
-			"ranges as described in the example configuration.",
-			"",
-			"Any issue raised using a range outside of the",
-			"supported range will be labelled as wontfix",
-			"and closed.",
-		})
-	}
-
-	allocStr := src.String("prefixes.allocation")
-
-	var alloc IPAllocationStrategy
-
-	switch allocStr {
-	case string(IPAllocationStrategySequential):
-		alloc = IPAllocationStrategySequential
-	case string(IPAllocationStrategyRandom):
-		alloc = IPAllocationStrategyRandom
-	default:
-		v.Add(&ConfigError{
-			Reason:  "prefixes.allocation has an unsupported value",
-			Current: []KV{{"prefixes.allocation", allocStr}},
-			Allowed: []string{
-				string(IPAllocationStrategySequential),
-				string(IPAllocationStrategyRandom),
-			},
-			Hint:  "pick one of the allowed values; sequential is the default",
-			Cause: ErrInvalidAllocationStrategy,
-		})
-	}
-
-	// YAML reads an unquoted 0770 as the integer 504, which cannot be told
-	// apart from a literal 504, so only a string is accepted.
-	socketPermRaw := src.Get("unix_socket_permission")
-	socketPermStr, _ := socketPermRaw.(string)
-
-	socketPerm, err := util.ParseFileMode(socketPermStr)
-	if err != nil {
-		v.Add(&ConfigError{
-			Reason:  "unix_socket_permission is not a quoted octal file mode",
-			Current: []KV{{"unix_socket_permission", socketPermRaw}},
-			Maximum: `"0777"`,
-			Hint:    `quote the value, e.g. "0770"; unquoted, YAML reads 0770 as the number 504`,
-			Cause:   err,
-		})
-	}
-
-	dnsConfig, err := dns()
-	if err != nil {
-		v.Add(&ConfigError{
-			Reason:  "dns.extra_records cannot be parsed",
-			Current: []KV{{"dns.extra_records", "<inline records>"}},
-			Detail:  err.Error(),
-			Hint:    "check the YAML syntax; see config-example.yaml for the expected shape",
-			Cause:   err,
-		})
-	}
-
-	for _, w := range dnsConfig.nameserverWarnings() {
-		log.Warn().Msg(w)
-	}
-
-	dir := configDir()
-	derpConfig := derpConfig()
-	logTailConfig := logtailConfig()
-
-	dnsChallenge, err := dnsChallengeConfig()
-	if err != nil {
-		// The provider names only help when the name is what is wrong.
-		var allowed []string
-		if errors.Is(err, hsdns.ErrUnknownProvider) {
-			allowed = hsdns.ProviderNames()
-		}
-
-		v.Add(&ConfigError{
-			Reason:  "dns.challenge.provider is invalid",
-			Current: []KV{{"dns.challenge.provider.name", dnsChallenge.ProviderName()}},
-			Detail:  err.Error(),
-			Allowed: allowed,
-			Hint:    `check the provider name and its settings; any string setting can be read from a file with "file:<path>"`,
-			See:     dnsDocsURL,
-			Cause:   err,
-		})
-	}
-
-	dnsConfig.Challenge = dnsChallenge
-	database := databaseConfig()
-
-	serverURL := strings.TrimRight(src.String("server_url"), "/")
-
-	// BaseDomain cannot be the same as the server URL.
-	// This is because Tailscale takes over the domain in BaseDomain,
-	// causing the headscale server and DERP to be unreachable.
-	// For Tailscale upstream, the following is true:
-	// - DERP run on their own domains
-	// - Control plane runs on login.tailscale.com/controlplane.tailscale.com
-	// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
-	if dnsConfig.BaseDomain != "" {
-		err := isSafeServerURL(serverURL, dnsConfig.BaseDomain)
-		if err != nil {
-			addServerURLConfigError(v, serverURL, dnsConfig.BaseDomain, err)
-		}
-	}
-
-	err = v.Err()
+	cfg, err := src.decode()
 	if err != nil {
 		return nil, err
 	}
 
-	return &Config{
-		ServerURL:          serverURL,
-		Addr:               ListenAddr(src.String("listen_addr")),
-		MetricsAddr:        ListenAddr(src.String("metrics_listen_addr")),
-		TrustedProxies:     trusted,
-		ConfigDir:          dir,
-		DisableUpdateCheck: src.Bool("disable_check_updates"),
+	zerolog.SetGlobalLevel(cfg.Log.Level.Zerolog())
 
-		Prefixes: PrefixesConfig{
-			V4:         prefix4,
-			V6:         prefix6,
-			Allocation: alloc,
-		},
+	err = cfg.Validate()
 
-		Noise: NoiseConfig{PrivateKeyPath: src.String("noise.private_key_path")},
+	for _, w := range cfg.Warnings() {
+		log.Warn().Msg(w)
+	}
 
-		DERP: derpConfig,
+	if err != nil {
+		return nil, err
+	}
 
-		Node: NodeConfig{
-			Expiry: resolveNodeExpiry(),
-			Ephemeral: EphemeralConfig{
-				InactivityTimeout: src.Duration("node.ephemeral.inactivity_timeout"),
-			},
-			Routes: RouteConfig{
-				HA: HARouteConfig{
-					ProbeInterval: src.Duration("node.routes.ha.probe_interval"),
-					ProbeTimeout:  src.Duration("node.routes.ha.probe_timeout"),
-				},
-			},
-		},
+	// The server never uses the CLI's key, which may be an unread file:
+	// reference.
+	cfg.CLI.APIKey = ""
 
-		PreAuthKeys: PreAuthKeysConfig{
-			RevokedRetention: src.Duration("preauth_keys.revoked_retention"),
-		},
-
-		Database: database,
-
-		TLS: tlsConfig(),
-
-		DNSConfig: dnsConfig,
-
-		UnixSocket:           src.String("unix_socket"),
-		UnixSocketPermission: FileMode(socketPerm),
-
-		OIDC: OIDCConfig{
-			OnlyStartIfOIDCIsAvailable: src.Bool(
-				"oidc.only_start_if_oidc_is_available",
-			),
-			Issuer:                HTTPURL(src.String("oidc.issuer")),
-			ClientID:              src.String("oidc.client_id"),
-			ClientSecret:          Secret(src.String("oidc.client_secret")),
-			Scope:                 src.StringSlice("oidc.scope"),
-			ExtraParams:           src.StringMapString("oidc.extra_params"),
-			AllowedDomains:        src.StringSlice("oidc.allowed_domains"),
-			AllowedUsers:          src.StringSlice("oidc.allowed_users"),
-			AllowedGroups:         src.StringSlice("oidc.allowed_groups"),
-			EmailVerifiedRequired: src.Bool("oidc.email_verified_required"),
-			UseExpiryFromToken:    src.Bool("oidc.use_expiry_from_token"),
-			PKCE: PKCEConfig{
-				Enabled: src.Bool("oidc.pkce.enabled"),
-				Method:  PKCEMethod(src.String("oidc.pkce.method")),
-			},
-		},
-
-		LogTail: logTailConfig,
-		Taildrop: TaildropConfig{
-			Enabled: src.Bool("taildrop.enabled"),
-		},
-		AutoUpdate: AutoUpdateConfig{
-			Enabled: src.Bool("auto_update.enabled"),
-		},
-
-		Policy: policyConfig(),
-
-		// No APIKey: the server never uses the CLI's key, which may be an
-		// unresolved file: reference here.
-		CLI: CLIConfig{
-			Address:  src.String("cli.address"),
-			Timeout:  src.Duration("cli.timeout"),
-			Insecure: src.Bool("cli.insecure"),
-		},
-
-		Log: logConfig,
-
-		Tuning: Tuning{
-			NotifierSendTimeout: src.Duration("tuning.notifier_send_timeout"),
-			BatchChangeDelay:    src.Duration("tuning.batch_change_delay"),
-			NodeMapSessionBufferedChanSize: src.Int(
-				"tuning.node_mapsession_buffered_chan_size",
-			),
-			BatcherWorkers:          src.Int("tuning.batcher_workers"),
-			RegisterCacheExpiration: src.Duration("tuning.register_cache_expiration"),
-			RegisterCacheMaxEntries: src.Int("tuning.register_cache_max_entries"),
-			NodeStoreBatchSize:      src.Int("tuning.node_store_batch_size"),
-			NodeStoreBatchTimeout:   src.Duration("tuning.node_store_batch_timeout"),
-		},
-	}, nil
+	return cfg, nil
 }
 
 // addServerURLConfigError pushes a structured ConfigError onto v for

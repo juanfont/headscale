@@ -142,7 +142,6 @@
       "Mode": ""
     },
     "Tuning": {
-      "NotifierSendTimeout": 0,
       "BatchChangeDelay": 0,
       "NodeMapSessionBufferedChanSize": 0,
       "BatcherWorkers": 0,
