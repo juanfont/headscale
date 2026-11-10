@@ -2,7 +2,7 @@
 // the 200 path compares headscale's compileSSHPolicy output node-by-node
 // against the captured SSHRules; the non-200 path requires headscale to
 // reject the same input with the captured error body as a substring.
-// Divergences are listed in sshSkipReasons (200) and sshRejectSkipReasons
+// Skips are listed in sshSkipReasons (200) and sshRejectSkipReasons
 // (non-200) with the engine gap each represents.
 
 package v2

@@ -34,9 +34,9 @@ import (
 	tsapi "tailscale.com/client/tailscale/v2"
 )
 
-// knownPolicyTesterDivergences lists checks where headscale's evaluator
+// policyTesterSkipReasons lists checks where headscale's evaluator
 // differs from Tailscale SaaS, keyed <test_id>/<check>.
-var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings here are human-readable notes, not credentials
+var policyTesterSkipReasons = map[string]string{
 	"policytest-accept-fail-proto-icmp-not-allowed/breakdown": testEntryErrors,
 	"policytest-proto-icmp/breakdown":                         testEntryErrors,
 
@@ -66,7 +66,7 @@ func TestPolicyTesterCompat(t *testing.T) {
 		t.Run(c.TestID, func(t *testing.T) {
 			t.Parallel()
 
-			runTesterCompat(t, c, knownPolicyTesterDivergences)
+			runTesterCompat(t, c, policyTesterSkipReasons)
 		})
 	}
 }
