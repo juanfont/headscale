@@ -34,7 +34,7 @@ func advertiseAndApproveRoute(
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_ = c.Direct().SendUpdate(ctx)
+	require.NoError(t, c.Direct().SendUpdate(ctx))
 
 	nodeID := findNodeID(t, srv, c.Name)
 
@@ -106,7 +106,7 @@ func TestHAHealthProbe_UnhealthyFailover(t *testing.T) {
 	nodeID1 := advertiseAndApproveRoute(t, srv, c1, route)
 	nodeID2 := advertiseAndApproveRoute(t, srv, c2, route)
 
-	// Node 1 should be primary (lower ID).
+	// Node 1 should be primary (older session).
 	primaries := srv.State().GetNodePrimaryRoutes(nodeID1)
 	require.Contains(t, primaries, route, "node 1 should be primary initially")
 
@@ -310,7 +310,7 @@ func TestHAHealthProbe_ReconnectDuringProbeKeepsHealthy(t *testing.T) {
 	nodeID1 := advertiseAndApproveRoute(t, srv, c1, route)
 	advertiseAndApproveRoute(t, srv, c2, route)
 
-	// Node 1 is primary (lowest ID, healthy).
+	// Node 1 is primary (older session, healthy).
 	require.Contains(t,
 		srv.State().GetNodePrimaryRoutes(nodeID1), route,
 		"node 1 should be primary initially")
