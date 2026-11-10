@@ -127,8 +127,9 @@ derp:
     # Runs the embedded DERP server. DERP needs TLS, so `server_url` must be
     # `https://`.
     enabled: false
-    # The embedded server's region ID. It replaces a region with the same ID
-    # from the other sources.
+    # The embedded server's region ID; required and positive when
+    # `derp.server.enabled` is true. Tailscale keeps 900-999 for your own
+    # regions. It replaces a region with the same ID from the other sources.
     region_id: 0
     # The region's short code, shown by Tailscale clients.
     region_code: ""
@@ -206,7 +207,11 @@ database:
     # automatically; zero disables automatic checkpoints. Applied only when
     # `database.sqlite.write_ahead_log` is true.
     wal_autocheckpoint: 1000
-  # PostgreSQL, read only when `database.type` is `postgres`.
+  # PostgreSQL, read only when `database.type` is `postgres`. An empty `host`,
+  # `name`, `user`, `pass` or `ssl` leaves that setting to the driver, which
+  # reads the `PG*` environment variables and falls back to the defaults of
+  # libpq, PostgreSQL's client library: a local socket, the OS user, and TLS if
+  # the server offers it.
   postgres:
     # The server's host name or IP, or the directory of its Unix socket (a path
     # starting with `/`).

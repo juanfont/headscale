@@ -271,7 +271,7 @@ in
         type = lib.types.int;
         default = 0;
         description = ''
-          The embedded server's region ID. It replaces a region with the same ID from the other sources.
+          The embedded server's region ID; required and positive when `derp.server.enabled` is true. Tailscale keeps 900-999 for your own regions. It replaces a region with the same ID from the other sources.
         '';
         example = 999;
       };
