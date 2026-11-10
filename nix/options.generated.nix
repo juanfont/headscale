@@ -452,7 +452,7 @@ in
         type = lib.types.bool;
         default = true;
         description = ''
-          Applies `database.sqlite.wal_autocheckpoint` and compacts the database (`VACUUM`) on shutdown. SQLite runs in WAL mode either way; false keeps SQLite's default checkpoint of 1000 frames.
+          Runs SQLite in write-ahead log (WAL) mode, applies `database.sqlite.wal_autocheckpoint` and compacts the database (`VACUUM`) on shutdown. False uses SQLite's rollback journal (`DELETE`) with `synchronous=FULL`, and converts a database left in WAL mode when headscale opens it.
         '';
         example = false;
       };

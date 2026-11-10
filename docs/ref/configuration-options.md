@@ -1456,7 +1456,7 @@ Replaces `db_path` ([removed](#db_path)).
 - **Default:** `true`
 - **Env:** `HEADSCALE_DATABASE_SQLITE_WRITE_AHEAD_LOG`
 
-Applies [`database.sqlite.wal_autocheckpoint`](#database.sqlite.wal_autocheckpoint) and compacts the database (`VACUUM`) on shutdown. SQLite runs in WAL mode either way; false keeps SQLite's default checkpoint of 1000 frames.
+Runs SQLite in write-ahead log (WAL) mode, applies [`database.sqlite.wal_autocheckpoint`](#database.sqlite.wal_autocheckpoint) and compacts the database (`VACUUM`) on shutdown. False uses SQLite's rollback journal (`DELETE`) with `synchronous=FULL`, and converts a database left in WAL mode when headscale opens it.
 
 === "YAML"
 
