@@ -14,22 +14,22 @@ finds its configuration, how to check it, and shows the full example.
 
 ### Value types { #types }
 
-| Type                                                 | Format                                                                                                    | Example                                                   |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| <span id="type-string"></span>string                 | Text. Quote it where YAML would read another type, as in `"0x1F"` or `"null"`.                            | `/var/lib/headscale/db.sqlite`                            |
-| <span id="type-boolean"></span>boolean               | `true` or `false`.                                                                                        | `true`                                                    |
-| <span id="type-integer"></span>integer               | A whole number.                                                                                           | `1024`                                                    |
-| <span id="type-duration"></span>duration             | A number with a unit, `ms`, `s`, `m`, `h`, `d`, `w` or `y`, units combined largest first; `0` needs none. | `1h30m`                                                   |
-| <span id="type-file-mode"></span>file mode           | Octal permission bits, quoted.                                                                            | `"0770"`                                                  |
-| <span id="type-listen-address"></span>listen address | `host:port`. An empty host listens on every address; the port may be `http` or `https`.                   | `0.0.0.0:8080`                                            |
-| <span id="type-URL"></span>URL                       | An absolute `http://` or `https://` URL with a host.                                                      | `https://headscale.example.com`                           |
-| <span id="type-prefix"></span>prefix                 | An IP range in CIDR notation.                                                                             | `100.64.0.0/10`                                           |
-| secret                                               | Text, or `file:<path>` to read it from a file.                                                            | `file:/run/secrets/oidc_client_secret`                    |
-| <span id="type-enum"></span>enum                     | One of the values listed with the key.                                                                    | `sqlite`                                                  |
-| DNS record                                           | An object with `name`, `type` and `value`.                                                                | `{name: grafana.example.com, type: A, value: 100.64.0.3}` |
-| value                                                | Whatever the setting takes: text, a number, a boolean, a list or a map.                                   | `file:/run/secrets/cloudflare`                            |
-| <span id="type-list"></span>list                     | A list. A variable holds it as a JSON array or, unless its values are objects, separated by spaces.       | `[9.9.9.9, 2620:fe::fe]`                                  |
-| <span id="type-map"></span>map                       | Keys you choose, each with a value. A variable holds a JSON object.                                       | `{corp.example.com: [192.0.2.53]}`                        |
+| Type                                                 | Format                                                                                                                         | Example                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| <span id="type-string"></span>string                 | Text. Quote it where YAML would read another type, as in `"0x1F"` or `"null"`.                                                 | `/var/lib/headscale/db.sqlite`                            |
+| <span id="type-boolean"></span>boolean               | `true` or `false`.                                                                                                             | `true`                                                    |
+| <span id="type-integer"></span>integer               | A whole number.                                                                                                                | `1024`                                                    |
+| <span id="type-duration"></span>duration             | A number with a unit, `ms`, `s`, `m`, `h`, `d`, `w` or `y`, units combined largest first; `0` needs none.                      | `1h30m`                                                   |
+| <span id="type-file-mode"></span>file mode           | Octal permission bits, quoted.                                                                                                 | `"0770"`                                                  |
+| <span id="type-listen-address"></span>listen address | `host:port`. An empty host listens on every address; the port may be `http` or `https`.                                        | `0.0.0.0:8080`                                            |
+| <span id="type-URL"></span>URL                       | An absolute `http://` or `https://` URL with a host.                                                                           | `https://headscale.example.com`                           |
+| <span id="type-prefix"></span>prefix                 | An IP range in CIDR notation.                                                                                                  | `100.64.0.0/10`                                           |
+| secret                                               | Text, or `file:<path>` to read it from a file.                                                                                 | `file:/run/secrets/oidc_client_secret`                    |
+| <span id="type-enum"></span>enum                     | One of the values listed with the key.                                                                                         | `sqlite`                                                  |
+| DNS record                                           | An object with `name`, `type` and `value`.                                                                                     | `{name: grafana.example.com, type: A, value: 100.64.0.3}` |
+| value                                                | Whatever the setting takes: text, a number, a boolean, a list or a map.                                                        | `file:/run/secrets/cloudflare`                            |
+| <span id="type-list"></span>list                     | A list. A variable holds it as a JSON array or, unless its values are objects, separated by spaces. An empty item is an error. | `[9.9.9.9, 2620:fe::fe]`                                  |
+| <span id="type-map"></span>map                       | Keys you choose, each with a value. A variable holds a JSON object.                                                            | `{corp.example.com: [192.0.2.53]}`                        |
 
 ### Environment variables { #env }
 
@@ -854,7 +854,7 @@ Runs the embedded DERP server. DERP needs TLS, so [`server_url`](#server_url) mu
 - **Default:** `0`
 - **Env:** `HEADSCALE_DERP_SERVER_REGION_ID`
 
-The embedded server's region ID. It replaces a region with the same ID from the other sources.
+The embedded server's region ID; required and positive when [`derp.server.enabled`](#derp.server.enabled) is true. Tailscale keeps 900-999 for your own regions. It replaces a region with the same ID from the other sources.
 
 === "YAML"
 
@@ -1508,7 +1508,7 @@ The number of WAL frames after which the WAL is checkpointed automatically; zero
 
 ### `database.postgres` { #database.postgres data-toc-label="postgres" }
 
-PostgreSQL, read only when [`database.type`](#database.type) is `postgres`.
+PostgreSQL, read only when [`database.type`](#database.type) is `postgres`. An empty `host`, `name`, `user`, `pass` or `ssl` leaves that setting to the driver, which reads the `PG*` environment variables and falls back to the defaults of libpq, PostgreSQL's client library: a local socket, the OS user, and TLS if the server offers it.
 
 ??? example "All `database.postgres` keys and defaults"
 
