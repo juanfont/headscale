@@ -2,14 +2,19 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -367,4 +372,101 @@ func TestCheckFileCommands(t *testing.T) {
 
 	_, err = runCheck(t, checkDERPMapCmd, writeFile(t, dir, "d.yaml", "{}"))
 	require.ErrorContains(t, err, "d.yaml")
+}
+
+// TestCheckConfigWarnings: the check commands report what the environment
+// warns about, with a valid file and with one that fails, and on a valid
+// file the configuration's advisories, in its log.format and at its
+// log.level.
+func TestCheckConfigWarnings(t *testing.T) {
+	const (
+		unknown  = "unknown environment variable HEADSCALE_BOGUS"
+		removed  = "configuration variable HEADSCALE_DB_TYPE was removed"
+		advisory = "listen_addr should probably end in :443"
+		acme     = "tls:\n  acme:\n    hostname: example.com\n    challenge_type: TLS-ALPN-01\n"
+	)
+
+	t.Setenv("HEADSCALE_BOGUS", "1")
+	t.Setenv("HEADSCALE_DB_TYPE", "sqlite")
+
+	dir := t.TempDir()
+	text := writeServerConfig(t, t.TempDir(), acme)
+	jsonLogs := writeServerConfig(t, t.TempDir(), acme+"log:\n  format: json\n")
+	errorLevel := writeServerConfig(t, t.TempDir(), acme+"log:\n  level: error\n")
+	disabled := writeServerConfig(t, t.TempDir(), acme+"log:\n  level: disabled\n")
+	invalid := writeFile(t, dir, "invalid.yaml", "log:\n  format: json\nbogus_key: 1\n")
+
+	oldLogger, oldLevel := log.Logger, zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	t.Cleanup(func() {
+		log.Logger = oldLogger
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	for _, c := range []*cobra.Command{checkConfigCmd, checkAllCmd} {
+		for _, tt := range []struct {
+			name, file string
+			wantErr    bool
+			// json: the warnings are JSON on the command's stderr, not on
+			// the logger the command started with.
+			json bool
+			// quiet: log.level hides every warning.
+			quiet bool
+		}{
+			{name: "text", file: text},
+			{name: "json", file: jsonLogs, json: true},
+			{name: "invalid", file: invalid, wantErr: true},
+			{name: "level error", file: errorLevel, quiet: true},
+			{name: "level disabled", file: disabled, quiet: true},
+		} {
+			t.Run(c.Name()+" "+tt.name, func(t *testing.T) {
+				var logged, stderr bytes.Buffer
+
+				// As initConfig leaves it for the check commands.
+				log.Logger = zerolog.New(&logged)
+
+				zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+				cmd := &cobra.Command{}
+				cmd.Flags().String("file", tt.file, "")
+				cmd.SetOut(io.Discard)
+				cmd.SetErr(&stderr)
+
+				err := c.RunE(cmd, nil)
+				require.Equal(t, tt.wantErr, err != nil, "%v", err)
+
+				out := logged.String()
+				if tt.quiet {
+					assert.Empty(t, out)
+					assert.Empty(t, stderr.String())
+
+					return
+				}
+
+				if tt.json {
+					assert.Empty(t, out)
+
+					out = stderr.String()
+					for l := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+						var rec struct{ Level, Message string }
+						require.NoError(t, json.Unmarshal([]byte(l), &rec), l)
+						assert.Equal(t, "warn", rec.Level)
+					}
+				} else {
+					assert.Empty(t, stderr.String())
+				}
+
+				assert.Contains(t, out, unknown)
+				assert.Contains(t, out, removed)
+
+				if tt.wantErr {
+					assert.NotContains(t, out, advisory)
+				} else {
+					assert.Contains(t, out, advisory)
+				}
+			})
+		}
+	}
 }

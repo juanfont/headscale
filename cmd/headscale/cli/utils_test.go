@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,17 +67,15 @@ func TestCLIAPIKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfgDir := t.TempDir()
-			require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"),
+			cfgPath := filepath.Join(cfgDir, "config.yaml")
+			require.NoError(t, os.WriteFile(cfgPath,
 				[]byte("unix_socket: "+filepath.Join(cfgDir, "headscale.sock")+"\n"), 0o600))
 			t.Setenv("HEADSCALE_CLI_ADDRESS", tt.address)
 			t.Setenv("HEADSCALE_CLI_API_KEY", tt.apiKey)
-			require.NoError(t, types.LoadConfig(cfgDir, false))
+			useLoaded(t, cfgPath)
 
 			if tt.address != "" && tt.wantErr == "" {
-				cfg, err := types.LoadCLIConfig()
-				require.NoError(t, err)
-
-				got, err := cliAPIKey(cfg.CLI)
+				got, err := cliAPIKey(loaded.Config.CLI)
 				require.NoError(t, err)
 				assert.Equal(t, tt.want, got)
 			}
@@ -100,4 +97,15 @@ func TestCLIAPIKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestServerConfigDropsCLIKey: the server never holds the CLI's key, which
+// may be a file only the CLI can read.
+func TestServerConfigDropsCLIKey(t *testing.T) {
+	dir := t.TempDir()
+	useLoaded(t, writeServerConfig(t, dir, "cli:\n  api_key: file:"+filepath.Join(dir, "missing")+"\n"))
+
+	cfg, err := serverConfig()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.CLI.APIKey)
 }

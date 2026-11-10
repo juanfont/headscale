@@ -1,0 +1,7 @@
+{
+  "warnings": [
+    "configuration variable HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT was removed in 0.30; use HEADSCALE_NODE_EPHEMERAL_INACTIVITY_TIMEOUT",
+    "configuration variable HEADSCALE_PRIVATE_KEY_PATH was removed in 0.23; use HEADSCALE_NOISE_PRIVATE_KEY_PATH"
+  ],
+  "error": "Fatal config error: configuration key private_key_path was removed in 0.23 ($DIR/config.yaml:1:1)\n  hint: use noise.private_key_path\n"
+}

@@ -9,10 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	errTestCustomSentinel = errors.New("custom-sentinel")
-	errTestSentinel       = errors.New("sentinel")
-)
+var errTestCustomSentinel = errors.New("custom-sentinel")
 
 func TestConfigError_Render(t *testing.T) {
 	tests := []struct {
@@ -115,58 +112,14 @@ func TestConfigError_As(t *testing.T) {
 	assert.Equal(t, "test", got.Reason)
 }
 
-func TestConfigValidator_NilWhenEmpty(t *testing.T) {
-	v := &configValidator{}
-	assert.False(t, v.HasErrors())
-	assert.NoError(t, v.Err())
-}
-
-func TestConfigValidator_JoinsWithBlankLine(t *testing.T) {
-	v := &configValidator{}
-	v.Add(&ConfigError{Reason: "first"})
-	v.Add(&ConfigError{Reason: "second"})
-
-	want := "Fatal config error: first\n" +
-		"\n" +
-		"Fatal config error: second\n"
-	assert.Equal(t, want, v.Err().Error())
-}
-
-func TestConfigValidator_JoinedErrorsIs(t *testing.T) {
-	v := &configValidator{}
-	v.Add(&ConfigError{Reason: "first"})
-	v.Add(&ConfigError{Reason: "second", Cause: errTestSentinel})
-	err := v.Err()
-
-	require.ErrorIs(t, err, ErrConfig)
-	require.ErrorIs(t, err, errTestSentinel)
-}
-
-func TestConfigValidator_JoinedErrorsAs(t *testing.T) {
-	v := &configValidator{}
-	v.Add(&ConfigError{Reason: "first"})
-	v.Add(&ConfigError{Reason: "second"})
-	err := v.Err()
-
-	var got *ConfigError
-	require.ErrorAs(t, err, &got)
-	assert.Equal(t, "first", got.Reason)
-}
-
-func TestConfigValidator_AddErrSkipsNil(t *testing.T) {
-	v := &configValidator{}
-	v.AddErr(nil)
-	assert.False(t, v.HasErrors())
-	assert.NoError(t, v.Err())
-}
-
 func TestConfigErrors_WalkAllBranches(t *testing.T) {
-	v := &configValidator{}
-	v.Add(&ConfigError{Reason: "first"})
-	v.Add(&ConfigError{Reason: "second"})
-	v.AddErr(fmt.Errorf("non-config: %w", &ConfigError{Reason: "third"}))
+	err := errors.Join(
+		&ConfigError{Reason: "first"},
+		&ConfigError{Reason: "second"},
+		fmt.Errorf("non-config: %w", &ConfigError{Reason: "third"}),
+	)
 
-	got := ConfigErrors(v.Err())
+	got := ConfigErrors(err)
 	require.Len(t, got, 3)
 	assert.Equal(t, "first", got[0].Reason)
 	assert.Equal(t, "second", got[1].Reason)

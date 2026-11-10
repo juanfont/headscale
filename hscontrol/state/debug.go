@@ -188,11 +188,6 @@ func (s *State) DebugRegistrationCache() map[string]any {
 	}
 }
 
-// DebugConfig returns debug information about the current configuration.
-func (s *State) DebugConfig() *types.Config {
-	return s.cfg
-}
-
 // DebugPolicy returns the current policy data as a string.
 func (s *State) DebugPolicy() (string, error) {
 	switch s.cfg.Policy.Mode {

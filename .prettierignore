@@ -3,5 +3,5 @@ docs/
 
 # Golden fixtures are byte-compared; a formatter must not rewrite them.
 hscontrol/testdata/
-hscontrol/types/testdata/bad/
-hscontrol/types/testdata/compat/
+hscontrol/config/testdata/bad/
+hscontrol/config/testdata/compat/

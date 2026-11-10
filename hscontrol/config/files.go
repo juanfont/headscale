@@ -1,5 +1,6 @@
-// Package config checks headscale's configuration and the files it names.
-// It imports types; types, derp, dns and policy must never import it.
+// Package config loads and validates headscale's configuration and checks
+// the files it names. It imports types; types, derp, dns and policy must
+// never import it.
 package config
 
 import (

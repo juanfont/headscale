@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,10 +27,10 @@ func TestConfigFileLoading(t *testing.T) {
 	require.NoError(t, err)
 
 	// Load example config, it should load without validation errors
-	err = types.LoadConfig(cfgFile, true)
+	l, err := config.Load(cfgFile, true, os.Environ())
 	require.NoError(t, err)
 
-	assertExampleConfig(t)
+	assertExampleConfig(t, l.Config)
 }
 
 func TestConfigLoading(t *testing.T) {
@@ -46,19 +47,18 @@ func TestConfigLoading(t *testing.T) {
 	require.NoError(t, err)
 
 	// Load example config, it should load without validation errors
-	err = types.LoadConfig(tmpDir, false)
+	l, err := config.Load(tmpDir, false, os.Environ())
 	require.NoError(t, err)
 
-	assertExampleConfig(t)
+	assertExampleConfig(t, l.Config)
 }
 
 // assertExampleConfig checks the loaded config-example.yaml was interpreted
 // correctly.
-func assertExampleConfig(t *testing.T) {
+func assertExampleConfig(t *testing.T, cfg *types.Config) {
 	t.Helper()
 
-	cfg, err := types.LoadServerConfig()
-	require.NoError(t, err)
+	require.NoError(t, config.Validate(cfg))
 
 	assert.Equal(t, "http://127.0.0.1:8080", cfg.ServerURL)
 	assert.Equal(t, types.ListenAddr("127.0.0.1:8080"), cfg.Addr)

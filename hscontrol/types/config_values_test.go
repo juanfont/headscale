@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,8 @@ func TestConfigValues(t *testing.T) {
 		// wantErr is a substring of the ConfigError's Reason.
 		wantErr string
 		wantSee string
+		// wantIs is a sentinel the error wraps.
+		wantIs error
 	}{
 		{name: "filemode/0770", dst: new(FileMode), in: "0770", want: FileMode(0o770)},
 		{name: "filemode/0o770", dst: new(FileMode), in: "0o770", want: FileMode(0o770)},
@@ -39,7 +42,7 @@ func TestConfigValues(t *testing.T) {
 		{name: "httpurl/no host", dst: new(HTTPURL), in: "https://", wantErr: "is not an http:// or https:// URL"},
 		{name: "httpurl/port without host", dst: new(HTTPURL), in: "https://:443/x", wantErr: "is not an http:// or https:// URL"},
 		{name: "httpurl/http port without host", dst: new(HTTPURL), in: "http://:80", wantErr: "is not an http:// or https:// URL"},
-		{name: "httpurl/unparsable", dst: new(HTTPURL), in: "https://alice:pw?@h", wantErr: "is not an http:// or https:// URL"},
+		{name: "httpurl/unparsable", dst: new(HTTPURL), in: "https://alice:pw?@h", wantErr: "is not an http:// or https:// URL", wantIs: errURLSyntax},
 
 		{name: "listenaddr/empty", dst: new(ListenAddr), in: "", want: ListenAddr("")},
 		{name: "listenaddr/port only", dst: new(ListenAddr), in: ":8080", want: ListenAddr(":8080")},
@@ -82,7 +85,7 @@ func TestConfigValues(t *testing.T) {
 		{name: "pkce/plain", dst: new(PKCEMethod), in: "plain", want: PKCEMethod("plain")},
 		{name: "pkce/S256", dst: new(PKCEMethod), in: "S256", want: PKCEMethod("S256")},
 		{name: "pkce/empty", dst: new(PKCEMethod), in: "", want: PKCEMethod("")},
-		{name: "pkce/case-sensitive", dst: new(PKCEMethod), in: "s256", wantErr: "has an unsupported value"},
+		{name: "pkce/case-sensitive", dst: new(PKCEMethod), in: "s256", wantErr: "has an unsupported value", wantIs: errInvalidPKCEMethod},
 
 		{name: "policy/file", dst: new(PolicyMode), in: "file", want: PolicyMode("file")},
 		{name: "policy/database", dst: new(PolicyMode), in: "database", want: PolicyMode("database")},
@@ -122,6 +125,10 @@ func TestConfigValues(t *testing.T) {
 			require.Contains(t, ce.Reason, tt.wantErr)
 			require.Empty(t, ce.Current, "the loader adds the key")
 			require.Equal(t, tt.wantSee, ce.See)
+
+			if tt.wantIs != nil {
+				require.ErrorIs(t, err, tt.wantIs)
+			}
 
 			if isEnum {
 				require.Equal(t, enum.Allowed(), ce.Allowed)
@@ -199,7 +206,7 @@ func TestHTTPURLErrorHidesValue(t *testing.T) {
 func requireHidden(t *testing.T, err error, hidden string) {
 	t.Helper()
 
-	walkErrTree(err, func(e error) {
+	util.WalkErrTree(err, func(e error) {
 		assert.NotContains(t, e.Error(), hidden)
 
 		b, jerr := json.Marshal(e)

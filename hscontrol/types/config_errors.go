@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 // ErrConfig is a sentinel matching any *ConfigError. Callers can do
@@ -127,44 +129,6 @@ func formatKVValue(v any) string {
 	}
 }
 
-// configValidator collects ConfigError values so an operator sees every
-// problem at once instead of fixing them one startup attempt at a time.
-// Zero value is ready to use.
-type configValidator struct {
-	errs []error
-}
-
-// Add records a structured rule violation.
-func (v *configValidator) Add(e *ConfigError) {
-	v.errs = append(v.errs, e)
-}
-
-// AddErr records any error (e.g. one returned by a sub-builder helper).
-// Useful when wrapping fmt.Errorf("..."): %w results that already carry
-// their own wrap.
-func (v *configValidator) AddErr(err error) {
-	if err == nil {
-		return
-	}
-
-	v.errs = append(v.errs, err)
-}
-
-// HasErrors reports whether any rule has triggered.
-func (v *configValidator) HasErrors() bool { return len(v.errs) > 0 }
-
-// Err returns nil if no rules triggered, otherwise the joined error.
-// errors.Join's wrapper exposes Unwrap() []error, so errors.Is and
-// errors.As walk every branch — sentinel matching and type extraction
-// work uniformly across single and joined results.
-func (v *configValidator) Err() error {
-	if len(v.errs) == 0 {
-		return nil
-	}
-
-	return errors.Join(v.errs...)
-}
-
 // ConfigErrors walks an error tree (single Unwrap and multi-Unwrap) and
 // returns every *ConfigError found. Used by callers that need to
 // inspect every rule violation, not just the first.
@@ -176,7 +140,7 @@ func (v *configValidator) Err() error {
 func ConfigErrors(err error) []*ConfigError {
 	var out []*ConfigError
 
-	walkErrTree(err, func(e error) {
+	util.WalkErrTree(err, func(e error) {
 		// Direct type assertion is intentional: errors.As walks the
 		// Unwrap chain, which would double-count a *ConfigError once at
 		// the wrapper and again at the wrapped node we recurse into.
@@ -186,25 +150,4 @@ func ConfigErrors(err error) []*ConfigError {
 	})
 
 	return out
-}
-
-func walkErrTree(err error, fn func(error)) {
-	if err == nil {
-		return
-	}
-
-	fn(err)
-
-	// Type-switch on err itself, not the chain: we want to know whether
-	// THIS error exposes Unwrap() error or Unwrap() []error so we can
-	// pick the right traversal. errors.As would jump past the head and
-	// confuse the walk (e.g. a join inside a single-Unwrap chain).
-	switch x := err.(type) { //nolint:errorlint // see comment above
-	case interface{ Unwrap() error }:
-		walkErrTree(x.Unwrap(), fn)
-	case interface{ Unwrap() []error }:
-		for _, b := range x.Unwrap() {
-			walkErrTree(b, fn)
-		}
-	}
 }

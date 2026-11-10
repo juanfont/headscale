@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +17,7 @@ var dumpConfigCmd = &cobra.Command{
 	Short:  "dump current config to /etc/headscale/config.dump.yaml, integration test only",
 	Hidden: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		out, err := types.DumpConfig()
+		out, err := config.Marshal(loaded.Config, ".yaml")
 		if err != nil {
 			return fmt.Errorf("dumping config: %w", err)
 		}

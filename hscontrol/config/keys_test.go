@@ -1,4 +1,4 @@
-package types
+package config
 
 import (
 	"strings"
@@ -72,5 +72,19 @@ func TestDottedPosition(t *testing.T) {
 			assert.Equal(t, tt.line, line)
 			assert.Equal(t, tt.col, col)
 		})
+	}
+}
+
+// TestRemovedKeysAgainstSchema: a removed key is not a key, and what
+// replaces it is.
+func TestRemovedKeysAgainstSchema(t *testing.T) {
+	leaf, branch := configKeySets()
+
+	for _, r := range removedKeys {
+		assert.Falsef(t, leaf[r.Old] || branch[r.Old], "removed key %s is a key", r.Old)
+
+		for k := range strings.FieldsSeq(r.New) {
+			assert.Truef(t, leaf[k] || branch[k], "%s replaces %s but is no key", k, r.Old)
+		}
 	}
 }

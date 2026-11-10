@@ -1,3 +1,0 @@
-{
-  "error": "Fatal config error: configuration key private_key_path was removed in 0.23 ($DIR/config.yaml:1:1)\n  hint: use noise.private_key_path\n"
-}

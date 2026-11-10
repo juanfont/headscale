@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -174,24 +175,33 @@ func fileCheckCmd(use, short, valid string, check func(string) error) *cobra.Com
 }
 
 // loadCheckedConfig loads the server config from --file, or finds it as
-// serve does, and names where it came from.
+// serve does, logs what loading and the config warn about at its log.level
+// and in its log.format, and names where it came from.
 func loadCheckedConfig(cmd *cobra.Command) (*types.Config, string, error) {
 	path, _ := cmd.Flags().GetString("file")
 
-	err := loadConfig(path)
-
-	src := types.ConfigFile()
-	if src == "" {
-		src = "(defaults and environment)"
+	l, err := loadConfig(path)
+	if err == nil {
+		// As initConfig does; a config that failed keeps the console
+		// logger and the default level.
+		useLogConfig(l.Config, cmd.ErrOrStderr())
 	}
+
+	logWarnings(l.Warnings)
+
+	src := cmp.Or(l.File, "(defaults and environment)")
+	if err != nil {
+		return nil, src, err
+	}
+
+	err = config.Validate(l.Config)
+	logWarnings(config.Warnings(l.Config))
 
 	if err != nil {
 		return nil, src, err
 	}
 
-	cfg, err := types.LoadServerConfig()
-
-	return cfg, src, err
+	return l.Config, src, nil
 }
 
 // printCheckLine prints one result; an error goes indented below it.

@@ -3,9 +3,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"strings"
-
-	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 )
 
 var errSecretEmpty = errors.New("file is empty")
@@ -19,14 +16,4 @@ func ResolveSecret(key, value string) (string, error) {
 	}
 
 	return secret, nil
-}
-
-// keepSecret leaves a file: secret unread, for checking a config without
-// reading the files it names; checks that need the secret skip it.
-func keepSecret(_, value string) (string, error) {
-	if strings.HasPrefix(value, "file:") {
-		return value, hsdns.ErrSecretUnread
-	}
-
-	return value, nil
 }
