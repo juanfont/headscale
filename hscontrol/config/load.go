@@ -478,10 +478,12 @@ func newConfigSource(path string, isFile bool, environ []string) (*configSource,
 	return s, cmp.Or(fileErr, envErr)
 }
 
+// loadFile reads and parses s.file. What the file says fails as a
+// ConfigError, which serve does not retry; only reading it fails otherwise.
 func (s *configSource) loadFile() error {
 	parser, err := configParser(s.file)
 	if err != nil {
-		return fmt.Errorf("%w (%s)", err, s.file)
+		return &types.ConfigError{Reason: fmt.Sprintf("%s (%s)", err, s.file), Cause: err}
 	}
 
 	raw, err := os.ReadFile(s.file)
@@ -508,7 +510,10 @@ func (s *configSource) loadFile() error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("fatal error reading config file %s: %w", s.file, err)
+		return &types.ConfigError{
+			Reason: "cannot parse config file " + s.file,
+			Detail: parseDetail(filepath.Ext(s.file), s.fileBytes, err),
+		}
 	}
 
 	s.findNulls(m, "")

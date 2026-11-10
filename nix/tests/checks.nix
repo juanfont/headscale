@@ -119,7 +119,8 @@ in
         settings.policy.path = lib.mkForce mutablePolicy;
         check.config = false;
       };
-      # Builds only because check.config = false also drops the build check.
+      # Builds only because check.config = false also drops the build check;
+      # headscale itself refuses it.
       unchecked = {
         settings.server_url = badServerUrl;
         check = {
@@ -239,6 +240,18 @@ in
           assert main_pid() != pid, "headscale was not restarted"
           want = headscale.succeed("${jq} -S . ${testsPass}")
           assert served_policy() == want, "new policy not served"
+
+      with subtest("a configuration headscale rejects is not restarted"):
+          # The switch may report the unit failed; the unit is what counts.
+          headscale.execute(stc("unchecked", "test"))
+          headscale.wait_until_succeeds("systemctl is-failed headscale.service", timeout=timedelta(seconds=60))
+          status = headscale.succeed("systemctl show -P ExecMainStatus headscale.service").strip()
+          assert status == "78", f"exit status {status}, want 78"
+          restarts = headscale.succeed("systemctl show -P NRestarts headscale.service")
+          # Past RestartSec.
+          headscale.sleep(10)
+          headscale.succeed("systemctl is-failed headscale.service")
+          assert headscale.succeed("systemctl show -P NRestarts headscale.service") == restarts, "headscale was restarted"
 
       # Last: it takes headscale's account away.
       with subtest("an account activation has yet to create skips the checks"):
