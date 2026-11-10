@@ -77,6 +77,8 @@ func Validate(c *types.Config) error {
 		})
 	}
 
+	validateTLS(c, v)
+
 	if c.Noise.PrivateKeyPath == "" {
 		v.Add(&types.ConfigError{
 			Reason: "noise.private_key_path is required",
@@ -89,6 +91,15 @@ func Validate(c *types.Config) error {
 		v.Add(&types.ConfigError{
 			Reason: "listen_addr is required",
 			Hint:   `set listen_addr, e.g. "0.0.0.0:8080", or remove it for that default; ":0" picks a random port`,
+		})
+	}
+
+	// Serve would bind an unnamed socket and fail to chmod it; the CLI
+	// cannot dial one.
+	if c.UnixSocket == "" {
+		v.Add(&types.ConfigError{
+			Reason: "unix_socket is required",
+			Hint:   `set unix_socket, e.g. "/var/run/headscale/headscale.sock", or remove it for that default`,
 		})
 	}
 
@@ -385,6 +396,59 @@ func validateDERP(c *types.Config, v *configValidator) {
 				{Key: "derp.paths", Value: "[]"},
 			},
 			Hint: "list at least one DERP map file (.yaml, .yml, .json or .hujson) in derp.paths, or set automatically_add_embedded_derp_region: true",
+		})
+	}
+}
+
+// validateTLS records ConfigErrors for TLS settings startup cannot use:
+// half a keypair, or ACME without its HTTP-01 listener or a cache
+// directory.
+func validateTLS(c *types.Config, v *configValidator) {
+	const see = "https://headscale.net/stable/ref/tls/"
+
+	cert, key, acme := c.TLS.CertPath, c.TLS.KeyPath, c.TLS.ACME
+
+	// With ACME, Validate reports any keypair path as the wrong strategy.
+	if acme.Hostname == "" {
+		switch {
+		case cert != "" && key == "":
+			v.Add(&types.ConfigError{
+				Reason:  "tls.key_path is required when tls.cert_path is set",
+				Current: []types.KV{{Key: "tls.cert_path", Value: cert}, {Key: "tls.key_path", Value: ""}},
+				Hint:    "set tls.key_path to the certificate's PEM private key, or remove tls.cert_path to serve plain HTTP",
+				See:     see,
+			})
+		case key != "" && cert == "":
+			// Without a certificate the key is ignored and headscale serves
+			// plain HTTP.
+			v.Add(&types.ConfigError{
+				Reason:  "tls.cert_path is required when tls.key_path is set",
+				Current: []types.KV{{Key: "tls.cert_path", Value: ""}, {Key: "tls.key_path", Value: key}},
+				Hint:    "set tls.cert_path to the PEM certificate, or remove tls.key_path to serve plain HTTP",
+				See:     see,
+			})
+		}
+
+		return
+	}
+
+	if acme.ChallengeType == types.HTTP01ChallengeType && acme.HTTPListen == "" {
+		v.Add(&types.ConfigError{
+			Reason:  "tls.acme.http_listen is required when tls.acme.challenge_type is HTTP-01",
+			Current: []types.KV{{Key: "tls.acme.challenge_type", Value: string(acme.ChallengeType)}, {Key: "tls.acme.http_listen", Value: ""}},
+			Hint:    `set tls.acme.http_listen, e.g. ":http", or remove it for that default`,
+			See:     see,
+		})
+	}
+
+	// Empty, certmagic keeps the account and certificate keys in the
+	// working directory.
+	if acme.CacheDir == "" {
+		v.Add(&types.ConfigError{
+			Reason:  "tls.acme.cache_dir is required when tls.acme.hostname is set",
+			Current: []types.KV{{Key: "tls.acme.hostname", Value: acme.Hostname}, {Key: "tls.acme.cache_dir", Value: ""}},
+			Hint:    `set tls.acme.cache_dir, e.g. "/var/lib/headscale/cache", or remove it for that default`,
+			See:     see,
 		})
 	}
 }

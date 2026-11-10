@@ -77,10 +77,20 @@ func TestValidateHintsNameDefaults(t *testing.T) {
 	cfg.Tuning.NodeStoreBatchSize = 0
 	cfg.Tuning.NodeStoreBatchTimeout = 0
 
+	cfg.Addr = ""
+	cfg.UnixSocket = ""
+	cfg.TLS.ACME.Hostname = "headscale.example.com"
+	cfg.TLS.ACME.HTTPListen = ""
+	cfg.TLS.ACME.CacheDir = ""
+
 	err := Validate(&cfg)
 	require.ErrorContains(t, err, fmt.Sprintf("(default: %s)", d.Tuning.BatchChangeDelay))
 	require.ErrorContains(t, err, fmt.Sprintf("(default: %d)", d.Tuning.NodeStoreBatchSize))
 	require.ErrorContains(t, err, fmt.Sprintf("(default: %s)", d.Tuning.NodeStoreBatchTimeout))
+
+	for _, def := range []string{string(d.Addr), d.UnixSocket, string(d.TLS.ACME.HTTPListen), d.TLS.ACME.CacheDir} {
+		require.ErrorContains(t, err, fmt.Sprintf("%q, or remove it for that default", def))
+	}
 }
 
 // TestValidateGoData: a Config built in Go, which no loader parsed, is
@@ -158,6 +168,69 @@ func TestValidateGoData(t *testing.T) {
 				c.Database.Type = types.DatabasePostgres
 				c.Database.Sqlite.Path = ""
 			},
+		},
+		{
+			name:    "unix socket empty",
+			set:     func(c *types.Config) { c.UnixSocket = "" },
+			wantErr: "unix_socket is required",
+		},
+		{
+			name:    "certificate without key",
+			set:     func(c *types.Config) { c.TLS.CertPath = "/etc/headscale/cert.pem" },
+			wantErr: "tls.key_path is required when tls.cert_path is set",
+		},
+		{
+			name:    "key without certificate",
+			set:     func(c *types.Config) { c.TLS.KeyPath = "/etc/headscale/key.pem" },
+			wantErr: "tls.cert_path is required when tls.key_path is set",
+		},
+		{
+			name: "keypair",
+			set: func(c *types.Config) {
+				c.TLS.CertPath = "/etc/headscale/cert.pem"
+				c.TLS.KeyPath = "/etc/headscale/key.pem"
+			},
+		},
+		{
+			name: "acme http-01 without listener",
+			set: func(c *types.Config) {
+				c.TLS.ACME.Hostname = "headscale.example.com"
+				c.TLS.ACME.HTTPListen = ""
+			},
+			wantErr: "tls.acme.http_listen is required when tls.acme.challenge_type is HTTP-01",
+		},
+		{
+			name: "acme tls-alpn-01 without http listener",
+			set: func(c *types.Config) {
+				c.TLS.ACME.Hostname = "headscale.example.com"
+				c.TLS.ACME.ChallengeType = types.TLSALPN01ChallengeType
+				c.TLS.ACME.HTTPListen = ""
+			},
+		},
+		{
+			name: "acme without cache dir",
+			set: func(c *types.Config) {
+				c.TLS.ACME.Hostname = "headscale.example.com"
+				c.TLS.ACME.CacheDir = ""
+			},
+			wantErr: "tls.acme.cache_dir is required when tls.acme.hostname is set",
+		},
+		{
+			name: "acme off without its settings",
+			set: func(c *types.Config) {
+				c.TLS.ACME.HTTPListen = ""
+				c.TLS.ACME.CacheDir = ""
+			},
+		},
+		{
+			// The keypair and ACME rule reports it; asking for the other half
+			// would point the wrong way.
+			name: "acme next to a certificate",
+			set: func(c *types.Config) {
+				c.TLS.ACME.Hostname = "headscale.example.com"
+				c.TLS.CertPath = "/etc/headscale/cert.pem"
+			},
+			wantErr: "tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
 		},
 		{
 			name: "url",
@@ -383,7 +456,7 @@ func TestValidateGoData(t *testing.T) {
 // one reason in the form requiredKeys reads, so a key whose default goes
 // away shows up as required.
 func TestRequiredWhenBlank(t *testing.T) {
-	for _, key := range []string{"server_url", "listen_addr", "noise.private_key_path", "database.sqlite.path"} {
+	for _, key := range []string{"server_url", "listen_addr", "unix_socket", "noise.private_key_path", "database.sqlite.path"} {
 		t.Run(key, func(t *testing.T) {
 			cfg := Default()
 			if key != "server_url" {
