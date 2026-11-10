@@ -33,11 +33,7 @@ var errDatabaseNotSupported = errors.New("database type not supported")
 
 var errForeignKeyConstraintsViolated = errors.New("foreign key constraints violated")
 
-const (
-	maxIdleConns   = 100
-	maxOpenConns   = 100
-	contextTimeout = 10 * time.Second
-)
+const contextTimeout = 10 * time.Second
 
 type HSDatabase struct {
 	DB  *gorm.DB
@@ -463,15 +459,17 @@ WHERE auth_key_id IN (
 			return nil, fmt.Errorf("getting DB from gorm: %w", err)
 		}
 
-		// or else it blocks...
-		sqlConn.SetMaxIdleConns(maxIdleConns)
-
-		sqlConn.SetMaxOpenConns(maxOpenConns)
-		defer sqlConn.SetMaxIdleConns(1)
-		defer sqlConn.SetMaxOpenConns(1)
-
 		ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 		defer cancel()
+
+		// squibble nests queries. Without WAL a second connection would
+		// hang: its opening pragmas write, and the write waits for the
+		// first connection's read.
+		conn, err := sqlConn.Conn(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("getting connection for schema validation: %w", err)
+		}
+		defer conn.Close()
 
 		opts := squibble.DigestOptions{
 			IgnoreTables: []string{
@@ -483,7 +481,7 @@ WHERE auth_key_id IN (
 			},
 		}
 
-		if err := squibble.Validate(ctx, sqlConn, dbSchema, &opts); err != nil { //nolint:noinlineerr
+		if err := squibble.Validate(ctx, conn, dbSchema, &opts); err != nil { //nolint:noinlineerr
 			return nil, fmt.Errorf("validating schema: %w", err)
 		}
 	}
