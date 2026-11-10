@@ -46,6 +46,9 @@ func TestConfigValues(t *testing.T) {
 		{name: "listenaddr/named port", dst: new(ListenAddr), in: "0.0.0.0:http", want: ListenAddr("0.0.0.0:http")},
 		{name: "listenaddr/no colon", dst: new(ListenAddr), in: "8080", wantErr: "host:port"},
 		{name: "listenaddr/bad port", dst: new(ListenAddr), in: "h:abc", wantErr: "host:port"},
+		{name: "listenaddr/port above range", dst: new(ListenAddr), in: "h:65536", wantErr: "host:port"},
+		{name: "listenaddr/negative port", dst: new(ListenAddr), in: "h:-1", wantErr: "host:port"},
+		{name: "listenaddr/highest port", dst: new(ListenAddr), in: "h:65535", want: ListenAddr("h:65535")},
 
 		{name: "loglevel/trace", dst: new(LogLevel), in: "trace", want: LogLevel("trace")},
 		{name: "loglevel/debug", dst: new(LogLevel), in: "debug", want: LogLevel("debug")},

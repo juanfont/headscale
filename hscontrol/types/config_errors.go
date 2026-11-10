@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -113,6 +114,14 @@ func formatKVValue(v any) string {
 		return `""`
 	case string:
 		return fmt.Sprintf("%q", x)
+	case []any, map[string]any:
+		// A value as decoding found it, shown as JSON.
+		b, err := json.Marshal(x)
+		if err == nil {
+			return string(b)
+		}
+
+		return fmt.Sprintf("%v", x)
 	default:
 		return fmt.Sprintf("%v", x)
 	}

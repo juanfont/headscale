@@ -90,22 +90,32 @@ func (m FileMode) MarshalText() ([]byte, error) {
 // text form stays as written.
 type HTTPURL string //nolint:recvcheck // UnmarshalText needs a pointer; the rest read the value
 
-// MarshalJSON writes u without userinfo, for debug output and logs: a
-// username can be a token too. One that does not parse is withheld, as its
-// userinfo cannot be found.
+// MarshalJSON writes u [HTTPURL.Redacted], for debug output and logs.
 func (u HTTPURL) MarshalJSON() ([]byte, error) {
-	s := string(u)
-	if s != "" {
-		p, err := url.Parse(s)
-		if err != nil {
-			s = "<redacted>"
-		} else {
-			p.User = nil
-			s = p.String()
-		}
+	return json.Marshal(u.Redacted())
+}
+
+// Redacted is u without userinfo: a username can be a token too. One that
+// is not an absolute http(s) URL with a host is withheld, as its userinfo
+// cannot be told from the rest (https://u:p?@h fails to parse,
+// https:/u:p@h parses as a path); one without userinfo is kept as written.
+func (u HTTPURL) Redacted() string {
+	if u == "" {
+		return ""
 	}
 
-	return json.Marshal(s)
+	p, err := url.Parse(string(u))
+	if err != nil || (p.Scheme != "http" && p.Scheme != "https") || p.Hostname() == "" {
+		return "<redacted>"
+	}
+
+	if p.User == nil {
+		return string(u)
+	}
+
+	p.User = nil
+
+	return p.String()
 }
 
 func (u *HTTPURL) UnmarshalText(text []byte) error {

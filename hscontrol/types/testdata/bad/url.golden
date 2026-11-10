@@ -1,0 +1,2 @@
+Fatal config error: derp.urls is not an http:// or https:// URL ($DIR/config.yaml:2:3)
+  hint: write the scheme and host, e.g. "https://example.com"

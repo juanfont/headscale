@@ -1,0 +1,5 @@
+Fatal config error: database.type has an unsupported value ($DIR/config.yaml:2:3)
+  current: database.type: "mysql"
+  allowed: "sqlite", "sqlite3", "postgres"
+  hint: pick one of the allowed values; sqlite is the default for single-host deployments
+  see: https://headscale.net/stable/ref/database/

@@ -2,22 +2,19 @@ package types
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-// TestDerpConfigSkipsMalformedURL ensures a malformed derp.urls entry is
-// skipped (as the "ignoring..." log promises) rather than dereferencing the
-// nil *url.URL that url.Parse returns on error, which crashed the server at
-// startup.
-func TestDerpConfigSkipsMalformedURL(t *testing.T) {
+// TestDERPURLsMalformed: a malformed derp.urls entry stops the load, naming
+// the key, instead of being skipped, as it once was after crashing startup
+// on the nil *url.URL url.Parse returns.
+func TestDERPURLsMalformed(t *testing.T) {
 	useConfig(t, map[string]any{"derp.urls": []string{
 		"https://controlplane.tailscale.com/derpmap/default",
 		"://bad",
 	}})
 
-	cfg := derpConfig()
-
-	if len(cfg.URLs) != 1 {
-		t.Fatalf("expected the malformed derp.urls entry to be skipped, got %d urls: %v",
-			len(cfg.URLs), cfg.URLs)
-	}
+	_, err := src.decode()
+	require.ErrorContains(t, err, "derp.urls is not an http:// or https:// URL")
 }

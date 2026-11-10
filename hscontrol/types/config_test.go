@@ -4,16 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"io/fs"
 	"maps"
 	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -46,12 +42,12 @@ func TestReadConfig(t *testing.T) {
 			name:       "unmarshal-dns-full-config",
 			configPath: "testdata/dns_full.yaml",
 			setup: func(t *testing.T) (any, error) { //nolint:thelper
-				dns, err := dns()
+				cfg, err := src.decode()
 				if err != nil {
 					return nil, err
 				}
 
-				return dns, nil
+				return cfg.DNSConfig, nil
 			},
 			want: DNSConfig{
 				MagicDNS:         true,
@@ -75,18 +71,19 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
+				Challenge:     DNSChallengeConfig{PropagationTimeout: 2 * time.Minute},
 			},
 		},
 		{
 			name:       "dns-to-tailcfg.DNSConfig",
 			configPath: "testdata/dns_full.yaml",
 			setup: func(t *testing.T) (any, error) { //nolint:thelper
-				dns, err := dns()
+				cfg, err := src.decode()
 				if err != nil {
 					return nil, err
 				}
 
-				return dnsToTailcfgDNS(dns), nil
+				return dnsToTailcfgDNS(cfg.DNSConfig), nil
 			},
 			want: &tailcfg.DNSConfig{
 				Proxied: true,
@@ -112,12 +109,12 @@ func TestReadConfig(t *testing.T) {
 			name:       "unmarshal-dns-full-no-magic",
 			configPath: "testdata/dns_full_no_magic.yaml",
 			setup: func(t *testing.T) (any, error) { //nolint:thelper
-				dns, err := dns()
+				cfg, err := src.decode()
 				if err != nil {
 					return nil, err
 				}
 
-				return dns, nil
+				return cfg.DNSConfig, nil
 			},
 			want: DNSConfig{
 				MagicDNS:         false,
@@ -141,18 +138,19 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
+				Challenge:     DNSChallengeConfig{PropagationTimeout: 2 * time.Minute},
 			},
 		},
 		{
 			name:       "dns-to-tailcfg.DNSConfig",
 			configPath: "testdata/dns_full_no_magic.yaml",
 			setup: func(t *testing.T) (any, error) { //nolint:thelper
-				dns, err := dns()
+				cfg, err := src.decode()
 				if err != nil {
 					return nil, err
 				}
 
-				return dnsToTailcfgDNS(dns), nil
+				return dnsToTailcfgDNS(cfg.DNSConfig), nil
 			},
 			want: &tailcfg.DNSConfig{
 				Proxied: false,
@@ -215,17 +213,12 @@ func TestReadConfig(t *testing.T) {
 			name:       "dns-override-true",
 			configPath: "testdata/dns-override-true.yaml",
 			setup: func(t *testing.T) (any, error) { //nolint:thelper
-				_, err := LoadServerConfig()
+				cfg, err := LoadServerConfig()
 				if err != nil {
 					return nil, err
 				}
 
-				dns, err := dns()
-				if err != nil {
-					return nil, err
-				}
-
-				return dnsToTailcfgDNS(dns), nil
+				return dnsToTailcfgDNS(cfg.DNSConfig), nil
 			},
 			want: &tailcfg.DNSConfig{
 				Proxied: true,
@@ -296,9 +289,11 @@ func TestReadConfigFromEnv(t *testing.T) {
 				"HEADSCALE_PREFIXES_V4":                     "100.64.0.0/10",
 			},
 			setup: func(t *testing.T) (any, error) { //nolint:thelper // inline test closure
-				assert.Equal(t, "trace", src.String("log.level"))
-				assert.Equal(t, "100.64.0.0/10", src.String("prefixes.v4"))
-				assert.False(t, src.Bool("database.sqlite.write_ahead_log"))
+				cfg, err := src.decode()
+				require.NoError(t, err)
+				assert.Equal(t, LogLevel("trace"), cfg.Log.Level)
+				assert.Equal(t, "100.64.0.0/10", cfg.Prefixes.V4.String())
+				assert.False(t, cfg.Database.Sqlite.WriteAheadLog)
 
 				return nil, nil //nolint:nilnil // test setup returns nil to indicate no expected value
 			},
@@ -318,12 +313,12 @@ func TestReadConfigFromEnv(t *testing.T) {
 				// "HEADSCALE_DNS_EXTRA_RECORDS":      `[{ name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.4" }]`,
 			},
 			setup: func(t *testing.T) (any, error) { //nolint:thelper // inline test closure
-				dns, err := dns()
+				cfg, err := src.decode()
 				if err != nil {
 					return nil, err
 				}
 
-				return dns, nil
+				return cfg.DNSConfig, nil
 			},
 			want: DNSConfig{
 				MagicDNS:         true,
@@ -339,6 +334,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 				// 	{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				// },
 				SearchDomains: []string{"test.com", "bar.com"},
+				Challenge:     DNSChallengeConfig{PropagationTimeout: 2 * time.Minute},
 			},
 		},
 	}
@@ -372,7 +368,7 @@ tls:
   cert_path: abc.pem
   acme:
     hostname: example.com
-    challenge_type: bogus
+    challenge_type: ""
 noise:
   private_key_path: noise_private.key`)
 
@@ -454,8 +450,8 @@ oidc:
 	require.NoError(t, err)
 
 	err = validateServerConfig()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), errInvalidPKCEMethod.Error())
+	require.ErrorIs(t, err, errInvalidPKCEMethod)
+	assert.Contains(t, err.Error(), "oidc.pkce.method has an unsupported value")
 }
 
 // TestOIDCConfigValidation covers the issuer-URL and required-field checks that
@@ -472,7 +468,7 @@ func TestOIDCConfigValidation(t *testing.T) {
   issuer: ftp://idp.example.com
   client_id: headscale
   client_secret: sekret`,
-			wantErr: "valid http(s) URL",
+			wantErr: "oidc.issuer is not an http:// or https:// URL",
 		},
 		{
 			name: "missing client_id",
@@ -505,6 +501,8 @@ func TestOIDCConfigValidation(t *testing.T) {
 noise:
   private_key_path: noise_private.key
 server_url: http://127.0.0.1:8080
+prefixes:
+  v4: 100.64.0.0/10
 dns:
   magic_dns: false
   override_local_dns: false
@@ -558,6 +556,8 @@ tls:
     http_listen: %q
 noise:
   private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
 database:
   type: sqlite3
 dns:
@@ -606,7 +606,7 @@ dns:
 	require.Error(t, err)
 
 	got := ConfigErrors(err)
-	assert.GreaterOrEqual(t, len(got), 4,
+	assert.GreaterOrEqual(t, len(got), 3,
 		"expected sub-builder errors collected into one report; got %d: %v",
 		len(got), reasons(got))
 
@@ -1148,10 +1148,10 @@ func TestSafeServerURLWithPort(t *testing.T) {
 
 // TestConfigJSONOmitsSecrets verifies that marshalling a [Config] to JSON
 // (as /debug/config does via [state.State.DebugConfig]) or logging it does
-// not leak the Postgres password, the OIDC client secret, or the headscale
-// admin API key. Operators who widen metrics_listen_addr to 0.0.0.0 should
-// not be able to read these back via debug endpoints reachable over
-// CGNAT/loopback.
+// not leak the Postgres password, the OIDC client secret, the headscale
+// admin API key, or URL credentials. Operators who widen
+// metrics_listen_addr to 0.0.0.0 should not be able to read these back via
+// debug endpoints reachable over CGNAT/loopback.
 func TestConfigJSONOmitsSecrets(t *testing.T) {
 	const (
 		secretPostgresPass = "p0stgres-secret-marker"
@@ -1162,9 +1162,16 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 		secretDERPPass     = "derp-url-password-marker"     //nolint:gosec // test marker, not a real credential
 		secretDERPToken    = "derp-url-token-marker"        //nolint:gosec // test marker, not a real credential
 		derpMapMarker      = "go-only-derp-map-marker"
+		secretServerUser   = "server-url-username-marker" //nolint:gosec // test marker, not a real credential
+		secretServerPass   = "server-url-password-marker" //nolint:gosec // test marker, not a real credential
+		secretCLIToken     = "cli-address-token-marker"   //nolint:gosec // test marker, not a real credential
+		secretDNSUser      = "dns-url-username-marker"    //nolint:gosec // test marker, not a real credential
+		secretDNSPass      = "dns-url-password-marker"    //nolint:gosec // test marker, not a real credential
+		secretSplitToken   = "split-url-token-marker"     //nolint:gosec // test marker, not a real credential
 	)
 
 	cfg := &Config{
+		ServerURL: "https://" + secretServerUser + ":" + secretServerPass + "@headscale.example.com",
 		Database: DatabaseConfig{
 			Postgres: PostgresConfig{
 				Pass: secretPostgresPass,
@@ -1174,12 +1181,19 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 			ClientSecret: secretClientSecret,
 		},
 		CLI: CLIConfig{
-			APIKey: secretAPIKey,
+			Address: "https://" + secretCLIToken + "@cli.example.com",
+			APIKey:  secretAPIKey,
 		},
-		DNSConfig: DNSConfig{Challenge: DNSChallengeConfig{
-			ProviderSettings: map[string]any{"name": "cloudflare", "api_token": secretDNSToken},
-			Provider:         &cloudflare.Provider{APIToken: secretDNSToken},
-		}},
+		DNSConfig: DNSConfig{
+			Nameservers: Nameservers{
+				Global: []string{"1.1.1.1", "https://" + secretDNSUser + ":" + secretDNSPass + "@dns.example.com/dns-query"},
+				Split:  map[string][]string{"corp.example.com": {"https://" + secretSplitToken + "@dns.example.com/q"}},
+			},
+			Challenge: DNSChallengeConfig{
+				ProviderSettings: map[string]any{"name": "cloudflare", "api_token": secretDNSToken},
+				Provider:         &cloudflare.Provider{APIToken: secretDNSToken},
+			},
+		},
 		DERP: DERPConfig{
 			URLs: []HTTPURL{
 				"https://" + secretDERPUser + ":" + secretDERPPass + "@derp.example/map",
@@ -1194,6 +1208,7 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 	secrets := []string{
 		secretPostgresPass, secretClientSecret, secretAPIKey, secretDNSToken,
 		secretDERPUser, secretDERPPass, secretDERPToken,
+		secretServerUser, secretServerPass, secretCLIToken, secretDNSUser, secretDNSPass, secretSplitToken,
 	}
 
 	out, err := json.Marshal(cfg)
@@ -1204,11 +1219,19 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 			"marshalled Config must not contain secret %q", secret)
 	}
 
-	// The URLs are still shown, without userinfo; the request keeps it.
+	// The URLs are still shown, without userinfo; the running values keep it.
 	assert.Contains(t, string(out), `"https://derp.example/map"`)
 	assert.Contains(t, string(out), `"https://derp.example/token-map"`)
+	assert.Contains(t, string(out), `"ServerURL":"https://headscale.example.com"`)
+	assert.Contains(t, string(out), `"Address":"https://cli.example.com"`)
+	assert.Contains(t, string(out), `"Global":["1.1.1.1","https://dns.example.com/dns-query"]`)
+	assert.Contains(t, string(out), `"Split":{"corp.example.com":["https://dns.example.com/q"]}`)
 	assert.Contains(t, string(cfg.DERP.URLs[0]), secretDERPUser+":"+secretDERPPass)
 	assert.Contains(t, string(cfg.DERP.URLs[1]), secretDERPToken)
+	assert.Contains(t, cfg.ServerURL, secretServerUser+":"+secretServerPass)
+	assert.Contains(t, cfg.CLI.Address, secretCLIToken)
+	assert.Contains(t, cfg.DNSConfig.Nameservers.Global[1], secretDNSUser+":"+secretDNSPass)
+	assert.Contains(t, cfg.DNSConfig.Nameservers.Split["corp.example.com"][0], secretSplitToken)
 	// DERPMap is Go-only.
 	assert.NotContains(t, string(out), derpMapMarker)
 
@@ -1276,17 +1299,17 @@ func TestTrustedProxies(t *testing.T) {
 		{
 			name:    "bare-ip-rejected",
 			input:   []string{"10.0.0.1"},
-			wantErr: `trusted_proxies[0] "10.0.0.1"`,
+			wantErr: `netip.ParsePrefix("10.0.0.1")`,
 		},
 		{
-			name:    "garbage-reports-index",
+			name:    "garbage-names-the-value",
 			input:   []string{"10.0.0.0/16", "not-an-ip"},
-			wantErr: `trusted_proxies[1] "not-an-ip"`,
+			wantErr: `trusted_proxies is not a valid CIDR`,
 		},
 		{
 			name:    "ipv4-zero-rejected",
 			input:   []string{"0.0.0.0/0"},
-			wantErr: "0.0.0.0/0 and ::/0 are not allowed",
+			wantErr: `trusted_proxies[0] "0.0.0.0/0": 0.0.0.0/0 and ::/0 are not allowed`,
 		},
 		{
 			name:    "ipv6-zero-rejected",
@@ -1297,14 +1320,21 @@ func TestTrustedProxies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			values := map[string]any{}
+			values := map[string]any{"prefixes.v4": "100.64.0.0/10"}
 			if tt.input != nil {
 				values["trusted_proxies"] = tt.input
 			}
 
 			useConfig(t, values)
 
-			got, err := trustedProxies()
+			var got []netip.Prefix
+
+			cfg, err := src.decode()
+			if err == nil {
+				v := &configValidator{}
+				cfg.validatePrefixes(v)
+				got, err = cfg.TrustedProxies, v.Err()
+			}
 
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -1315,10 +1345,27 @@ func TestTrustedProxies(t *testing.T) {
 
 			require.NoError(t, err)
 
-			if diff := cmp.Diff(tt.want, got, cmpopts.EquateComparable(netip.Prefix{})); diff != "" {
-				t.Errorf("trustedProxies() mismatch (-want +got):\n%s", diff)
+			if diff := cmp.Diff(tt.want, got, cmpopts.EquateComparable(netip.Prefix{}), cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("trusted_proxies mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+// TestNameserverWarningsHideCredentials: a nameserver that does not parse
+// is reported without the userinfo it may hold.
+func TestNameserverWarningsHideCredentials(t *testing.T) {
+	cfg := &Config{DNSConfig: DNSConfig{Nameservers: Nameservers{
+		Global: []string{"https://alice:marker-pass@dns.example.com:port"},
+		Split:  map[string][]string{"corp.example.com": {"https://marker-user@dns.example.com/%zz"}},
+	}}}
+
+	warnings := cfg.Warnings()
+	require.Len(t, warnings, 2)
+
+	for _, w := range warnings {
+		assert.Contains(t, w, "invalid nameserver")
+		assert.NotContains(t, w, "marker")
 	}
 }
 
@@ -1687,14 +1734,14 @@ dns:
 			wantToken: "good",
 		},
 		{
-			// A failed decode can still fill part of the map; none of it is used.
+			// Named, never shown: the value holds credentials.
 			name: "provider env json that does not decode",
 			yaml: base,
 			env: map[string]string{
 				"HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME": "cloudflare",
 				"HEADSCALE_DNS_CHALLENGE_PROVIDER":      `{"api_token":"marker-token","zone_token":1e1000}`,
 			},
-			wantErr: "dns.challenge.provider is invalid",
+			wantErr: "dns.challenge.provider is not a JSON object (env HEADSCALE_DNS_CHALLENGE_PROVIDER)",
 		},
 		{
 			// The removed field warns and is dropped; the rest still loads.
@@ -2372,7 +2419,7 @@ dns:
 // as the CLI config does, for DumpConfig and embedders.
 func TestServerConfigDisableUpdateCheck(t *testing.T) {
 	for _, want := range []bool{true, false} {
-		path := writeConfig(t, "config.yaml", fmt.Sprintf(`server_url: https://headscale.example.com
+		path := writeConfig(t, fmt.Sprintf(`server_url: https://headscale.example.com
 noise:
   private_key_path: noise_private.key
 prefixes:
@@ -2390,49 +2437,6 @@ disable_check_updates: %t
 		require.NoError(t, err)
 		assert.Equal(t, want, cfg.DisableUpdateCheck)
 	}
-}
-
-func TestBoolConfigKeysComplete(t *testing.T) {
-	file, err := parser.ParseFile(token.NewFileSet(), "config.go", nil, 0)
-	require.NoError(t, err)
-
-	keys := make(map[string]bool)
-
-	ast.Inspect(file, func(node ast.Node) bool {
-		call, ok := node.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-
-		selector, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || selector.Sel.Name != "Bool" {
-			return true
-		}
-
-		object, ok := selector.X.(*ast.Ident)
-		if !ok || object.Name != "src" {
-			return true
-		}
-
-		require.Len(t, call.Args, 1)
-		literal, ok := call.Args[0].(*ast.BasicLit)
-		require.True(t, ok, "boolean config keys must be string literals")
-
-		key, err := strconv.Unquote(literal.Value)
-		require.NoError(t, err)
-
-		keys[key] = true
-
-		return true
-	})
-	require.NotEmpty(t, keys)
-
-	for _, key := range boolConfigKeys {
-		assert.Contains(t, keys, key, "unused or repeated boolean config key")
-		delete(keys, key)
-	}
-
-	assert.Empty(t, keys, "Bool keys missing from boolean validation")
 }
 
 func TestExampleConfigBooleanSettings(t *testing.T) {
@@ -2569,7 +2573,8 @@ func unsetHeadscaleEnv(t *testing.T) {
 // for the nixpkgs module with only server_url, dns.base_domain and
 // dns.nameservers.global set; hsic-* mirror integration/hsic's
 // MinimumConfigYAML and DefaultConfigEnv. <name>-strict is the same source
-// as updated for the strict loader.
+// as updated for the strict loader, <name>-pruned without the keys removed
+// for having no effect.
 func TestConfigCompat(t *testing.T) {
 	rows := compatRows(t)
 	update := os.Getenv("HEADSCALE_UPDATE_GOLDEN") != ""
@@ -2784,7 +2789,6 @@ type compatPolicyConfig struct {
 }
 
 type compatTuning struct {
-	NotifierSendTimeout            time.Duration
 	BatchChangeDelay               time.Duration
 	NodeMapSessionBufferedChanSize int
 	BatcherWorkers                 int
@@ -2819,11 +2823,22 @@ func compatView(cfg *Config) compatConfig {
 	tuning := compatTuning(cfg.Tuning)
 	tuning.BatcherWorkers = cfg.Tuning.BatcherWorkerCount()
 
+	// Today's loader read an empty list as nil and an unset map as empty.
+	trusted := cfg.TrustedProxies
+	if len(trusted) == 0 {
+		trusted = nil
+	}
+
+	extraParams := oidc.ExtraParams
+	if extraParams == nil {
+		extraParams = map[string]string{}
+	}
+
 	return compatConfig{
 		ServerURL:      cfg.ServerURL,
 		Addr:           string(cfg.Addr),
 		MetricsAddr:    string(cfg.MetricsAddr),
-		TrustedProxies: cfg.TrustedProxies,
+		TrustedProxies: trusted,
 		Node: compatNodeConfig{
 			Expiry:    cfg.Node.Expiry,
 			Ephemeral: compatEphemeralConfig(cfg.Node.Ephemeral),
@@ -2920,7 +2935,7 @@ func compatView(cfg *Config) compatConfig {
 			Issuer:                     string(oidc.Issuer),
 			ClientID:                   oidc.ClientID,
 			Scope:                      oidc.Scope,
-			ExtraParams:                oidc.ExtraParams,
+			ExtraParams:                extraParams,
 			AllowedDomains:             oidc.AllowedDomains,
 			AllowedUsers:               oidc.AllowedUsers,
 			AllowedGroups:              oidc.AllowedGroups,
@@ -3180,8 +3195,9 @@ func TestConfigNotLoaded(t *testing.T) {
 func useConfig(t *testing.T, values map[string]any) {
 	t.Helper()
 
+	d := defaultConfig()
 	s := &configSource{k: koanf.New(".")}
-	require.NoError(t, s.k.Load(confmap.Provider(configDefaults, "."), nil))
+	require.NoError(t, s.k.Load(confmap.Provider(plainMap(&d, false), ""), nil))
 	require.NoError(t, s.k.Load(confmap.Provider(values, "."), nil))
 
 	old := src
@@ -3295,4 +3311,202 @@ func TestDerivedValues(t *testing.T) {
 	written := []string{"9.9.9.9"}
 	resolvers(written...).ResolverAddrs()
 	assert.Equal(t, []string{"9.9.9.9"}, written)
+}
+
+// validateServerConfig decodes the loaded configuration and validates it.
+func validateServerConfig() error {
+	cfg, err := src.decode()
+	if err != nil {
+		return err
+	}
+
+	return cfg.Validate()
+}
+
+// TestValidate pins the rules on loaded configs and the order they report
+// in.
+func TestValidate(t *testing.T) {
+	const valid = `server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+dns:
+  magic_dns: false
+  override_local_dns: false
+`
+
+	tests := []struct {
+		name string
+		file string
+		want []string // reasons, in order
+	}{
+		{name: "valid", file: valid},
+		{
+			// What the NixOS module writes: an explicit empty default.
+			name: "empty extra records next to a path",
+			file: valid + "  extra_records: []\n  extra_records_path: /var/lib/headscale/records.json\n",
+		},
+		{
+			name: "extra records next to a path",
+			file: valid + "  extra_records: [{name: a.example.com, type: A, value: 100.64.0.1}]\n  extra_records_path: /var/lib/headscale/records.json\n",
+			want: []string{"dns.extra_records and dns.extra_records_path are mutually exclusive"},
+		},
+		{
+			name: "every rule, in order",
+			file: `server_url: headscale.example.com
+listen_addr: 0.0.0.0:8080
+metrics_listen_addr: 0.0.0.0:8080
+trusted_proxies: [0.0.0.0/0]
+prefixes:
+  v4: ""
+  allocation: ""
+policy:
+  mode: ""
+node:
+  ephemeral:
+    inactivity_timeout: 30s
+  routes:
+    ha:
+      probe_interval: 1s
+tuning:
+  node_store_batch_size: 0
+derp:
+  server:
+    enabled: true
+    private_key_path: /var/lib/headscale/derp.key
+database:
+  type: ""
+dns:
+  magic_dns: true
+  override_local_dns: true
+  extra_records: [{name: a.example.com, type: A, value: 100.64.0.1}]
+  extra_records_path: /var/lib/headscale/records.json
+  challenge:
+    provider:
+      name: bogus
+tls:
+  cert_path: /etc/headscale/cert.pem
+  acme:
+    hostname: example.com
+    challenge_type: ""
+oidc:
+  issuer: https://idp.example.com
+  client_id: headscale
+  client_secret: secret
+  pkce:
+    method: ""
+`,
+			want: []string{
+				"OIDC configuration is invalid",
+				"dns.extra_records and dns.extra_records_path are mutually exclusive",
+				"tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
+				"noise.private_key_path is required",
+				"listen_addr and metrics_listen_addr would bind the same TCP socket",
+				"tls.acme.challenge_type has an unsupported value",
+				"server_url is missing a scheme",
+				"node.ephemeral.inactivity_timeout is below the minimum",
+				"dns.nameservers.global is required when dns.override_local_dns is true",
+				"node.routes.ha.probe_interval is below the minimum",
+				"node.routes.ha.probe_timeout must be less than node.routes.ha.probe_interval",
+				"tuning.node_store_batch_size must be positive",
+				"derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
+				"database.type has an unsupported value",
+				"policy.mode has an unsupported value",
+				"dns.base_domain is required when dns.magic_dns is true",
+				"trusted_proxies contains an invalid CIDR",
+				"no IP prefix configured for the tailnet",
+				"prefixes.allocation has an unsupported value",
+				"dns.challenge.provider is invalid",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, LoadConfig(writeConfig(t, tt.file), true))
+
+			cfg, err := src.decode()
+			require.NoError(t, err)
+
+			err = cfg.Validate()
+			if len(tt.want) == 0 {
+				require.NoError(t, err)
+
+				return
+			}
+
+			assert.Equal(t, tt.want, reasons(ConfigErrors(err)))
+		})
+	}
+}
+
+// TestProviderNameShape: a provider name that is a map or list is rejected
+// by its key alone, as its contents may be credentials, and never shown.
+func TestProviderNameShape(t *testing.T) {
+	const base = `server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+dns:
+  magic_dns: true
+  override_local_dns: false
+  base_domain: ts.example.com
+  certificates:
+    enabled: true
+`
+
+	for name, tt := range map[string]struct {
+		yaml string
+		env  map[string]string
+	}{
+		"file map":  {yaml: base + "  challenge:\n    provider:\n      name: {api_token: marker-secret}\n"},
+		"file list": {yaml: base + "  challenge:\n    provider:\n      name: [marker-secret]\n"},
+		"env json":  {yaml: base, env: map[string]string{"HEADSCALE_DNS_CHALLENGE_PROVIDER": `{"name":{"api_token":"marker-secret"}}`}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			require.NoError(t, LoadConfig(writeConfig(t, tt.yaml), true))
+
+			cfg, err := src.decode()
+			require.NoError(t, err)
+
+			out, err := json.Marshal(plainMap(cfg, true))
+			require.NoError(t, err)
+			assert.NotContains(t, string(out), "marker-secret")
+
+			_, err = LoadServerConfig()
+			require.Error(t, err)
+			assert.Equal(t, []string{"dns.challenge.provider.name must be a provider name"}, reasons(ConfigErrors(err)))
+			assert.NotContains(t, err.Error(), "marker-secret")
+		})
+	}
+
+	// A scalar name is coerced to its text, as before.
+	assert.Equal(t, "123", DNSChallengeConfig{ProviderSettings: map[string]any{"name": 123}}.ProviderName())
+}
+
+// TestUpdateCheckDisabled: a configuration that does not decode never runs
+// the update check, whatever it says; the command then reports the error.
+func TestUpdateCheckDisabled(t *testing.T) {
+	for _, tt := range []struct {
+		file string
+		want bool
+	}{
+		{"disable_check_updates: true\n", true},
+		{"disable_check_updates: false\n", false},
+		{"disable_check_updates: true\nlog:\n  level: verbose\n", true},
+		{"disable_check_updates: false\nlog:\n  level: verbose\n", true},
+	} {
+		require.NoError(t, LoadConfig(writeConfig(t, tt.file), true))
+		assert.Equalf(t, tt.want, UpdateCheckDisabled(), "%q", tt.file)
+	}
 }

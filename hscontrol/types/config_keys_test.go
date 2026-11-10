@@ -1,6 +1,7 @@
 package types
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,7 +25,7 @@ func TestKeyPosition(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			line, col, ok := keyPosition([]byte(tt.src), tt.path)
+			line, col, ok := keyPosition(keyTree([]byte(tt.src)), tt.path)
 			assert.Equal(t, tt.ok, ok)
 			assert.Equal(t, tt.line, line)
 			assert.Equal(t, tt.col, col)
@@ -37,8 +38,39 @@ func TestKeyPosition(t *testing.T) {
 		b, err := hujson.Standardize([]byte(src))
 		require.NoError(t, err)
 
-		line, _, ok := keyPosition(b, []string{"b"})
+		line, _, ok := keyPosition(keyTree(b), []string{"b"})
 		assert.True(t, ok)
 		assert.Equal(t, 5, line)
 	})
+}
+
+func TestDottedPosition(t *testing.T) {
+	tests := []struct {
+		name      string
+		src       string
+		path      string
+		line, col int
+		ok        bool
+	}{
+		{"nested", "dns:\n  magic_dsn: true\n", "dns.magic_dsn", 2, 3, true},
+		{"dotted", "a: 1\ndns.magic_dsn: true\n", "dns.magic_dsn", 2, 1, true},
+		{"mixed", "dns:\n  extra.x: 1\n", "dns.extra.x", 2, 3, true},
+		// The surviving dns lacks the key; the shadowed one's copy was
+		// never loaded, so the dotted spelling is the one that set it.
+		{
+			"shadowed duplicate parent",
+			"{\n\"dns.magic_dsn\": 1,\n\"dns\": {\"magic_dsn\": 1},\n\"dns\": {\"x\": 1}\n}",
+			"dns.magic_dsn", 2, 1, true,
+		},
+		{"only in shadowed parent", `{"dns":{"magic_dsn":1},"dns":{"x":1}}`, "dns.magic_dsn", 0, 0, false},
+		{"missing", "a: 1\n", "a.b", 0, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			line, col, ok := dottedPosition(keyTree([]byte(tt.src)), strings.Split(tt.path, "."))
+			assert.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.line, line)
+			assert.Equal(t, tt.col, col)
+		})
+	}
 }

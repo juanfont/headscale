@@ -149,7 +149,6 @@
       "Mode": "file"
     },
     "Tuning": {
-      "NotifierSendTimeout": 800000000,
       "BatchChangeDelay": 800000000,
       "NodeMapSessionBufferedChanSize": 30,
       "BatcherWorkers": 0,

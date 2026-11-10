@@ -1,0 +1,2 @@
+Fatal config error: dns.extra_records has invalid keys: ttl ($DIR/config.yaml:2:3)
+  current: dns.extra_records: [{"name":"a.example.com","ttl":60,"type":"A","value":"100.64.0.1"}]
