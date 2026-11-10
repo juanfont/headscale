@@ -1,0 +1,6 @@
+{
+  "warnings": [
+    "no config file found, using defaults"
+  ],
+  "error": "Fatal config error: configuration keys \"Laptop.example.com\" and \"laptop.example.com\" in dns.challenge.provider.config differ only in case (env HEADSCALE_DNS_CHALLENGE_PROVIDER)\n  hint: keep one: case is ignored there\n\nFatal config error: configuration keys \"Corp.example.com\" and \"corp.example.com\" in dns.nameservers.split differ only in case (env HEADSCALE_DNS_NAMESERVERS_SPLIT)\n  hint: keep one: case is ignored there\n"
+}

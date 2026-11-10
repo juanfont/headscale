@@ -195,7 +195,7 @@
         "groups"
       ],
       "ExtraParams": {
-        "login_hint": "file"
+        "Login_Hint": "file"
       },
       "AllowedDomains": [
         "example.com"

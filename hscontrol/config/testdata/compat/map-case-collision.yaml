@@ -1,0 +1,19 @@
+# Keys that differ only in case where case is ignored; extra_params keeps
+# case, so its two keys are distinct. Configuration keys match only as
+# written, so Server_URL is unknown.
+server_url: https://hs.example.com
+Server_URL: https://marker-other.example.com
+dns:
+  nameservers:
+    split:
+      Corp.example.com: [10.0.0.1]
+      corp.example.com: [10.0.0.2]
+  challenge:
+    provider:
+      name: cloudflare
+      API_TOKEN: marker-token-a
+      api_token: marker-token-b
+oidc:
+  extra_params:
+    Domain_Hint: a
+    domain_hint: b

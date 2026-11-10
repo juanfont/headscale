@@ -22,10 +22,12 @@ func keyTree(src []byte) *yaml.Node {
 }
 
 // keyPosition returns the 1-based position of the key written as path, one
-// name per mapping, below n. Keys match case-insensitively, as the loader
-// lowercases them.
+// name per mapping, below n. Keys match as [keyCase] spells them.
 func keyPosition(n *yaml.Node, path []string) (int, int, bool) {
-	var key *yaml.Node
+	var (
+		key    *yaml.Node
+		prefix string
+	)
 
 	for _, want := range path {
 		if n == nil || n.Kind != yaml.MappingNode {
@@ -36,7 +38,7 @@ func keyPosition(n *yaml.Node, path []string) (int, int, bool) {
 
 		// Last duplicate wins, matching the JSON parser's effective value.
 		for i := len(n.Content) - 2; i >= 0; i -= 2 {
-			if strings.EqualFold(n.Content[i].Value, want) {
+			if keyCase(prefix, n.Content[i].Value) == want {
 				key, n = n.Content[i], n.Content[i+1]
 
 				break
@@ -46,6 +48,8 @@ func keyPosition(n *yaml.Node, path []string) (int, int, bool) {
 		if key == nil {
 			return 0, 0, false
 		}
+
+		prefix = joinConfigPath(prefix, want)
 	}
 
 	if key == nil {
@@ -56,9 +60,10 @@ func keyPosition(n *yaml.Node, path []string) (int, int, bool) {
 }
 
 // dottedPosition returns the 1-based position of the key at the dotted
-// path below n, however the file splits it into nested and dotted keys. It
-// follows only the keys n has, so the work is bounded by the file.
-func dottedPosition(n *yaml.Node, path []string) (int, int, bool) {
+// path below n, written below prefix, however the file splits it into
+// nested and dotted keys. Keys match as [keyCase] spells them. It follows
+// only the keys n has, so the work is bounded by the file.
+func dottedPosition(n *yaml.Node, prefix string, path []string) (int, int, bool) {
 	if n == nil || n.Kind != yaml.MappingNode {
 		return 0, 0, false
 	}
@@ -68,7 +73,7 @@ func dottedPosition(n *yaml.Node, path []string) (int, int, bool) {
 	// Last duplicate wins, matching the JSON parser's effective value; an
 	// earlier one is shadowed, so its children were never loaded.
 	for i := len(n.Content) - 2; i >= 0; i -= 2 {
-		key := strings.ToLower(n.Content[i].Value)
+		key := keyCase(prefix, n.Content[i].Value)
 		if seen[key] {
 			continue
 		}
@@ -76,7 +81,7 @@ func dottedPosition(n *yaml.Node, path []string) (int, int, bool) {
 		seen[key] = true
 
 		names := strings.Split(key, ".")
-		if len(names) > len(path) || !slices.EqualFunc(names, path[:len(names)], strings.EqualFold) {
+		if len(names) > len(path) || !slices.Equal(names, path[:len(names)]) {
 			continue
 		}
 
@@ -84,7 +89,7 @@ func dottedPosition(n *yaml.Node, path []string) (int, int, bool) {
 			return n.Content[i].Line, n.Content[i].Column, true
 		}
 
-		line, col, ok := dottedPosition(n.Content[i+1], path[len(names):])
+		line, col, ok := dottedPosition(n.Content[i+1], joinConfigPath(prefix, key), path[len(names):])
 		if ok {
 			return line, col, true
 		}
