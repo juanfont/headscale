@@ -342,6 +342,7 @@ func TestNewHeadscaleRejectsSharedKey(t *testing.T) {
 		cfg.ConfigDir = dir
 		cfg.Noise.PrivateKeyPath = "shared.key"
 		cfg.DERP.Server.Enabled = true
+		cfg.DERP.Server.RegionID = 999
 		cfg.DERP.Server.STUNAddr = ":3478"
 		cfg.DERP.Server.PrivateKeyPath = filepath.Join(dir, "shared.key")
 

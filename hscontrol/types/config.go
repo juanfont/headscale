@@ -787,8 +787,10 @@ type DERPServerConfig struct {
 	// `server_url` must be `https://`.
 	Enabled bool `koanf:"enabled"`
 
-	// RegionID is the embedded server's region ID. It replaces a region
-	// with the same ID from the other sources.
+	// RegionID is the embedded server's region ID; required and positive
+	// when `derp.server.enabled` is true. Tailscale keeps 900-999 for your
+	// own regions. It replaces a region with the same ID from the other
+	// sources.
 	RegionID tailcfg.DERPRegionID `example:"999" koanf:"region_id"`
 
 	// RegionCode is the region's short code, shown by Tailscale clients.
