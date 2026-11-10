@@ -1,0 +1,181 @@
+{
+  "config": {
+    "ServerURL": "http://hs-compat:8080",
+    "Addr": "0.0.0.0:8080",
+    "MetricsAddr": "0.0.0.0:9090",
+    "TrustedProxies": null,
+    "Node": {
+      "Expiry": 0,
+      "Ephemeral": {
+        "InactivityTimeout": 1800000000000
+      },
+      "Routes": {
+        "HA": {
+          "ProbeInterval": 10000000000,
+          "ProbeTimeout": 5000000000
+        }
+      }
+    },
+    "PreAuthKeys": {
+      "RevokedRetention": 604800000000000
+    },
+    "PrefixV4": "100.64.0.0/10",
+    "PrefixV6": "fd7a:115c:a1e0::/48",
+    "IPAllocation": "sequential",
+    "NoisePrivateKeyPath": "/tmp/noise_private.key",
+    "BaseDomain": "headscale.net",
+    "Log": {
+      "Format": "text",
+      "Level": "trace"
+    },
+    "DisableUpdateCheck": false,
+    "Database": {
+      "Type": "postgres",
+      "Debug": false,
+      "Gorm": {
+        "Debug": false,
+        "SlowThreshold": 1000000,
+        "SkipErrRecordNotFound": false,
+        "ParameterizedQueries": false
+      },
+      "Sqlite": {
+        "Path": "",
+        "WriteAheadLog": true,
+        "WALAutoCheckPoint": 1000
+      },
+      "Postgres": {
+        "Host": "postgres-compat",
+        "Port": 0,
+        "Name": "headscale",
+        "User": "headscale",
+        "Ssl": "false",
+        "MaxOpenConnections": 10,
+        "MaxIdleConnections": 10,
+        "ConnMaxIdleTimeSecs": 3600
+      }
+    },
+    "DERP": {
+      "ServerEnabled": true,
+      "AutomaticallyAddEmbeddedDerpRegion": true,
+      "ServerRegionID": 999,
+      "ServerRegionCode": "headscale",
+      "ServerRegionName": "Headscale Embedded DERP",
+      "ServerPrivateKeyPath": "/tmp/derp.key",
+      "ServerVerifyClients": true,
+      "STUNAddr": "0.0.0.0:3478",
+      "URLs": [],
+      "Paths": null,
+      "DERPMap": null,
+      "AutoUpdate": false,
+      "UpdateFrequency": 60000000000,
+      "IPv4": "",
+      "IPv6": ""
+    },
+    "TLS": {
+      "CertPath": "",
+      "KeyPath": "",
+      "ACME": {
+        "Hostname": "",
+        "ChallengeType": "HTTP-01",
+        "HTTPListen": ":http",
+        "URL": "",
+        "Email": "",
+        "CacheDir": "/var/lib/headscale/cache"
+      }
+    },
+    "DNSConfig": {
+      "MagicDNS": true,
+      "BaseDomain": "headscale.net",
+      "OverrideLocalDNS": false,
+      "Nameservers": {
+        "Global": [
+          "127.0.0.11",
+          "1.1.1.1"
+        ],
+        "Split": {}
+      },
+      "SearchDomains": [],
+      "ExtraRecords": null,
+      "ExtraRecordsPath": "",
+      "Certificates": {
+        "Enabled": false,
+        "Zone": "headscale.net"
+      }
+    },
+    "TailcfgDNSConfig": {
+      "FallbackResolvers": [
+        {
+          "Addr": "127.0.0.11"
+        },
+        {
+          "Addr": "1.1.1.1"
+        }
+      ],
+      "Domains": [
+        "headscale.net"
+      ],
+      "Proxied": true
+    },
+    "DNSChallenge": {
+      "PropagationTimeout": 120000000000,
+      "Resolvers": [
+        "1.1.1.1:53",
+        "8.8.8.8:53"
+      ],
+      "ProviderName": ""
+    },
+    "UnixSocket": "/var/run/headscale/headscale.sock",
+    "UnixSocketPermission": 504,
+    "OIDC": {
+      "OnlyStartIfOIDCIsAvailable": true,
+      "Issuer": "",
+      "ClientID": "",
+      "Scope": [
+        "openid",
+        "profile",
+        "email"
+      ],
+      "ExtraParams": {},
+      "AllowedDomains": null,
+      "AllowedUsers": null,
+      "AllowedGroups": null,
+      "EmailVerifiedRequired": true,
+      "UseExpiryFromToken": false,
+      "PKCE": {
+        "Enabled": false,
+        "Method": "S256"
+      }
+    },
+    "LogTail": {
+      "Enabled": false
+    },
+    "Taildrop": {
+      "Enabled": true
+    },
+    "AutoUpdate": {
+      "Enabled": false
+    },
+    "CLI": {
+      "Address": "",
+      "Timeout": 5000000000,
+      "Insecure": false
+    },
+    "Policy": {
+      "Path": "",
+      "Mode": "file"
+    },
+    "Tuning": {
+      "NotifierSendTimeout": 800000000,
+      "BatchChangeDelay": 800000000,
+      "NodeMapSessionBufferedChanSize": 30,
+      "BatcherWorkers": 0,
+      "RegisterCacheExpiration": 0,
+      "RegisterCacheMaxEntries": 0,
+      "NodeStoreBatchSize": 100,
+      "NodeStoreBatchTimeout": 500000000
+    }
+  },
+  "secrets": {
+    "database.postgres.pass": "headscale"
+  }
+}

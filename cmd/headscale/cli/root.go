@@ -11,7 +11,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/tcnksm/go-latest"
 )
 
@@ -54,8 +53,9 @@ func skipsInitConfig(args []string) bool {
 }
 
 // loadConfig loads path, else the file -c names, else $HEADSCALE_CONFIG,
-// else the first config.* in /etc/headscale, ~/.headscale or ".". Without a
-// file it loads defaults and environment only.
+// else the first config.* in /etc/headscale, $XDG_CONFIG_HOME/headscale,
+// headscale under each $XDG_CONFIG_DIRS entry, ~/.headscale or ".". Without
+// a file it loads defaults and environment only.
 func loadConfig(path string) error {
 	for _, p := range []string{path, cfgFile, os.Getenv("HEADSCALE_CONFIG")} {
 		if p == "" {
@@ -99,13 +99,11 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	logFormat := viper.GetString("log.format")
-	if logFormat == types.JSONLogFormat {
+	if types.LogFormat() == types.JSONLogFormat {
 		log.Logger = log.Output(os.Stdout)
 	}
 
-	disableUpdateCheck := viper.GetBool("disable_check_updates")
-	if !disableUpdateCheck && !machineOutput {
+	if !types.UpdateCheckDisabled() && !machineOutput {
 		versionInfo := types.GetVersionInfo()
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			!versionInfo.Dirty {

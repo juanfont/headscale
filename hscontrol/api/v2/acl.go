@@ -221,7 +221,7 @@ func currentPolicy(b Backend) ([]byte, error) {
 		return []byte(p.Data), nil
 
 	case types.PolicyModeFile:
-		path := util.AbsolutePathFromConfigPath(b.Cfg.Policy.Path)
+		path := util.AbsolutePath(b.Cfg.ConfigDir, b.Cfg.Policy.Path)
 		if path == "" {
 			return []byte(defaultPolicy), nil
 		}

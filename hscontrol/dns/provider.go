@@ -49,14 +49,29 @@ type Provider interface {
 // providers is the compiled-in provider registry. Providers are decoded
 // from configuration through their json tags, so adding one is one line
 // plus its module; the set is curated because each provider is a
-// dependency to keep current and its quirks become ours.
-var providers = map[string]func() Provider{
-	"acmedns":    func() Provider { return &acmeDNS{served: make(map[string][2]acmeDNSValue)} },
-	"cloudflare": func() Provider { return new(cloudflare.Provider) },
-	"gigahost":   func() Provider { return new(gigahost.Provider) },
-	"hetzner":    func() Provider { return new(hetzner.Provider) },
-	"powerdns":   func() Provider { return new(powerdns.Provider) },
-	"rfc2136":    func() Provider { return new(rfc2136.Provider) },
+// dependency to keep current and its quirks become ours. required lists
+// the settings the provider's own code cannot work without, so a missing
+// one fails at startup instead of at the first certificate. env names the
+// variable the provider's own code reads a required setting from when the
+// setting is unset.
+var providers = map[string]struct {
+	build    func() Provider
+	required []string
+	env      map[string]string
+}{
+	// validate checks the accounts.
+	"acmedns": {build: func() Provider { return &acmeDNS{served: make(map[string][2]acmeDNSValue)} }},
+	// api_token authenticates writes; zone_token only zone lookups.
+	"cloudflare": {build: func() Provider { return new(cloudflare.Provider) }, required: []string{"api_token"}},
+	"gigahost":   {build: func() Provider { return new(gigahost.Provider) }, required: []string{"api_key"}},
+	"hetzner": {
+		build:    func() Provider { return new(hetzner.Provider) },
+		required: []string{"api_token"},
+		env:      map[string]string{"api_token": "LIBDNS_HETZNER_TOKEN"}, //nolint:gosec // a variable's name, not a credential
+	},
+	"powerdns": {build: func() Provider { return new(powerdns.Provider) }, required: []string{"server_url", "api_token"}},
+	// Every request is TSIG-signed.
+	"rfc2136": {build: func() Provider { return new(rfc2136.Provider) }, required: []string{"server", "key_name", "key_alg", "key"}},
 }
 
 var (
@@ -68,11 +83,11 @@ var (
 	errAcmeDNSOneAccount = errors.New("acme-dns with one account answers every name's challenge from one record; " +
 		"node certificates need a registration per name under config")
 	errAcmeDNSShared = errors.New("acme-dns registration mapped to more than one name")
-)
 
-// pathSuffix marks a setting whose value is read from a file, keeping
-// secrets out of the configuration file.
-const pathSuffix = "_path"
+	// ErrSecretUnread is returned, with the value as given, by a secret
+	// func that leaves a file: secret unread; checks of it are skipped.
+	ErrSecretUnread = errors.New("secret left unread")
+)
 
 // ProviderNames returns the names of the compiled-in providers.
 func ProviderNames() []string {
@@ -84,20 +99,21 @@ func ProviderNames() []string {
 // settings holds the provider's keys as written in the configuration
 // file. get looks up a single key and is consulted for every field of
 // the provider, because environment variables only reach individual
-// keys, never a map. Any string field can instead be read from a file
-// named by "<field>_path". Unknown keys are an error so a typo does not
-// silently leave a credential empty.
+// keys, never a map. secret resolves every string setting, nested ones
+// included, so any of them can be read from a file. Unknown keys are an
+// error so a typo does not silently leave a credential empty.
 func NewProvider(
 	name string,
 	settings map[string]any,
 	get func(key string) (any, bool),
+	secret func(key, value string) (string, error),
 ) (Provider, error) {
-	newProvider, ok := providers[strings.ToLower(name)]
+	entry, ok := providers[strings.ToLower(name)]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownProvider, name)
 	}
 
-	provider := newProvider()
+	provider := entry.build()
 
 	input := make(map[string]any, len(settings))
 	for k, v := range settings {
@@ -106,44 +122,37 @@ func NewProvider(
 
 	delete(input, "name")
 
+	// The values left unread, for validate to skip. Kept by value, as a
+	// setting's name may be spelt in any case.
+	unread := map[string]bool{}
+	read := func(key, value string) (string, error) {
+		s, err := secret(key, value)
+		if errors.Is(err, ErrSecretUnread) {
+			unread[value] = true
+
+			return value, nil
+		}
+
+		return s, err
+	}
+
 	fields := jsonFields(provider)
 	for tag, kind := range fields {
 		if v, ok := get(tag); ok {
 			input[tag] = v
 		}
 
-		pathKey := tag + pathSuffix
-		if _, isField := fields[pathKey]; isField || kind != reflect.String {
+		value, ok := input[tag]
+		if _, isMap := value.(map[string]any); !ok || (kind != reflect.String && !isMap) {
 			continue
 		}
 
-		if v, ok := get(pathKey); ok {
-			input[pathKey] = v
-		}
-
-		path, ok := input[pathKey]
-		if !ok {
-			continue
-		}
-
-		if _, both := input[tag]; both {
-			return nil, fmt.Errorf("%w: %s and %s are mutually exclusive", ErrProviderConfig, tag, pathKey)
-		}
-
-		value, err := os.ReadFile(os.ExpandEnv(fmt.Sprint(path)))
+		value, err := resolveSecrets(tag, value, read)
 		if err != nil {
-			return nil, fmt.Errorf("%w: reading %s: %w", ErrProviderConfig, pathKey, err)
+			return nil, fmt.Errorf("%w: %w", ErrProviderConfig, err)
 		}
 
-		input[tag] = strings.TrimSpace(string(value))
-		delete(input, pathKey)
-	}
-
-	// Every provider needs a credential or a server: a block with only a
-	// name is a secret that was not set, and would fail at the first
-	// certificate instead of at startup.
-	if len(input) == 0 {
-		return nil, fmt.Errorf("%w for %s: no settings", ErrProviderConfig, name)
+		input[tag] = value
 	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
@@ -162,14 +171,108 @@ func NewProvider(
 		return nil, fmt.Errorf("%w for %s: %w", ErrProviderConfig, name, err)
 	}
 
-	if v, ok := provider.(interface{ validate() error }); ok {
-		err = v.validate()
+	// After decoding, so a misspelt setting is reported as that. An unread
+	// file: value counts as set.
+	var missing []string
+
+	for _, k := range entry.required {
+		// os.Getenv("") is "" for a setting without a fallback variable.
+		if v := input[k]; (v == nil || v == "") && os.Getenv(entry.env[k]) == "" {
+			missing = append(missing, k)
+		}
+	}
+
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("%w for %s: missing %s", ErrProviderConfig, name, strings.Join(missing, ", "))
+	}
+
+	if v, ok := provider.(interface {
+		validate(unread map[string]bool) error
+	}); ok {
+		err = v.validate(unread)
 		if err != nil {
 			return nil, fmt.Errorf("%w for %s: %w", ErrProviderConfig, name, err)
 		}
 	}
 
 	return provider, nil
+}
+
+// resolveSecrets resolves every string in value, down through nested
+// settings such as acme-dns's per-name registrations; key names the
+// setting in errors. Maps are copied, as they may be the caller's.
+func resolveSecrets(key string, value any, secret func(key, value string) (string, error)) (any, error) {
+	switch value := value.(type) {
+	case string:
+		return secret(key, value)
+	case map[string]any:
+		out := make(map[string]any, len(value))
+
+		for k, v := range value {
+			r, err := resolveSecrets(key+"."+k, v, secret)
+			if err != nil {
+				return nil, err
+			}
+
+			out[k] = r
+		}
+
+		return out, nil
+	}
+
+	return value, nil
+}
+
+// IsProviderSetting reports whether a compiled-in provider has a setting
+// named name, nested ones such as acme-dns's registrations included.
+func IsProviderSetting(name string) bool {
+	return providerSetting(name, func(reflect.Type) bool { return true })
+}
+
+// IsProviderMapSetting reports whether a compiled-in provider has a map
+// setting named name, whose keys are names, such as acme-dns's
+// registrations, rather than settings.
+func IsProviderMapSetting(name string) bool {
+	return providerSetting(name, func(t reflect.Type) bool { return t.Kind() == reflect.Map })
+}
+
+func providerSetting(name string, match func(reflect.Type) bool) bool {
+	for _, entry := range providers {
+		if hasSetting(reflect.TypeOf(entry.build()), name, match) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasSetting matches names case-insensitively, as the decoder does.
+func hasSetting(t reflect.Type, name string, match func(reflect.Type) bool) bool {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Map || t.Kind() == reflect.Slice {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return false
+	}
+
+	for _, f := range reflect.VisibleFields(t) {
+		tag, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if !f.IsExported() || tag == "" || tag == "-" {
+			continue
+		}
+
+		ft := f.Type
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+
+		if (strings.EqualFold(tag, name) && match(ft)) || hasSetting(f.Type, name, match) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // jsonFields returns the json key and kind of each configurable field of
@@ -313,7 +416,8 @@ func (p *acmeDNS) CheckIsolation() error {
 		sub := p.Configs[name].Subdomain
 
 		if other, shared := names[sub]; shared {
-			return fmt.Errorf("%w: %s and %s share registration %s", errAcmeDNSShared, other, name, sub)
+			// The registration is not named: it may have been read from a file.
+			return fmt.Errorf("%w: %s and %s share a registration", errAcmeDNSShared, other, name)
 		}
 
 		names[sub] = name
@@ -336,8 +440,8 @@ func (p *acmeDNS) registration(zone, name string) string {
 
 // validate reports at startup what acmedns would only report at the first
 // certificate. It builds requests without checking the URL, so a bad
-// server_url would panic.
-func (p *acmeDNS) validate() error {
+// server_url would panic. An unread server_url is checked once it is read.
+func (p *acmeDNS) validate(unread map[string]bool) error {
 	accounts := []acmedns.DomainConfig{{
 		Username:  p.Username,
 		Password:  p.Password,
@@ -351,8 +455,9 @@ func (p *acmeDNS) validate() error {
 	for _, a := range accounts {
 		u, err := url.Parse(a.ServerURL)
 		missing := a.Username == "" || a.Password == "" || a.Subdomain == ""
+		badURL := !unread[a.ServerURL] && (err != nil || u.Host == "")
 
-		if missing || err != nil || u.Host == "" {
+		if missing || badURL {
 			return errAcmeDNSAccount
 		}
 	}

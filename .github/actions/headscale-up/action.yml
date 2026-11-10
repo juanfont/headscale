@@ -51,10 +51,8 @@ runs:
         server_url: ${URL}
         listen_addr: 0.0.0.0:8443
         metrics_listen_addr: 127.0.0.1:9090
-        grpc_listen_addr: 127.0.0.1:50443
         unix_socket: /tmp/hs/headscale.sock
         unix_socket_permission: "0770"
-        private_key_path: /tmp/hs/private.key
         noise:
           private_key_path: /tmp/hs/noise.key
         prefixes:

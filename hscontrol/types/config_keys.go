@@ -50,8 +50,6 @@ func keyPosition(src []byte, path []string) (int, int, bool) {
 
 // configKeys lists every key the loader reads, so env mapping and the strict
 // pass know the schema. Open maps are in openMapKeys.
-//
-//nolint:goconst // schema table, not shared literals
 var configKeys = []string{
 	"server_url",
 	"listen_addr",
@@ -129,7 +127,6 @@ var configKeys = []string{
 	"oidc.issuer",
 	"oidc.client_id",
 	"oidc.client_secret",
-	"oidc.client_secret_path",
 	"oidc.scope",
 	"oidc.extra_params",
 	"oidc.allowed_domains",
@@ -213,12 +210,17 @@ var configDefaults = map[string]any{
 	"tuning.node_store_batch_size":                       defaultNodeStoreBatchSize,
 	"tuning.node_store_batch_timeout":                    "500ms",
 	"prefixes.allocation":                                string(IPAllocationStrategySequential),
+	"tls.acme.challenge_type":                            HTTP01ChallengeType,
+	"tls.acme.http_listen":                               ":http",
+	"tls.acme.cache_dir":                                 "/var/lib/headscale/cache",
 }
 
 // removedKey is a key that once worked and is now rejected. In files Old
 // matches the key and everything beneath it; for environment variables only
-// the exact name, so the old dns_config.* leaves are listed too.
-type removedKey struct{ Old, New, Since, Hint string }
+// the exact name, so the old dns_config.* leaves are listed too. New holds
+// the replacement keys, space separated; Value, when set, is what New takes.
+// Hint is free text for what the other fields cannot say.
+type removedKey struct{ Old, New, Value, Since, Hint string }
 
 var removedKeys = []removedKey{
 	{Old: "acl_policy_path", New: "policy.path", Since: "0.30"},
@@ -236,7 +238,7 @@ var removedKeys = []removedKey{
 	{Old: "oidc.map_legacy_users", Since: "0.26"},
 	{Old: "randomize_client_port", Since: "0.29", Hint: `set "randomizeClientPort": true at the top level of the policy file, or grant the cap per node via a "nodeAttrs" entry`},
 	{Old: "oidc.expiry", New: "node.expiry", Since: "0.29"},
-	{Old: "ephemeral_node_inactivity_timeout", New: "node.ephemeral.inactivity_timeout", Since: "0.29"},
+	{Old: "ephemeral_node_inactivity_timeout", New: "node.ephemeral.inactivity_timeout", Since: "0.30"},
 	{Old: "tls_cert_path", New: "tls.cert_path", Since: "0.30"},
 	{Old: "tls_key_path", New: "tls.key_path", Since: "0.30"},
 	{Old: "tls_letsencrypt_hostname", New: "tls.acme.hostname", Since: "0.30"},
@@ -257,9 +259,9 @@ var removedKeys = []removedKey{
 	{Old: "db_pass", New: "database.postgres.pass", Since: "0.30"},
 	{Old: "db_ssl", New: "database.postgres.ssl", Since: "0.30"},
 	{Old: "private_key_path", New: "noise.private_key_path", Since: "0.23"},
-	{Old: "ip_prefixes", New: "prefixes.v4", Since: "0.23", Hint: "use prefixes.v4 and prefixes.v6"},
+	{Old: "ip_prefixes", New: "prefixes.v4 prefixes.v6", Since: "0.23"},
 	{Old: "log_level", New: "log.level", Since: "0.17"},
-	{Old: "json_logs", New: "log.format", Since: "0.30", Hint: `use log.format: "json"`},
+	{Old: "json_logs", New: "log.format", Value: "json", Since: "0.30"},
 	{Old: "tls_client_auth_mode", Since: "0.30"},
 	{Old: "node_update_check_interval", Since: "0.30"},
 	{Old: "changes_check_interval", Since: "0.30"},
@@ -269,4 +271,6 @@ var removedKeys = []removedKey{
 	{Old: "oidc.domain_map", Since: "0.13"},
 	{Old: "oidc.namespace", Since: "0.30"},
 	{Old: "oidc.user", Since: "0.30"},
+	{Old: "oidc.client_secret_path", New: "oidc.client_secret", Value: "file:<path>", Since: "0.30"},
+	{Old: "database.postgres.password_file", New: "database.postgres.pass", Value: "file:<path>", Since: "0.30"},
 }

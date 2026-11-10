@@ -1053,10 +1053,10 @@ func TestSSHOneUserToOneCheckModeOIDC(t *testing.T) {
 	// defer scenario.ShutdownAssertNoPanics(t)
 
 	oidcMap := map[string]string{
-		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
-		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
-		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
-		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		"HEADSCALE_OIDC_ISSUER":        scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":     scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":   "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET": oidcClientFileRef,
 	}
 
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
@@ -1174,7 +1174,6 @@ func TestSSHCheckModeUnapprovedTimeout(t *testing.T) {
 		hsic.WithTestName("sshchecktimeout"),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION": "15s",
-			"HEADSCALE_TUNING_REGISTER_CACHE_CLEANUP":    "5s",
 		}),
 	)
 	require.NoError(t, err)
@@ -1666,10 +1665,10 @@ func TestSSHLocalpart(t *testing.T) {
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			oidcMap := map[string]string{
-				"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
-				"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
-				"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
-				"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+				"HEADSCALE_OIDC_ISSUER":        scenario.mockOIDC.Issuer(),
+				"HEADSCALE_OIDC_CLIENT_ID":     scenario.mockOIDC.ClientID(),
+				"CREDENTIALS_DIRECTORY_TEST":   "/tmp",
+				"HEADSCALE_OIDC_CLIENT_SECRET": oidcClientFileRef,
 			}
 
 			err = scenario.CreateHeadscaleEnvWithLoginURL(

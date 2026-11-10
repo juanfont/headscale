@@ -17,7 +17,12 @@ import (
 	"tailscale.com/types/key"
 )
 
-var ErrSameKey = errors.New("noise and DERP private keys must differ")
+var (
+	ErrSameKey = errors.New("noise and DERP private keys must differ")
+
+	// ErrSecretNotRead is the check of a file: secret: no check reads one.
+	ErrSecretNotRead = errors.New("secret, not read")
+)
 
 // File is one file the configuration names.
 type File struct {
@@ -38,7 +43,7 @@ func Files(cfg *types.Config) []File {
 	var files []File
 
 	if cfg.Policy.Mode == types.PolicyModeFile && cfg.Policy.Path != "" {
-		p := util.AbsolutePathFromConfigPath(cfg.Policy.Path)
+		p := util.AbsolutePath(cfg.ConfigDir, cfg.Policy.Path)
 		files = append(files, File{Key: "policy.path", Path: p, Check: func() error { return CheckPolicyFile(p) }})
 	}
 
@@ -70,6 +75,13 @@ func Files(cfg *types.Config) []File {
 		files = append(files, File{
 			Key: "derp.server.private_key_path", Path: d, CreatedAtStartup: true,
 			Check: func() error { return checkDERPKey(d, noise) },
+		})
+	}
+
+	for _, kv := range cfg.UnreadSecrets {
+		files = append(files, File{
+			Key: kv.Key, Path: fmt.Sprint(kv.Value),
+			Check: func() error { return ErrSecretNotRead },
 		})
 	}
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"maps"
 	"net"
 	"net/netip"
 	"net/url"
@@ -17,19 +16,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/util/dnsname"
-	"tailscale.com/util/set"
 )
 
 const (
@@ -42,16 +39,16 @@ const (
 )
 
 var (
-	errOidcMutuallyExclusive     = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
 	errOIDCIssuerInvalid         = errors.New("oidc.issuer must be a valid http(s) URL")
 	errOIDCClientIDRequired      = errors.New("oidc.client_id is required when oidc.issuer is set")
-	errOIDCClientSecretRequired  = errors.New("oidc.client_secret or oidc.client_secret_path is required when oidc.issuer is set")
+	errOIDCClientSecretRequired  = errors.New("oidc.client_secret is required when oidc.issuer is set")
 	errServerURLSuffix           = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
 	errServerURLSame             = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
 	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
 	errTrustedProxyZeroRange     = errors.New("0.0.0.0/0 and ::/0 are not allowed")
 	ErrNoPrefixConfigured        = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
 	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
+	errConfigNotLoaded           = errors.New("configuration not loaded: call types.LoadConfig first")
 )
 
 // defaultChallengeResolvers find a zone's nameservers when
@@ -168,6 +165,13 @@ type Config struct {
 	Policy PolicyConfig
 
 	Tuning Tuning
+
+	// ConfigDir resolves relative paths such as policy.path.
+	ConfigDir string `json:"-"`
+
+	// UnreadSecrets are the file: secrets [CheckServerConfig] left unread,
+	// each as key and path.
+	UnreadSecrets []KV `json:"-"`
 }
 
 type DNSConfig struct {
@@ -318,48 +322,6 @@ type ACMEConfig struct {
 	CacheDir   string
 }
 
-// legacyTLSKeys maps each tls key to the flat key it replaced. The flat
-// keys keep working, so existing configs and NixOS modules still run.
-var legacyTLSKeys = map[string]string{
-	"tls.cert_path":           "tls_cert_path",
-	"tls.key_path":            "tls_key_path",
-	"tls.acme.hostname":       "tls_letsencrypt_hostname",
-	"tls.acme.challenge_type": "tls_letsencrypt_challenge_type",
-	"tls.acme.http_listen":    "tls_letsencrypt_listen",
-	"tls.acme.cache_dir":      "tls_letsencrypt_cache_dir",
-	"tls.acme.url":            "acme_url",
-	"tls.acme.email":          "acme_email",
-}
-
-var tlsDefaults = map[string]string{
-	"tls.acme.challenge_type": HTTP01ChallengeType,
-	"tls.acme.http_listen":    ":http",
-	"tls.acme.cache_dir":      "/var/lib/headscale/cache",
-}
-
-// warnLegacyTLSKeys points at the tls keys for flat keys in the config
-// file that turn TLS on. NixOS writes the flat keys even with TLS off, and
-// the HEADSCALE_TLS_* variables name both the flat and the tls keys.
-func warnLegacyTLSKeys(depr *deprecator) {
-	legacyTLSOn := func(key string) bool { return viper.InConfig(key) && viper.GetString(key) != "" }
-	if !legacyTLSOn("tls_letsencrypt_hostname") && !legacyTLSOn("tls_cert_path") {
-		return
-	}
-
-	for _, key := range slices.Sorted(maps.Keys(legacyTLSKeys)) {
-		if viper.InConfig(legacyTLSKeys[key]) {
-			depr.warnNoAlias(key, legacyTLSKeys[key])
-		}
-	}
-}
-
-// tlsKey reads a tls setting, falling back to the flat key it replaced and
-// then to its default. The defaults are not viper defaults: those would
-// shadow the flat key.
-func tlsKey(key string) string {
-	return cmp.Or(viper.GetString(key), viper.GetString(legacyTLSKeys[key]), tlsDefaults[key])
-}
-
 type PKCEConfig struct {
 	Enabled bool
 	Method  string
@@ -396,6 +358,8 @@ type DERPConfig struct {
 	UpdateFrequency                    time.Duration
 	IPv4                               string
 	IPv6                               string
+	// ShuffleSeed orders DERP nodes the same on every server of a tailnet.
+	ShuffleSeed string `json:"-"`
 }
 
 type LogTailConfig struct {
@@ -511,23 +475,23 @@ func validatePKCEMethod(method string) error {
 // error or, worse, resolve to an unintended provider), or a missing client
 // id/secret.
 func validateOIDCConfig() error {
-	err := validatePKCEMethod(viper.GetString("oidc.pkce.method"))
+	err := validatePKCEMethod(src.String("oidc.pkce.method"))
 	if err != nil {
 		return err
 	}
 
-	issuer := viper.GetString("oidc.issuer")
+	issuer := src.String("oidc.issuer")
 
 	u, err := url.Parse(issuer)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return fmt.Errorf("%w: got %q", errOIDCIssuerInvalid, issuer)
 	}
 
-	if viper.GetString("oidc.client_id") == "" {
+	if src.String("oidc.client_id") == "" {
 		return errOIDCClientIDRequired
 	}
 
-	if viper.GetString("oidc.client_secret") == "" && viper.GetString("oidc.client_secret_path") == "" {
+	if src.String("oidc.client_secret") == "" {
 		return errOIDCClientSecretRequired
 	}
 
@@ -560,135 +524,72 @@ func (c *Config) ServesRoute(p netip.Prefix) bool {
 		(c.PrefixV6 == nil || !c.PrefixV6.Contains(addr))
 }
 
-// LoadConfig prepares and loads the Headscale configuration into Viper.
-// This means it sets the default values, reads the configuration file and
-// environment variables, and handles deprecated configuration options.
-// It has to be called before [LoadServerConfig] and [LoadCLIConfig].
-// The configuration is not validated and the caller should check for errors
-// using a validation function.
+// src is the configuration [LoadConfig] loaded.
+var src *configSource
+
+// configFile is the file [LoadConfig] last loaded or failed to load.
+var configFile string
+
+// LoadConfig loads defaults, the configuration file and HEADSCALE_*
+// environment variables, rejecting unknown and removed keys. It has to be
+// called before [LoadServerConfig] and [LoadCLIConfig], which validate the
+// values.
 func LoadConfig(path string, isFile bool) error {
-	if isFile {
-		viper.SetConfigFile(path)
-	} else {
-		viper.SetConfigName("config")
+	configFile = findConfigFile(path, isFile, os.Environ())
 
-		if path == "" {
-			viper.AddConfigPath("/etc/headscale/")
-			viper.AddConfigPath("$HOME/.headscale")
-			viper.AddConfigPath(".")
-		} else {
-			// For testing
-			viper.AddConfigPath(path)
-		}
-	}
-
-	envPrefix := "headscale"
-	viper.SetEnvPrefix(envPrefix)
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
-
-	viper.SetDefault("policy.mode", "file")
-
-	viper.SetDefault("log.level", "info")
-	viper.SetDefault("log.format", TextLogFormat)
-
-	viper.SetDefault("dns.magic_dns", true)
-	viper.SetDefault("dns.base_domain", "")
-	viper.SetDefault("dns.override_local_dns", true)
-	viper.SetDefault("dns.nameservers.global", []string{})
-	viper.SetDefault("dns.nameservers.split", map[string]string{})
-	viper.SetDefault("dns.search_domains", []string{})
-	viper.SetDefault("dns.certificates.enabled", false)
-
-	viper.SetDefault("dns.challenge.propagation_timeout", "2m")
-
-	viper.SetDefault("derp.server.enabled", false)
-	viper.SetDefault("derp.server.verify_clients", true)
-	viper.SetDefault("derp.server.stun.enabled", true)
-	viper.SetDefault("derp.server.automatically_add_embedded_derp_region", true)
-	viper.SetDefault("derp.update_frequency", "3h")
-
-	viper.SetDefault("unix_socket", "/var/run/headscale/headscale.sock")
-	viper.SetDefault("unix_socket_permission", "0o770")
-
-	viper.SetDefault("cli.timeout", "5s")
-	viper.SetDefault("cli.insecure", false)
-
-	viper.SetDefault("database.postgres.ssl", false)
-	viper.SetDefault("database.postgres.max_open_conns", 10)
-	viper.SetDefault("database.postgres.max_idle_conns", 10)
-	viper.SetDefault("database.postgres.conn_max_idle_time_secs", 3600)
-
-	viper.SetDefault("database.sqlite.write_ahead_log", true)
-	viper.SetDefault("database.sqlite.wal_autocheckpoint", 1000) // SQLite default
-
-	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
-	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
-	viper.SetDefault("oidc.use_expiry_from_token", false)
-	viper.SetDefault("oidc.pkce.enabled", false)
-	viper.SetDefault("oidc.pkce.method", "S256")
-	viper.SetDefault("oidc.email_verified_required", true)
-
-	viper.SetDefault("logtail.enabled", false)
-	viper.SetDefault("taildrop.enabled", true)
-	viper.SetDefault("auto_update.enabled", false)
-
-	viper.SetDefault("node.expiry", "0")
-	viper.SetDefault("node.ephemeral.inactivity_timeout", "120s")
-	viper.SetDefault("preauth_keys.revoked_retention", "168h")
-	viper.SetDefault("node.routes.ha.probe_interval", "10s")
-	viper.SetDefault("node.routes.ha.probe_timeout", "5s")
-
-	viper.SetDefault("tuning.notifier_send_timeout", "800ms")
-	viper.SetDefault("tuning.batch_change_delay", "800ms")
-	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
-	viper.SetDefault("tuning.node_store_batch_size", defaultNodeStoreBatchSize)
-	viper.SetDefault("tuning.node_store_batch_timeout", "500ms")
-
-	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
-
-	err := viper.ReadInConfig()
+	s, err := newConfigSource(path, isFile, os.Environ())
 	if err != nil {
-		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); ok {
-			log.Warn().Msg("no config file found, using defaults")
-			return nil
-		}
-
-		return fmt.Errorf("fatal error reading config file: %w", err)
+		return err
 	}
+
+	for _, w := range s.Warnings() {
+		log.Warn().Msg(w)
+	}
+
+	src = s
 
 	return nil
 }
 
-// resolveEphemeralInactivityTimeout resolves the ephemeral inactivity timeout
-// from config, supporting both the new key (node.ephemeral.inactivity_timeout)
-// and the old key (ephemeral_node_inactivity_timeout) for backwards compatibility.
-//
-// We cannot use viper.RegisterAlias here because aliases silently ignore
-// config values set under the alias name. If a user writes the new key in
-// their config file, RegisterAlias redirects reads to the old key (which
-// has no config value), returning only the default and discarding the
-// user's setting.
-func resolveEphemeralInactivityTimeout() time.Duration {
-	// New key takes precedence if explicitly set in config.
-	if viper.IsSet("node.ephemeral.inactivity_timeout") &&
-		viper.GetString("node.ephemeral.inactivity_timeout") != "" {
-		return viper.GetDuration("node.ephemeral.inactivity_timeout")
+// configDir is where relative paths in the configuration are resolved: the
+// config file's directory, or the working directory without a file.
+func configDir() string {
+	dir := "."
+	if src.File() != "" {
+		dir = filepath.Dir(src.File())
 	}
 
-	// Fall back to old key for backwards compatibility.
-	if viper.IsSet("ephemeral_node_inactivity_timeout") {
-		return viper.GetDuration("ephemeral_node_inactivity_timeout")
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return dir
 	}
 
-	// Default
-	return viper.GetDuration("node.ephemeral.inactivity_timeout")
+	return abs
+}
+
+// ConfigFile returns the file the last [LoadConfig] loaded or failed to
+// load, or "" when it found none.
+func ConfigFile() string { return configFile }
+
+// LogFormat returns the configured log.format.
+func LogFormat() string { return src.String("log.format") }
+
+// UpdateCheckDisabled reports whether disable_check_updates is set.
+func UpdateCheckDisabled() bool { return src.Bool("disable_check_updates") }
+
+// DumpConfig renders the loaded configuration, defaults included, as YAML.
+func DumpConfig() ([]byte, error) {
+	if src == nil {
+		return nil, errConfigNotLoaded
+	}
+
+	return src.k.Marshal(yaml.Parser())
 }
 
 // resolveNodeExpiry parses the node.expiry config value.
 // Returns 0 if set to "0" (no default expiry) or on parse failure.
 func resolveNodeExpiry() time.Duration {
-	value := viper.GetString("node.expiry")
+	value := src.String("node.expiry")
 	if value == "" || value == "0" {
 		return 0
 	}
@@ -742,7 +643,7 @@ var boolConfigKeys = []string{
 // Validate raw values before GetBool can discard conversion errors.
 func validateBoolConfig(v *configValidator, keys ...string) {
 	for _, key := range keys {
-		value := viper.Get(key)
+		value := src.Get(key)
 		if value == nil {
 			continue
 		}
@@ -759,60 +660,16 @@ func validateBoolConfig(v *configValidator, keys ...string) {
 	}
 }
 
-// validateServerConfigInto runs every viper-level validation rule
+// validateServerConfigInto runs every config-level validation rule
 // against the provided validator. Caller owns the validator and is
 // responsible for inspecting v.Err() once all sub-builders have run.
 func validateServerConfigInto(v *configValidator) {
 	validateBoolConfig(v, boolConfigKeys...)
 
-	depr := deprecator{seen: make(set.Set[string])}
-
-	// Register aliases for backward compatibility
-	// Has to be called _after_ viper.ReadInConfig()
-	// https://github.com/spf13/viper/issues/560
-
-	// Alias the old ACL Policy path with the new configuration option.
-	depr.fatalIfNewKeyIsNotUsed("policy.path", "acl_policy_path")
-
-	// Move dns_config -> dns
-	depr.fatalIfNewKeyIsNotUsed("dns.magic_dns", "dns_config.magic_dns")
-	depr.fatalIfNewKeyIsNotUsed("dns.base_domain", "dns_config.base_domain")
-	depr.fatalIfNewKeyIsNotUsed("dns.override_local_dns", "dns_config.override_local_dns")
-	depr.fatalIfNewKeyIsNotUsed("dns.nameservers.global", "dns_config.nameservers")
-	depr.fatalIfNewKeyIsNotUsed("dns.nameservers.split", "dns_config.restricted_nameservers")
-	depr.fatalIfNewKeyIsNotUsed("dns.search_domains", "dns_config.domains")
-	depr.fatalIfNewKeyIsNotUsed("dns.extra_records", "dns_config.extra_records")
-	depr.fatal("dns.use_username_in_magic_dns")
-	depr.fatal("dns_config.use_username_in_magic_dns")
-
-	// Removed since version v0.26.0
-	depr.fatal("oidc.strip_email_domain")
-	depr.fatal("oidc.map_legacy_users")
-
-	// Removed since v0.29.0: `randomize_client_port` moved to the ACL
-	// policy as a top-level `randomizeClientPort` field, matching the
-	// Tailscale-hosted control plane schema. Per-node `nodeAttrs`
-	// entries granting `https://tailscale.com/cap/randomize-client-port`
-	// also work.
-	depr.fatalWithHint("randomize_client_port",
-		`Set "randomizeClientPort": true at the top level of your policy file `+
-			`(see policy.path / policy.mode), or grant the cap per-node via a `+
-			`"nodeAttrs" entry. See CHANGELOG.md (BREAKING / Configuration).`)
-
-	// Deprecated: ephemeral_node_inactivity_timeout -> node.ephemeral.inactivity_timeout
-	depr.warnNoAlias("node.ephemeral.inactivity_timeout", "ephemeral_node_inactivity_timeout")
-
-	// Removed: oidc.expiry -> node.expiry
-	depr.fatalIfSet("oidc.expiry", "node.expiry")
-
-	// Ignored: database.gorm.prepare_stmt. A warning, not a fatal, so configs
-	// that shipped with it set still start.
-	depr.warn("database.gorm.prepare_stmt")
-
 	// OIDC is activated by setting oidc.issuer (see app.go), not by a
 	// dedicated oidc.enabled key. Gate validation on the real activation
 	// condition so a misconfiguration fails at startup.
-	if viper.GetString("oidc.issuer") != "" {
+	if src.String("oidc.issuer") != "" {
 		err := validateOIDCConfig()
 		if err != nil {
 			v.Add(&ConfigError{
@@ -824,34 +681,32 @@ func validateServerConfigInto(v *configValidator) {
 		}
 	}
 
-	if viper.IsSet("dns.extra_records") && viper.IsSet("dns.extra_records_path") {
+	if src.IsSet("dns.extra_records") && src.IsSet("dns.extra_records_path") {
 		v.Add(&ConfigError{
 			Reason: "dns.extra_records and dns.extra_records_path are mutually exclusive",
 			Current: []KV{
-				{"dns.extra_records_path", viper.GetString("dns.extra_records_path")},
+				{"dns.extra_records_path", src.String("dns.extra_records_path")},
 				{"dns.extra_records", "<inline records>"},
 			},
 			Hint: "keep one (a path is recommended for production); remove the other",
 		})
 	}
 
-	warnLegacyTLSKeys(&depr)
-
-	if tlsKey("tls.acme.hostname") != "" &&
-		(tlsKey("tls.cert_path") != "" || tlsKey("tls.key_path") != "") {
+	if src.String("tls.acme.hostname") != "" &&
+		(src.String("tls.cert_path") != "" || src.String("tls.key_path") != "") {
 		v.Add(&ConfigError{
 			Reason:  "tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
-			Current: []KV{{"tls.acme.hostname", tlsKey("tls.acme.hostname")}},
+			Current: []KV{{"tls.acme.hostname", src.String("tls.acme.hostname")}},
 			ConflictsWith: []KV{
-				{"tls.cert_path", tlsKey("tls.cert_path")},
-				{"tls.key_path", tlsKey("tls.key_path")},
+				{"tls.cert_path", src.String("tls.cert_path")},
+				{"tls.key_path", src.String("tls.key_path")},
 			},
 			Hint: "choose one TLS strategy and unset the other (Let's Encrypt OR a static keypair)",
 			See:  "https://headscale.net/stable/ref/tls/",
 		})
 	}
 
-	if viper.GetString("noise.private_key_path") == "" {
+	if src.String("noise.private_key_path") == "" {
 		v.Add(&ConfigError{
 			Reason: "noise.private_key_path is required",
 			Hint:   "set noise.private_key_path: /var/lib/headscale/noise_private.key (or any writable path)",
@@ -859,9 +714,9 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	if tlsKey("tls.acme.hostname") != "" &&
-		tlsKey("tls.acme.challenge_type") == TLSALPN01ChallengeType &&
-		!strings.HasSuffix(viper.GetString("listen_addr"), ":443") {
+	if src.String("tls.acme.hostname") != "" &&
+		src.String("tls.acme.challenge_type") == TLSALPN01ChallengeType &&
+		!strings.HasSuffix(src.String("listen_addr"), ":443") {
 		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
 		log.Warn().
 			Msg("Warning: when using tls.acme.hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
@@ -869,7 +724,7 @@ func validateServerConfigInto(v *configValidator) {
 
 	validateListenerCollisions(v)
 
-	if ct := tlsKey("tls.acme.challenge_type"); ct != HTTP01ChallengeType &&
+	if ct := src.String("tls.acme.challenge_type"); ct != HTTP01ChallengeType &&
 		ct != TLSALPN01ChallengeType && ct != DNS01ChallengeType {
 		v.Add(&ConfigError{
 			Reason:  "tls.acme.challenge_type has an unsupported value",
@@ -879,7 +734,7 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	serverURL := viper.GetString("server_url")
+	serverURL := src.String("server_url")
 	if !strings.HasPrefix(serverURL, "http://") && !strings.HasPrefix(serverURL, "https://") {
 		v.Add(&ConfigError{
 			Reason:  "server_url is missing a scheme",
@@ -892,7 +747,7 @@ func validateServerConfigInto(v *configValidator) {
 	// to avoid races
 	minInactivityTimeout := 65 * time.Second
 
-	ephemeralTimeout := resolveEphemeralInactivityTimeout()
+	ephemeralTimeout := src.Duration("node.ephemeral.inactivity_timeout")
 	if ephemeralTimeout <= minInactivityTimeout {
 		v.Add(&ConfigError{
 			Reason:  "node.ephemeral.inactivity_timeout is below the minimum",
@@ -902,8 +757,8 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	if viper.GetBool("dns.override_local_dns") {
-		if global := viper.GetStringSlice("dns.nameservers.global"); len(global) == 0 {
+	if src.Bool("dns.override_local_dns") {
+		if global := src.StringSlice("dns.nameservers.global"); len(global) == 0 {
 			v.Add(&ConfigError{
 				Reason: "dns.nameservers.global is required when dns.override_local_dns is true",
 				Current: []KV{
@@ -917,7 +772,7 @@ func validateServerConfigInto(v *configValidator) {
 	}
 
 	// Validate HA health probing parameters
-	if haInterval := viper.GetDuration("node.routes.ha.probe_interval"); haInterval > 0 {
+	if haInterval := src.Duration("node.routes.ha.probe_interval"); haInterval > 0 {
 		if haInterval < 2*time.Second {
 			v.Add(&ConfigError{
 				Reason:  "node.routes.ha.probe_interval is below the minimum",
@@ -927,7 +782,7 @@ func validateServerConfigInto(v *configValidator) {
 			})
 		}
 
-		haTimeout := viper.GetDuration("node.routes.ha.probe_timeout")
+		haTimeout := src.Duration("node.routes.ha.probe_timeout")
 		if haTimeout < 1*time.Second {
 			v.Add(&ConfigError{
 				Reason:  "node.routes.ha.probe_timeout is below the minimum",
@@ -950,7 +805,7 @@ func validateServerConfigInto(v *configValidator) {
 	}
 
 	// Validate tuning parameters
-	if size := viper.GetInt("tuning.node_store_batch_size"); size <= 0 {
+	if size := src.Int("tuning.node_store_batch_size"); size <= 0 {
 		v.Add(&ConfigError{
 			Reason:  "tuning.node_store_batch_size must be positive",
 			Current: []KV{{"tuning.node_store_batch_size", size}},
@@ -958,7 +813,7 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	if timeout := viper.GetDuration("tuning.node_store_batch_timeout"); timeout <= 0 {
+	if timeout := src.Duration("tuning.node_store_batch_timeout"); timeout <= 0 {
 		v.Add(&ConfigError{
 			Reason:  "tuning.node_store_batch_timeout must be positive",
 			Current: []KV{{"tuning.node_store_batch_timeout", timeout.String()}},
@@ -971,14 +826,12 @@ func validateServerConfigInto(v *configValidator) {
 	validatePolicyConfig(v)
 	validateMagicDNSConfig(v)
 	validateCertificatesConfig(v)
-
-	depr.Apply(v)
 }
 
 // validatePolicyConfig records a ConfigError for an unknown policy.mode:
 // startup would load no policy at all and allow all traffic.
 func validatePolicyConfig(v *configValidator) {
-	m := viper.GetString("policy.mode")
+	m := src.String("policy.mode")
 	if m == PolicyModeFile || m == PolicyModeDB {
 		return
 	}
@@ -994,11 +847,11 @@ func validatePolicyConfig(v *configValidator) {
 // validateDERPConfig records ConfigErrors when the embedded DERP server
 // is enabled without the addresses or paths it needs.
 func validateDERPConfig(v *configValidator) {
-	if !viper.GetBool("derp.server.enabled") {
+	if !src.Bool("derp.server.enabled") {
 		return
 	}
 
-	if viper.GetString("derp.server.stun_listen_addr") == "" {
+	if src.String("derp.server.stun_listen_addr") == "" {
 		v.Add(&ConfigError{
 			Reason: "derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
 			Current: []KV{
@@ -1010,7 +863,7 @@ func validateDERPConfig(v *configValidator) {
 		})
 	}
 
-	derpKey, noiseKey := viper.GetString("derp.server.private_key_path"), viper.GetString("noise.private_key_path")
+	derpKey, noiseKey := src.String("derp.server.private_key_path"), src.String("noise.private_key_path")
 	switch {
 	case derpKey == "":
 		v.Add(&ConfigError{
@@ -1035,8 +888,8 @@ func validateDERPConfig(v *configValidator) {
 		})
 	}
 
-	if !viper.GetBool("derp.server.automatically_add_embedded_derp_region") &&
-		len(viper.GetStringSlice("derp.paths")) == 0 {
+	if !src.Bool("derp.server.automatically_add_embedded_derp_region") &&
+		len(src.StringSlice("derp.paths")) == 0 {
 		v.Add(&ConfigError{
 			Reason: "derp.paths is required when derp.server.automatically_add_embedded_derp_region is false",
 			Current: []KV{
@@ -1051,7 +904,7 @@ func validateDERPConfig(v *configValidator) {
 // validateDatabaseConfig records a ConfigError when database.type is not
 // one of the supported backends.
 func validateDatabaseConfig(v *configValidator) {
-	t := viper.GetString("database.type")
+	t := src.String("database.type")
 	switch t {
 	case DatabaseSqlite, DatabasePostgres, "sqlite":
 		return
@@ -1069,11 +922,11 @@ func validateDatabaseConfig(v *configValidator) {
 // validateMagicDNSConfig records a ConfigError when MagicDNS is enabled
 // without a base_domain.
 func validateMagicDNSConfig(v *configValidator) {
-	if !viper.GetBool("dns.magic_dns") {
+	if !src.Bool("dns.magic_dns") {
 		return
 	}
 
-	if viper.GetString("dns.base_domain") == "" {
+	if src.String("dns.base_domain") == "" {
 		v.Add(&ConfigError{
 			Reason: "dns.base_domain is required when dns.magic_dns is true",
 			Current: []KV{
@@ -1090,7 +943,7 @@ func validateMagicDNSConfig(v *configValidator) {
 // are enabled without what the Tailscale client needs: a MagicDNS name
 // it can match exactly, and a provider to publish the challenge.
 func validateCertificatesConfig(v *configValidator) {
-	if timeout := viper.GetDuration("dns.challenge.propagation_timeout"); timeout < 0 {
+	if timeout := src.Duration("dns.challenge.propagation_timeout"); timeout < 0 {
 		v.Add(&ConfigError{
 			Reason:  "dns.challenge.propagation_timeout must not be negative",
 			Current: []KV{{"dns.challenge.propagation_timeout", timeout.String()}},
@@ -1098,11 +951,11 @@ func validateCertificatesConfig(v *configValidator) {
 		})
 	}
 
-	enabled := viper.GetBool("dns.certificates.enabled")
-	challengeType := tlsKey("tls.acme.challenge_type")
-	ownDNS01 := tlsKey("tls.acme.hostname") != "" && challengeType == DNS01ChallengeType
+	enabled := src.Bool("dns.certificates.enabled")
+	challengeType := src.String("tls.acme.challenge_type")
+	ownDNS01 := src.String("tls.acme.hostname") != "" && challengeType == DNS01ChallengeType
 
-	if (enabled || ownDNS01) && viper.GetString("dns.challenge.provider.name") == "" {
+	if (enabled || ownDNS01) && src.String("dns.challenge.provider.name") == "" {
 		v.Add(&ConfigError{
 			Reason:  "dns.certificates and tls.acme DNS-01 require dns.challenge.provider",
 			Current: []KV{{"dns.certificates.enabled", enabled}, {"tls.acme.challenge_type", challengeType}},
@@ -1116,7 +969,7 @@ func validateCertificatesConfig(v *configValidator) {
 		return
 	}
 
-	if !viper.GetBool("dns.magic_dns") {
+	if !src.Bool("dns.magic_dns") {
 		v.Add(&ConfigError{
 			Reason:  "dns.certificates requires dns.magic_dns",
 			Current: []KV{{"dns.certificates.enabled", true}, {"dns.magic_dns", false}},
@@ -1125,7 +978,7 @@ func validateCertificatesConfig(v *configValidator) {
 		})
 	}
 
-	base := strings.TrimSuffix(viper.GetString("dns.base_domain"), ".")
+	base := strings.TrimSuffix(src.String("dns.base_domain"), ".")
 	if base != strings.ToLower(base) || dnsname.ValidHostname(base) != nil {
 		v.Add(&ConfigError{
 			Reason:  "dns.base_domain must be a lowercase DNS name for dns.certificates",
@@ -1135,7 +988,7 @@ func validateCertificatesConfig(v *configValidator) {
 		})
 	}
 
-	zone := strings.TrimSuffix(viper.GetString("dns.certificates.zone"), ".")
+	zone := strings.TrimSuffix(src.String("dns.certificates.zone"), ".")
 	if zone != "" && base != zone && !strings.HasSuffix(base, "."+zone) {
 		v.Add(&ConfigError{
 			Reason:  "dns.base_domain is not inside dns.certificates.zone",
@@ -1148,11 +1001,11 @@ func validateCertificatesConfig(v *configValidator) {
 
 // dnsChallengeConfig builds the DNS-01 provider. Provider keys are read
 // one by one, because environment variables never reach into a map.
-func dnsChallengeConfig() (DNSChallengeConfig, error) {
+func dnsChallengeConfig(secret func(key, value string) (string, error)) (DNSChallengeConfig, error) {
 	cfg := DNSChallengeConfig{
-		PropagationTimeout: viper.GetDuration("dns.challenge.propagation_timeout"),
-		Resolvers:          viper.GetStringSlice("dns.challenge.resolvers"),
-		ProviderName:       viper.GetString("dns.challenge.provider.name"),
+		PropagationTimeout: src.Duration("dns.challenge.propagation_timeout"),
+		Resolvers:          src.StringSlice("dns.challenge.resolvers"),
+		ProviderName:       src.String("dns.challenge.provider.name"),
 	}
 
 	if len(cfg.Resolvers) == 0 {
@@ -1173,11 +1026,20 @@ func dnsChallengeConfig() (DNSChallengeConfig, error) {
 
 	provider, err := hsdns.NewProvider(
 		cfg.ProviderName,
-		viper.GetStringMap("dns.challenge.provider"),
+		src.StringMap("dns.challenge.provider"),
 		func(key string) (any, bool) {
 			key = "dns.challenge.provider." + key
 
-			return viper.Get(key), viper.IsSet(key)
+			// Provider fields are not in configKeys, so the source never
+			// maps their variables.
+			if v := os.Getenv(configEnvName(key)); v != "" {
+				return v, true
+			}
+
+			return src.Get(key), src.IsSet(key)
+		},
+		func(key, value string) (string, error) {
+			return secret("dns.challenge.provider."+key, value)
 		},
 	)
 	if err != nil {
@@ -1186,7 +1048,7 @@ func dnsChallengeConfig() (DNSChallengeConfig, error) {
 
 	// Only node certificates let a client pick what is published; a record
 	// shared by headscale's own certificate alone is harmless.
-	if iso, ok := provider.(hsdns.Isolator); ok && viper.GetBool("dns.certificates.enabled") {
+	if iso, ok := provider.(hsdns.Isolator); ok && src.Bool("dns.certificates.enabled") {
 		err = iso.CheckIsolation()
 		if err != nil {
 			return cfg, fmt.Errorf("%w for %s: %w", hsdns.ErrProviderConfig, cfg.ProviderName, err)
@@ -1198,38 +1060,36 @@ func dnsChallengeConfig() (DNSChallengeConfig, error) {
 	return cfg, nil
 }
 
-func tlsConfig() TLSConfig {
+func tlsConfig(dir string) TLSConfig {
 	return TLSConfig{
-		CertPath: util.AbsolutePathFromConfigPath(tlsKey("tls.cert_path")),
-		KeyPath:  util.AbsolutePathFromConfigPath(tlsKey("tls.key_path")),
+		CertPath: util.AbsolutePath(dir, src.String("tls.cert_path")),
+		KeyPath:  util.AbsolutePath(dir, src.String("tls.key_path")),
 		ACME: ACMEConfig{
-			Hostname:      tlsKey("tls.acme.hostname"),
-			ChallengeType: tlsKey("tls.acme.challenge_type"),
-			HTTPListen:    tlsKey("tls.acme.http_listen"),
-			URL:           tlsKey("tls.acme.url"),
-			Email:         tlsKey("tls.acme.email"),
-			CacheDir:      util.AbsolutePathFromConfigPath(tlsKey("tls.acme.cache_dir")),
+			Hostname:      src.String("tls.acme.hostname"),
+			ChallengeType: src.String("tls.acme.challenge_type"),
+			HTTPListen:    src.String("tls.acme.http_listen"),
+			URL:           src.String("tls.acme.url"),
+			Email:         src.String("tls.acme.email"),
+			CacheDir:      util.AbsolutePath(dir, src.String("tls.acme.cache_dir")),
 		},
 	}
 }
 
-func derpConfig() DERPConfig {
-	serverEnabled := viper.GetBool("derp.server.enabled")
-	serverRegionID := viper.GetInt64("derp.server.region_id")
-	serverRegionCode := viper.GetString("derp.server.region_code")
-	serverRegionName := viper.GetString("derp.server.region_name")
-	serverVerifyClients := viper.GetBool("derp.server.verify_clients")
-	stunAddr := viper.GetString("derp.server.stun_listen_addr")
-	privateKeyPath := util.AbsolutePathFromConfigPath(
-		viper.GetString("derp.server.private_key_path"),
-	)
-	ipv4 := viper.GetString("derp.server.ipv4")
-	ipv6 := viper.GetString("derp.server.ipv6")
-	automaticallyAddEmbeddedDerpRegion := viper.GetBool(
+func derpConfig(dir string) DERPConfig {
+	serverEnabled := src.Bool("derp.server.enabled")
+	serverRegionID := src.Int64("derp.server.region_id")
+	serverRegionCode := src.String("derp.server.region_code")
+	serverRegionName := src.String("derp.server.region_name")
+	serverVerifyClients := src.Bool("derp.server.verify_clients")
+	stunAddr := src.String("derp.server.stun_listen_addr")
+	privateKeyPath := util.AbsolutePath(dir, src.String("derp.server.private_key_path"))
+	ipv4 := src.String("derp.server.ipv4")
+	ipv6 := src.String("derp.server.ipv6")
+	automaticallyAddEmbeddedDerpRegion := src.Bool(
 		"derp.server.automatically_add_embedded_derp_region",
 	)
 
-	urlStrs := viper.GetStringSlice("derp.urls")
+	urlStrs := src.StringSlice("derp.urls")
 
 	urls := make([]url.URL, 0, len(urlStrs))
 	for _, urlStr := range urlStrs {
@@ -1247,10 +1107,10 @@ func derpConfig() DERPConfig {
 		urls = append(urls, *urlAddr)
 	}
 
-	paths := viper.GetStringSlice("derp.paths")
+	paths := src.StringSlice("derp.paths")
 
-	autoUpdate := viper.GetBool("derp.auto_update_enabled")
-	updateFrequency := viper.GetDuration("derp.update_frequency")
+	autoUpdate := src.Bool("derp.auto_update_enabled")
+	updateFrequency := src.Duration("derp.update_frequency")
 
 	return DERPConfig{
 		ServerEnabled:                      serverEnabled,
@@ -1267,11 +1127,12 @@ func derpConfig() DERPConfig {
 		IPv4:                               ipv4,
 		IPv6:                               ipv6,
 		AutomaticallyAddEmbeddedDerpRegion: automaticallyAddEmbeddedDerpRegion,
+		ShuffleSeed:                        src.String("dns.base_domain"),
 	}
 }
 
 func logtailConfig() LogTailConfig {
-	enabled := viper.GetBool("logtail.enabled")
+	enabled := src.Bool("logtail.enabled")
 
 	return LogTailConfig{
 		Enabled: enabled,
@@ -1279,8 +1140,8 @@ func logtailConfig() LogTailConfig {
 }
 
 func policyConfig() PolicyConfig {
-	policyPath := viper.GetString("policy.path")
-	policyMode := viper.GetString("policy.mode")
+	policyPath := src.String("policy.path")
+	policyMode := src.String("policy.mode")
 
 	return PolicyConfig{
 		Path: policyPath,
@@ -1289,14 +1150,14 @@ func policyConfig() PolicyConfig {
 }
 
 func logConfig() LogConfig {
-	logLevelStr := viper.GetString("log.level")
+	logLevelStr := src.String("log.level")
 
 	logLevel, err := zerolog.ParseLevel(logLevelStr)
 	if err != nil {
 		logLevel = zerolog.DebugLevel
 	}
 
-	logFormatOpt := viper.GetString("log.format")
+	logFormatOpt := src.String("log.format")
 
 	var logFormat string
 
@@ -1320,20 +1181,36 @@ func logConfig() LogConfig {
 	}
 }
 
-func databaseConfig() DatabaseConfig {
-	debug := viper.GetBool("database.debug")
+// sqlitePath resolves database.sqlite.path, keeping SQLite's in-memory
+// name, which is not a file.
+func sqlitePath(dir string) string {
+	path := src.String("database.sqlite.path")
+	if path == ":memory:" {
+		return path
+	}
 
-	type_ := viper.GetString("database.type")
+	return util.AbsolutePath(dir, path)
+}
 
-	skipErrRecordNotFound := viper.GetBool("database.gorm.skip_err_record_not_found")
-	slowThreshold := time.Duration(viper.GetInt64("database.gorm.slow_threshold")) * time.Millisecond
-	parameterizedQueries := viper.GetBool("database.gorm.parameterized_queries")
+func databaseConfig(v *configValidator, secret func(key, value string) (string, error), dir string) DatabaseConfig {
+	debug := src.Bool("database.debug")
+
+	type_ := src.String("database.type")
+
+	skipErrRecordNotFound := src.Bool("database.gorm.skip_err_record_not_found")
+	slowThreshold := time.Duration(src.Int64("database.gorm.slow_threshold")) * time.Millisecond
+	parameterizedQueries := src.Bool("database.gorm.parameterized_queries")
 
 	switch type_ {
 	case DatabaseSqlite, DatabasePostgres:
 		break
 	case "sqlite":
 		type_ = "sqlite3"
+	}
+
+	pass := src.String("database.postgres.pass")
+	if type_ == DatabasePostgres {
+		pass = configSecret(v, secret, "database.postgres.pass", pass)
 	}
 
 	return DatabaseConfig{
@@ -1346,22 +1223,20 @@ func databaseConfig() DatabaseConfig {
 			ParameterizedQueries:  parameterizedQueries,
 		},
 		Sqlite: SqliteConfig{
-			Path: util.AbsolutePathFromConfigPath(
-				viper.GetString("database.sqlite.path"),
-			),
-			WriteAheadLog:     viper.GetBool("database.sqlite.write_ahead_log"),
-			WALAutoCheckPoint: viper.GetInt("database.sqlite.wal_autocheckpoint"),
+			Path:              sqlitePath(dir),
+			WriteAheadLog:     src.Bool("database.sqlite.write_ahead_log"),
+			WALAutoCheckPoint: src.Int("database.sqlite.wal_autocheckpoint"),
 		},
 		Postgres: PostgresConfig{
-			Host:               viper.GetString("database.postgres.host"),
-			Port:               viper.GetInt("database.postgres.port"),
-			Name:               viper.GetString("database.postgres.name"),
-			User:               viper.GetString("database.postgres.user"),
-			Pass:               viper.GetString("database.postgres.pass"),
-			Ssl:                viper.GetString("database.postgres.ssl"),
-			MaxOpenConnections: viper.GetInt("database.postgres.max_open_conns"),
-			MaxIdleConnections: viper.GetInt("database.postgres.max_idle_conns"),
-			ConnMaxIdleTimeSecs: viper.GetInt(
+			Host:               src.String("database.postgres.host"),
+			Port:               src.Int("database.postgres.port"),
+			Name:               src.String("database.postgres.name"),
+			User:               src.String("database.postgres.user"),
+			Pass:               pass,
+			Ssl:                src.String("database.postgres.ssl"),
+			MaxOpenConnections: src.Int("database.postgres.max_open_conns"),
+			MaxIdleConnections: src.Int("database.postgres.max_idle_conns"),
+			ConnMaxIdleTimeSecs: src.Int(
 				"database.postgres.conn_max_idle_time_secs",
 			),
 		},
@@ -1373,25 +1248,25 @@ func dns() (DNSConfig, error) {
 
 	// TODO: Use this instead of manually getting settings when
 	// UnmarshalKey is compatible with Environment Variables.
-	// err := viper.UnmarshalKey("dns", &dns)
+	// err := src.UnmarshalKey("dns", &dns)
 	// if err != nil {
 	// 	return DNSConfig{}, fmt.Errorf("unmarshalling dns config: %w", err)
 	// }
 
-	dns.MagicDNS = viper.GetBool("dns.magic_dns")
-	dns.BaseDomain = viper.GetString("dns.base_domain")
-	dns.OverrideLocalDNS = viper.GetBool("dns.override_local_dns")
-	dns.Nameservers.Global = viper.GetStringSlice("dns.nameservers.global")
-	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
-	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
-	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
-	dns.Certificates.Enabled = viper.GetBool("dns.certificates.enabled")
-	dns.Certificates.Zone = cmp.Or(viper.GetString("dns.certificates.zone"), dns.BaseDomain)
+	dns.MagicDNS = src.Bool("dns.magic_dns")
+	dns.BaseDomain = src.String("dns.base_domain")
+	dns.OverrideLocalDNS = src.Bool("dns.override_local_dns")
+	dns.Nameservers.Global = src.StringSlice("dns.nameservers.global")
+	dns.Nameservers.Split = src.StringMapStringSlice("dns.nameservers.split")
+	dns.SearchDomains = src.StringSlice("dns.search_domains")
+	dns.ExtraRecordsPath = src.String("dns.extra_records_path")
+	dns.Certificates.Enabled = src.Bool("dns.certificates.enabled")
+	dns.Certificates.Zone = cmp.Or(src.String("dns.certificates.zone"), dns.BaseDomain)
 
-	if viper.IsSet("dns.extra_records") {
+	if src.IsSet("dns.extra_records") {
 		var extraRecords []tailcfg.DNSRecord
 
-		err := viper.UnmarshalKey("dns.extra_records", &extraRecords)
+		err := src.UnmarshalKey("dns.extra_records", &extraRecords)
 		if err != nil {
 			return DNSConfig{}, fmt.Errorf("unmarshalling dns extra records: %w", err)
 		}
@@ -1512,7 +1387,7 @@ func warnBanner(lines []string) {
 }
 
 func parsePrefixConfig(key string, standardRange netip.Prefix, family string) (*netip.Prefix, bool, error) {
-	s := viper.GetString(key)
+	s := src.String(key)
 
 	if s == "" {
 		return nil, false, nil
@@ -1534,7 +1409,7 @@ func parsePrefixConfig(key string, standardRange netip.Prefix, family string) (*
 // trustedProxies rejects 0.0.0.0/0 and ::/0 because they defeat the
 // peer-trust gate and almost always indicate misconfiguration.
 func trustedProxies() ([]netip.Prefix, error) {
-	raw := viper.GetStringSlice("trusted_proxies")
+	raw := src.StringSlice("trusted_proxies")
 	if len(raw) == 0 {
 		return nil, nil
 	}
@@ -1559,8 +1434,17 @@ func trustedProxies() ([]netip.Prefix, error) {
 // LoadCLIConfig returns the needed configuration for the CLI client
 // of Headscale to connect to a Headscale server.
 func LoadCLIConfig() (*Config, error) {
+	if src == nil {
+		return nil, errConfigNotLoaded
+	}
+
 	v := &configValidator{}
 	validateBoolConfig(v, "cli.insecure", "disable_check_updates")
+	// Over the unix socket the CLI needs no key, so it is not read.
+	cliAPIKey := src.String("cli.api_key")
+	if src.String("cli.address") != "" {
+		cliAPIKey = configSecret(v, resolveSecret, "cli.api_key", cliAPIKey)
+	}
 
 	err := v.Err()
 	if err != nil {
@@ -1571,13 +1455,13 @@ func LoadCLIConfig() (*Config, error) {
 	zerolog.SetGlobalLevel(logConfig.Level)
 
 	return &Config{
-		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
-		UnixSocket:         viper.GetString("unix_socket"),
+		DisableUpdateCheck: src.Bool("disable_check_updates"),
+		UnixSocket:         src.String("unix_socket"),
 		CLI: CLIConfig{
-			Address:  viper.GetString("cli.address"),
-			APIKey:   viper.GetString("cli.api_key"),
-			Timeout:  viper.GetDuration("cli.timeout"),
-			Insecure: viper.GetBool("cli.insecure"),
+			Address:  src.String("cli.address"),
+			APIKey:   cliAPIKey,
+			Timeout:  src.Duration("cli.timeout"),
+			Insecure: src.Bool("cli.insecure"),
 		},
 		Log: logConfig,
 	}, nil
@@ -1586,6 +1470,37 @@ func LoadCLIConfig() (*Config, error) {
 // LoadServerConfig returns the full Headscale configuration to
 // host a Headscale server. This is called as part of `headscale serve`.
 func LoadServerConfig() (*Config, error) {
+	return loadServerConfig(resolveSecret)
+}
+
+// CheckServerConfig validates the server configuration as
+// LoadServerConfig does, without reading the files file: secrets name; it
+// lists them in UnreadSecrets instead.
+func CheckServerConfig() (*Config, error) {
+	var unread []KV
+
+	cfg, err := loadServerConfig(func(key, value string) (string, error) {
+		s, err := keepSecret(key, value)
+		if errors.Is(err, hsdns.ErrSecretUnread) {
+			unread = append(unread, KV{key, strings.TrimPrefix(value, "file:")})
+		}
+
+		return s, err
+	})
+	if cfg != nil {
+		// Provider settings are visited in map order.
+		slices.SortFunc(unread, func(a, b KV) int { return strings.Compare(a.Key, b.Key) })
+		cfg.UnreadSecrets = unread
+	}
+
+	return cfg, err
+}
+
+func loadServerConfig(secret func(key, value string) (string, error)) (*Config, error) {
+	if src == nil {
+		return nil, errConfigNotLoaded
+	}
+
 	v := &configValidator{}
 	validateServerConfigInto(v)
 
@@ -1596,7 +1511,7 @@ func LoadServerConfig() (*Config, error) {
 	if err != nil {
 		v.Add(&ConfigError{
 			Reason:  "prefixes.v4 is not a valid CIDR",
-			Current: []KV{{"prefixes.v4", viper.GetString("prefixes.v4")}},
+			Current: []KV{{"prefixes.v4", src.String("prefixes.v4")}},
 			Detail:  err.Error(),
 			Hint:    `use CIDR form, e.g. "100.64.0.0/10" (CGNAT, headscale default)`,
 			Cause:   err,
@@ -1607,7 +1522,7 @@ func LoadServerConfig() (*Config, error) {
 	if err != nil {
 		v.Add(&ConfigError{
 			Reason:  "prefixes.v6 is not a valid CIDR",
-			Current: []KV{{"prefixes.v6", viper.GetString("prefixes.v6")}},
+			Current: []KV{{"prefixes.v6", src.String("prefixes.v6")}},
 			Detail:  err.Error(),
 			Hint:    `use CIDR form, e.g. "fd7a:115c:a1e0::/48" (Tailscale ULA, headscale default)`,
 			Cause:   err,
@@ -1618,7 +1533,7 @@ func LoadServerConfig() (*Config, error) {
 	if err != nil {
 		v.Add(&ConfigError{
 			Reason:  "trusted_proxies contains an invalid CIDR",
-			Current: []KV{{"trusted_proxies", viper.GetStringSlice("trusted_proxies")}},
+			Current: []KV{{"trusted_proxies", src.StringSlice("trusted_proxies")}},
 			Detail:  err.Error(),
 			Hint:    "use specific proxy CIDRs; catch-all ranges are not allowed",
 			Cause:   err,
@@ -1629,8 +1544,8 @@ func LoadServerConfig() (*Config, error) {
 		v.Add(&ConfigError{
 			Reason: "no IP prefix configured for the tailnet",
 			Current: []KV{
-				{"prefixes.v4", viper.GetString("prefixes.v4")},
-				{"prefixes.v6", viper.GetString("prefixes.v6")},
+				{"prefixes.v4", src.String("prefixes.v4")},
+				{"prefixes.v6", src.String("prefixes.v6")},
 			},
 			Hint:  `set at least one of prefixes.v4 (default: "100.64.0.0/10") or prefixes.v6 (default: "fd7a:115c:a1e0::/48")`,
 			Cause: ErrNoPrefixConfigured,
@@ -1658,7 +1573,7 @@ func LoadServerConfig() (*Config, error) {
 		})
 	}
 
-	allocStr := viper.GetString("prefixes.allocation")
+	allocStr := src.String("prefixes.allocation")
 
 	var alloc IPAllocationStrategy
 
@@ -1682,7 +1597,7 @@ func LoadServerConfig() (*Config, error) {
 
 	// YAML reads an unquoted 0770 as the integer 504, which cannot be told
 	// apart from a literal 504, so only a string is accepted.
-	socketPermRaw := viper.Get("unix_socket_permission")
+	socketPermRaw := src.Get("unix_socket_permission")
 	socketPermStr, _ := socketPermRaw.(string)
 
 	socketPerm, err := util.ParseFileMode(socketPermStr)
@@ -1707,10 +1622,11 @@ func LoadServerConfig() (*Config, error) {
 		})
 	}
 
-	derpConfig := derpConfig()
+	dir := configDir()
+	derpConfig := derpConfig(dir)
 	logTailConfig := logtailConfig()
 
-	dnsChallenge, err := dnsChallengeConfig()
+	dnsChallenge, err := dnsChallengeConfig(secret)
 	if err != nil {
 		// The provider names only help when the name is what is wrong.
 		var allowed []string
@@ -1723,44 +1639,21 @@ func LoadServerConfig() (*Config, error) {
 			Current: []KV{{"dns.challenge.provider.name", dnsChallenge.ProviderName}},
 			Detail:  err.Error(),
 			Allowed: allowed,
-			Hint:    "check the provider name and its settings; any string setting can be read from a file with <setting>_path",
+			Hint:    `check the provider name and its settings; any string setting can be read from a file with "file:<path>"`,
 			See:     dnsDocsURL,
 			Cause:   err,
 		})
 	}
 
-	oidcClientSecret := viper.GetString("oidc.client_secret")
-	oidcClientSecretPath := viper.GetString("oidc.client_secret_path")
-
-	switch {
-	case oidcClientSecretPath != "" && oidcClientSecret != "":
-		v.Add(&ConfigError{
-			Reason: "oidc.client_secret and oidc.client_secret_path are mutually exclusive",
-			Current: []KV{
-				{"oidc.client_secret", "<redacted>"},
-				{"oidc.client_secret_path", oidcClientSecretPath},
-			},
-			Hint:  "keep one source for the secret; the path form is recommended so the secret stays out of config files",
-			See:   "https://headscale.net/stable/ref/oidc/",
-			Cause: errOidcMutuallyExclusive,
-		})
-
-	case oidcClientSecretPath != "":
-		secretBytes, err := os.ReadFile(os.ExpandEnv(oidcClientSecretPath))
-		if err != nil {
-			v.Add(&ConfigError{
-				Reason:  "oidc.client_secret_path cannot be read",
-				Current: []KV{{"oidc.client_secret_path", oidcClientSecretPath}},
-				Detail:  err.Error(),
-				Hint:    "ensure the file exists and is readable by the headscale user",
-				Cause:   err,
-			})
-		} else {
-			oidcClientSecret = strings.TrimSpace(string(secretBytes))
-		}
+	// OIDC is active only with an issuer; see validateServerConfigInto.
+	oidcClientSecret := src.String("oidc.client_secret")
+	if src.String("oidc.issuer") != "" {
+		oidcClientSecret = configSecret(v, secret, "oidc.client_secret", oidcClientSecret)
 	}
 
-	serverURL := strings.TrimRight(viper.GetString("server_url"), "/")
+	database := databaseConfig(v, secret, dir)
+
+	serverURL := strings.TrimRight(src.String("server_url"), "/")
 
 	// BaseDomain cannot be the same as the server URL.
 	// This is because Tailscale takes over the domain in BaseDomain,
@@ -1783,106 +1676,106 @@ func LoadServerConfig() (*Config, error) {
 
 	return &Config{
 		ServerURL:          serverURL,
-		Addr:               viper.GetString("listen_addr"),
-		MetricsAddr:        viper.GetString("metrics_listen_addr"),
+		Addr:               src.String("listen_addr"),
+		MetricsAddr:        src.String("metrics_listen_addr"),
 		TrustedProxies:     trusted,
-		DisableUpdateCheck: false,
+		ConfigDir:          dir,
+		DisableUpdateCheck: src.Bool("disable_check_updates"),
 
 		PrefixV4:     prefix4,
 		PrefixV6:     prefix6,
 		IPAllocation: alloc,
 
-		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
-			viper.GetString("noise.private_key_path"),
-		),
-		BaseDomain: dnsConfig.BaseDomain,
+		NoisePrivateKeyPath: util.AbsolutePath(dir, src.String("noise.private_key_path")),
+		BaseDomain:          dnsConfig.BaseDomain,
 
 		DERP: derpConfig,
 
 		Node: NodeConfig{
 			Expiry: resolveNodeExpiry(),
 			Ephemeral: EphemeralConfig{
-				InactivityTimeout: resolveEphemeralInactivityTimeout(),
+				InactivityTimeout: src.Duration("node.ephemeral.inactivity_timeout"),
 			},
 			Routes: RouteConfig{
 				HA: HARouteConfig{
-					ProbeInterval: viper.GetDuration("node.routes.ha.probe_interval"),
-					ProbeTimeout:  viper.GetDuration("node.routes.ha.probe_timeout"),
+					ProbeInterval: src.Duration("node.routes.ha.probe_interval"),
+					ProbeTimeout:  src.Duration("node.routes.ha.probe_timeout"),
 				},
 			},
 		},
 
 		PreAuthKeys: PreAuthKeysConfig{
-			RevokedRetention: viper.GetDuration("preauth_keys.revoked_retention"),
+			RevokedRetention: src.Duration("preauth_keys.revoked_retention"),
 		},
 
-		Database: databaseConfig(),
+		Database: database,
 
-		TLS: tlsConfig(),
+		TLS: tlsConfig(dir),
 
 		DNSConfig:        dnsConfig,
 		TailcfgDNSConfig: dnsToTailcfgDNS(dnsConfig),
 		DNSChallenge:     dnsChallenge,
 
-		UnixSocket:           viper.GetString("unix_socket"),
+		UnixSocket:           src.String("unix_socket"),
 		UnixSocketPermission: socketPerm,
 
 		OIDC: OIDCConfig{
-			OnlyStartIfOIDCIsAvailable: viper.GetBool(
+			OnlyStartIfOIDCIsAvailable: src.Bool(
 				"oidc.only_start_if_oidc_is_available",
 			),
-			Issuer:                viper.GetString("oidc.issuer"),
-			ClientID:              viper.GetString("oidc.client_id"),
+			Issuer:                src.String("oidc.issuer"),
+			ClientID:              src.String("oidc.client_id"),
 			ClientSecret:          oidcClientSecret,
-			Scope:                 viper.GetStringSlice("oidc.scope"),
-			ExtraParams:           viper.GetStringMapString("oidc.extra_params"),
-			AllowedDomains:        viper.GetStringSlice("oidc.allowed_domains"),
-			AllowedUsers:          viper.GetStringSlice("oidc.allowed_users"),
-			AllowedGroups:         viper.GetStringSlice("oidc.allowed_groups"),
-			EmailVerifiedRequired: viper.GetBool("oidc.email_verified_required"),
-			UseExpiryFromToken:    viper.GetBool("oidc.use_expiry_from_token"),
+			Scope:                 src.StringSlice("oidc.scope"),
+			ExtraParams:           src.StringMapString("oidc.extra_params"),
+			AllowedDomains:        src.StringSlice("oidc.allowed_domains"),
+			AllowedUsers:          src.StringSlice("oidc.allowed_users"),
+			AllowedGroups:         src.StringSlice("oidc.allowed_groups"),
+			EmailVerifiedRequired: src.Bool("oidc.email_verified_required"),
+			UseExpiryFromToken:    src.Bool("oidc.use_expiry_from_token"),
 			PKCE: PKCEConfig{
-				Enabled: viper.GetBool("oidc.pkce.enabled"),
-				Method:  viper.GetString("oidc.pkce.method"),
+				Enabled: src.Bool("oidc.pkce.enabled"),
+				Method:  src.String("oidc.pkce.method"),
 			},
 		},
 
 		LogTail: logTailConfig,
 		Taildrop: TaildropConfig{
-			Enabled: viper.GetBool("taildrop.enabled"),
+			Enabled: src.Bool("taildrop.enabled"),
 		},
 		AutoUpdate: AutoUpdateConfig{
-			Enabled: viper.GetBool("auto_update.enabled"),
+			Enabled: src.Bool("auto_update.enabled"),
 		},
 
 		Policy: policyConfig(),
 
+		// No APIKey: the server never uses the CLI's key, which may be an
+		// unresolved file: reference here.
 		CLI: CLIConfig{
-			Address:  viper.GetString("cli.address"),
-			APIKey:   viper.GetString("cli.api_key"),
-			Timeout:  viper.GetDuration("cli.timeout"),
-			Insecure: viper.GetBool("cli.insecure"),
+			Address:  src.String("cli.address"),
+			Timeout:  src.Duration("cli.timeout"),
+			Insecure: src.Bool("cli.insecure"),
 		},
 
 		Log: logConfig,
 
 		Tuning: Tuning{
-			NotifierSendTimeout: viper.GetDuration("tuning.notifier_send_timeout"),
-			BatchChangeDelay:    viper.GetDuration("tuning.batch_change_delay"),
-			NodeMapSessionBufferedChanSize: viper.GetInt(
+			NotifierSendTimeout: src.Duration("tuning.notifier_send_timeout"),
+			BatchChangeDelay:    src.Duration("tuning.batch_change_delay"),
+			NodeMapSessionBufferedChanSize: src.Int(
 				"tuning.node_mapsession_buffered_chan_size",
 			),
 			BatcherWorkers: func() int {
-				if workers := viper.GetInt("tuning.batcher_workers"); workers > 0 {
+				if workers := src.Int("tuning.batcher_workers"); workers > 0 {
 					return workers
 				}
 
 				return DefaultBatcherWorkers()
 			}(),
-			RegisterCacheExpiration: viper.GetDuration("tuning.register_cache_expiration"),
-			RegisterCacheMaxEntries: viper.GetInt("tuning.register_cache_max_entries"),
-			NodeStoreBatchSize:      viper.GetInt("tuning.node_store_batch_size"),
-			NodeStoreBatchTimeout:   viper.GetDuration("tuning.node_store_batch_timeout"),
+			RegisterCacheExpiration: src.Duration("tuning.register_cache_expiration"),
+			RegisterCacheMaxEntries: src.Int("tuning.register_cache_max_entries"),
+			NodeStoreBatchSize:      src.Int("tuning.node_store_batch_size"),
+			NodeStoreBatchTimeout:   src.Duration("tuning.node_store_batch_timeout"),
 		},
 	}, nil
 }
@@ -1948,157 +1841,6 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 	}
 
 	return nil
-}
-
-// deprecation describes a configuration key that is no longer
-// supported. NewKey is the replacement (when one exists) or empty
-// when the key has been removed without a replacement.
-type deprecation struct {
-	OldKey string
-	NewKey string
-	Hint   string
-}
-
-// deprecator collects deprecated configuration keys observed in the
-// current viper config. Warns are non-blocking and surface via
-// log.Warn; fatals are pushed onto a configValidator as ConfigError
-// entries so they merge with the rest of the validation report
-// instead of pre-empting it via log.Fatal.
-type deprecator struct {
-	seen   set.Set[string]
-	warns  []deprecation
-	fatals []deprecation
-}
-
-func (d *deprecator) addWarn(dep deprecation) {
-	if d.seen.Contains(dep.OldKey) {
-		return
-	}
-
-	d.seen.Add(dep.OldKey)
-	d.warns = append(d.warns, dep)
-}
-
-func (d *deprecator) addFatal(dep deprecation) {
-	if d.seen.Contains(dep.OldKey) {
-		return
-	}
-
-	d.seen.Add(dep.OldKey)
-	d.fatals = append(d.fatals, dep)
-}
-
-// warnWithAlias registers an alias from newKey to oldKey and records
-// a non-blocking warning when oldKey is set.
-//
-//nolint:unused
-func (d *deprecator) warnWithAlias(newKey, oldKey string) {
-	// NOTE: RegisterAlias is called with NEW KEY -> OLD KEY
-	viper.RegisterAlias(newKey, oldKey)
-
-	if viper.IsSet(oldKey) {
-		d.addWarn(deprecation{OldKey: oldKey, NewKey: newKey})
-	}
-}
-
-// fatal records a removed key (no replacement) as a config error.
-func (d *deprecator) fatal(oldKey string) {
-	if viper.IsSet(oldKey) {
-		d.addFatal(deprecation{OldKey: oldKey})
-	}
-}
-
-// fatalWithHint behaves like fatal but appends a remediation pointer to
-// the message so operators see exactly what to do without leaving the
-// terminal. Use it when the removed key has a clean replacement on the
-// policy side.
-func (d *deprecator) fatalWithHint(oldKey, hint string) {
-	if viper.IsSet(oldKey) {
-		d.addFatal(deprecation{OldKey: oldKey, Hint: hint})
-	}
-}
-
-// fatalIfNewKeyIsNotUsed records a config error when oldKey is set
-// without newKey, or a warning when both are set (oldKey ignored,
-// newKey takes precedence).
-func (d *deprecator) fatalIfNewKeyIsNotUsed(newKey, oldKey string) {
-	if !viper.IsSet(oldKey) {
-		return
-	}
-
-	if !viper.IsSet(newKey) {
-		d.addFatal(deprecation{OldKey: oldKey, NewKey: newKey})
-
-		return
-	}
-
-	d.addWarn(deprecation{OldKey: oldKey, NewKey: newKey})
-}
-
-// fatalIfSet records a config error any time oldKey is set, naming
-// newKey as the replacement.
-func (d *deprecator) fatalIfSet(oldKey, newKey string) {
-	if viper.IsSet(oldKey) {
-		d.addFatal(deprecation{OldKey: oldKey, NewKey: newKey})
-	}
-}
-
-// warnNoAlias records a non-blocking warning when oldKey is set,
-// pointing operators at newKey.
-//
-//nolint:unused
-func (d *deprecator) warnNoAlias(newKey, oldKey string) {
-	if viper.IsSet(oldKey) {
-		d.addWarn(deprecation{OldKey: oldKey, NewKey: newKey})
-	}
-}
-
-// warn records a non-blocking warning when oldKey is set, with no
-// replacement to point at.
-func (d *deprecator) warn(oldKey string) {
-	if viper.IsSet(oldKey) {
-		d.addWarn(deprecation{OldKey: oldKey})
-	}
-}
-
-// Apply emits warns via log.Warn and pushes one *ConfigError per
-// fatal onto v. Run after the rest of validation so deprecated-key
-// failures surface alongside the other config errors in a single
-// pass.
-func (d *deprecator) Apply(v *configValidator) {
-	for _, w := range d.warns {
-		if w.NewKey != "" {
-			log.Warn().Msgf(
-				"configuration key %q is deprecated; use %q instead",
-				w.OldKey, w.NewKey)
-
-			continue
-		}
-
-		log.Warn().Msgf("configuration key %q is ignored", w.OldKey)
-	}
-
-	for _, f := range d.fatals {
-		ce := &ConfigError{
-			Current: []KV{{f.OldKey, viper.Get(f.OldKey)}},
-		}
-
-		if f.NewKey != "" {
-			ce.Reason = fmt.Sprintf(
-				"configuration key %s has been removed; use %s instead",
-				f.OldKey, f.NewKey)
-			ce.Hint = fmt.Sprintf("remove %s and set %s", f.OldKey, f.NewKey)
-		} else {
-			ce.Reason = fmt.Sprintf("configuration key %s has been removed", f.OldKey)
-			if f.Hint != "" {
-				ce.Hint = f.Hint
-			} else {
-				ce.Hint = fmt.Sprintf("remove %s; see the CHANGELOG for context", f.OldKey)
-			}
-		}
-
-		v.Add(ce)
-	}
 }
 
 // tailcfgDNSMu guards concurrent access to the mutable ExtraRecords of

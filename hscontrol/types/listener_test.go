@@ -7,7 +7,6 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,15 +81,12 @@ func TestValidateListenerCollisions_BlamesParseFailure(t *testing.T) {
 		good    string // sibling key with a valid addr
 		badAddr string
 	}{
-		{"bad-listen_addr", "listen_addr", "grpc_listen_addr", "garbage"},
-		{"bad-grpc_listen_addr", "grpc_listen_addr", "listen_addr", "also-garbage"},
+		{"bad-listen_addr", "listen_addr", "metrics_listen_addr", "garbage"},
 		{"bad-metrics_listen_addr", "metrics_listen_addr", "listen_addr", "no-port"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			viper.Reset()
-			viper.Set(tt.bad, tt.badAddr)
-			viper.Set(tt.good, ":9999")
+			useConfig(t, map[string]any{tt.bad: tt.badAddr, tt.good: ":9999"})
 
 			v := &configValidator{}
 			validateListenerCollisions(v)

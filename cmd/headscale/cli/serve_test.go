@@ -39,7 +39,7 @@ func TestClassifyServeError(t *testing.T) {
 			name: "eaddrinuse-named-port",
 			err: &types.ListenerBindError{
 				Listener: "ACME HTTP-01 challenge",
-				YAMLKey:  "tls_letsencrypt_listen",
+				YAMLKey:  "tls.acme.http_listen",
 				Addr:     ":http",
 				Err:      &net.OpError{Op: "listen", Net: "tcp", Err: syscall.EADDRINUSE},
 			},
@@ -77,12 +77,12 @@ func TestClassifyServeError(t *testing.T) {
 		{
 			name: "wrapped-eaddrinuse-still-classified",
 			err: fmt.Errorf("serve: %w", &types.ListenerBindError{
-				Listener: "gRPC",
-				YAMLKey:  "grpc_listen_addr",
-				Addr:     "0.0.0.0:50443",
+				Listener: "metrics",
+				YAMLKey:  "metrics_listen_addr",
+				Addr:     "127.0.0.1:9090",
 				Err:      &net.OpError{Op: "listen", Net: "tcp", Err: syscall.EADDRINUSE},
 			}),
-			wantHintSubstr: []string{"sudo ss -tlnp 'sport = :50443'"},
+			wantHintSubstr: []string{"sudo ss -tlnp 'sport = :9090'"},
 		},
 		{
 			name: "eaddrinuse-unparseable-addr-omits-port",

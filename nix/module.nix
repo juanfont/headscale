@@ -290,16 +290,6 @@ in
                   example = "headscale";
                   description = "Database user.";
                 };
-
-                password_file = lib.mkOption {
-                  type = lib.types.nullOr lib.types.path;
-                  default = null;
-                  example = "/run/keys/headscale-dbpassword";
-                  description = ''
-                    A file containing the password corresponding to
-                    {option}`database.user`.
-                  '';
-                };
               };
             };
 
@@ -466,12 +456,12 @@ in
                 description = ''
                   DNS provider for ACME DNS-01 challenges. Every key besides
                   `name` is a setting of the provider; a text setting can be read
-                  from a file by adding `_path` to its name.
+                  from a file by setting it to `file:<path>`.
                 '';
                 example = lib.literalExpression ''
                   {
                     name = "cloudflare";
-                    api_token_path = "''${CREDENTIALS_DIRECTORY}/cloudflare-token";
+                    api_token = "file:\''${CREDENTIALS_DIRECTORY}/cloudflare-token";
                   }
                 '';
               };
@@ -492,14 +482,6 @@ in
                 default = "";
                 description = ''
                   OpenID Connect client ID.
-                '';
-              };
-
-              client_secret_path = lib.mkOption {
-                type = lib.types.nullOr lib.types.str;
-                default = null;
-                description = ''
-                  Path to OpenID Connect client secret file. Expands environment variables in format ''${VAR}.
                 '';
               };
 
@@ -597,8 +579,7 @@ in
                   '';
                 };
 
-                # Defaults are null so headscale falls back to the flat
-                # tls_letsencrypt_* keys still set in older configurations.
+                # Null is written as YAML null, which headscale treats as unset.
                 challenge_type = lib.mkOption {
                   type = lib.types.nullOr (
                     lib.types.enum [
@@ -688,10 +669,9 @@ in
       [ "services" "headscale" "openIdConnect" "clientId" ]
       [ "services" "headscale" "settings" "oidc" "client_id" ]
     )
-    (mkRenamedOptionModule
-      [ "services" "headscale" "openIdConnect" "clientSecretFile" ]
-      [ "services" "headscale" "settings" "oidc" "client_secret_path" ]
-    )
+    (mkRemovedOptionModule [ "services" "headscale" "openIdConnect" "clientSecretFile" ] ''
+      Load the secret with systemd.services.headscale.serviceConfig.LoadCredential and set services.headscale.settings.oidc.client_secret = "file:\''${CREDENTIALS_DIRECTORY}/<name>".
+    '')
     (mkRenamedOptionModule
       [ "services" "headscale" "openIdConnect" "issuer" ]
       [ "services" "headscale" "settings" "oidc" "issuer" ]
@@ -722,7 +702,7 @@ in
     )
 
     (mkRemovedOptionModule [ "services" "headscale" "openIdConnect" "domainMap" ] ''
-      Headscale no longer uses domain_map. If you're using an old version of headscale you can still set this option via services.headscale.settings.oidc.domain_map.
+      Headscale no longer uses domain_map.
     '')
   ];
 
@@ -755,7 +735,7 @@ in
       (assertRemovedOption [
         "settings"
         "db_password_file"
-      ] "Use `database.postgres.password_file` instead.")
+      ] "Use `database.postgres.pass = \"file:<path>\"` instead.")
       (assertRemovedOption [ "settings" "db_path" ] "Use `database.sqlite.path` instead.")
       (assertRemovedOption [ "settings" "db_port" ] "Use `database.postgres.port` instead.")
       (assertRemovedOption [ "settings" "db_type" ] "Use `database.type` instead.")
@@ -777,6 +757,17 @@ in
         "settings"
         "ephemeral_node_inactivity_timeout"
       ] "Use `node.ephemeral.inactivity_timeout` instead.")
+      (assertRemovedOption [
+        "settings"
+        "database"
+        "postgres"
+        "password_file"
+      ] "Use `database.postgres.pass = \"file:<path>\"` instead.")
+      (assertRemovedOption [
+        "settings"
+        "oidc"
+        "client_secret_path"
+      ] "Use `oidc.client_secret = \"file:<path>\"` instead.")
     ];
 
     services.headscale.settings = lib.mkMerge [
@@ -810,10 +801,6 @@ in
       wantedBy = [ "multi-user.target" ];
 
       script = ''
-        ${lib.optionalString (cfg.settings.database.postgres.password_file != null) ''
-          export HEADSCALE_DATABASE_POSTGRES_PASS="$(head -n1 ${lib.escapeShellArg cfg.settings.database.postgres.password_file})"
-        ''}
-
         exec ${lib.getExe cfg.package} serve --config ${cfg.configFile}
       '';
 

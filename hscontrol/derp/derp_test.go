@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 )
@@ -250,14 +249,10 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			viper.Set("dns.base_domain", tt.baseDomain)
-
-			defer viper.Reset()
-
 			resetDerpRandomForTesting()
 
 			testMap := tt.derpMap.View().AsStruct()
-			shuffleDERPMap(testMap)
+			shuffleDERPMap(testMap, tt.baseDomain)
 
 			if diff := cmp.Diff(tt.expected, testMap); diff != "" {
 				t.Errorf("Shuffled DERP map doesn't match expected (-expected +actual):\n%s", diff)
@@ -269,10 +264,6 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 // TestGetDERPMapKeepsOrderAcrossRefreshes: clients close their home relay when
 // its node order changes, so a refresh of the same input must keep the order.
 func TestGetDERPMapKeepsOrderAcrossRefreshes(t *testing.T) {
-	viper.Set("dns.base_domain", "stable.example.com")
-
-	defer viper.Reset()
-
 	resetDerpRandomForTesting()
 
 	source := &tailcfg.DERPMap{Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{}}
@@ -286,11 +277,11 @@ func TestGetDERPMapKeepsOrderAcrossRefreshes(t *testing.T) {
 		source.Regions[id+1] = region
 	}
 
-	first, err := GetDERPMap(types.DERPConfig{DERPMap: source})
+	first, err := GetDERPMap(types.DERPConfig{DERPMap: source, ShuffleSeed: "stable.example.com"})
 	require.NoError(t, err)
 
 	for range 5 {
-		next, err := GetDERPMap(types.DERPConfig{DERPMap: source})
+		next, err := GetDERPMap(types.DERPConfig{DERPMap: source, ShuffleSeed: "stable.example.com"})
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(first, next); diff != "" {
@@ -346,13 +337,12 @@ func TestShuffleDERPMapEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shuffleDERPMap(tt.derpMap)
+			shuffleDERPMap(tt.derpMap, "")
 		})
 	}
 }
 
 func TestShuffleDERPMapWithoutBaseDomain(t *testing.T) {
-	viper.Reset()
 	resetDerpRandomForTesting()
 
 	derpMap := &tailcfg.DERPMap{
@@ -372,7 +362,7 @@ func TestShuffleDERPMapWithoutBaseDomain(t *testing.T) {
 	}
 
 	original := derpMap.View().AsStruct()
-	shuffleDERPMap(derpMap)
+	shuffleDERPMap(derpMap, "")
 
 	if len(derpMap.Regions) != 1 || len(derpMap.Regions[1].Nodes) != 4 {
 		t.Error("Shuffle corrupted DERP map structure")

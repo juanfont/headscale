@@ -41,8 +41,6 @@ database:
   type: sqlite3
   sqlite:
     path: headscale.db
-  gorm:
-    prepare_stmt: true
 `), 0o600))
 	require.NoError(t, types.LoadConfig(configPath, true))
 

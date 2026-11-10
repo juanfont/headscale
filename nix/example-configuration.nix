@@ -20,8 +20,9 @@
   services.headscale = {
     enable = true;
 
-    # Optional: Use a specific package (defaults to pkgs.headscale)
-    # package = pkgs.headscale;
+    # Use this flake's headscale. The default, pkgs.headscale from nixpkgs,
+    # may predate settings this module writes, such as "file:" secrets.
+    # package = inputs.headscale.packages.${pkgs.stdenv.hostPlatform.system}.headscale;
 
     # Listen on all interfaces (default is 127.0.0.1)
     address = "0.0.0.0";
@@ -86,7 +87,7 @@
         #   port = 5432;
         #   name = "headscale";
         #   user = "headscale";
-        #   password_file = "/run/secrets/headscale-db-password";
+        #   pass = "file:\${CREDENTIALS_DIRECTORY}/db-password";
         # };
       };
 
@@ -100,7 +101,7 @@
       # oidc = {
       #   issuer = "https://accounts.google.com";
       #   client_id = "your-client-id";
-      #   client_secret_path = "/run/secrets/oidc-client-secret";
+      #   client_secret = "file:\${CREDENTIALS_DIRECTORY}/oidc-client-secret";
       #   scope = [ "openid" "profile" "email" ];
       #   allowed_domains = [ "example.com" ];
       # };
@@ -127,6 +128,13 @@
       # custom_setting = "value";
     };
   };
+
+  # Secrets: systemd copies each file into $CREDENTIALS_DIRECTORY, readable
+  # only by the service, and the settings above read it with "file:".
+  # systemd.services.headscale.serviceConfig.LoadCredential = [
+  #   "db-password:/run/secrets/headscale-db-password"
+  #   "oidc-client-secret:/run/secrets/oidc-client-secret"
+  # ];
 
   # Optional: Open firewall ports
   networking.firewall = {

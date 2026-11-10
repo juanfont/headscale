@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +24,69 @@ import (
 )
 
 func noEnv(string) (any, bool) { return nil, false }
+
+// readSecret stands in for the caller's file: resolver.
+func readSecret(_, value string) (string, error) {
+	path, ok := strings.CutPrefix(value, "file:")
+	if !ok {
+		return value, nil
+	}
+
+	b, err := os.ReadFile(path)
+
+	return strings.TrimSpace(string(b)), err
+}
+
+func TestIsProviderSetting(t *testing.T) {
+	assert.True(t, IsProviderSetting("api_token"))
+	assert.True(t, IsProviderSetting("config"))
+	assert.True(t, IsProviderSetting("fulldomain"), "a registration setting")
+	assert.True(t, IsProviderSetting("API_Token"), "matched as the decoder matches")
+	assert.True(t, IsProviderMapSetting("config"))
+	assert.False(t, IsProviderMapSetting("api_token"))
+	assert.False(t, IsProviderSetting("api_token_path"))
+}
+
+// unreadSecret stands in for a caller that checks without reading files.
+func unreadSecret(_, value string) (string, error) {
+	if strings.HasPrefix(value, "file:") {
+		return value, ErrSecretUnread
+	}
+
+	return value, nil
+}
+
+// TestNewProviderUnreadSecrets pins that a check without the files skips
+// only what needs their contents.
+func TestNewProviderUnreadSecrets(t *testing.T) {
+	account := func(serverURL string) map[string]any {
+		return map[string]any{"username": "user", "password": "file:/pass", "subdomain": "reg", "server_url": serverURL}
+	}
+
+	tests := []struct {
+		name     string
+		settings map[string]any
+		wantErr  bool
+	}{
+		{name: "server_url from file", settings: account("file:/url")},
+		{name: "registration server_url from file", settings: map[string]any{"config": map[string]any{"laptop.example.com": account("file:/url")}}},
+		{name: "literal server_url still checked", settings: account("auth.acme-dns.io"), wantErr: true},
+		{name: "literal registration server_url still checked", settings: map[string]any{"config": map[string]any{"laptop.example.com": account("auth.acme-dns.io")}}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewProvider("acmedns", tt.settings, noEnv, unreadSecret)
+			if tt.wantErr {
+				require.ErrorIs(t, err, ErrProviderConfig)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
 
 func TestNewProvider(t *testing.T) {
 	secret := filepath.Join(t.TempDir(), "token")
@@ -64,21 +128,21 @@ func TestNewProvider(t *testing.T) {
 			},
 		},
 		{
-			name:     "secret from path",
+			name:     "secret from file",
 			provider: "cloudflare",
-			settings: map[string]any{"api_token_path": secret},
+			settings: map[string]any{"api_token": "file:" + secret},
 			want:     &cloudflare.Provider{APIToken: "from-file"},
 		},
 		{
-			name:     "value and path both set",
+			name:     "path key is unknown",
 			provider: "cloudflare",
-			settings: map[string]any{"api_token": "tok", "api_token_path": secret},
+			settings: map[string]any{"api_token_path": secret},
 			wantErr:  ErrProviderConfig,
 		},
 		{
-			name:     "unreadable path",
+			name:     "unreadable file",
 			provider: "cloudflare",
-			settings: map[string]any{"api_token_path": filepath.Join(t.TempDir(), "missing")},
+			settings: map[string]any{"api_token": "file:" + filepath.Join(t.TempDir(), "missing")},
 			wantErr:  ErrProviderConfig,
 		},
 		{
@@ -95,13 +159,13 @@ func TestNewProvider(t *testing.T) {
 		{
 			name:     "gigahost",
 			provider: "gigahost",
-			settings: map[string]any{"api_key_path": secret},
+			settings: map[string]any{"api_key": "file:" + secret},
 			want:     &gigahost.Provider{APIKey: "from-file"},
 		},
 		{
 			name:     "hetzner",
 			provider: "hetzner",
-			settings: map[string]any{"api_token_path": secret},
+			settings: map[string]any{"api_token": "file:" + secret},
 			want:     &hetzner.Provider{APIToken: "from-file"},
 		},
 		{
@@ -114,10 +178,10 @@ func TestNewProvider(t *testing.T) {
 			name:     "acmedns",
 			provider: "acmedns",
 			settings: map[string]any{
-				"username":      "user",
-				"password_path": secret,
-				"subdomain":     "reg",
-				"server_url":    "https://auth.acme-dns.io",
+				"username":   "user",
+				"password":   "file:" + secret,
+				"subdomain":  "reg",
+				"server_url": "https://auth.acme-dns.io",
 			},
 			want: &acmeDNS{
 				Username:  "user",
@@ -151,6 +215,42 @@ func TestNewProvider(t *testing.T) {
 			},
 		},
 		{
+			name:     "acmedns per domain from file",
+			provider: "acmedns",
+			settings: map[string]any{"config": map[string]any{
+				"node.ts.example.com": map[string]any{
+					"username":   "user",
+					"password":   "file:" + secret,
+					"subdomain":  "reg",
+					"server_url": "https://auth.acme-dns.io",
+				},
+			}},
+			want: &acmeDNS{
+				Configs: map[string]acmedns.DomainConfig{
+					"node.ts.example.com": {
+						Username:  "user",
+						Password:  "from-file",
+						Subdomain: "reg",
+						ServerURL: "https://auth.acme-dns.io",
+					},
+				},
+				served: map[string][2]acmeDNSValue{},
+			},
+		},
+		{
+			name:     "acmedns per domain file missing",
+			provider: "acmedns",
+			settings: map[string]any{"config": map[string]any{
+				"node.ts.example.com": map[string]any{
+					"username":   "user",
+					"password":   "file:" + filepath.Join(t.TempDir(), "missing"),
+					"subdomain":  "reg",
+					"server_url": "https://auth.acme-dns.io",
+				},
+			}},
+			wantErr: ErrProviderConfig,
+		},
+		{
 			name:     "acmedns server_url without scheme",
 			provider: "acmedns",
 			settings: map[string]any{
@@ -181,7 +281,7 @@ func TestNewProvider(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewProvider(tt.provider, tt.settings, noEnv)
+			got, err := NewProvider(tt.provider, tt.settings, noEnv, readSecret)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 
@@ -281,7 +381,7 @@ func TestAcmeDNSRefusesEviction(t *testing.T) {
 
 	srv := newFakeAcmeDNS(t)
 
-	p, err := NewProvider("acmedns", srv.registration(), noEnv)
+	p, err := NewProvider("acmedns", srv.registration(), noEnv, readSecret)
 	require.NoError(t, err)
 
 	ctx := context.Background()

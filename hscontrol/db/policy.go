@@ -76,7 +76,7 @@ func PolicyBytes(tx *gorm.DB, cfg *types.Config) ([]byte, error) {
 			return nil, nil
 		}
 
-		absPath := util.AbsolutePathFromConfigPath(path)
+		absPath := util.AbsolutePath(cfg.ConfigDir, path)
 
 		return os.ReadFile(absPath)
 

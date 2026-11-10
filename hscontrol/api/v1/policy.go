@@ -73,7 +73,7 @@ func registerPolicy(api huma.API, b Backend) {
 
 			return out, nil
 		case types.PolicyModeFile:
-			absPath := util.AbsolutePathFromConfigPath(b.Cfg.Policy.Path)
+			absPath := util.AbsolutePath(b.Cfg.ConfigDir, b.Cfg.Policy.Path)
 
 			f, err := os.Open(absPath)
 			if err != nil {
