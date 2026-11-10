@@ -150,26 +150,89 @@ func configParser(file string) (koanf.Parser, error) {
 	return nil, fmt.Errorf("unsupported config file format %q: use .json, .yaml, .yml or .hujson", filepath.Ext(file)) //nolint:err113
 }
 
-// normaliseConfigMap lowercases keys at every depth and drops nulls, so
-// lookups are case-insensitive and null means unset.
-func normaliseConfigMap(m map[string]any) map[string]any {
-	out := make(map[string]any, len(m))
+// caseSensitiveMaps are the open maps whose keys keep their case: OAuth
+// parameter names are case-sensitive. Every other open map's keys are
+// lowercased, in files and variables alike: DNS names and DNS provider
+// settings ignore case.
+var caseSensitiveMaps = []string{"oidc.extra_params"}
 
-	for k, v := range m {
-		if v == nil {
+// keyCase spells name, a key written below path ("" for the top), as the
+// loader matches it. A configuration key is matched only as written, in
+// lower case; an open map's entry name follows that map's rule, also when
+// a dotted name reaches into the map.
+func keyCase(path, name string) string {
+	if root := openMapRoot(path); root != "" {
+		return entryCase(root, name)
+	}
+
+	parts := strings.Split(name, ".")
+	for i := range len(parts) - 1 {
+		head := strings.Join(parts[:i+1], ".")
+		if root := joinConfigPath(path, head); isOpenMapPath(root) {
+			return head + "." + entryCase(root, strings.Join(parts[i+1:], "."))
+		}
+	}
+
+	return name
+}
+
+func entryCase(root, name string) string {
+	if slices.Contains(caseSensitiveMaps, root) {
+		return name
+	}
+
+	return strings.ToLower(name)
+}
+
+// normaliseConfigMap spells the keys of m, written below path, by keyCase
+// and drops nulls, list elements included, so null means unset. Two keys
+// spelled alike are passed to collide, the first kept: neither is meant
+// over the other.
+func normaliseConfigMap(m map[string]any, path string, collide func(path, a, b string)) map[string]any {
+	out := make(map[string]any, len(m))
+	written := make(map[string]string, len(m))
+
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		if m[k] == nil {
 			continue
 		}
 
-		out[strings.ToLower(k)] = normaliseConfigValue(v)
+		key := keyCase(path, k)
+		if first, ok := written[key]; ok {
+			collide(path, first, k)
+
+			continue
+		}
+
+		written[key] = k
+		out[key] = normaliseConfigValue(openMapObject(joinConfigPath(path, key), m[k]), joinConfigPath(path, key), collide)
 	}
 
 	return out
 }
 
-func normaliseConfigValue(v any) any {
+// openMapObject is v, set at path, as a map when path is an open map and v
+// a JSON object written as a string, the form a variable takes, so its keys
+// follow the map's rule as written ones do. Any other v is returned as is:
+// decode reports a string that is not an object.
+func openMapObject(path string, v any) any {
+	s, ok := v.(string)
+	if !ok || !slices.Contains(openMapKeys(), path) {
+		return v
+	}
+
+	var m map[string]any
+	if stdjson.Unmarshal([]byte(s), &m) != nil || m == nil {
+		return v
+	}
+
+	return m
+}
+
+func normaliseConfigValue(v any, path string, collide func(path, a, b string)) any {
 	switch x := v.(type) {
 	case map[string]any:
-		return normaliseConfigMap(x)
+		return normaliseConfigMap(x, path, collide)
 	case map[any]any:
 		// YAML maps with a non-string key.
 		m := make(map[string]any, len(x))
@@ -177,11 +240,55 @@ func normaliseConfigValue(v any) any {
 			m[fmt.Sprint(k)] = e
 		}
 
-		return normaliseConfigMap(m)
+		return normaliseConfigMap(m, path, collide)
 	case []any:
-		out := make([]any, len(x))
-		for i, e := range x {
-			out[i] = normaliseConfigValue(e)
+		out := make([]any, 0, len(x))
+		for _, e := range x {
+			if e != nil {
+				out = append(out, normaliseConfigValue(e, path, collide))
+			}
+		}
+
+		return out
+	}
+
+	return v
+}
+
+// caseCollision reports two keys below path that differ only in case where
+// case is ignored, naming both but no value, at where.
+func caseCollision(path, a, b, where string) error {
+	in := ""
+	if path != "" {
+		in = " in " + path
+	}
+
+	return &types.ConfigError{
+		Reason: fmt.Sprintf("configuration keys %q and %q%s differ only in case%s", a, b, in, where),
+		Hint:   "keep one: case is ignored there",
+	}
+}
+
+// dropNulls drops null entries and list elements at every depth of a
+// variable's JSON, keeping its keys as written: null means unset, as in a
+// file.
+func dropNulls(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			if e != nil {
+				out[k] = dropNulls(e)
+			}
+		}
+
+		return out
+	case []any:
+		out := make([]any, 0, len(x))
+		for _, e := range x {
+			if e != nil {
+				out = append(out, dropNulls(e))
+			}
 		}
 
 		return out
@@ -220,14 +327,17 @@ func openMapKeys() []string {
 	return open
 }
 
-func isOpenMapPath(path string) bool {
+func isOpenMapPath(path string) bool { return openMapRoot(path) != "" }
+
+// openMapRoot is the open map path is, or is below, or "".
+func openMapRoot(path string) string {
 	for _, o := range openMapKeys() {
 		if path == o || strings.HasPrefix(path, o+".") {
-			return true
+			return o
 		}
 	}
 
-	return false
+	return ""
 }
 
 // configPathParts splits path into names as expansion nests them: below an
@@ -395,10 +505,13 @@ func (s *configSource) loadFile() error {
 		return fmt.Errorf("fatal error reading config file %s: %w", s.file, err)
 	}
 
-	m = normaliseConfigMap(m)
+	var errs []error
+
+	m = normaliseConfigMap(m, "", func(path, a, b string) {
+		errs = append(errs, caseCollision(path, a, b, " ("+s.file+")"))
+	})
 
 	// Checked before expansion, which would otherwise discard shadowed keys.
-	var errs []error
 	s.checkKeys(&errs, m)
 
 	if len(errs) > 0 {
@@ -599,7 +712,7 @@ func (s *configSource) checkKeys(errs *[]error, m map[string]any) {
 // position renders " (file:line:col)" when the key can be located, written
 // nested, dotted or mixed, else " (file)".
 func (s *configSource) position(path string) string {
-	line, col, ok := dottedPosition(s.keys, strings.Split(path, "."))
+	line, col, ok := dottedPosition(s.keys, "", strings.Split(path, "."))
 	if !ok {
 		return " (" + s.file + ")"
 	}
@@ -662,8 +775,11 @@ func (s *configSource) loadEnv(environ []string) error {
 	}
 
 	// A variable for an open map replaces the file's map instead of merging
-	// into it. Its JSON object is set without the removed forms it holds;
-	// a value that is not one stays a string, which decode reports.
+	// into it. Its JSON object is set without the removed forms it holds,
+	// keys spelled as in a file; a value that is not one stays a string,
+	// which decode reports.
+	var errs []error
+
 	for _, key := range slices.Sorted(maps.Keys(openLayer)) {
 		val := openLayer[key]
 		s.k.Delete(key)
@@ -681,7 +797,9 @@ func (s *configSource) loadEnv(environ []string) error {
 				s.warnings = append(s.warnings, r.reason("key", p+" in "+name)+"; "+r.hint())
 			})
 
-			v = parsed
+			v = normaliseConfigMap(parsed, key, func(path, a, b string) {
+				errs = append(errs, caseCollision(path, a, b, " (env "+name+")"))
+			})
 		}
 
 		err := s.k.Set(key, v)
@@ -695,7 +813,7 @@ func (s *configSource) loadEnv(environ []string) error {
 		return err
 	}
 
-	return s.foldProviderEnv(env)
+	return errors.Join(append(errs, s.foldProviderEnv(env))...)
 }
 
 // foldProviderEnv sets HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME, then each
@@ -881,6 +999,10 @@ func (s *configSource) decode() (*types.Config, error) {
 		return nil, s.decodeErrors(err)
 	}
 
+	if settings := cfg.DNSConfig.Challenge.ProviderSettings; settings != nil {
+		cfg.DNSConfig.Challenge.ProviderSettings = providerText(settings).(map[string]any) //nolint:forcetypeassert // a map stays a map
+	}
+
 	cfg.ServerURL = strings.TrimRight(cfg.ServerURL, "/")
 	for i, p := range cfg.TrustedProxies {
 		cfg.TrustedProxies[i] = p.Masked()
@@ -889,6 +1011,39 @@ func (s *configSource) decode() (*types.Config, error) {
 	cfg.ConfigDir = s.configDir()
 
 	return &cfg, nil
+}
+
+// providerText is a DNS provider setting with every number, bool, date and
+// time as its text, as a variable writes it: the provider's decoder takes
+// text, and text reads back the same from every file format, where a
+// number or date may not.
+func providerText(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = providerText(e)
+		}
+
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = providerText(e)
+		}
+
+		return out
+	case time.Time:
+		// From a YAML timestamp. Format has text for every one, where
+		// MarshalText fails on an offset of 24 hours.
+		return x.Format(time.RFC3339Nano)
+	}
+
+	if text, ok := util.ScalarText(reflect.ValueOf(v)); ok {
+		return text
+	}
+
+	return v
 }
 
 // configDir is where relative paths in the configuration are resolved: the
@@ -1167,7 +1322,7 @@ func toList(s string, elem reflect.Type) (any, error) {
 		return nil, &types.ConfigError{Reason: "is not a JSON list", Hint: hint, Cause: err}
 	}
 
-	return list, nil
+	return dropNulls(list), nil
 }
 
 func toObject(s string) (any, error) {
@@ -1182,7 +1337,7 @@ func toObject(s string) (any, error) {
 		}
 	}
 
-	return m, nil
+	return dropNulls(m), nil
 }
 
 // plainMap is cfg as nested maps of plain values, keyed as in a file: what

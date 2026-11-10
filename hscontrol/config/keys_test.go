@@ -17,7 +17,9 @@ func TestKeyPosition(t *testing.T) {
 		line, col int
 		ok        bool
 	}{
-		{"yaml nested", "a: 1\nserver:\n  Foo: 2\n", []string{"server", "foo"}, 3, 3, true},
+		{"yaml nested", "a: 1\nserver:\n  Foo: 2\n", []string{"server", "Foo"}, 3, 3, true},
+		{"case differs", "Log: 1\nlog: 2\n", []string{"Log"}, 1, 1, true},
+		{"lowercased open map", "dns:\n  nameservers:\n    split:\n      Corp.Example.com: []\n", []string{"dns", "nameservers", "split", "corp.example.com"}, 4, 7, true},
 		{"json", "{\n  \"a\": 1,\n  \"b\": {\n    \"c\": 2\n  }\n}\n", []string{"b", "c"}, 4, 5, true},
 		{"duplicate parent", `{"dns":{"magic_dns":true},"dns":{"magic_dsn":true}}`, []string{"dns", "magic_dsn"}, 1, 34, true},
 		{"duplicate leaf", "{\n\"a\": 1,\n\"a\": 2\n}", []string{"a"}, 3, 1, true},
@@ -55,6 +57,8 @@ func TestDottedPosition(t *testing.T) {
 		{"nested", "dns:\n  magic_dsn: true\n", "dns.magic_dsn", 2, 3, true},
 		{"dotted", "a: 1\ndns.magic_dsn: true\n", "dns.magic_dsn", 2, 1, true},
 		{"mixed", "dns:\n  extra.x: 1\n", "dns.extra.x", 2, 3, true},
+		{"case differs", "log.level: 1\nLog.level: 2\n", "log.level", 1, 1, true},
+		{"lowercased open map", "dns.nameservers.split.Corp.Example.com: []\n", "dns.nameservers.split.corp.example.com", 1, 1, true},
 		// The surviving dns lacks the key; the shadowed one's copy was
 		// never loaded, so the dotted spelling is the one that set it.
 		{
@@ -67,7 +71,7 @@ func TestDottedPosition(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			line, col, ok := dottedPosition(keyTree([]byte(tt.src)), strings.Split(tt.path, "."))
+			line, col, ok := dottedPosition(keyTree([]byte(tt.src)), "", strings.Split(tt.path, "."))
 			assert.Equal(t, tt.ok, ok)
 			assert.Equal(t, tt.line, line)
 			assert.Equal(t, tt.col, col)

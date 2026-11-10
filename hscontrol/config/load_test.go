@@ -127,14 +127,11 @@ func TestConfigSource(t *testing.T) {
 			},
 		},
 		{
-			name: "keys are case-insensitive",
-			file: "Server_URL: https://x\ndns:\n  Nameservers:\n    Split:\n      Corp.Example.com: [10.0.0.1]\n",
-			check: func(t *testing.T, cfg *types.Config) {
-				t.Helper()
-				assert.Equal(t, "https://x", cfg.ServerURL)
-				assert.Equal(t,
-					map[string][]string{"corp.example.com": {"10.0.0.1"}},
-					cfg.DNSConfig.Nameservers.Split)
+			name: "keys match only as written, in lower case",
+			file: "Server_URL: https://x\nserver_url: https://y\nDNS:\n  magic_dns: true\n",
+			errs: []string{
+				"unknown configuration key Server_URL (", "config.yaml:1:1)",
+				"unknown configuration key DNS (", "config.yaml:3:1)",
 			},
 		},
 		{
@@ -174,7 +171,8 @@ func TestConfigSource(t *testing.T) {
 			check: func(t *testing.T, cfg *types.Config) {
 				t.Helper()
 				assert.Equal(t, "cloudflare", cfg.DNSConfig.Challenge.ProviderName())
-				assert.Equal(t, 1, cfg.DNSConfig.Challenge.ProviderSettings["whatever"])
+				// Settings are text; the provider converts them to its types.
+				assert.Equal(t, "1", cfg.DNSConfig.Challenge.ProviderSettings["whatever"])
 			},
 		},
 		{
@@ -3935,6 +3933,152 @@ func TestEnvNames(t *testing.T) {
 				same := reflect.DeepEqual(f.Value.Interface(), defaults[j].Value.Interface())
 				assert.Equalf(t, f.Path != k.Path, same, "%s=%s: %s", configEnvName(k.Path), val, f.Path)
 			}
+		})
+	}
+}
+
+// FuzzLoad: no file makes Load panic, and one that loads round-trips.
+func FuzzLoad(f *testing.F) {
+	seeds, err := filepath.Glob(filepath.Join(compatDir, "*.yaml"))
+	require.NoError(f, err)
+
+	for _, s := range seeds {
+		b, err := os.ReadFile(s)
+		require.NoError(f, err)
+		f.Add(b)
+	}
+
+	for _, v := range roundTripValues {
+		if v.file != "" {
+			f.Add([]byte(v.file))
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		require.NoError(t, os.WriteFile(path, data, 0o600))
+
+		l, err := Load(path, true, nil)
+		if err != nil {
+			return
+		}
+
+		for _, ext := range fileFormats {
+			got, err := roundTrip(t, l.Config, ext)
+			require.NoError(t, err, ext)
+
+			if diff := gocmp.Diff(l.Config, got, roundTripOpts); diff != "" {
+				t.Errorf("%s round trip (-written +loaded):\n%s", ext, diff)
+			}
+		}
+	})
+}
+
+// TestMapKeyCase: an open map's keys follow its rule in every format and in
+// variables: oidc.extra_params keeps their case, dns.nameservers.split and
+// DNS provider settings, nested ones included, are lowercased. The config
+// then round-trips exactly.
+func TestMapKeyCase(t *testing.T) {
+	unsetHeadscaleEnv(t)
+
+	for name, tt := range map[string]struct {
+		ext, file string
+		env       []string
+	}{
+		"yaml": {ext: ".yaml", file: "oidc:\n  extra_params:\n    Login_Hint: a\n    login_hint: b\n" +
+			"dns:\n  nameservers:\n    split:\n      Corp.Example.COM: [10.0.0.1]\n" +
+			"  challenge:\n    provider:\n      Name: acmedns\n      Config:\n        Laptop.Example.com:\n          Password: x\n"},
+		"yaml dotted": {ext: ".yaml", file: "oidc.extra_params.Login_Hint: a\noidc.extra_params.login_hint: b\n" +
+			"dns.nameservers.split.Corp.Example.COM: [10.0.0.1]\n" +
+			"dns.challenge.provider: {Name: acmedns, Config: {Laptop.Example.com: {Password: x}}}\n"},
+		"json": {ext: ".json", file: `{"oidc": {"extra_params": {"Login_Hint": "a", "login_hint": "b"}},
+			"dns": {"nameservers": {"split": {"Corp.Example.COM": ["10.0.0.1"]}},
+			"challenge": {"provider": {"Name": "acmedns", "Config": {"Laptop.Example.com": {"Password": "x"}}}}}}`},
+		"yaml string objects": {ext: ".yaml", file: "oidc:\n  extra_params: '{\"Login_Hint\": \"a\", \"login_hint\": \"b\"}'\n" +
+			"dns:\n  nameservers:\n    split: '{\"Corp.Example.COM\": [\"10.0.0.1\"]}'\n" +
+			"  challenge:\n    provider: '{\"Name\": \"acmedns\", \"Config\": {\"Laptop.Example.com\": {\"Password\": \"x\"}}}'\n"},
+		"env": {env: []string{
+			`HEADSCALE_OIDC_EXTRA_PARAMS={"Login_Hint":"a","login_hint":"b"}`,
+			`HEADSCALE_DNS_NAMESERVERS_SPLIT={"Corp.Example.COM":["10.0.0.1"]}`,
+			`HEADSCALE_DNS_CHALLENGE_PROVIDER={"Name":"acmedns","Config":{"Laptop.Example.com":{"Password":"x"}}}`,
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := ""
+			if tt.file != "" {
+				path = filepath.Join(t.TempDir(), "config"+tt.ext)
+				require.NoError(t, os.WriteFile(path, []byte(tt.file), 0o600))
+			}
+
+			l, err := Load(path, path != "", tt.env)
+			require.NoError(t, err)
+
+			cfg := l.Config
+			assert.Equal(t, map[string]string{"Login_Hint": "a", "login_hint": "b"}, cfg.OIDC.ExtraParams)
+			assert.Equal(t, map[string][]string{"corp.example.com": {"10.0.0.1"}}, cfg.DNSConfig.Nameservers.Split)
+			assert.Equal(t, map[string]any{
+				"name":   "acmedns",
+				"config": map[string]any{"laptop.example.com": map[string]any{"password": "x"}},
+			}, cfg.DNSConfig.Challenge.ProviderSettings)
+
+			for _, ext := range fileFormats {
+				got, err := roundTrip(t, cfg, ext)
+				require.NoError(t, err, ext)
+
+				if diff := gocmp.Diff(cfg, got, roundTripOpts); diff != "" {
+					t.Errorf("%s round trip (-written +loaded):\n%s", ext, diff)
+				}
+			}
+		})
+	}
+}
+
+// TestMapKeyCollision: two keys that one spelling makes the same are an
+// error naming both, not one picked at random, and showing no value.
+func TestMapKeyCollision(t *testing.T) {
+	for name, tt := range map[string]struct {
+		file string
+		env  []string
+		want string
+	}{
+		"split string object": {
+			file: "dns:\n  nameservers:\n    split: '{\"Corp.example.com\": [\"marker-a\"], \"corp.example.com\": [\"marker-b\"]}'\n",
+			want: `configuration keys "Corp.example.com" and "corp.example.com" in dns.nameservers.split differ only in case (`,
+		},
+		"provider string object": {
+			file: "dns:\n  challenge:\n    provider: '{\"API_TOKEN\": \"marker-a\", \"api_token\": \"marker-b\"}'\n",
+			want: `configuration keys "API_TOKEN" and "api_token" in dns.challenge.provider differ only in case (`,
+		},
+		"split": {
+			file: "dns:\n  nameservers:\n    split:\n      Corp.example.com: [10.0.0.1]\n      corp.example.com: [10.0.0.2]\n",
+			want: `configuration keys "Corp.example.com" and "corp.example.com" in dns.nameservers.split differ only in case (`,
+		},
+		"provider setting": {
+			file: "dns:\n  challenge:\n    provider:\n      API_TOKEN: marker-a\n      api_token: marker-b\n",
+			want: `configuration keys "API_TOKEN" and "api_token" in dns.challenge.provider differ only in case (`,
+		},
+		"provider registration": {
+			file: "dns:\n  challenge:\n    provider:\n      config:\n        A.example.com: {password: marker-a}\n        a.example.com: {password: marker-b}\n",
+			want: `configuration keys "A.example.com" and "a.example.com" in dns.challenge.provider.config differ only in case (`,
+		},
+		"env split": {
+			env:  []string{`HEADSCALE_DNS_NAMESERVERS_SPLIT={"Corp.example.com":["marker-a"],"corp.example.com":["marker-b"]}`},
+			want: `configuration keys "Corp.example.com" and "corp.example.com" in dns.nameservers.split differ only in case (env HEADSCALE_DNS_NAMESERVERS_SPLIT)`,
+		},
+		"env provider": {
+			env:  []string{`HEADSCALE_DNS_CHALLENGE_PROVIDER={"Name":"marker-a","name":"marker-b"}`},
+			want: `configuration keys "Name" and "name" in dns.challenge.provider differ only in case (env HEADSCALE_DNS_CHALLENGE_PROVIDER)`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tt.file != "" {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(tt.file), 0o600))
+			}
+
+			_, err := Load(dir, false, tt.env)
+			require.ErrorContains(t, err, tt.want)
+			requireHidden(t, err, "marker")
 		})
 	}
 }
