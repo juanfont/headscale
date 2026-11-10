@@ -233,6 +233,24 @@ func TestValidateGoData(t *testing.T) {
 			wantErr: "tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
 		},
 		{
+			name:    "empty resolver",
+			set:     func(c *types.Config) { c.DNSConfig.Challenge.Resolvers = []string{""} },
+			wantErr: "dns.challenge.resolvers[0] is empty",
+		},
+		{
+			name: "empty derp url",
+			set: func(c *types.Config) {
+				c.DERP.URLs = []types.HTTPURL{"https://derp.example.com/map.json", ""}
+			},
+			wantErr: "derp.urls[1] is empty",
+		},
+		{
+			// Would admit a user whose provider sends no email.
+			name:    "empty allowed user",
+			set:     func(c *types.Config) { c.OIDC.AllowedUsers = []string{""} },
+			wantErr: "oidc.allowed_users[0] is empty",
+		},
+		{
 			name: "url",
 			set: func(c *types.Config) {
 				c.OIDC.Issuer = "ftp://marker@idp.example.com"

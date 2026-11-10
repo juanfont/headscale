@@ -248,7 +248,7 @@ func Validate(c *types.Config) error {
 
 // validateValues parses every value whose type parses text, and each
 // element of a list of them, from its own text, as the loader did: a
-// Config built in Go was never parsed.
+// Config built in Go was never parsed. An empty text in a list is an error.
 func validateValues(c *types.Config, v *configValidator) {
 	for _, f := range types.ConfigFields(c) {
 		if f.Value.Kind() != reflect.Slice {
@@ -258,7 +258,17 @@ func validateValues(c *types.Config, v *configValidator) {
 		}
 
 		for i := range f.Value.Len() {
-			validateValue(v, fmt.Sprintf("%s[%d]", f.Path, i), f.Value.Index(i))
+			key, elem := fmt.Sprintf("%s[%d]", f.Path, i), f.Value.Index(i)
+
+			// No list gives "" a meaning: a resolver would be the local one,
+			// an allowed user one without an email.
+			if elem.Kind() == reflect.String && elem.Len() == 0 {
+				v.Add(&types.ConfigError{Reason: key + " is empty", Hint: "remove the empty entry"})
+
+				continue
+			}
+
+			validateValue(v, key, elem)
 		}
 	}
 }
