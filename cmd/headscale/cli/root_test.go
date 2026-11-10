@@ -10,7 +10,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -349,9 +348,6 @@ func TestOfflineSetPolicyRunsTests(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			viper.Reset()
-			t.Cleanup(viper.Reset)
-
 			dir := t.TempDir()
 			configPath := filepath.Join(dir, "config.yaml")
 			config := fmt.Sprintf(`server_url: https://headscale.example.com
@@ -456,8 +452,6 @@ func TestLoadConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			viper.Reset()
-			t.Cleanup(viper.Reset)
 			t.Setenv("HEADSCALE_CONFIG", tt.env)
 
 			old := cfgFile

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -24,9 +23,6 @@ import (
 const legacyPlaintextKey = "plaintextlegacykey0000000000000000000000000000"
 
 func TestSQLiteSameQueryInAndOutsideTransaction(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(`
 server_url: https://example.com

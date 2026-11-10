@@ -10,7 +10,6 @@ import (
 
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -148,9 +147,6 @@ func writeFile(t *testing.T, dir, name, content string) string {
 
 func runCheck(t *testing.T, c *cobra.Command, file string) (string, error) {
 	t.Helper()
-
-	viper.Reset()
-	t.Cleanup(viper.Reset)
 
 	cmd := &cobra.Command{}
 	cmd.Flags().String("file", file, "")
