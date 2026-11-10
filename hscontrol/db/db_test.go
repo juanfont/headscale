@@ -1126,6 +1126,46 @@ func TestOpenDBReturnsOpenError(t *testing.T) {
 	}
 }
 
+// TestSQLiteWriteAheadLog switches one database between modes, because SQLite
+// stores the journal mode in the file and turning WAL off has to undo it.
+func TestSQLiteWriteAheadLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "headscale.db")
+
+	open := func(wal bool) (string, int) {
+		t.Helper()
+
+		cfg := sqliteTestConfig(path)
+		cfg.Database.Sqlite.WriteAheadLog = wal
+
+		hsdb, err := NewHeadscaleDatabase(cfg)
+		require.NoError(t, err)
+
+		var (
+			mode        string
+			synchronous int
+		)
+
+		require.NoError(t, hsdb.DB.Raw("PRAGMA journal_mode").Scan(&mode).Error)
+		require.NoError(t, hsdb.DB.Raw("PRAGMA synchronous").Scan(&synchronous).Error)
+		require.NoError(t, hsdb.Close())
+
+		return mode, synchronous
+	}
+
+	const normal, full = 1, 2
+
+	mode, synchronous := open(true)
+	assert.Equal(t, "wal", mode)
+	assert.Equal(t, normal, synchronous)
+
+	mode, synchronous = open(false)
+	assert.Equal(t, "delete", mode)
+	assert.Equal(t, full, synchronous)
+
+	mode, _ = open(true)
+	assert.Equal(t, "wal", mode)
+}
+
 func TestLastControlAddressMigration(t *testing.T) {
 	dbPath := t.TempDir() + "/headscale.db"
 	cfg := &types.Config{
