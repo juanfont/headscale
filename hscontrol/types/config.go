@@ -483,10 +483,11 @@ type SqliteConfig struct {
 	// `:memory:` keeps the database in memory.
 	Path string `example:"\"/opt/headscale/db.sqlite\"" koanf:"path" nix:"external"`
 
-	// WriteAheadLog applies `database.sqlite.wal_autocheckpoint` and
-	// compacts the database (`VACUUM`) on shutdown. SQLite runs in WAL
-	// mode either way; false keeps SQLite's default checkpoint of 1000
-	// frames.
+	// WriteAheadLog runs SQLite in write-ahead log (WAL) mode, applies
+	// `database.sqlite.wal_autocheckpoint` and compacts the database
+	// (`VACUUM`) on shutdown. False uses SQLite's rollback journal
+	// (`DELETE`) with `synchronous=FULL`, and converts a database left
+	// in WAL mode when headscale opens it.
 	WriteAheadLog bool `koanf:"write_ahead_log"`
 
 	// WALAutoCheckPoint is the number of WAL frames after which the WAL

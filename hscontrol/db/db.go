@@ -522,8 +522,13 @@ func openDB(cfg types.DatabaseConfig, sqlitePath string) (*gorm.DB, error) {
 		// Build SQLite configuration with pragmas set at connection time
 		sqliteConfig := sqliteconfig.Default(sqlitePath)
 		if cfg.Sqlite.WriteAheadLog {
-			sqliteConfig.JournalMode = sqliteconfig.JournalModeWAL
 			sqliteConfig.WALAutocheckpoint = cfg.Sqlite.WALAutoCheckPoint
+		} else {
+			// The journal mode persists in the file, so leaving it unset keeps
+			// a database an earlier run put in WAL mode there. FULL is SQLite's
+			// default for a rollback journal; NORMAL can corrupt it on power loss.
+			sqliteConfig.JournalMode = sqliteconfig.JournalModeDelete
+			sqliteConfig.Synchronous = sqliteconfig.SynchronousFull
 		}
 
 		connectionURL, err := sqliteConfig.ToURL()
