@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,8 +15,10 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/ipn"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tsnet"
 	"tailscale.com/types/netmap"
 )
 
@@ -1270,4 +1274,78 @@ func TestUserProfileFollowsRename(t *testing.T) {
 			profile, ok := nm.UserProfiles[profileID]
 			return ok && profile.LoginName() == "profile-renamed"
 		})
+}
+
+// TestIssue3688DeletedNodeDoesNotSpinMapRequests deletes a live tsnet node
+// and counts the map polls its client starts afterwards. The client resets its
+// map backoff on every netmap it receives, so any answer that hands a deleted
+// node a netmap and then ends the stream makes it re-poll every few
+// milliseconds while it sits in NeedsLogin.
+//
+// See: https://github.com/juanfont/headscale/issues/3688
+func TestIssue3688DeletedNodeDoesNotSpinMapRequests(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t, servertest.WithRealListener())
+	user := srv.CreateUser(t, "spin-user")
+	authKey := srv.CreatePreAuthKey(t, types.UserID(user.ID))
+
+	var mapPolls atomic.Int64
+
+	ts := &tsnet.Server{
+		Dir:        t.TempDir(),
+		Hostname:   "spin-node",
+		ControlURL: srv.URL,
+		AuthKey:    authKey,
+		Logf: func(format string, args ...any) {
+			if strings.Contains(fmt.Sprintf(format, args...), "PollNetMap: stream=true") {
+				mapPolls.Add(1)
+			}
+		},
+	}
+	t.Cleanup(func() { ts.Close() })
+
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+
+	_, err := ts.Up(ctx)
+	require.NoError(t, err)
+
+	lc, err := ts.LocalClient()
+	require.NoError(t, err)
+
+	nodeView, ok := srv.State().GetNodeByID(findNodeID(t, srv, "spin-node"))
+	require.True(t, ok)
+
+	changes, err := srv.State().DeleteNode(nodeView)
+	require.NoError(t, err)
+	srv.App.Change(changes...)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		st, err := lc.StatusWithoutPeers(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, "NeedsLogin", st.BackendState)
+	}, 15*time.Second, 50*time.Millisecond, "a deleted node must be driven to NeedsLogin")
+
+	before := mapPolls.Load()
+
+	// A 404 is retried with a growing backoff, a handful of polls in this
+	// window; the loop this guards against polls every ~10ms.
+	assert.Never(t, func() bool { return mapPolls.Load()-before > 20 }, 3*time.Second, 50*time.Millisecond,
+		"a deleted node's client must not re-poll /machine/map in a tight loop")
+
+	// Whatever quiets the client must not hold up its re-authentication.
+	require.NoError(t, lc.Start(ctx, ipn.Options{AuthKey: authKey}))
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		st, err := lc.StatusWithoutPeers(ctx)
+		assert.NoError(c, err)
+		assert.NotEqual(c, "NeedsLogin", st.BackendState)
+
+		registered := false
+		for _, n := range srv.State().ListNodes().All() {
+			registered = registered || n.Hostname() == "spin-node"
+		}
+
+		assert.True(c, registered)
+	}, 15*time.Second, 50*time.Millisecond, "a deleted node must re-register promptly")
 }
