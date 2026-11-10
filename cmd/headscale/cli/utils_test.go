@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,6 +99,16 @@ func TestCLIAPIKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDialEmptySocket: an empty unix_socket fails at once, naming the key,
+// instead of retrying until the CLI timeout.
+func TestDialEmptySocket(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	_, err := dialHeadscaleSocket(ctx, "")
+	require.ErrorIs(t, err, errUnixSocketNotSet)
 }
 
 // TestServerConfigDropsCLIKey: the server never holds the CLI's key, which

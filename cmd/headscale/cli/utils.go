@@ -37,6 +37,7 @@ const (
 
 var (
 	errAPIKeyNotSet     = errors.New("HEADSCALE_CLI_API_KEY environment variable needs to be set")
+	errUnixSocketNotSet = errors.New("unix_socket is empty: set it, or cli.address and cli.api_key for a remote server")
 	errMissingParameter = errors.New("missing parameters")
 	errResponseStatus   = errors.New("unexpected response status")
 )
@@ -250,6 +251,11 @@ func newSocketClient(socketPath string) (*clientv1.ClientWithResponses, error) {
 // starts can race its creation; retrying preserves the old gRPC client's
 // blocking-dial tolerance rather than failing on a not-yet-present socket.
 func dialHeadscaleSocket(ctx context.Context, socketPath string) (net.Conn, error) {
+	// Retrying cannot help: no socket ever appears at "".
+	if socketPath == "" {
+		return nil, errUnixSocketNotSet
+	}
+
 	b := backoff.NewExponentialBackOff()
 	b.InitialInterval = 50 * time.Millisecond
 	b.MaxInterval = 1 * time.Second
