@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -284,4 +285,40 @@ func GenerateRegistrationKey() (string, error) {
 	)
 
 	return registerKeyPrefix + rands.HexString(registerKeyLength), nil
+}
+
+// WalkErrTree calls fn on err and every error below it, wrapped and joined
+// ones included. It follows each error's own Unwrap: errors.As would jump
+// past the head and miss a join inside a single-Unwrap chain.
+func WalkErrTree(err error, fn func(error)) {
+	if err == nil {
+		return
+	}
+
+	fn(err)
+
+	switch x := err.(type) { //nolint:errorlint // walks the tree itself
+	case interface{ Unwrap() error }:
+		WalkErrTree(x.Unwrap(), fn)
+	case interface{ Unwrap() []error }:
+		for _, e := range x.Unwrap() {
+			WalkErrTree(e, fn)
+		}
+	}
+}
+
+// ScalarText is a number or bool as text.
+func ScalarText(v reflect.Value) (string, bool) {
+	switch {
+	case v.Kind() == reflect.Bool:
+		return strconv.FormatBool(v.Bool()), true
+	case v.CanInt():
+		return strconv.FormatInt(v.Int(), 10), true
+	case v.CanUint():
+		return strconv.FormatUint(v.Uint(), 10), true
+	case v.CanFloat():
+		return strconv.FormatFloat(v.Float(), 'f', -1, 64), true
+	}
+
+	return "", false
 }

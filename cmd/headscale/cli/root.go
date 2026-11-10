@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"cmp"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"slices"
 	"strings"
 
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -14,7 +17,13 @@ import (
 	"github.com/tcnksm/go-latest"
 )
 
-var cfgFile string = ""
+var (
+	cfgFile string = ""
+
+	// loaded is what initConfig loaded; nil for the commands that skip it:
+	// check, version, mockoidc and completion.
+	loaded *config.Loaded
+)
 
 func init() {
 	if len(os.Args) > 1 &&
@@ -55,27 +64,35 @@ func skipsInitConfig(args []string) bool {
 // loadConfig loads path, else the file -c names, else $HEADSCALE_CONFIG,
 // else the first config.* in /etc/headscale, $XDG_CONFIG_HOME/headscale,
 // headscale under each $XDG_CONFIG_DIRS entry, ~/.headscale or ".". Without
-// a file it loads defaults and environment only.
-func loadConfig(path string) error {
-	for _, p := range []string{path, cfgFile, os.Getenv("HEADSCALE_CONFIG")} {
-		if p == "" {
-			continue
-		}
+// a file it loads defaults and environment only. The result is never nil.
+func loadConfig(path string) (*config.Loaded, error) {
+	path = cmp.Or(path, cfgFile, os.Getenv("HEADSCALE_CONFIG"))
 
-		err := types.LoadConfig(p, true)
-		if err != nil {
-			return fmt.Errorf("loading config file %s: %w", p, err)
-		}
-
-		return nil
+	l, err := config.Load(path, path != "", os.Environ())
+	switch {
+	case err != nil && path != "":
+		return l, fmt.Errorf("loading config file %s: %w", path, err)
+	case err != nil:
+		return l, fmt.Errorf("loading config: %w", err)
 	}
 
-	err := types.LoadConfig("", false)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
+	return l, nil
+}
 
-	return nil
+// useLogConfig applies cfg's log.level, and logs to w as JSON when cfg sets
+// log.format: json.
+func useLogConfig(cfg *types.Config, w io.Writer) {
+	zerolog.SetGlobalLevel(cfg.Log.Level.Zerolog())
+
+	if cfg.Log.Format == types.JSONLogFormat {
+		log.Logger = log.Output(w)
+	}
+}
+
+func logWarnings(warnings []string) {
+	for _, w := range warnings {
+		log.Warn().Msg(w)
+	}
 }
 
 func initConfig() {
@@ -86,12 +103,27 @@ func initConfig() {
 		return
 	}
 
-	err := loadConfig("")
+	machineOutput := hasMachineOutputFlag()
+
+	l, err := loadConfig("")
 	if err != nil {
+		// No log.format applies: main's console logger, on stderr.
+		logWarnings(l.Warnings)
 		log.Fatal().Caller().Err(err).Msg("error loading config")
 	}
 
-	machineOutput := hasMachineOutputFlag()
+	loaded = l
+	cfg := l.Config
+
+	// Machine output owns stdout.
+	logOut := os.Stdout
+	if machineOutput {
+		logOut = os.Stderr
+	}
+
+	useLogConfig(cfg, logOut)
+
+	logWarnings(l.Warnings)
 
 	// If the user has requested a "node" readable format,
 	// then disable login so the output remains valid.
@@ -99,11 +131,7 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	if types.LogFormatSetting() == types.JSONLogFormat {
-		log.Logger = log.Output(os.Stdout)
-	}
-
-	if !types.UpdateCheckDisabled() && !machineOutput {
+	if !cfg.DisableUpdateCheck && !machineOutput {
 		versionInfo := types.GetVersionInfo()
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			!versionInfo.Dirty {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/arl/statsviz"
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -139,7 +140,15 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 	// Configuration endpoint
 	debug.Handle("config", "Current configuration", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, h.state.DebugConfig())
+		out, err := config.Marshal(h.cfg, ".json")
+		if err != nil {
+			httpError(w, err)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(out)
 	}))
 
 	// Policy endpoint

@@ -1,4 +1,4 @@
-package types
+package config
 
 import (
 	"bytes"
@@ -20,13 +20,13 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/v2"
 	"github.com/prometheus/common/model"
-	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 )
 
@@ -54,7 +54,7 @@ var reservedEnvNames = []string{
 
 // configSource is the layered configuration: defaults, then file, then
 // environment, with lowercase keys. [configSource.decode] turns it into a
-// [Config].
+// [types.Config].
 type configSource struct {
 	k         *koanf.Koanf
 	file      string
@@ -198,7 +198,7 @@ type schemaKey struct {
 }
 
 func schemaKeys() []schemaKey {
-	fields := ConfigFields(&Config{})
+	fields := types.ConfigFields(&types.Config{})
 
 	keys := make([]schemaKey, len(fields))
 	for i, f := range fields {
@@ -306,34 +306,60 @@ func joinConfigPath(prefix, name string) string {
 	return prefix + "." + name
 }
 
+// Loaded is a configuration as [Load] found it.
+type Loaded struct {
+	// Config is nil when loading failed.
+	Config *types.Config
+	// File is the file loaded or failed to load, or "" when none was found.
+	File string
+	// Warnings are findings that do not stop loading, kept when it fails.
+	Warnings []string
+}
+
+// Load loads defaults, the configuration file found via path and isFile,
+// and the HEADSCALE_* variables of environ (os.Environ form), rejecting
+// removed and unknown file keys, and decodes them. It does not validate:
+// see [Validate].
+func Load(path string, isFile bool, environ []string) (*Loaded, error) {
+	s, err := newConfigSource(path, isFile, environ)
+
+	l := &Loaded{File: s.file, Warnings: s.warnings}
+	if err != nil {
+		return l, err
+	}
+
+	l.Config, err = s.decode()
+
+	return l, err
+}
+
 // newConfigSource loads defaults, the config file found via path/isFile and
-// environ (os.Environ form), and rejects removed and unknown file keys.
+// environ (os.Environ form), and rejects removed and unknown file keys. The
+// source is returned with what it found even on error.
 func newConfigSource(path string, isFile bool, environ []string) (*configSource, error) {
 	s := &configSource{k: koanf.New("."), envVars: map[string]string{}}
+	s.file = findConfigFile(path, isFile, environ)
 
-	d := defaultConfig()
+	d := Default()
 
 	err := s.k.Load(confmap.Provider(plainMap(&d, false), ""), nil)
 	if err != nil {
-		return nil, fmt.Errorf("loading defaults: %w", err)
+		return s, fmt.Errorf("loading defaults: %w", err)
 	}
 
-	s.file = findConfigFile(path, isFile, environ)
+	var fileErr error
+
 	if s.file == "" {
-		log.Warn().Msg("no config file found, using defaults")
+		s.warnings = append(s.warnings, "no config file found, using defaults")
 	} else {
-		err = s.loadFile()
-		if err != nil {
-			return nil, err
-		}
+		fileErr = s.loadFile()
 	}
 
-	err = s.loadEnv(environ)
-	if err != nil {
-		return nil, err
-	}
+	// Read even when the file fails, so its variables' warnings are reported
+	// with the file's error.
+	envErr := s.loadEnv(environ)
 
-	return s, nil
+	return s, cmp.Or(fileErr, envErr)
 }
 
 func (s *configSource) loadFile() error {
@@ -372,11 +398,11 @@ func (s *configSource) loadFile() error {
 	m = normaliseConfigMap(m)
 
 	// Checked before expansion, which would otherwise discard shadowed keys.
-	v := &configValidator{}
-	s.checkKeys(v, m)
+	var errs []error
+	s.checkKeys(&errs, m)
 
-	if v.HasErrors() {
-		return v.Err()
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	m = expandDottedKeys(m, "")
@@ -516,7 +542,7 @@ func (r removedKey) reason(what, name string) string {
 }
 
 // checkKeys adds an error for every removed or unknown key in the file.
-func (s *configSource) checkKeys(v *configValidator, m map[string]any) {
+func (s *configSource) checkKeys(errs *[]error, m map[string]any) {
 	leaf, branch := configKeySets()
 
 	var walk func(prefix string, m map[string]any)
@@ -533,7 +559,7 @@ func (s *configSource) checkKeys(v *configValidator, m map[string]any) {
 
 			switch r, removed := removedConfigKey(path); {
 			case removed:
-				v.Add(&ConfigError{
+				*errs = append(*errs, &types.ConfigError{
 					Reason: r.reason("key", path) + s.position(path),
 					Hint:   r.hint(),
 				})
@@ -549,7 +575,7 @@ func (s *configSource) checkKeys(v *configValidator, m map[string]any) {
 				}
 
 				walkRemoved(root, below, false, func(p string, r removedKey) {
-					v.Add(&ConfigError{Reason: r.reason("key", p) + s.position(p), Hint: r.hint()})
+					*errs = append(*errs, &types.ConfigError{Reason: r.reason("key", p) + s.position(p), Hint: r.hint()})
 				})
 			case leaf[path] && !isMap:
 			case (leaf[path] || branch[path]) && isMap:
@@ -557,17 +583,17 @@ func (s *configSource) checkKeys(v *configValidator, m map[string]any) {
 				walk(path, child)
 			case branch[path]:
 				// The value is not shown: a misplaced block may hold secrets.
-				v.Add(&ConfigError{
+				*errs = append(*errs, &types.ConfigError{
 					Reason: fmt.Sprintf("configuration key %s must be a mapping%s", path, s.position(path)),
 				})
 			default:
-				v.Add(&ConfigError{Reason: fmt.Sprintf("unknown configuration key %s%s", path, s.position(path))})
+				*errs = append(*errs, &types.ConfigError{Reason: fmt.Sprintf("unknown configuration key %s%s", path, s.position(path))})
 			}
 		}
 	}
 
 	walk("", m)
-	s.checkOverlaps(v, m)
+	s.checkOverlaps(errs, m)
 }
 
 // position renders " (file:line:col)" when the key can be located, written
@@ -700,7 +726,7 @@ func (s *configSource) foldProviderEnv(env map[string]string) error {
 
 	fold("name")
 
-	for _, setting := range hsdns.SettingNames(DNSChallengeConfig{ProviderSettings: settings}.ProviderName()) {
+	for _, setting := range hsdns.SettingNames(types.DNSChallengeConfig{ProviderSettings: settings}.ProviderName()) {
 		fold(setting)
 	}
 
@@ -739,12 +765,6 @@ func removedEnv(name string) (removedKey, bool) {
 	return removedKey{}, false
 }
 
-// File returns the config file in use, or "" when only defaults apply.
-func (s *configSource) File() string { return s.file }
-
-// Warnings returns non-fatal findings from loading.
-func (s *configSource) Warnings() []string { return s.warnings }
-
 // keyEntry is one key of the file as written, for finding paths that the file
 // spells in more than one form.
 type keyEntry struct {
@@ -761,7 +781,7 @@ func (e keyEntry) spelling() string { return strings.Join(e.names, " > ") }
 
 // checkOverlaps rejects a path given both dotted and nested ("log.level" next
 // to "log: {level: ...}"): no rule says which of the two should win.
-func (s *configSource) checkOverlaps(v *configValidator, m map[string]any) {
+func (s *configSource) checkOverlaps(errs *[]error, m map[string]any) {
 	var entries []keyEntry
 
 	var collect func(prefix string, parent int, names []string, m map[string]any)
@@ -823,7 +843,7 @@ func (s *configSource) checkOverlaps(v *configValidator, m map[string]any) {
 				a, b = b, a
 			}
 
-			v.Add(&ConfigError{
+			*errs = append(*errs, &types.ConfigError{
 				Reason: fmt.Sprintf("configuration key %s is set both as %q%s and as %q%s",
 					a.path, a.spelling(), s.positionOf(a.names), b.spelling(), s.positionOf(b.names)),
 				Hint: "use one form, either the dotted key or nested mappings",
@@ -844,8 +864,8 @@ func (s *configSource) positionOf(names []string) string {
 
 // decode decodes the layers into a Config. Every value that does not fit
 // its key is reported, in one error.
-func (s *configSource) decode() (*Config, error) {
-	var cfg Config
+func (s *configSource) decode() (*types.Config, error) {
+	var cfg types.Config
 
 	err := s.k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{
 		Tag: "koanf",
@@ -890,10 +910,11 @@ func (s *configSource) configDir() string {
 // decodeErrors turns each value mapstructure rejected into a ConfigError
 // naming its key and where it was set.
 func (s *configSource) decodeErrors(err error) error {
-	v := &configValidator{}
+	var errs []error
+
 	seen := map[string]bool{}
 
-	walkErrTree(err, func(e error) {
+	util.WalkErrTree(err, func(e error) {
 		de, ok := e.(*mapstructure.DecodeError) //nolint:errorlint // every node is visited
 		if !ok {
 			return
@@ -902,9 +923,9 @@ func (s *configSource) decodeErrors(err error) error {
 		// An element or entry is reported on its key.
 		key, _, _ := strings.Cut(de.Name(), "[")
 
-		var leaf *ConfigError
+		var leaf *types.ConfigError
 		if !errors.As(de.Unwrap(), &leaf) {
-			leaf = &ConfigError{Reason: de.Unwrap().Error(), Cause: de.Unwrap()}
+			leaf = &types.ConfigError{Reason: de.Unwrap().Error(), Cause: de.Unwrap()}
 
 			// The decoder's own error keeps the value (UnconvertibleTypeError's
 			// Value); its text does not.
@@ -917,20 +938,20 @@ func (s *configSource) decodeErrors(err error) error {
 		ce.Reason = key + " " + leaf.Reason + s.origin(key)
 
 		if !hiddenValue(key) {
-			ce.Current = []KV{{key, s.k.Get(key)}}
+			ce.Current = []types.KV{{Key: key, Value: s.k.Get(key)}}
 		}
 
 		if !seen[ce.Reason] {
 			seen[ce.Reason] = true
-			v.Add(&ce)
+			errs = append(errs, &ce)
 		}
 	})
 
-	if !v.HasErrors() {
+	if len(errs) == 0 {
 		return err
 	}
 
-	return v.Err()
+	return errors.Join(errs...)
 }
 
 // origin renders where key's value came from: its variable, else its
@@ -950,26 +971,27 @@ func (s *configSource) origin(key string) string {
 // hiddenValue reports whether key's value may be a credential, which errors
 // do not show: a secret, a URL (its userinfo) or a DNS provider setting.
 func hiddenValue(key string) bool {
-	if key == providerKey || strings.HasPrefix(key, providerKey+".") || slices.Contains(URLKeys, key) {
+	if key == providerKey || strings.HasPrefix(key, providerKey+".") || slices.Contains(types.URLKeys, key) {
 		return true
 	}
 
-	for _, f := range ConfigFields(&Config{}) {
+	for _, f := range types.ConfigFields(&types.Config{}) {
 		if f.Path != key {
 			continue
 		}
 
-		return f.Field.Type == reflect.TypeFor[Secret]()
+		return f.Field.Type == reflect.TypeFor[types.Secret]()
 	}
 
 	return false
 }
 
 var (
-	durationType  = reflect.TypeFor[time.Duration]()
-	fileModeType  = reflect.TypeFor[FileMode]()
-	prefixType    = reflect.TypeFor[netip.Prefix]()
-	prefixPtrType = reflect.TypeFor[*netip.Prefix]()
+	textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()
+	durationType        = reflect.TypeFor[time.Duration]()
+	fileModeType        = reflect.TypeFor[types.FileMode]()
+	prefixType          = reflect.TypeFor[netip.Prefix]()
+	prefixPtrType       = reflect.TypeFor[*netip.Prefix]()
 )
 
 // scalarHook converts a value as written into what its field's type takes,
@@ -985,7 +1007,7 @@ func scalarHook(from, to reflect.Value) (any, error) {
 	case t == fileModeType && !isString:
 		// YAML reads an unquoted 0770 as the integer 504, which cannot be
 		// told apart from a literal 504.
-		return nil, &ConfigError{
+		return nil, &types.ConfigError{
 			Reason:  "must be quoted",
 			Maximum: `"0777"`,
 			Hint:    `quote the value, e.g. "0770"; unquoted, YAML reads 0770 as the number 504`,
@@ -997,7 +1019,7 @@ func scalarHook(from, to reflect.Value) (any, error) {
 	case t == prefixType && isString:
 		_, err := netip.ParsePrefix(s)
 		if err != nil {
-			return nil, &ConfigError{
+			return nil, &types.ConfigError{
 				Reason: "is not a valid CIDR",
 				Detail: err.Error(),
 				Hint:   `use CIDR form, e.g. "100.64.0.0/10"`,
@@ -1005,7 +1027,7 @@ func scalarHook(from, to reflect.Value) (any, error) {
 			}
 		}
 	case t.Kind() == reflect.String:
-		if text, ok := scalarText(from); ok {
+		if text, ok := util.ScalarText(from); ok {
 			return text, nil
 		}
 	case t.Kind() == reflect.Bool:
@@ -1021,27 +1043,11 @@ func scalarHook(from, to reflect.Value) (any, error) {
 	return data, nil
 }
 
-// scalarText is a number or bool as text.
-func scalarText(v reflect.Value) (string, bool) {
-	switch {
-	case v.Kind() == reflect.Bool:
-		return strconv.FormatBool(v.Bool()), true
-	case v.CanInt():
-		return strconv.FormatInt(v.Int(), 10), true
-	case v.CanUint():
-		return strconv.FormatUint(v.Uint(), 10), true
-	case v.CanFloat():
-		return strconv.FormatFloat(v.Float(), 'f', -1, 64), true
-	}
-
-	return "", false
-}
-
 func toDuration(v reflect.Value) (any, error) {
-	unit := &ConfigError{Reason: "needs a unit", Hint: `write the unit, e.g. "30s", "5m" or "90d"`}
+	unit := &types.ConfigError{Reason: "needs a unit", Hint: `write the unit, e.g. "30s", "5m" or "90d"`}
 
 	if v.Kind() != reflect.String {
-		if _, ok := scalarText(v); !ok || v.Kind() == reflect.Bool {
+		if _, ok := util.ScalarText(v); !ok || v.Kind() == reflect.Bool {
 			return v.Interface(), nil
 		}
 
@@ -1069,20 +1075,20 @@ func toDuration(v reflect.Value) (any, error) {
 		return nil, unit
 	}
 
-	return nil, &ConfigError{Reason: "is not a duration", Hint: unit.Hint}
+	return nil, &types.ConfigError{Reason: "is not a duration", Hint: unit.Hint}
 }
 
 func toBool(v reflect.Value) (any, error) {
 	text, ok := reflect.TypeAssert[string](v)
 	if !ok {
-		if text, ok = scalarText(v); !ok || v.Kind() == reflect.Bool {
+		if text, ok = util.ScalarText(v); !ok || v.Kind() == reflect.Bool {
 			return v.Interface(), nil
 		}
 	}
 
 	b, err := strconv.ParseBool(text)
 	if err != nil {
-		return nil, &ConfigError{Reason: "is not a boolean", Hint: "use true or false", Cause: err}
+		return nil, &types.ConfigError{Reason: "is not a boolean", Hint: "use true or false", Cause: err}
 	}
 
 	return b, nil
@@ -1099,7 +1105,7 @@ func toInt(v reflect.Value, t reflect.Type) (any, error) {
 	case v.Kind() == reflect.String:
 		i, err := strconv.ParseInt(v.String(), 10, 64)
 		if errors.Is(err, strconv.ErrRange) {
-			return nil, &ConfigError{Reason: "is out of range"}
+			return nil, &types.ConfigError{Reason: "is out of range"}
 		}
 
 		n, whole = i, err == nil
@@ -1107,14 +1113,14 @@ func toInt(v reflect.Value, t reflect.Type) (any, error) {
 		n, whole = v.Int(), true
 	case v.CanUint():
 		if v.Uint() > math.MaxInt64 {
-			return nil, &ConfigError{Reason: "is out of range"}
+			return nil, &types.ConfigError{Reason: "is out of range"}
 		}
 
 		n, whole = int64(v.Uint()), true //nolint:gosec // bounded above
 	case v.CanFloat():
 		f := v.Float()
 		if f < math.MinInt64 || f >= math.MaxInt64 {
-			return nil, &ConfigError{Reason: "is out of range"}
+			return nil, &types.ConfigError{Reason: "is out of range"}
 		}
 
 		n, whole = int64(f), f == math.Trunc(f)
@@ -1123,11 +1129,11 @@ func toInt(v reflect.Value, t reflect.Type) (any, error) {
 	}
 
 	if !whole {
-		return nil, &ConfigError{Reason: "is not an integer"}
+		return nil, &types.ConfigError{Reason: "is not an integer"}
 	}
 
 	if reflect.Zero(t).OverflowInt(n) {
-		return nil, &ConfigError{Reason: "is out of range"}
+		return nil, &types.ConfigError{Reason: "is out of range"}
 	}
 
 	return n, nil
@@ -1158,7 +1164,7 @@ func toList(s string, elem reflect.Type) (any, error) {
 			hint = `write the list as JSON, e.g. [{"name": "a.example.com", "type": "A", "value": "100.64.0.1"}]`
 		}
 
-		return nil, &ConfigError{Reason: "is not a JSON list", Hint: hint, Cause: err}
+		return nil, &types.ConfigError{Reason: "is not a JSON list", Hint: hint, Cause: err}
 	}
 
 	return list, nil
@@ -1169,7 +1175,7 @@ func toObject(s string) (any, error) {
 
 	err := stdjson.Unmarshal([]byte(s), &m)
 	if err != nil || m == nil {
-		return nil, &ConfigError{
+		return nil, &types.ConfigError{
 			Reason: "is not a JSON object",
 			Hint:   `write the map as JSON, e.g. {"example.com": ["1.1.1.1"]}`,
 			Cause:  err,
@@ -1184,7 +1190,7 @@ func toObject(s string) (any, error) {
 // shows only a file: reference, a URL no userinfo, and every DNS provider
 // setting but a scalar name and file: references is hidden: any of them, a
 // number included, may be a credential.
-func plainMap(cfg *Config, redact bool) map[string]any {
+func plainMap(cfg *types.Config, redact bool) map[string]any {
 	out := map[string]any{}
 
 	if redact {
@@ -1193,7 +1199,7 @@ func plainMap(cfg *Config, redact bool) map[string]any {
 		cfg = &r
 	}
 
-	for _, f := range ConfigFields(cfg) {
+	for _, f := range types.ConfigFields(cfg) {
 		v := plainValue(f.Value, redact)
 
 		switch settings, isMap := v.(map[string]any); {
@@ -1244,13 +1250,13 @@ func plainValue(v reflect.Value, redact bool) any {
 	switch x := v.Interface().(type) {
 	case time.Duration:
 		return x.String()
-	case Secret:
+	case types.Secret:
 		if redact {
 			return x.Redacted()
 		}
 
 		return string(x)
-	case HTTPURL:
+	case types.HTTPURL:
 		// As written: its JSON form drops userinfo.
 		if redact {
 			return x.Redacted()
@@ -1325,11 +1331,11 @@ func redactProvider(settings map[string]any) map[string]any {
 		out[k] = redactLeaves(v)
 	}
 
-	// A name that is a map or list stays hidden: it is no name.
-	if _, ok := (DNSChallengeConfig{ProviderSettings: settings}).providerName(); ok {
-		if name, set := settings["name"]; set {
-			out["name"] = name
-		}
+	// A name that is a map or list stays hidden: it is no name, and its
+	// ProviderName is "", as an empty name's is.
+	name, set := settings["name"]
+	if set && (name == nil || name == "" || (types.DNSChallengeConfig{ProviderSettings: settings}).ProviderName() != "") {
+		out["name"] = name
 	}
 
 	return out

@@ -185,7 +185,7 @@
           ];
           extraSrc = [
             ./hscontrol/testdata
-            ./hscontrol/types/testdata
+            ./hscontrol/config/testdata
             ./hscontrol/db/testdata
             ./hscontrol/policy/v2/testdata
           ];

@@ -86,6 +86,31 @@ func TestDebugHostGuard(t *testing.T) {
 	}
 }
 
+// TestDebugConfigRedacts: /debug/config is the configuration as
+// config.Marshal writes it, without credentials; the running values keep
+// theirs.
+func TestDebugConfigRedacts(t *testing.T) {
+	app := createTestApp(t)
+	app.cfg.ServerURL = "https://marker-user:marker-pass@localhost:8080"
+	app.cfg.CLI.Address = "https://marker-cli@cli.example.com"
+	app.cfg.DNSConfig.Nameservers.Global = []string{"1.1.1.1", "https://marker-dns-user:marker-dns-pass@dns.example.com/q"}
+	app.cfg.DNSConfig.Nameservers.Split = map[string][]string{"corp.example.com": {"https://marker-split@dns.example.com/q"}}
+	app.cfg.Database.Postgres.Pass = "marker-pg-pass"
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/debug/config", nil)
+	req.Host = "localhost"
+	req.RemoteAddr = "127.0.0.1:1234"
+	rec := httptest.NewRecorder()
+	app.debugHTTPServer().Handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	assert.NotContains(t, rec.Body.String(), "marker")
+	assert.Contains(t, rec.Body.String(), `"server_url":"https://localhost:8080"`)
+	assert.Contains(t, rec.Body.String(), `"global":["1.1.1.1","https://dns.example.com/q"]`)
+	assert.Contains(t, app.cfg.ServerURL, "marker-pass")
+}
+
 // TestNewHeadscaleDNSProvider pins that startup builds the provider
 // dns.challenge.provider names, reading its secrets, unless Go set one, and
 // refuses one that cannot keep node certificates apart.

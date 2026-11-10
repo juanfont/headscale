@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	clientv2 "github.com/juanfont/headscale/gen/client/v2"
-	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
 )
 
@@ -175,10 +174,7 @@ var deleteOAuthClientCmd = &cobra.Command{
 // (local trust); a remote address injects the configured API key as a bearer
 // token.
 func newV2Client() (context.Context, *clientv2.ClientWithResponses, context.CancelFunc, error) {
-	cfg, err := types.LoadCLIConfig()
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("loading configuration: %w", err)
-	}
+	cfg := loaded.Config
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.CLI.Timeout)
 

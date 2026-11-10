@@ -107,7 +107,7 @@ linters:
     rules:
       # Config key names repeat across the key tables, validation and error
       # reports until the config reshape gives each key one home.
-      - path: hscontrol/types/(config|config_keys|listener)\.go
+      - path: hscontrol/(types/config|config/(keys|validate))\.go
         linters:
           - goconst
     paths:

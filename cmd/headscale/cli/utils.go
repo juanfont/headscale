@@ -16,6 +16,7 @@ import (
 	"github.com/cenkalti/backoff/v5"
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
@@ -87,7 +88,7 @@ func mustMarkRequired(cmd *cobra.Command, names ...string) {
 }
 
 func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
-	cfg, err := types.LoadServerConfig()
+	cfg, err := serverConfig()
 	if err != nil {
 		return nil, fmt.Errorf(
 			"loading configuration: %w",
@@ -101,6 +102,25 @@ func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
 	}
 
 	return app, nil
+}
+
+// serverConfig is the loaded configuration validated for the server, its
+// advisories logged.
+func serverConfig() (*types.Config, error) {
+	cfg := loaded.Config
+
+	err := config.Validate(cfg)
+	logWarnings(config.Warnings(cfg))
+
+	if err != nil {
+		return nil, err
+	}
+
+	// The server never uses the CLI's key, which may be an unread file:
+	// reference.
+	cfg.CLI.APIKey = ""
+
+	return cfg, nil
 }
 
 // clientRunE wraps a [cobra.Command.RunE] func, injecting a ready API client
@@ -141,10 +161,7 @@ func withClient(
 // Otherwise it talks to the remote TCP address over HTTPS and injects the
 // configured API key as a bearer token.
 func newHeadscaleCLIWithConfig() (context.Context, *clientv1.ClientWithResponses, context.CancelFunc, error) {
-	cfg, err := types.LoadCLIConfig()
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("loading configuration: %w", err)
-	}
+	cfg := loaded.Config
 
 	log.Debug().
 		Dur("timeout", cfg.CLI.Timeout).
@@ -408,8 +425,16 @@ func printError(err error, outputFormat string) {
 	fmt.Fprintf(os.Stderr, "%s\n", out)
 }
 
+// hasMachineOutputFlag reports whether --output, as Cobra parsed it in any
+// spelling for the command being run, asks for a machine-readable format.
+// The command's own flags hold it: version shadows the root's --output.
 func hasMachineOutputFlag() bool {
-	return slices.ContainsFunc(os.Args, func(arg string) bool {
-		return arg == outputFormatJSON || arg == outputFormatJSONLine || arg == outputFormatYAML
-	})
+	cmd, _, err := rootCmd.Find(os.Args[1:])
+	if err != nil {
+		return false
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+
+	return slices.Contains([]string{outputFormatJSON, outputFormatJSONLine, outputFormatYAML}, output)
 }

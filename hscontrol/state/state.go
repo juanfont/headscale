@@ -441,7 +441,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	}
 
 	// Apply defaults for [NodeStore] batch configuration if not set.
-	// This ensures tests that create Config directly (without LoadConfig) still work.
+	// This ensures tests that create Config directly (without config.Load) still work.
 	batchSize := cmp.Or(cfg.Tuning.NodeStoreBatchSize, defaultNodeStoreBatchSize)
 
 	batchTimeout := cmp.Or(cfg.Tuning.NodeStoreBatchTimeout, defaultNodeStoreBatchTimeout)

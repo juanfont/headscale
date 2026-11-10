@@ -29,7 +29,6 @@ import (
 
 	"github.com/caddyserver/certmagic"
 	"github.com/cenkalti/backoff/v5"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/metrics"
@@ -577,7 +576,12 @@ func (h *Headscale) Serve() error {
 	}
 
 	if dumpConfig {
-		spew.Dump(h.cfg)
+		out, err := config.Marshal(h.cfg, ".yaml")
+		if err != nil {
+			return fmt.Errorf("dumping config: %w", err)
+		}
+
+		_, _ = os.Stdout.Write(out)
 	}
 
 	versionInfo := types.GetVersionInfo()

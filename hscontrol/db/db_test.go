@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,11 +39,10 @@ database:
   sqlite:
     path: headscale.db
 `), 0o600))
-	require.NoError(t, types.LoadConfig(configPath, true))
-
-	cfg, err := types.LoadServerConfig()
+	l, err := config.Load(configPath, true, os.Environ())
 	require.NoError(t, err)
-	hsdb, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, config.Validate(l.Config))
+	hsdb, err := NewHeadscaleDatabase(l.Config)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, hsdb.Close()) })
 

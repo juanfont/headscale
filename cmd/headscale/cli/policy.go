@@ -10,7 +10,6 @@ import (
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +22,7 @@ var errAborted = errors.New("command aborted by user")
 // bypassDatabase opens the database directly, bypassing the running server.
 // The caller must close the returned handle.
 func bypassDatabase() (*db.HSDatabase, error) {
-	cfg, err := types.LoadServerConfig()
+	cfg, err := serverConfig()
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}

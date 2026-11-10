@@ -1,4 +1,4 @@
-package types
+package config
 
 import (
 	"slices"
