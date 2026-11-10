@@ -422,9 +422,6 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 // zstd-framed when the client asked for compression, behind a little-endian
 // length prefix. Tailscale clients request zstd unconditionally and decode
 // every frame with it, so the compression step is not optional.
-//
-// It is shared with the deleted-node path in [noiseServer.PollNetMapHandler],
-// which has no [mapSession] to write through.
 func writeMapResponse(w http.ResponseWriter, compress string, flush bool, msg *tailcfg.MapResponse) error {
 	jsonBody, err := json.Marshal(msg)
 	if err != nil {
