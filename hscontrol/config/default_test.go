@@ -251,6 +251,22 @@ func TestValidateGoData(t *testing.T) {
 			wantErr: "oidc.allowed_users[0] is empty",
 		},
 		{
+			name: "derp region unset",
+			set: func(c *types.Config) {
+				sharedKeys("noise.key", "derp.key")(c)
+				c.DERP.Server.RegionID = 0
+			},
+			wantErr: "derp.server.region_id is required when the embedded DERP server is enabled",
+		},
+		{
+			name: "derp region negative",
+			set: func(c *types.Config) {
+				sharedKeys("noise.key", "derp.key")(c)
+				c.DERP.Server.RegionID = -1
+			},
+			wantErr: "derp.server.region_id must be positive",
+		},
+		{
 			name: "url",
 			set: func(c *types.Config) {
 				c.OIDC.Issuer = "ftp://marker@idp.example.com"
@@ -513,6 +529,7 @@ func sharedKeys(noise, derp string) func(*types.Config) {
 		c.ConfigDir = "/etc/headscale"
 		c.Noise.PrivateKeyPath = noise
 		c.DERP.Server.Enabled = true
+		c.DERP.Server.RegionID = 999
 		c.DERP.Server.STUNAddr = "0.0.0.0:3478"
 		c.DERP.Server.PrivateKeyPath = derp
 	}

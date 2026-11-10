@@ -3880,6 +3880,7 @@ dns:
 derp:
   server:
     enabled: true
+    region_id: 999
     stun_listen_addr: "0.0.0.0:3478"
 `+tt.derpKey), 0o600))
 
@@ -4132,6 +4133,7 @@ oidc:
 				"node.routes.ha.probe_interval is below the minimum",
 				"node.routes.ha.probe_timeout must be less than node.routes.ha.probe_interval",
 				"tuning.node_store_batch_size must be positive",
+				"derp.server.region_id is required when the embedded DERP server is enabled",
 				"derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
 				"database.type has an unsupported value",
 				"policy.mode has an unsupported value",
@@ -4165,6 +4167,7 @@ oidc:
 				"node.routes.ha.probe_interval is below the minimum",
 				"node.routes.ha.probe_timeout must be less than node.routes.ha.probe_interval",
 				"tuning.node_store_batch_size must be positive",
+				"derp.server.region_id is required when the embedded DERP server is enabled",
 				"derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
 				"database.sqlite.path is required when database.type is sqlite",
 				"policy.mode has an unsupported value",

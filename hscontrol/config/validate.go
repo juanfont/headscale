@@ -360,6 +360,27 @@ func validateDERP(c *types.Config, v *configValidator) {
 		return
 	}
 
+	// Clients never connect to region 0.
+	switch id := server.RegionID; {
+	case id == 0:
+		v.Add(&types.ConfigError{
+			Reason: "derp.server.region_id is required when the embedded DERP server is enabled",
+			Current: []types.KV{
+				{Key: "derp.server.enabled", Value: true},
+				{Key: "derp.server.region_id", Value: 0},
+			},
+			Hint: "set derp.server.region_id, e.g. 999 (900-999 are for your own regions), or set derp.server.enabled: false",
+			See:  "https://headscale.net/stable/ref/derp/",
+		})
+	case id < 0:
+		v.Add(&types.ConfigError{
+			Reason:  "derp.server.region_id must be positive",
+			Current: []types.KV{{Key: "derp.server.region_id", Value: int(id)}},
+			Hint:    "set derp.server.region_id, e.g. 999 (900-999 are for your own regions)",
+			See:     "https://headscale.net/stable/ref/derp/",
+		})
+	}
+
 	if server.STUNAddr == "" {
 		v.Add(&types.ConfigError{
 			Reason: "derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
