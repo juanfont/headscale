@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,7 +28,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/dns/dnstest"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,7 +37,6 @@ import (
 	"tailscale.com/net/tsdial"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/util/zstdframe"
 )
 
 var privateDiagnosticPaths = []string{
@@ -1541,57 +1538,22 @@ func newMapRequest(t *testing.T, req tailcfg.MapRequest) *http.Request {
 	return httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/machine/map", bytes.NewReader(body))
 }
 
-// decodeMapResponse reads a map response frame the way a Tailscale client
-// does: a little-endian length prefix followed by a body that is zstd-framed
-// whenever the request asked for compression.
-func decodeMapResponse(t *testing.T, compress string, body []byte) tailcfg.MapResponse {
-	t.Helper()
-
-	require.GreaterOrEqual(t, len(body), reservedResponseHeaderSize, "response too short to carry a length prefix")
-
-	size := binary.LittleEndian.Uint32(body[:reservedResponseHeaderSize])
-	payload := body[reservedResponseHeaderSize:]
-	require.Len(t, payload, int(size), "length prefix must match the body it precedes")
-
-	if compress == util.ZstdCompression {
-		decoded, err := zstdframe.AppendDecode(nil, payload)
-		require.NoError(t, err, "client decodes every frame as zstd when it asked for zstd")
-
-		payload = decoded
-	}
-
-	var resp tailcfg.MapResponse
-	require.NoError(t, json.Unmarshal(payload, &resp))
-
-	return resp
-}
-
-// TestPollNetMapHandler_DeletedNodeGetsExpiredSelf verifies that a streaming
-// map request for a node that no longer exists is answered with an expired
-// self node instead of a bare 404. A Tailscale client treats every non-200 on
-// the map path identically and retries forever with loggedIn still set; only a
-// self node whose KeyExpiry is in the past moves it to NeedsLogin.
+// TestPollNetMapHandler_DeletedNodeGetsNotFound pins parity with Tailscale's
+// control server: a deleted node's map request gets a bare 404. Clients read a
+// map 404 as "removed from the tailnet" ([controlclient.ErrNodeRemoved]) and
+// retry with a growing backoff. A 200 carrying a netmap instead resets that
+// backoff, so when the stream then ends the client re-polls within
+// milliseconds, forever.
 //
-// See: https://github.com/juanfont/headscale/issues/3410
-func TestPollNetMapHandler_DeletedNodeGetsExpiredSelf(t *testing.T) {
+// See: https://github.com/juanfont/headscale/issues/3688
+func TestPollNetMapHandler_DeletedNodeGetsNotFound(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		compress  string
-		logTail   bool
-		wantDebug *tailcfg.Debug
-	}{
-		{"", false, &tailcfg.Debug{DisableLogTail: true}},
-		{util.ZstdCompression, false, &tailcfg.Debug{DisableLogTail: true}},
-		{"", true, nil},
-		{util.ZstdCompression, true, nil},
-	} {
-		compress := tc.compress
-		t.Run(fmt.Sprintf("compress=%s/logtail=%t", compress, tc.logTail), func(t *testing.T) {
+	for _, stream := range []bool{true, false} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
 			t.Parallel()
 
 			app := createTestApp(t)
-			app.cfg.LogTail.Enabled = tc.logTail
 			user := app.state.CreateUserForTest("deleted-node-user")
 			node := putTestNodeInStore(t, app, user, "deleted-node")
 
@@ -1605,23 +1567,12 @@ func TestPollNetMapHandler_DeletedNodeGetsExpiredSelf(t *testing.T) {
 
 			rec := httptest.NewRecorder()
 			ns.PollNetMapHandler(rec, newMapRequest(t, tailcfg.MapRequest{
-				Version:  tailcfg.CurrentCapabilityVersion,
-				NodeKey:  node.NodeKey,
-				Stream:   true,
-				Compress: compress,
+				Version: tailcfg.CurrentCapabilityVersion,
+				NodeKey: node.NodeKey,
+				Stream:  stream,
 			}))
 
-			require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
-
-			resp := decodeMapResponse(t, compress, rec.Body.Bytes())
-			require.NotNil(t, resp.Node, "clients reject an initial map response without a node")
-			assert.Equal(t, node.NodeKey, resp.Node.Key)
-			assert.Equal(t, time.Unix(1, 0).UTC(), resp.Node.KeyExpiry,
-				"a fixed ancient KeyExpiry must remain expired despite client clock skew")
-			assert.True(t, resp.Node.Expired)
-			// This frame starts the stream, so it must carry the logtail
-			// instruction the initial map would have.
-			assert.Equal(t, tc.wantDebug, resp.Debug)
+			assert.Equal(t, http.StatusNotFound, rec.Code, "body=%q", rec.Body.String())
 		})
 	}
 }

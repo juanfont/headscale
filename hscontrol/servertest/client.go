@@ -496,8 +496,8 @@ func (c *TestClient) UpdateFullNetmap(nm *netmap.NetworkMap) {
 		c.history = append(c.history, nm)
 	}
 
-	// Removals sent ahead of their batch and a deleted node's expiry carry
-	// no ControlTime, so a rebuild with none before it is a response too.
+	// Removals sent ahead of their batch carry no ControlTime, so a rebuild
+	// with none before it is a response too.
 	// shortcut: one right after a response a delta client applied in place
 	// goes uncounted; count at the decoder if headscale sends one alone.
 	if !c.stamped {

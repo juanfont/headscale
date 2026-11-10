@@ -552,8 +552,8 @@ func TestPathsDiscoAndExpiryHelpers(t *testing.T) {
 
 // TestFramesCountResponsesWithoutControlTime checks that Frames counts the
 // responses headscale sends without a ControlTime: a removal ahead of its
-// batch, and the expiry a deleted node's new stream opens with. A client
-// that rebuilds its netmap on every response counts one frame per rebuild.
+// batch. A client that rebuilds its netmap on every response counts one frame
+// per rebuild.
 func TestFramesCountResponsesWithoutControlTime(t *testing.T) {
 	t.Parallel()
 
@@ -590,30 +590,6 @@ func TestFramesCountResponsesWithoutControlTime(t *testing.T) {
 
 		viewer.WaitForPeerCount(t, 0, 15*time.Second)
 		requireFramePerRebuild(t, viewer)
-	})
-
-	t.Run("deleted-node-expiry", func(t *testing.T) {
-		t.Parallel()
-
-		srv := servertest.NewServer(t)
-		cl := servertest.NewClient(t, srv, "frames-deleted")
-		cl.WaitForCondition(t, "initial netmap", 15*time.Second,
-			func(nm *netmap.NetworkMap) bool { return nm != nil })
-
-		node, ok := srv.State().GetNodeByID(findNodeID(t, srv, "frames-deleted"))
-		require.True(t, ok)
-
-		changes, err := srv.State().DeleteNode(node)
-		require.NoError(t, err)
-		srv.App.Change(changes...)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		require.NoError(t, cl.RestartPoll(ctx))
-		cl.WaitForCondition(t, "expired self", 15*time.Second,
-			func(nm *netmap.NetworkMap) bool { return nm != nil && nm.SelfNode.Expired() })
-		requireFramePerRebuild(t, cl)
 	})
 }
 
