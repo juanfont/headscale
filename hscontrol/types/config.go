@@ -626,7 +626,11 @@ type DatabaseConfig struct {
 	Sqlite SqliteConfig `koanf:"sqlite"`
 
 	// Postgres is PostgreSQL, read only when `database.type` is
-	// `postgres`.
+	// `postgres`. An empty `host`, `name`, `user`, `pass` or `ssl` leaves
+	// that setting to the driver, which reads the `PG*` environment
+	// variables and falls back to the defaults of libpq, PostgreSQL's
+	// client library: a local socket, the OS user, and TLS if the server
+	// offers it.
 	Postgres PostgresConfig `koanf:"postgres"`
 }
 

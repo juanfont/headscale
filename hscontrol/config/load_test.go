@@ -1115,6 +1115,11 @@ func TestNullTakesDefault(t *testing.T) {
 			warns: []string{`listen_addr has no value in $FILE, so it takes its default 0.0.0.0:8080`},
 		},
 		{
+			name:  "required unix socket",
+			file:  serverURL + "unix_socket:\n",
+			warns: []string{`unix_socket has no value in $FILE, so it takes its default /var/run/headscale/headscale.sock`},
+		},
+		{
 			name:  "required sqlite path",
 			file:  serverURL + "database:\n  sqlite:\n    path:\n",
 			warns: []string{`database.sqlite.path has no value in $FILE, so it takes its default /var/lib/headscale/db.sqlite`},
@@ -4045,6 +4050,7 @@ dns:
 	const everyRule = `server_url: headscale.example.com
 listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 0.0.0.0:8080
+unix_socket: ""
 trusted_proxies: [0.0.0.0/0]
 noise:
   private_key_path: ""
@@ -4082,6 +4088,7 @@ tls:
   acme:
     hostname: example.com
     challenge_type: ""
+    cache_dir: ""
 oidc:
   issuer: https://idp.example.com
   client_id: headscale
@@ -4113,7 +4120,9 @@ oidc:
 				"OIDC configuration is invalid",
 				"dns.extra_records and dns.extra_records_path are mutually exclusive",
 				"tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
+				"tls.acme.cache_dir is required when tls.acme.hostname is set",
 				"noise.private_key_path is required",
+				"unix_socket is required",
 				"listen_addr and metrics_listen_addr would bind the same TCP socket",
 				"tls.acme.challenge_type has an unsupported value",
 				"server_url is missing a scheme",
@@ -4143,8 +4152,10 @@ oidc:
 				"OIDC configuration is invalid",
 				"dns.extra_records and dns.extra_records_path are mutually exclusive",
 				"tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
+				"tls.acme.cache_dir is required when tls.acme.hostname is set",
 				"noise.private_key_path is required",
 				"listen_addr is required",
+				"unix_socket is required",
 				"tls.acme.challenge_type has an unsupported value",
 				"server_url is required",
 				"node.ephemeral.inactivity_timeout is below the minimum",
