@@ -4516,3 +4516,167 @@ func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 
 	return mergeKeyedRules(rules, ruleKeys(rules))
 }
+
+// TestCompileSSHPolicy_Recorders covers session recording end to end at the
+// policy layer: that a recorder alias resolves to an address on the recorder
+// port, that enforcement produces an OnRecordingFailure action, and — the case
+// that matters most — that recorders land on the CHECK action too.
+//
+// Why check specifically: the client reads the final (delegated) action but
+// falls back to the policy-derived action compiled here when the delegated one
+// carries no recorders. That fallback is what lets check mode record without
+// the HoldAndDelegate endpoint knowing anything about recording.
+func TestCompileSSHPolicy_Recorders(t *testing.T) {
+	users := types.Users{
+		{Name: "user1", Email: "user1@example.com", ID: 1},
+	}
+
+	src := &types.Node{
+		Hostname: "workstation",
+		IPv4:     createAddr("100.64.0.1"),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
+	}
+	recorder := &types.Node{
+		Hostname: "castsink",
+		IPv4:     createAddr("100.64.0.9"),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
+		Tags:     []string{"tag:recorder"},
+	}
+
+	nodes := types.Nodes{src, recorder}
+
+	policyFor := func(action SSHAction, enforce bool) *Policy {
+		return &Policy{
+			TagOwners: TagOwners{
+				Tag("tag:recorder"): Owners{up("user1@")},
+			},
+			SSHs: []SSH{
+				{
+					Action:          action,
+					Sources:         SSHSrcAliases{up("user1@")},
+					Destinations:    SSHDstAliases{up("user1@")},
+					Users:           []SSHUser{"root"},
+					Recorder:        SSHSrcAliases{tp("tag:recorder")},
+					EnforceRecorder: enforce,
+				},
+			},
+		}
+	}
+
+	wantAddr := netip.AddrPortFrom(netip.MustParseAddr("100.64.0.9"), sshRecorderPort)
+
+	t.Run("accept carries recorders", func(t *testing.T) {
+		pol := policyFor(SSHActionAccept, false)
+		require.NoError(t, pol.validate())
+
+		got, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.NoError(t, err)
+		require.Len(t, got.Rules, 1)
+
+		require.Equal(t, []netip.AddrPort{wantAddr}, got.Rules[0].Action.Recorders)
+		// Not enforcing, so a recorder outage must not reject the session.
+		require.Nil(t, got.Rules[0].Action.OnRecordingFailure)
+		// The user must be told before the session starts.
+		require.Contains(t, got.Rules[0].Action.Message, "recorded")
+	})
+
+	t.Run("check carries recorders — the action0 fallback", func(t *testing.T) {
+		pol := policyFor(SSHActionCheck, false)
+		require.NoError(t, pol.validate())
+
+		got, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.NoError(t, err)
+		require.Len(t, got.Rules, 1)
+
+		action := got.Rules[0].Action
+		require.Equal(t, []netip.AddrPort{wantAddr}, action.Recorders,
+			"check-mode inherits recorders via the client falling back to this action when the delegated one carries none")
+
+		// Check mode must still be check mode: this is the only action that
+		// disables forwarding, which is what makes the recording meaningful.
+		require.False(t, action.Accept)
+		require.NotEmpty(t, action.HoldAndDelegate)
+		require.False(t, action.AllowLocalPortForwarding)
+		require.False(t, action.AllowRemotePortForwarding)
+		require.False(t, action.AllowAgentForwarding)
+	})
+
+	t.Run("enforcement rejects and terminates", func(t *testing.T) {
+		pol := policyFor(SSHActionAccept, true)
+		require.NoError(t, pol.validate())
+
+		got, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.NoError(t, err)
+		require.Len(t, got.Rules, 1)
+
+		onFail := got.Rules[0].Action.OnRecordingFailure
+		require.NotNil(t, onFail)
+		require.NotEmpty(t, onFail.RejectSessionWithMessage)
+		require.NotEmpty(t, onFail.TerminateSessionWithMessage)
+		// Deliberately empty: it posts back to control over Noise and
+		// headscale implements no such endpoint.
+		require.Empty(t, onFail.NotifyURL)
+	})
+
+	t.Run("no recorder means no recording", func(t *testing.T) {
+		pol := &Policy{
+			SSHs: []SSH{{
+				Action:       SSHActionAccept,
+				Sources:      SSHSrcAliases{up("user1@")},
+				Destinations: SSHDstAliases{up("user1@")},
+				Users:        []SSHUser{"root"},
+			}},
+		}
+		require.NoError(t, pol.validate())
+
+		got, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.NoError(t, err)
+		require.Len(t, got.Rules, 1)
+		require.Empty(t, got.Rules[0].Action.Recorders)
+		require.Empty(t, got.Rules[0].Action.Message)
+	})
+
+	t.Run("enforcing with an unresolvable recorder is an error", func(t *testing.T) {
+		pol := &Policy{
+			TagOwners: TagOwners{
+				Tag("tag:nowhere"): Owners{up("user1@")},
+			},
+			SSHs: []SSH{{
+				Action:          SSHActionAccept,
+				Sources:         SSHSrcAliases{up("user1@")},
+				Destinations:    SSHDstAliases{up("user1@")},
+				Users:           []SSHUser{"root"},
+				Recorder:        SSHSrcAliases{tp("tag:nowhere")},
+				EnforceRecorder: true,
+			}},
+		}
+		require.NoError(t, pol.validate())
+
+		_, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.Error(t, err, "enforceRecorder with nothing to enforce against must fail loudly")
+	})
+
+	t.Run("a wide prefix is rejected, not expanded", func(t *testing.T) {
+		// The DoS path: the client walks the recorder list in order inside a
+		// ~30s budget, so a /8 silently expanded to thousands of dial targets
+		// would delay every session — and under enforcement, cause an SSH
+		// outage.
+		wide := Prefix(netip.MustParsePrefix("10.0.0.0/8"))
+
+		pol := &Policy{
+			SSHs: []SSH{{
+				Action:       SSHActionAccept,
+				Sources:      SSHSrcAliases{up("user1@")},
+				Destinations: SSHDstAliases{up("user1@")},
+				Users:        []SSHUser{"root"},
+				Recorder:     SSHSrcAliases{&wide},
+			}},
+		}
+		require.NoError(t, pol.validate())
+
+		_, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.Error(t, err, "a wide prefix is not a recorder, it is a mistake")
+	})
+}

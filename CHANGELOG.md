@@ -257,6 +257,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 - The v1 API stores an API key or pre-auth key created without `expiration` as one that never expires, and reports its expiration as `null`. It was stored as already expired and rejected on first use. The CLI always sends an expiration and was not affected. Keys created this way before stay expired; create new ones [#3254](https://github.com/juanfont/headscale/pull/3254)
 - The v2 API accepts an auth key create that leaves out `tags`, as Tailscale does [#3254](https://github.com/juanfont/headscale/pull/3254)
 - The v2 API refuses an auth key `expirySeconds` below 0 or above 90 days, as Tailscale does; a negative value used to mean 90 days [#3254](https://github.com/juanfont/headscale/pull/3254)
+- SSH rules accept `recorder` and `enforceRecorder` for Tailscale SSH session recording: the session streams to port 80 on each named recorder node, and `enforceRecorder` rejects the session when no recorder is reachable; Headscale does not store recordings, run a `tsrecorder` node in the tailnet for that [#1793](https://github.com/juanfont/headscale/issues/1793)
 
 ## 0.29.7 (2026-10-30)
 

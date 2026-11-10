@@ -462,3 +462,68 @@ func livePolicy(t *testing.T, srv *servertest.TestServer, handler http.Handler, 
 
 	return out
 }
+
+// TestPolicySSHRecorders verifies that the `recorder` and `enforceRecorder`
+// fields of an SSH rule reach the node's SSHPolicy: the recorder alias is
+// resolved to the node's Tailscale address on the recording port, and
+// enforceRecorder produces the OnRecordingFailure action.
+func TestPolicySSHRecorders(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "rec-user")
+	st := srv.State()
+
+	recorder := st.CreateRegisteredNodeForTest(user, "castsink")
+	recorder.Tags = []string{"tag:recorder"}
+	st.PutNodeInStoreForTest(*recorder)
+	require.NoError(t, st.UpdatePolicyManagerNodesForTest())
+
+	changed, err := st.SetPolicy([]byte(`{
+		"tagOwners": {
+			"tag:recorder": ["rec-user@"]
+		},
+		"ssh": [
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self"],
+				"users": ["root"],
+				"recorder": ["tag:recorder"],
+				"enforceRecorder": true
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	if changed {
+		changes, err := st.ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+	}
+
+	c := servertest.NewClient(t, srv, "ssh-target", servertest.WithUser(user))
+	c.WaitForCondition(t, "SSHPolicy with rules", 15*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			return nm.SSHPolicy != nil && len(nm.SSHPolicy.Rules) > 0
+		})
+
+	nm := c.Netmap()
+	require.NotNil(t, nm.SSHPolicy)
+	require.NotEmpty(t, nm.SSHPolicy.Rules)
+
+	// Test nodes are dual-stack, so the recorder alias resolves to both of
+	// the recorder's addresses; the v4 comes first, as in the IP set.
+	want := []netip.AddrPort{netip.AddrPortFrom(*recorder.IPv4, 80)}
+	if recorder.IPv6 != nil {
+		want = append(want, netip.AddrPortFrom(*recorder.IPv6, 80))
+	}
+
+	action := nm.SSHPolicy.Rules[0].Action
+	require.Equal(t, want, action.Recorders)
+	require.Contains(t, action.Message, "recorded")
+	require.NotNil(t, action.OnRecordingFailure,
+		"enforceRecorder must set OnRecordingFailure")
+	require.NotEmpty(t, action.OnRecordingFailure.RejectSessionWithMessage)
+	require.NotEmpty(t, action.OnRecordingFailure.TerminateSessionWithMessage)
+}

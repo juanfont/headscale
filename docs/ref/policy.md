@@ -230,6 +230,38 @@ configuration and attributes. At least the following node attributes are current
 }
 ```
 
+## SSH session recording
+
+Headscale supports [SSH session recording](https://tailscale.com/docs/features/tailscale-ssh/tailscale-ssh-session-recording).
+Add `recorder` to an SSH rule to stream the session to a recorder node in the tailnet.
+
+```json title="policy.json"
+{
+  "tagOwners": {
+    "tag:recorder": ["alice@"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["alice@"],
+      "dst": ["tag:web"],
+      "users": ["root"],
+      "recorder": ["tag:recorder"],
+      "enforceRecorder": true
+    }
+  ]
+}
+```
+
+- `recorder` lists the nodes that receive the recording. Each entry must resolve to a single node, and the session
+  streams to port 80 on that node. The user sees a recording notice before the session starts.
+- `enforceRecorder` rejects the session when it cannot reach the recorder. Without the field, the session
+  continues without a recording.
+
+Headscale does not store recordings. Run a
+[tsrecorder](https://tailscale.com/docs/features/tailscale-ssh/tailscale-ssh-session-recording) node in the tailnet to
+receive and store them.
+
 ## Network-wide policy options
 
 The following options are applied for the entire tailnet. Consider [node attributes](#node-attributes) for a more

@@ -3141,6 +3141,18 @@ type SSH struct {
 	Users        SSHUsers        `json:"users"`
 	CheckPeriod  *SSHCheckPeriod `json:"checkPeriod,omitempty"`
 	AcceptEnv    []string        `json:"acceptEnv,omitempty"`
+
+	// Recorder lists the nodes that SSH sessions matching this rule are
+	// streamed to for recording. Each alias must resolve to individual node
+	// addresses; a prefix wider than a single IP is rejected at compile
+	// time. Clients with support for session recording connect to each
+	// recorder in turn and stream the session as an asciinema cast.
+	Recorder SSHSrcAliases `json:"recorder,omitempty"`
+
+	// EnforceRecorder rejects a session when no recording can be started,
+	// rather than letting it proceed unrecorded. Off by default: a recorder
+	// outage must not turn into a total SSH outage.
+	EnforceRecorder bool `json:"enforceRecorder,omitempty"`
 }
 
 func sshCheckHasTaggedSource(ssh SSH) bool {
