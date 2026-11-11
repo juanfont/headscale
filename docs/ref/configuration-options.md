@@ -3128,6 +3128,72 @@ Makes auto-update the default for clients that have not chosen locally. Clients 
     services.headscale.settings.auto_update.enabled = true;
     ```
 
+## `tailsql` { #tailsql data-toc-label="tailsql" }
+
+[tailsql](https://github.com/tailscale/tailsql), a read-only SQL web UI over the headscale database, served as the node `tailsql` with `tag:tailsql` on headscale's own tailnet. Headscale mints its credential, joins it in memory and re-joins it if the node is deleted. Nobody can query it until the policy lists `"tag:tailsql": []` in `tagOwners` and a grant to `tag:tailsql` gives `ip` `tcp:80` (and `tcp:443` with [`dns.certificates`](#dns.certificates)) and `app` `{"tailscale.com/cap/tailsql": [{"src": ["headscale"]}]}`.
+
+??? example "All `tailsql` keys and defaults"
+
+    ```yaml
+    tailsql:
+      enabled: false
+      state_dir: /var/lib/headscale/tailsql
+    ```
+
+### `tailsql.enabled` { #tailsql.enabled data-toc-label="enabled" }
+
+- **Type:** [boolean](#type-boolean)
+- **Default:** `false`
+- **Env:** `HEADSCALE_TAILSQL_ENABLED`
+
+Runs tailsql. It needs [`database.type`](#database.type) sqlite.
+
+=== "YAML"
+
+    ```yaml
+    tailsql:
+      enabled: true
+    ```
+
+=== "Environment"
+
+    ```shell
+    export HEADSCALE_TAILSQL_ENABLED=true
+    ```
+
+=== "NixOS"
+
+    ```nix
+    services.headscale.settings.tailsql.enabled = true;
+    ```
+
+### `tailsql.state_dir` { #tailsql.state_dir data-toc-label="state_dir" }
+
+- **Type:** [string](#type-string)
+- **Default:** `/var/lib/headscale/tailsql`
+- **Env:** `HEADSCALE_TAILSQL_STATE_DIR`
+
+Holds the node's identity. Losing it registers a new node, `tailsql-1`, and leaves the old one for an admin to delete.
+
+=== "YAML"
+
+    ```yaml
+    tailsql:
+      state_dir: /srv/headscale/tailsql
+    ```
+
+=== "Environment"
+
+    ```shell
+    export HEADSCALE_TAILSQL_STATE_DIR=/srv/headscale/tailsql
+    ```
+
+=== "NixOS"
+
+    ```nix
+    services.headscale.settings.tailsql.state_dir = "/srv/headscale/tailsql";
+    ```
+
 ## `cli` { #cli data-toc-label="cli" }
 
 How the headscale CLI reaches the server: the local [`unix_socket`](#unix_socket) without authentication, or a remote [`cli.address`](#cli.address) with [`cli.api_key`](#cli.api_key). The CLI reads these keys from its own configuration, such as `~/.config/headscale/config.yaml`, or from `HEADSCALE_CLI_*` variables; the server does not read them, so on NixOS they do not belong in `services.headscale.settings`. See [Remote control](api.md#remote-control).

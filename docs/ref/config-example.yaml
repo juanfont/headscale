@@ -418,6 +418,20 @@ auto_update:
   # clients.
   enabled: false
 
+# [tailsql](https://github.com/tailscale/tailsql), a read-only SQL web UI over
+# the headscale database, served as the node `tailsql` with `tag:tailsql` on
+# headscale's own tailnet. Headscale mints its credential, joins it in memory
+# and re-joins it if the node is deleted. Nobody can query it until the policy
+# lists `"tag:tailsql": []` in `tagOwners` and a grant to `tag:tailsql` gives
+# `ip` `tcp:80` (and `tcp:443` with `dns.certificates`) and `app`
+# `{"tailscale.com/cap/tailsql": [{"src": ["headscale"]}]}`.
+tailsql:
+  # Runs tailsql. It needs `database.type` sqlite.
+  enabled: false
+  # Holds the node's identity. Losing it registers a new node, `tailsql-1`, and
+  # leaves the old one for an admin to delete.
+  state_dir: /var/lib/headscale/tailsql
+
 # How the headscale CLI reaches the server: the local `unix_socket` without
 # authentication, or a remote `cli.address` with `cli.api_key`. The CLI reads
 # these keys from its own configuration, such as
