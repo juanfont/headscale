@@ -222,6 +222,7 @@ func Validate(c *types.Config) error {
 
 	validateDERP(c, v)
 	validateDatabase(c, v)
+	validateTailSQL(c, v)
 	validatePolicy(c, v)
 	validateLog(c, v)
 	validateMagicDNS(c, v)
@@ -544,6 +545,33 @@ func validateDatabase(c *types.Config, v *configValidator) {
 			},
 			Hint: `set database.sqlite.path, e.g. "/var/lib/headscale/db.sqlite"`,
 			See:  see,
+		})
+	}
+}
+
+// validateTailSQL records a ConfigError when tailsql is enabled on a
+// database it cannot read, or without a place to keep its identity.
+func validateTailSQL(c *types.Config, v *configValidator) {
+	if !c.TailSQL.Enabled {
+		return
+	}
+
+	if !c.Database.IsSQLite() {
+		v.Add(&types.ConfigError{
+			Reason: "tailsql.enabled needs database.type sqlite",
+			Current: []types.KV{
+				{Key: "tailsql.enabled", Value: "true"},
+				{Key: "database.type", Value: string(c.Database.Type)},
+			},
+			Hint: "disable tailsql or use sqlite",
+		})
+	}
+
+	if c.TailSQL.StateDir == "" {
+		v.Add(&types.ConfigError{
+			Reason:  "tailsql.state_dir is required when tailsql.enabled is true",
+			Current: []types.KV{{Key: "tailsql.state_dir", Value: ""}},
+			Hint:    `set tailsql.state_dir, e.g. "/var/lib/headscale/tailsql"`,
 		})
 	}
 }
