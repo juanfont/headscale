@@ -133,6 +133,8 @@ func TestConfigFields(t *testing.T) {
 		"logtail.enabled",
 		"taildrop.enabled",
 		"auto_update.enabled",
+		"tailsql.enabled",
+		"tailsql.state_dir",
 		"cli.address",
 		"cli.api_key",
 		"cli.timeout",
@@ -231,6 +233,7 @@ func TestConfigTree(t *testing.T) {
 		"logtail",
 		"taildrop",
 		"auto_update",
+		"tailsql",
 		"cli",
 		"tuning",
 	}
