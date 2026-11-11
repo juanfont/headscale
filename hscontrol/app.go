@@ -52,6 +52,7 @@ import (
 	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
+	"tailscale.com/net/memnet"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -65,8 +66,6 @@ var (
 	errEmptyInitialDERPMap = errors.New(
 		"initial DERPMap is empty, Headscale requires at least one entry",
 	)
-	errTailSQLDatabase = errors.New("tailsql only supports sqlite")
-	errTailSQLAuthKey  = errors.New("tailsql requires TS_AUTHKEY to be set")
 )
 
 var (
@@ -117,9 +116,6 @@ type Headscale struct {
 var (
 	profilingEnabled = envknob.Bool("HEADSCALE_DEBUG_PROFILING_ENABLED")
 	profilingPath    = envknob.String("HEADSCALE_DEBUG_PROFILING_PATH")
-	tailsqlEnabled   = envknob.Bool("HEADSCALE_DEBUG_TAILSQL_ENABLED")
-	tailsqlStateDir  = envknob.String("HEADSCALE_DEBUG_TAILSQL_STATE_DIR")
-	tailsqlTSKey     = envknob.String("TS_AUTHKEY")
 	dumpConfig       = envknob.Bool("HEADSCALE_DEBUG_DUMP_CONFIG")
 )
 
@@ -588,16 +584,6 @@ func (h *Headscale) Serve(ctx context.Context) error {
 
 	capver.CanOldCodeBeCleanedUp()
 
-	if tailsqlEnabled {
-		if !h.cfg.Database.IsSQLite() {
-			return fmt.Errorf("%w, got %q", errTailSQLDatabase, h.cfg.Database.Type)
-		}
-
-		if tailsqlTSKey == "" {
-			return errTailSQLAuthKey
-		}
-	}
-
 	if profilingEnabled {
 		if profilingPath != "" {
 			err = os.MkdirAll(profilingPath, os.ModePerm)
@@ -901,13 +887,37 @@ func (h *Headscale) Serve(ctx context.Context) error {
 
 	var tailsqlCancel context.CancelFunc
 
-	if tailsqlEnabled {
+	if h.cfg.TailSQL.Enabled {
+		// Embedded nodes reach control in memory: no port, and no TLS or
+		// proxy between them and the server. Noise encrypts the stream.
+		var controlNet memnet.Network
+
+		controlLn, err := controlNet.Listen("tcp", embeddedControlAddr)
+		if err != nil {
+			return fmt.Errorf("embedded control listener: %w", err)
+		}
+
+		errorGroup.Go(func() error { return httpServer.Serve(controlLn) })
+
+		dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if addr == embeddedControlAddr {
+				return controlNet.Dial(ctx, network, addr)
+			}
+
+			return new(net.Dialer).DialContext(ctx, network, addr)
+		}
+
 		var tailsqlCtx context.Context
 
 		tailsqlCtx, tailsqlCancel = context.WithCancel(ctx)
 
 		errorGroup.Go(func() error {
-			return runTailSQLService(tailsqlCtx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.SQLitePath())
+			err := runTailSQLService(tailsqlCtx, h.state, dial, "http://"+embeddedControlAddr, h.cfg.AbsPath(h.cfg.TailSQL.StateDir), h.cfg.SQLitePath())
+			if err != nil {
+				log.Error().Err(err).Msg("tailsql stopped")
+			}
+
+			return nil
 		})
 	}
 

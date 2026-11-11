@@ -247,6 +247,16 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// AutoUpdate is the tailnet-wide default for client auto-updates.
 	AutoUpdate AutoUpdateConfig `koanf:"auto_update"`
 
+	// TailSQL is [tailsql](https://github.com/tailscale/tailsql), a
+	// read-only SQL web UI over the headscale database, served as the node
+	// `tailsql` with `tag:tailsql` on headscale's own tailnet. Headscale
+	// mints its credential, joins it in memory and re-joins it if the node
+	// is deleted. Nobody can query it until the policy lists
+	// `"tag:tailsql": []` in `tagOwners` and a grant to `tag:tailsql` gives
+	// `ip` `tcp:80` (and `tcp:443` with `dns.certificates`) and `app`
+	// `{"tailscale.com/cap/tailsql": [{"src": ["headscale"]}]}`.
+	TailSQL TailSQLConfig `koanf:"tailsql"`
+
 	// CLI is how the headscale CLI reaches the server: the local
 	// `unix_socket` without authentication, or a remote `cli.address`
 	// with `cli.api_key`. The CLI reads these keys from its own
@@ -842,6 +852,16 @@ type TaildropConfig struct {
 	// Enabled gives every node the file-sharing capability. False omits
 	// it from the baseline; a policy `nodeAttrs` grant can still give it.
 	Enabled bool `koanf:"enabled"`
+}
+
+// TailSQLConfig controls the embedded TailSQL node.
+type TailSQLConfig struct {
+	// Enabled runs tailsql. It needs `database.type` sqlite.
+	Enabled bool `koanf:"enabled"`
+
+	// StateDir holds the node's identity. Losing it registers a new
+	// node, `tailsql-1`, and leaves the old one for an admin to delete.
+	StateDir string `example:"\"/srv/headscale/tailsql\"" koanf:"state_dir"`
 }
 
 // AutoUpdateConfig controls the tailnet-wide default for client
