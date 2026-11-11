@@ -715,7 +715,7 @@ in
         type = lib.types.attrsOf lib.types.anything;
         default = { };
         description = ''
-          The DNS provider that writes challenge records: `name` selects it, the other keys are its settings. Keys are lowercased on load, at every depth; two that differ only in case are an error. A string setting may be `file:<path>` to read it from a file. `headscale generate config --running` and `/debug/config` show `name` and `file:` references; every other setting is `<redacted>`, as any may be a credential. See [DNS-01 challenge provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider) to set a provider up, acme-dns included, and to set it from environment variables.
+          The DNS provider that writes challenge records: `name` selects it, the other keys are its settings. Keys are lowercased on load, at every depth; two that differ only in case are an error. Any setting may be `file:<path>` to read it from a file; a non-string one, such as acme-dns `config`, is the JSON in it. `headscale generate config --running` and `/debug/config` show `name` and `file:` references; every other setting is `<redacted>`, as any may be a credential. See [DNS-01 challenge provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider) to set a provider up, acme-dns included, and to set it from environment variables.
 
           On NixOS, keep a secret setting out of the Nix store: load it as a systemd credential with `systemd.services.headscale.serviceConfig.LoadCredential = [ "dns_challenge_provider_<setting>:/run/secrets/dns_challenge_provider_<setting>" ];` and set the setting to `"file:\''${CREDENTIALS_DIRECTORY}/dns_challenge_provider_<setting>"`. `name` is not a secret.
         '';

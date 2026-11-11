@@ -73,7 +73,7 @@ is trimmed; an empty file is an error. Headscale reads the file only where the s
 `headscale check config` and `headscale check all` never read it. `headscale generate config --running` and
 `/debug/config` show a literal secret as `<redacted>` and a `file:` reference as written.
 
-The secrets are [`database.postgres.pass`](#database.postgres.pass), [`oidc.client_secret`](#oidc.client_secret), [`cli.api_key`](#cli.api_key) and every string setting of [`dns.challenge.provider`](#dns.challenge.provider).
+The secrets are [`database.postgres.pass`](#database.postgres.pass), [`oidc.client_secret`](#oidc.client_secret), [`cli.api_key`](#cli.api_key) and every setting of [`dns.challenge.provider`](#dns.challenge.provider), where a non-string one, such as acme-dns `config`, is the JSON in the file.
 
 On NixOS, keep a secret out of the Nix store: load it as a systemd credential and point the key at it.
 
@@ -2271,7 +2271,7 @@ The servers asked for the zone's nameservers, each an IP or host with an optiona
 - **Default:** `{}`
 - **Env:** `HEADSCALE_DNS_CHALLENGE_PROVIDER` ([JSON object](#env))
 
-The DNS provider that writes challenge records: `name` selects it, the other keys are its settings. Keys are lowercased on load, at every depth; two that differ only in case are an error. A string setting may be `file:<path>` to read it from a file. `headscale generate config --running` and `/debug/config` show `name` and `file:` references; every other setting is `<redacted>`, as any may be a credential. See [DNS-01 challenge provider](dns.md#dns-01-challenge-provider) to set a provider up, acme-dns included, and to set it from environment variables.
+The DNS provider that writes challenge records: `name` selects it, the other keys are its settings. Keys are lowercased on load, at every depth; two that differ only in case are an error. Any setting may be `file:<path>` to read it from a file; a non-string one, such as acme-dns `config`, is the JSON in it. `headscale generate config --running` and `/debug/config` show `name` and `file:` references; every other setting is `<redacted>`, as any may be a credential. See [DNS-01 challenge provider](dns.md#dns-01-challenge-provider) to set a provider up, acme-dns included, and to set it from environment variables.
 
 | Provider     | Settings                                                    |
 | ------------ | ----------------------------------------------------------- |
