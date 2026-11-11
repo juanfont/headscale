@@ -9,7 +9,7 @@ require (
 	github.com/chasefleming/elem-go v0.37.0
 	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/creachadair/command v0.2.12
+	github.com/creachadair/command v0.2.13
 	github.com/creachadair/flax v0.1.0
 	github.com/danielgtaylor/huma/v2 v2.40.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
@@ -19,13 +19,13 @@ require (
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-chi/metrics v0.1.1
 	github.com/go-gormigrate/gormigrate/v2 v2.1.7
-	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3
+	github.com/go-json-experiment/json v1.27.2
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/golang-lru/v2 v2.0.8-0.20261012062354-235099c106fc
 	github.com/jagottsicher/termcolor v1.0.2
 	github.com/kradalby/libdns-gigahost v0.0.0-20261014145029-4c03bc63b974
-	github.com/letsencrypt/pebble/v2 v2.10.1
+	github.com/letsencrypt/pebble/v2 v2.10.3
 	github.com/libdns/acmedns v0.5.0
 	github.com/libdns/cloudflare v0.2.2
 	github.com/libdns/hetzner/v2 v2.0.1
@@ -34,12 +34,12 @@ require (
 	github.com/libdns/rfc2136 v1.0.1
 	github.com/mholt/acmez/v3 v3.1.7
 	github.com/miekg/dns v1.1.73
-	github.com/oapi-codegen/runtime v1.8.0
-	github.com/oauth2-proxy/mockoidc v0.0.0-20240214162133-caebfff84d25
+	github.com/oapi-codegen/runtime v1.9.0
+	github.com/oauth2-proxy/mockoidc v0.0.0-20261103160011-e06ed0b7cb7f
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/pkg/profile v1.7.0
 	github.com/prometheus/client_golang v1.25.0
-	github.com/prometheus/common v0.73.0
+	github.com/prometheus/common v0.73.1
 	github.com/pterm/pterm v0.12.84
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/realclientip/realclientip-go v1.0.0
@@ -56,10 +56,10 @@ require (
 	go.uber.org/zap v1.28.0
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
 	golang.org/x/crypto v0.58.0
-	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e
-	golang.org/x/mod v0.42.0
-	golang.org/x/oauth2 v0.37.0
-	golang.org/x/sync v0.24.0
+	golang.org/x/exp v0.0.0-20261109185158-a52e3aef5920
+	golang.org/x/mod v0.43.0
+	golang.org/x/oauth2 v0.38.0
+	golang.org/x/sync v0.25.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.3
 	gorm.io/gorm v1.31.2
@@ -81,7 +81,7 @@ require (
 	// the appropriate `libc` version, then upgrade them
 	// together, e.g:
 	// go get modernc.org/libc@v1.55.3 modernc.org/sqlite@v1.33.1
-	modernc.org/sqlite v1.61.0
+	modernc.org/sqlite v1.62.0
 	pgregory.net/rapid v1.3.0
 	tailscale.com v1.105.0-pre.0.20261028221719-f7c1b8e52600
 	tailscale.com/client/tailscale/v2 v2.12.0
@@ -129,7 +129,7 @@ require (
 	github.com/containerd/continuity v0.5.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
-	github.com/creachadair/mds v0.31.0 // indirect
+	github.com/creachadair/mds v0.32.0 // indirect
 	github.com/creachadair/msync v0.10.1 // indirect
 	github.com/dblohm7/wingoes v0.0.0-20260526185140-fb298caac7ca // indirect
 	github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33 // indirect
@@ -145,8 +145,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
 	github.com/gaissmai/bart v0.29.0 // indirect
 	github.com/glebarez/go-sqlite v1.22.0 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go4org/hashtriemap v0.0.0-20260925222741-44e5305f85d9 // indirect
@@ -162,7 +161,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
-	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect
 	github.com/hdevalence/ed25519consensus v0.2.0 // indirect
 	github.com/hetznercloud/hcloud-go/v2 v2.27.0 // indirect
@@ -202,7 +200,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runc v1.3.2 // indirect
-	github.com/pandatix/go-abnf v0.5.1 // indirect
+	github.com/pandatix/go-abnf v0.5.3 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/peterbourgon/ff/v3 v3.4.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260330135022-df67b199bc81 // indirect
@@ -248,7 +246,7 @@ require (
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
-	golang.org/x/tools v0.52.0 // indirect
+	golang.org/x/tools v0.52.1-0.20261106145633-d407941a339a // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v1.0.1 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260610212136-7ab31c22f7ad // indirect
@@ -267,7 +265,7 @@ require (
 
 	// NOTE: keep in lockstep with modernc.org/sqlite; see the
 	// upgrade note in the direct require block above.
-	modernc.org/libc v1.79.0 // indirect
+	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
