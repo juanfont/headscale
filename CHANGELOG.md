@@ -92,6 +92,17 @@ the Tailscale admin console. `GET /api/v2/device/{id}/update-status` reports the
 update. Both answer as Tailscale does: a node that does not allow remote updates,
 is not connected, or refuses is "not found". See [the client docs](https://headscale.net/stable/about/clients/#update-clients). [#3632](https://github.com/juanfont/headscale/pull/3632)
 
+### TailSQL on your own tailnet
+
+`tailsql.enabled` runs [TailSQL](https://github.com/tailscale/tailsql), a
+read-only SQL web UI over the headscale SQLite database, as the node `tailsql`
+with `tag:tailsql` on headscale's own tailnet. Headscale mints its credential
+and joins it in memory, keeps its identity in `tailsql.state_dir`, and re-joins
+it if the node is deleted. Only a grant giving `tag:tailsql` network access and
+the `tailscale.com/cap/tailsql` app capability lets a user query it; see
+[`tailsql`](https://headscale.net/stable/ref/configuration-options/#tailsql). With
+`dns.certificates` it serves HTTPS.
+
 ### BREAKING
 
 #### Database
@@ -175,6 +186,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 
 - Invalid booleans stop startup or CLI commands. Use `true` or `false`. Remove ignored `database.gorm.prepare_stmt`; Headscale logs a warning. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Debug hosts must be localhost, an IP, or the configured `server_url`/`metrics_listen_addr` host. `/metrics` accepts other hosts. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- `HEADSCALE_DEBUG_TAILSQL_ENABLED`, `HEADSCALE_DEBUG_TAILSQL_STATE_DIR` and `TS_AUTHKEY` no longer start TailSQL on an external tailnet; use `tailsql.enabled` and `tailsql.state_dir`, which join headscale's own tailnet
 
 #### CLI
 
