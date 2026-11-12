@@ -13,6 +13,11 @@ concurrency:
 
 jobs:
   manage:
+    # Any comment fires this; only commands should mint the App token.
+    if: >-
+      contains(github.event.comment.body, '!vouch') ||
+      contains(github.event.comment.body, '!denounce') ||
+      contains(github.event.comment.body, '!unvouch')
     runs-on: ubuntu-latest
     steps:
       # The bot App's token, not GITHUB_TOKEN: the App is the ruleset bypass
