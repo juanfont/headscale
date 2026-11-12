@@ -1,0 +1,21 @@
+## tagged60: before expire
+ api : {"tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2027-05-11T18:19:31Z","connectedToControl":true,"now":"2026-11-12T18:19:34Z"}
+ node: {"BackendState":"Running","KeyExpiry":null,"Online":true}
+## tagged60: POST /device/{id}/expire ->null HTTP 200
+ after 60s  api : {"tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2026-11-12T18:19:34Z","connectedToControl":true,"now":"2026-11-12T18:20:35Z"}
+ after 60s  node: {"BackendState":"Running","KeyExpiry":null,"Online":true}
+ node can still reach control (tailscale netcheck-free check: status Self.Online): true
+## tagged60 cleanup: devicenull HTTP 200 keynull HTTP 200
+
+## user-expiry-off: POST /device/{id}/key {keyExpiryDisabled:true} ->null HTTP 200
+## user-expiry-off: before expire
+ api : {"tags":null,"keyExpiryDisabled":true,"expires":"2027-05-11T18:20:40Z","connectedToControl":true,"now":"2026-11-12T18:20:46Z"}
+ node: {"BackendState":"Running","KeyExpiry":null,"Online":true}
+## user-expiry-off: POST /device/{id}/expire ->null HTTP 200
+ after 30s  api : {"tags":null,"keyExpiryDisabled":true,"expires":"2026-11-12T18:20:46Z","connectedToControl":true,"now":"2026-11-12T18:21:16Z"}
+ after 30s  node: {"BackendState":"Running","KeyExpiry":null,"Online":true}
+ node can still reach control (tailscale netcheck-free check: status Self.Online): true
+## user-expiry-off cleanup: devicenull HTTP 200 keynull HTTP 200
+
+devices left: 0
+auth keys left with 'hs probe' in the description: 0

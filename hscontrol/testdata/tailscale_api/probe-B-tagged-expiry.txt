@@ -1,0 +1,27 @@
+auth key id for probe B: kyBWL6oKa511CNTRL
+device id: 8047738158082534
+### B1: tagged device, right after it joined
+{"hostname":"hs-probe-tagged","tags":["tag:server"],"user":"kratail2tid@passkey","authorized":true,"keyExpiryDisabled":true,"expires":"2027-05-11T18:10:15Z","connectedToControl":true,"lastSeen":"2026-11-12T18:10:19Z","now":"2026-11-12T18:10:18Z"}
+node side:
+{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Tags":["tag:server"]}
+
+### B2: POST /device/{id}/expire on the tagged device
+null
+HTTP 200
+### B3: the device after expire
+{"hostname":"hs-probe-tagged","tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2026-11-12T18:10:18Z","connectedToControl":true,"lastSeen":"2026-11-12T18:10:25Z","now":"2026-11-12T18:10:24Z"}
+node side:
+{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Health":["This is an unstable version of Tailscale meant for testing and development purposes. Please report any issues to Tailscale."]}
+
+### B4: can the expired tagged node come back by itself? (tailscale up, no key, 15s)
+
+### B5: POST /device/{id}/key keyExpiryDisabled=false on the tagged device
+null
+HTTP 200
+{"keyExpiryDisabled":false,"expires":"2026-11-12T18:10:18Z"}
+
+### cleanup
+HTTP 200
+HTTP 200
+HTTP 200
+devices left: 0
