@@ -82,6 +82,7 @@ func allAreas() []area {
 		},
 	)
 	areas = append(areas, imageAreas()...)
+	areas = append(areas, androidAreas()...)
 	areas = append(areas, actionAreas()...)
 
 	areas = append(areas, area{
