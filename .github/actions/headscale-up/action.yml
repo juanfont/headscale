@@ -22,8 +22,8 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
-    - uses: Mic92/hestia@fb239a2f72d4b6e26eec5425f289dea23b27a527 # v2.0.0
+    - uses: NixOS/nix-installer-action@v1.0.0
+    - uses: Mic92/hestia@v3.1.0
 
     - name: Build headscale
       shell: bash
