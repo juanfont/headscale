@@ -296,28 +296,29 @@ maps each one to its replacement.
 - V2 device `name` contains the MagicDNS FQDN without its trailing dot. Tagged device `user` shows its join-key creator, when known. Admin-created tagged keys include `userId`. `fields=all` returns empty route lists as `[]`. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - V2 limits schema-validated bodies to 64 KiB. ACL writes and validation allow 1 MiB. Body reads stop after five seconds. Unknown `keyType` returns HTTP 400. Schema-validation details omit submitted values and list at most 20 entries. [#3619](https://github.com/juanfont/headscale/pull/3619)
 
-#### Configuration
-
-##### Strict loading
+#### Configuration keys
 
 - An unknown configuration key prevents Headscale from starting. An unknown `HEADSCALE_*` variable logs a warning. [#3674](https://github.com/juanfont/headscale/pull/3674)
-- A removed key prevents Headscale from starting, and the error names its replacement. See the table below. [#3674](https://github.com/juanfont/headscale/pull/3674)
-- Configuration values are strongly typed. A value of the wrong type prevents Headscale from starting, also for a feature that is turned off. A duration needs a unit (`30s`, not `30`), and `log.level` must be a level name. [#3677](https://github.com/juanfont/headscale/pull/3677)
-- Booleans must be `true` or `false`. Headscale reads YAML 1.2, where `yes`, `no`, `on` and `off` are text. They now prevent Headscale and the CLI from starting. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- A removed key prevents Headscale from starting, and the error names its replacement. See the removed and renamed options below. [#3674](https://github.com/juanfont/headscale/pull/3674)
 - Configuration keys are lower case: `Server_URL` is an unknown key. A key written both dotted and nested, such as `log.level` next to `log: {level: …}`, is an error. [#3674](https://github.com/juanfont/headscale/pull/3674) [#3677](https://github.com/juanfont/headscale/pull/3677)
 - A key with no value, such as `v6:`, takes its default and logs a warning. Write `""` or `[]` to clear a key. [#3683](https://github.com/juanfont/headscale/pull/3683)
 - A `HEADSCALE_*` variable set to `""` clears a key, as `""` does in the file. An empty variable still counts as unset. [#3683](https://github.com/juanfont/headscale/pull/3683)
+
+#### Configuration values
+
+- Configuration values are strongly typed. A value of the wrong type prevents Headscale from starting, also for a feature that is turned off. A duration needs a unit (`30s`, not `30`), and `log.level` must be a level name. [#3677](https://github.com/juanfont/headscale/pull/3677)
+- Booleans must be `true` or `false`. Headscale reads YAML 1.2, where `yes`, `no`, `on` and `off` are text. They now prevent Headscale and the CLI from starting. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - `policy.mode` must be `file` or `database`. Another value used to start Headscale with no policy, allowing all traffic. [#3669](https://github.com/juanfont/headscale/pull/3669)
 - `unix_socket_permission` must be a quoted octal string no higher than `"0777"`, e.g. `"0770"`. An unquoted number or an invalid value used to fall back to `0700` silently. [#3540](https://github.com/juanfont/headscale/pull/3540)
 
-##### Files
+#### Configuration files
 
 - The configuration file must end in `.yaml`, `.yml`, `.json` or `.hujson`. [#3674](https://github.com/juanfont/headscale/pull/3674)
 - `derp.paths` and `dns.extra_records_path` files must end in `.yaml`, `.yml`, `.json` or `.hujson`. The extension picks the format.
 - A `derp.paths` file fails to load when it has neither regions nor `homeparams`, or a key that `tailcfg.DERPMap` does not have, e.g. a misspelt `regionscore`. [#2932](https://github.com/juanfont/headscale/pull/2932)
 - A DERP map from `derp.paths` or `derp.urls` must meet the region rules Tailscale SaaS applies to a policy `derpMap`: each region's `regionid` matches its key, each node's `regionid` matches its region, and a region has at least one node. [#2932](https://github.com/juanfont/headscale/pull/2932)
 
-##### Server
+#### Server and packaging
 
 - Headscale's own ACME certificate is managed by CertMagic instead of autocert. The first start registers a new ACME account and obtains a new certificate in `tls.acme.cache_dir`. [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Debug hosts must be localhost, an IP, or the configured `server_url` or `metrics_listen_addr` host. `/metrics` accepts other hosts. [#3619](https://github.com/juanfont/headscale/pull/3619)
@@ -325,7 +326,7 @@ maps each one to its replacement.
 - `headscale serve` exits with status 78 when it rejects the configuration file it loaded. The deb package and the NixOS module leave it stopped instead of restarting it. The deb package starts or restarts Headscale only when `headscale check config` passes. [#3683](https://github.com/juanfont/headscale/pull/3683)
 - The root `config-example.yaml` is removed. `headscale generate config` prints it, and packagers can run it at build time. [#3680](https://github.com/juanfont/headscale/pull/3680)
 
-##### Removed and renamed options
+#### Removed and renamed configuration options
 
 The [removed keys](https://headscale.net/stable/ref/configuration-options/#removed-keys) reference has the full list, with older releases.
 
@@ -341,21 +342,23 @@ The [removed keys](https://headscale.net/stable/ref/configuration-options/#remov
 | `changes_check_interval`, `node_update_check_interval`, `metrics_enabled`, `oidc.namespace`, `oidc.user`, `tls_client_auth_mode` | Not read by 0.29 either. They were ignored until now.                | Remove                              | [#3674](https://github.com/juanfont/headscale/pull/3674)                                                          |
 | `database.gorm.prepare_stmt`                                                                                                     | The prepared statement cache is always off: it could block on SQLite | Remove                              | [#3674](https://github.com/juanfont/headscale/pull/3674)                                                          |
 
-##### New and changed defaults
+#### New and changed configuration defaults
 
-| Option                              | Before                    | Now                                       | Effect                                                                                                                    | PR                                                       |
-| ----------------------------------- | ------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `listen_addr`                       | None, a random port       | `0.0.0.0:8080`                            | Listens on every IPv4 and IPv6 address. A firewall that covers only IPv4 leaves the port open on IPv6.                    | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `prefixes.v4`, `prefixes.v6`        | None, one was required    | `100.64.0.0/10`, `fd7a:115c:a1e0::/48`    | A configuration with one family now gives new nodes both. `headscale nodes backfillips` adds the other to existing nodes. | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `derp.urls`                         | None                      | Tailscale's DERP map                      | Clients can use Tailscale's relays.                                                                                       | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `derp.auto_update_enabled`          | `false`                   | `true`                                    | The DERP map is refreshed every `derp.update_frequency`.                                                                  | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `dns.base_domain`                   | `""`                      | `tailnet.internal`                        | MagicDNS stays on by default, now under this name. With `dns.magic_dns: false`, node names become FQDNs under it.         | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `node.ephemeral.inactivity_timeout` | `120s`                    | `30m`                                     | The value of every shipped example since 0.23.                                                                            | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `tls.acme.cache_dir`                | `/var/www/.cache`         | `/var/lib/headscale/cache`                |                                                                                                                           | [#3554](https://github.com/juanfont/headscale/pull/3554) |
-| `dns.challenge.resolvers`           | New option                | Quad9: `9.9.9.9:53`, `149.112.112.112:53` | Only used for DNS-01 challenges, when `dns.challenge.provider` is set.                                                    | [#3680](https://github.com/juanfont/headscale/pull/3680) |
-| `noise.private_key_path`            | None, required            | `/var/lib/headscale/noise_private.key`    |                                                                                                                           | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `database.type`                     | None, required            | `sqlite`                                  |                                                                                                                           | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `database.sqlite.path`              | None, required for SQLite | `/var/lib/headscale/db.sqlite`            |                                                                                                                           | [#3683](https://github.com/juanfont/headscale/pull/3683) |
+| Option                              | Before                 | Now                                       | Effect                                                                                                                    |
+| ----------------------------------- | ---------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `listen_addr`                       | None, a random port    | `0.0.0.0:8080`                            | Listens on every IPv4 and IPv6 address. A firewall that covers only IPv4 leaves the port open on IPv6.                    |
+| `prefixes.v4`, `prefixes.v6`        | None, one was required | `100.64.0.0/10`, `fd7a:115c:a1e0::/48`    | A configuration with one family now gives new nodes both. `headscale nodes backfillips` adds the other to existing nodes. |
+| `derp.urls`                         | None                   | Tailscale's DERP map                      | Clients can use Tailscale's relays.                                                                                       |
+| `derp.auto_update_enabled`          | `false`                | `true`                                    | The DERP map is refreshed every `derp.update_frequency`.                                                                  |
+| `dns.base_domain`                   | `""`                   | `tailnet.internal`                        | MagicDNS stays on by default, now under this name. With `dns.magic_dns: false`, node names become FQDNs under it.         |
+| `node.ephemeral.inactivity_timeout` | `120s`                 | `30m`                                     | The value of every shipped example since 0.23.                                                                            |
+| `tls.acme.cache_dir`                | `/var/www/.cache`      | `/var/lib/headscale/cache`                | The ACME account and certificates are stored here.                                                                        |
+| `dns.challenge.resolvers`           | New option             | Quad9: `9.9.9.9:53`, `149.112.112.112:53` | Only used for DNS-01 challenges, when `dns.challenge.provider` is set.                                                    |
+| `noise.private_key_path`            | Required               | `/var/lib/headscale/noise_private.key`    | No longer has to be set.                                                                                                  |
+| `database.type`                     | Required               | `sqlite`                                  | No longer has to be set.                                                                                                  |
+| `database.sqlite.path`              | Required for SQLite    | `/var/lib/headscale/db.sqlite`            | No longer has to be set.                                                                                                  |
+
+[#3683](https://github.com/juanfont/headscale/pull/3683), except `tls.acme.cache_dir` ([#3554](https://github.com/juanfont/headscale/pull/3554)) and `dns.challenge.resolvers` ([#3680](https://github.com/juanfont/headscale/pull/3680)).
 
 #### CLI
 
@@ -377,13 +380,13 @@ The [removed keys](https://headscale.net/stable/ref/configuration-options/#remov
 - `services.headscale.user` and `services.headscale.group` are read-only: Headscale always runs as `headscale:headscale`. Remove both settings. [#3682](https://github.com/juanfont/headscale/pull/3682)
 - `services.headscale.package` defaults to this flake's Headscale, as the checks need `headscale check`. [#3682](https://github.com/juanfont/headscale/pull/3682)
 
-##### Changed defaults
+These options now take Headscale's defaults: [#3683](https://github.com/juanfont/headscale/pull/3683)
 
-| Option                           | Before           | Now                | PR                                                       |
-| -------------------------------- | ---------------- | ------------------ | -------------------------------------------------------- |
-| `settings.listen_addr`           | `127.0.0.1:8080` | `0.0.0.0:8080`     | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `settings.derp.update_frequency` | `24h`            | `3h`               | [#3683](https://github.com/juanfont/headscale/pull/3683) |
-| `settings.dns.base_domain`       | `""`             | `tailnet.internal` | [#3683](https://github.com/juanfont/headscale/pull/3683) |
+| Option                           | Before           | Now                |
+| -------------------------------- | ---------------- | ------------------ |
+| `settings.listen_addr`           | `127.0.0.1:8080` | `0.0.0.0:8080`     |
+| `settings.derp.update_frequency` | `24h`            | `3h`               |
+| `settings.dns.base_domain`       | `""`             | `tailnet.internal` |
 
 <details>
 
