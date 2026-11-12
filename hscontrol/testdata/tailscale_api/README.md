@@ -117,11 +117,11 @@ File: `probe-G`.
 | no scopes                           | 400 "scopes cannot be empty, at least one scope is required for OAuth clients"             | not checked                     | `invalid_field`         |
 | in the key list                     | only with `?all=true`                                                                      | the same                        | its own resource        |
 | `DELETE`                            | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true`        | a hard delete, with its tokens  | a soft delete           |
-| `DELETE` again                      | 200                                                                                        | not checked                     | 404                     |
+| `DELETE` again                      | 200                                                                                        | not checked                     | 204                     |
 
 ## 4. Devices
 
-File: `probe-J`.
+File: `probe-J`. The `lastSeen` values are in `probe-B`.
 
 | Case                                        | Tailscale                                                                           | Headscale `/api/v2`              | v0 (002)                                      |
 | ------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------- | --------------------------------------------- |
@@ -211,8 +211,7 @@ so each is a candidate for an issue.
 8. Attributes: only `ip:publicAddress`, and as a plain string. Tailscale sends
    an object `{"type": "IpAddr", "value": ...}` and the `node:` attributes.
 
-Not checked in Headscale: one exit prefix (Tailscale enables only the one that
-is sent), a route that is not advertised, rename to `""`.
+Not checked in Headscale: a route that is not advertised, rename to `""`.
 
 ## 9. One exit prefix
 
@@ -288,7 +287,8 @@ Captured (`probe-E`, `probe-F`, `probe-G`, `probe-J`):
 
 **When Tailscale cleans up: not known.**
 
-- Keys revoked at 18:10 UTC were still readable by ID at 20:01 UTC.
+- Keys revoked at 18:10 UTC were still readable by ID at 20:01 UTC. That
+  read was made by hand and is not in a recording.
 - The docs say only: "You can find recently revoked or expired keys on the Keys
   page of the admin console." No time is given.
 - To measure it, read these IDs again later: `kyBWL6oKa511CNTRL` (auth key,
