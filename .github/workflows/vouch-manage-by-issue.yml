@@ -17,7 +17,7 @@ jobs:
     steps:
       # The bot App's token, not GITHUB_TOKEN: the App is the ruleset bypass
       # actor that lets merge-immediately land without review or checks.
-      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      - uses: actions/create-github-app-token@v3.3.0
         id: app
         with:
           client-id: ${{ vars.HEADSCALE_BOT_CLIENT_ID }}
@@ -26,11 +26,11 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           token: ${{ steps.app.outputs.token }}
 
-      - uses: mitchellh/vouch/action/manage-by-issue@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
+      - uses: mitchellh/vouch/action/manage-by-issue@v1.5.0
         with:
           repo: ${{ github.repository }}
           issue-id: ${{ github.event.issue.number }}
