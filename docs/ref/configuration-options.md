@@ -33,49 +33,37 @@ finds its configuration, how to check it, and shows the full example.
 
 ### Environment variables { #env }
 
-Every key can also be set with an environment variable: `HEADSCALE_` and the key's path in capitals, with `_` for
-`.`, e.g. `HEADSCALE_LOG_LEVEL` for `log.level`. Each key below names its variable. A variable wins over the
-configuration file, which wins over the default. An empty variable, like a key written with no value in the
-file, counts as unset and keeps the default. A variable set to `""` means what `""` means in the configuration
-file: it clears a key with a default, as `prefixes.v6: ""` does, and is an error where the file's `""` is one. A
-list also clears with `[]`. Quote the value so the quotes reach headscale:
+Every key can also be set with an environment variable: `HEADSCALE_` followed by the key in capitals, e.g.
+`HEADSCALE_LOG_LEVEL` for `log.level`. Each key below names its variable.
+
+- A variable takes precedence over the configuration file, which takes precedence over the default.
+- An empty variable counts as unset and keeps the default.
+- A list is a JSON array or its values separated by spaces. A map is a JSON object and replaces the map in the
+  configuration file.
+- An unknown or removed `HEADSCALE_` variable logs a warning, it does not stop Headscale.
+- The settings of a DNS provider have variables of their own, see
+  [`dns.challenge.provider`](#dns.challenge.provider).
+
+To clear a key that has a default, set its variable to `""`, or to `[]` for a list. Quote the value so the quotes reach
+Headscale:
 
 ```shell
 export HEADSCALE_PREFIXES_V6='""'
 export HEADSCALE_DERP_URLS='[]'
 ```
 
-```yaml title="docker-compose.yaml"
-environment:
-  HEADSCALE_PREFIXES_V6: '""'
-  HEADSCALE_DERP_URLS: '[]'
-```
-
-An env file (a Compose `env_file`, a systemd `EnvironmentFile=`) and a systemd `Environment=` strip one level of
-quotes, so `KEY=""` there arrives empty and keeps the default: write `KEY='""'` in an env file and
-`Environment='KEY=""'` in a unit.
-
-A list is a JSON array or, unless its values are objects, its values separated by spaces. A map is a JSON object,
-which replaces the map in the configuration file instead of merging into it. The examples below write every list
-and map as JSON.
-
-A `HEADSCALE_` variable that names no key logs a warning, and one for a removed key also says what to do instead.
-Other software uses the same prefix, so neither stops headscale.
-
-A DNS provider setting that takes text can also be set on its own as `HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>`,
-e.g. `HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN`; see [`dns.challenge.provider`](#dns.challenge.provider).
-
 ### Secrets { #secrets }
 
-A secret takes the value itself or `file:<path>`, which reads it from that file. Environment variables in the path
-are expanded, as in `file:${CREDENTIALS_DIRECTORY}/oidc_client_secret`, and whitespace around the file's contents
-is trimmed; an empty file is an error. Headscale reads the file only where the secret is used, and
-`headscale check config` and `headscale check all` never read it. `headscale generate config --running` and
-`/debug/config` show a literal secret as `<redacted>` and a `file:` reference as written.
+A secret takes the value itself or `file:<path>` to read it from a file, e.g.
+`file:${CREDENTIALS_DIRECTORY}/oidc_client_secret`.
+
+- Environment variables in the path are expanded.
+- Whitespace around the content of the file is trimmed, an empty file is an error.
+- `headscale generate config --running` and `/debug/config` show a literal secret as `<redacted>`.
 
 The secrets are [`database.postgres.pass`](#database.postgres.pass), [`oidc.client_secret`](#oidc.client_secret), [`cli.api_key`](#cli.api_key) and every string setting of [`dns.challenge.provider`](#dns.challenge.provider).
 
-On NixOS, keep a secret out of the Nix store: load it as a systemd credential and point the key at it.
+On NixOS, load the secret as a systemd credential to keep it out of the Nix store:
 
 ```nix
 services.headscale.settings.oidc.client_secret = "file:\${CREDENTIALS_DIRECTORY}/oidc_client_secret";
