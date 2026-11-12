@@ -22,12 +22,12 @@ jobs:
     outputs:
       files-changed: ${{ steps.changed-files.outputs.files }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 2
       - name: Get changed files
         id: changed-files
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        uses: dorny/paths-filter@v4.0.3
         with:
           filters: |
             files:
@@ -41,9 +41,9 @@ jobs:
               - '.github/workflows/test-integration.yaml'
               - '.github/workflows/integration-test-template.yml'
               - 'Dockerfile.*'
-      - uses: NixOS/nix-installer-action@62c1943b776c509394b550f3f983adc14e9212d6 # main
+      - uses: NixOS/nix-installer-action@v1.0.0
         if: steps.changed-files.outputs.files == 'true'
-      - uses: Mic92/hestia@dfed9ced335d28978ba74e513939a10db1f71025 # v3.1.0
+      - uses: Mic92/hestia@v3.1.0
         if: steps.changed-files.outputs.files == 'true'
       - name: Build binaries
         if: steps.changed-files.outputs.files == 'true'
@@ -55,14 +55,14 @@ jobs:
           CGO_ENABLED=0 GOOS=linux go test -c ./integration -o integration.test
       - name: Upload hi binary
         if: steps.changed-files.outputs.files == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: hi-binary
           path: hi
           retention-days: 10
       - name: Upload integration test binary
         if: steps.changed-files.outputs.files == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: integration-test-binary
           path: integration.test
@@ -83,7 +83,7 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        uses: docker/login-action@v4.8.0
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
@@ -105,14 +105,14 @@ jobs:
           docker save tailscale-head:${{ github.sha }} | gzip > tailscale-head-image.tar.gz
       - name: Upload headscale image
         if: steps.changed-files.outputs.files == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: headscale-image
           path: headscale-image.tar.gz
           retention-days: 10
       - name: Upload tailscale HEAD image
         if: steps.changed-files.outputs.files == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: tailscale-head-image
           path: tailscale-head-image.tar.gz
@@ -134,7 +134,7 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        uses: docker/login-action@v4.8.0
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
@@ -145,7 +145,7 @@ jobs:
           docker tag postgres:latest postgres:${{ github.sha }}
           docker save postgres:${{ github.sha }} | gzip > postgres-image.tar.gz
       - name: Upload postgres image
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: postgres-image
           path: postgres-image.tar.gz
@@ -155,9 +155,9 @@ jobs:
     needs: build
     if: needs.build.outputs.files-changed == 'true'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: NixOS/nix-installer-action@62c1943b776c509394b550f3f983adc14e9212d6 # main
-      - uses: Mic92/hestia@dfed9ced335d28978ba74e513939a10db1f71025 # v3.1.0
+      - uses: actions/checkout@v7.0.1
+      - uses: NixOS/nix-installer-action@v1.0.0
+      - uses: Mic92/hestia@v3.1.0
       - name: Force overlay2 storage driver
         run: |
           sudo mkdir -p /etc/docker
@@ -169,7 +169,7 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        uses: docker/login-action@v4.8.0
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
@@ -204,7 +204,7 @@ jobs:
           docker save ${REFS} | gzip > tailscale-released-images.tar.gz
           ls -lh tailscale-released-images.tar.gz
       - name: Upload Tailscale released images
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: tailscale-released-images
           path: tailscale-released-images.tar.gz

@@ -20,12 +20,12 @@ jobs:
   check-generated:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 2
       - name: Get changed files
         id: changed-files
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        uses: dorny/paths-filter@v4.0.3
         with:
           filters: |
             files:
@@ -38,9 +38,9 @@ jobs:
               - 'docs/ref/configuration-options.md'
               - 'docs/ref/config-example.yaml'
               - 'nix/options.generated.nix'
-      - uses: NixOS/nix-installer-action@62c1943b776c509394b550f3f983adc14e9212d6 # main
+      - uses: NixOS/nix-installer-action@v1.0.0
         if: steps.changed-files.outputs.files == 'true'
-      - uses: Mic92/hestia@dfed9ced335d28978ba74e513939a10db1f71025 # v3.1.0
+      - uses: Mic92/hestia@v3.1.0
         if: steps.changed-files.outputs.files == 'true'
 
       - name: Run make generate
