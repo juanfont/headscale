@@ -6,7 +6,7 @@ An open source, self-hosted implementation of the Tailscale control server.
 
 Join our [Discord server](https://discord.gg/c84AZQhmpx) for a chat.
 
-**Note:** `headscale generate config` prints the example configuration of the
+**Note:** Use `headscale generate config` to print the example configuration of the
 version you have installed. The documentation is available for stable and
 development versions:
 

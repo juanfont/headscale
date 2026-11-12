@@ -24,12 +24,8 @@ distributions are Ubuntu 22.04 or newer, Debian 12 or newer.
     sudo apt install ./headscale.deb
     ```
 
-1. [Configure headscale by editing the configuration file](../../ref/configuration.md). A new install gets the output
-   of `headscale generate config`: every key with its default and documentation. Set `server_url`, the only key without
-   a default. The package starts or restarts headscale only when `headscale check config` passes, and otherwise prints
-   what to fix. The check reads `/etc/headscale/config.yaml`, not `systemctl edit` drop-ins: if you configure headscale
-   there, start it yourself. A headscale that refuses its configuration, after a reboot for instance, stays stopped
-   until you fix the configuration and restart it. A copy of the shipped file is in
+1. [Configure Headscale by editing the configuration file](../../ref/configuration.md). A new install will find the
+   default configuration file under `/etc/headscale/config.yaml`. Set `server_url`. A copy of the shipped file is in
    `/usr/share/doc/headscale/examples/config-example.yaml`:
 
     ```shell
@@ -87,13 +83,13 @@ managed by systemd.
      headscale
     ```
 
-1. Write the example configuration of the installed version to `/etc/headscale/config.yaml`. Adjust the configuration
-   to suit your local environment: set `server_url`, the only key without a default; `headscale check config` names
-   anything else it rejects. See [Configuration](../../ref/configuration.md) for details.
+1. Generate a default configuration and write it to `/etc/headscale/config.yaml`, then adjust it to suit your needs.
+   Set `server_url`. Check the configuration with `headscale check config`. See
+   [Configuration](../../ref/configuration.md) for details.
 
     ```shell
     sudo mkdir -p /etc/headscale
-    headscale generate config | sudo tee /etc/headscale/config.yaml > /dev/null
+    headscale generate config | sudo tee /etc/headscale/config.yaml
     sudo nano /etc/headscale/config.yaml
     ```
 
