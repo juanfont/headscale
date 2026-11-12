@@ -24,6 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Login to DockerHub

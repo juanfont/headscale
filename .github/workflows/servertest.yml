@@ -27,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
 

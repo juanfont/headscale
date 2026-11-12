@@ -17,6 +17,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           sparse-checkout: .github/label-response/support-request.md
           sparse-checkout-cone-mode: false
 

@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           sparse-checkout: .github/pr-unvouched-message
 
       - uses: mitchellh/vouch/action/check-pr@v1.5.0
