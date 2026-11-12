@@ -39,6 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 2
       - name: Tailscale
         if: ${{ env.HAS_TAILSCALE_SECRET }}

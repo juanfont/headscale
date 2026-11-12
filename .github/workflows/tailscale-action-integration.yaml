@@ -47,6 +47,8 @@ jobs:
         auth: [oauth, authkey]
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - id: hs
         uses: $/.github/actions/headscale-up
 
@@ -124,6 +126,8 @@ jobs:
             assert: sudo tailscale debug prefs | jq -e '.CorpDNS == false'
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - id: hs
         uses: $/.github/actions/headscale-up
 

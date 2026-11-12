@@ -28,6 +28,8 @@ jobs:
 
       - uses: actions/checkout@v7.0.1
         with:
+          # vouch pushes its branch with it.
+          persist-credentials: true
           token: ${{ steps.app.outputs.token }}
 
       - uses: mitchellh/vouch/action/manage-by-issue@v1.5.0
