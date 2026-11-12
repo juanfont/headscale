@@ -12,8 +12,8 @@ aim to be upstreamed to nixpkgs.
 ## Files
 
 - **[`module.nix`](./module.nix)** - The NixOS module implementation
-- **[`example-configuration.nix`](./example-configuration.nix)** - Example
-  configuration demonstrating all major features
+- **[`options.generated.nix`](./options.generated.nix)** - all
+  `services.headscale.settings` options, generated per version.
 - **[`testkit.nix`](./testkit.nix)**,
   **[`testkit-peer.nix`](./testkit-peer.nix)** - Test kit: a control node for
   NixOS VM tests of Tailscale clients, and a peer that joins it (see below)
@@ -33,8 +33,77 @@ Then import the module:
 imports = [ inputs.headscale.nixosModules.default ];
 ```
 
-See [`example-configuration.nix`](./example-configuration.nix) for configuration
-options.
+Enable Headscale and set its URL:
+
+```nix
+services.headscale = {
+  enable = true;
+  settings.server_url = "https://headscale.example.com";
+};
+```
+
+## Settings
+
+`services.headscale.settings` has one typed option per key of Headscale's
+configuration. See
+[Configuration options](https://headscale.net/stable/ref/configuration-options/)
+for every key, with its default and a NixOS example.
+
+- `settings.server_url` is required.
+- A value of the wrong type fails evaluation and names the option.
+- Paths are absolute. Key and state paths must be outside the Nix store.
+
+The module sets a few defaults for NixOS. Override them with a plain
+assignment:
+
+- `noise.private_key_path = "/var/lib/headscale/noise_private.key"`
+- `derp.server.private_key_path = "/var/lib/headscale/derp_server_private.key"`
+- `database.sqlite.path = "/var/lib/headscale/db.sqlite"`
+- `unix_socket = "/run/headscale/headscale.sock"`
+- `disable_check_updates = true`
+
+### Secrets
+
+Load a secret as a systemd credential and reference it with `file:`. This keeps
+it out of the Nix store:
+
+```nix
+systemd.services.headscale.serviceConfig.LoadCredential = [
+  "oidc-client-secret:/run/secrets/oidc-client-secret"
+];
+
+services.headscale.settings.oidc.client_secret = "file:\${CREDENTIALS_DIRECTORY}/oidc-client-secret";
+```
+
+`oidc.client_secret` and `database.postgres.pass` only accept a `file:`
+reference.
+
+## CLI
+
+Run `headscale` on the server as root or as a member of the `headscale` group.
+It connects via the unix socket and needs no configuration.
+
+For a remote server, see
+[Remote control](https://headscale.net/stable/ref/api/#remote-control).
+
+## Checks
+
+The module runs `headscale check` on the configuration and the policy:
+
+- during `nixos-rebuild build`
+- before a switch restarts Headscale
+
+A configuration or policy that Headscale rejects fails the build or aborts the
+switch. Both checks are enabled by default:
+
+- `check.config` checks the configuration and, before a switch, every file it
+  names.
+- `check.policy` checks the policy file and runs its tests.
+
+`NIXOS_NO_CHECK=1 nixos-rebuild switch` skips the switch check once.
+
+The checks do not see the unit's `EnvironmentFile`. Provide secrets with
+`file:` as shown in [Secrets](#secrets), or set `check.config = false`.
 
 ## Test kit
 
@@ -150,10 +219,19 @@ A minimal config:
 # Clients dial this host for DERP and STUN too, so all of them must reach it.
 server_url: http://127.0.0.1:8080
 listen_addr: 127.0.0.1:8080
-noise: { private_key_path: /tmp/hs/noise.key }
-database: { type: sqlite, sqlite: { path: /tmp/hs/db.sqlite } }
-prefixes: { v4: 100.64.0.0/10, v6: "fd7a:115c:a1e0::/48" }
-dns: { magic_dns: false, override_local_dns: false }
+noise:
+  private_key_path: /tmp/hs/noise.key
+database:
+  type: sqlite
+  sqlite:
+    path: /tmp/hs/db.sqlite
+prefixes:
+  v4: 100.64.0.0/10
+  v6: "fd7a:115c:a1e0::/48"
+dns:
+  magic_dns: false
+  base_domain: ""
+  override_local_dns: false
 unix_socket: /tmp/hs/headscale.sock
 disable_check_updates: true
 derp:
@@ -180,7 +258,6 @@ Delete these and import the kit:
 - the self-signed cert, `security.pki.certificateFiles` and the nginx TLS proxy;
 - the embedded DERP block (`region_id = 999`, `urls = [ ]`) and its firewall
   ports;
-- `ip_prefixes`, which headscale no longer reads;
 - `/etc/hosts` pins for the control node;
 - jq lookups of the user ID before `preauthkeys create`.
 

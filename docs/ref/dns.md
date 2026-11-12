@@ -111,3 +111,80 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
 
     }
     ```
+
+## DNS-01 challenge provider
+
+Headscale supports ACME DNS-01 challenges with the help of a DNS provider. A provider is required to:
+
+- Issue certificates for nodes via `tailscale cert`, enabled with `dns.certificates.enabled`
+    - Required for [`tailscale serve`](https://tailscale.com/docs/features/tailscale-serve) with HTTPS
+    - Required for [tsnet](https://tailscale.com/docs/features/tsnet) with HTTPS
+    - Required for the [Kubernetes operator](https://tailscale.com/docs/kubernetes-operator)
+- Get Headscale's own [TLS certificate](tls.md) with `tls.acme.challenge_type: DNS-01`
+
+Configure the provider in the `dns.challenge.provider` section of the [configuration file](configuration.md). Use `name`
+to select the provider, the remaining keys are its settings:
+
+```yaml title="config.yaml"
+dns:
+  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: gigahost
+      api_key: "file:${CREDENTIALS_DIRECTORY}/gigahost-api-key"
+```
+
+See the [configuration options](configuration-options.md#dns.challenge.provider) for all providers and their settings.
+
+!!! tip "Keep credentials out of the configuration file"
+
+    Any text setting accepts `file:<path>` to read its value from a file. See
+    [secrets](configuration-options.md#secrets).
+
+### Environment variables
+
+Each text setting may also be set with `HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>`:
+
+```shell
+export HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME=gigahost
+export HEADSCALE_DNS_CHALLENGE_PROVIDER_API_KEY=file:/run/secrets/gigahost-api-key
+```
+
+Use `HEADSCALE_DNS_CHALLENGE_PROVIDER` to pass the whole provider as a JSON object. This is the only way to set the
+`config` of `acmedns`.
+
+### acme-dns
+
+[acme-dns](https://github.com/joohoi/acme-dns) serves challenge records from its own zone. Each certificate name needs
+its own registration:
+
+1. Register the name with acme-dns, see its [documentation](https://github.com/joohoi/acme-dns#register-endpoint). Note
+   the returned `username`, `password`, `subdomain` and `fulldomain`.
+
+1. Point the `_acme-challenge` record of the name to `fulldomain` with a CNAME:
+
+    ```text
+    _acme-challenge.laptop.example.com. CNAME 8e5700ea-a4bf-41c7-8a77-e990661dcc6a.auth.acme-dns.io.
+    ```
+
+1. Add the registration to `config`, keyed by the certificate name:
+
+    ```yaml title="config.yaml"
+    dns:
+      challenge:
+        provider:
+          name: acmedns
+          config:
+            laptop.example.com:
+              username: "<username>"
+              password: "file:${CREDENTIALS_DIRECTORY}/acme-dns-laptop"
+              subdomain: "<subdomain>"
+              server_url: https://auth.acme-dns.io
+    ```
+
+!!! warning "Limitations"
+
+    - A node without a registration gets no certificate.
+    - A single account (`username`, `password`, `subdomain` and `server_url` instead of `config`) only serves
+      Headscale's own certificate. Headscale refuses to start if it is used together with `dns.certificates.enabled`.

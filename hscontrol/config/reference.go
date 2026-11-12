@@ -27,40 +27,30 @@ const (
 		"### Value types { #types }\n\n"
 
 	referenceEnv = "### Environment variables { #env }\n\n" +
-		"Every key can also be set with an environment variable: `HEADSCALE_` and the key's path in capitals, with `_` for\n" +
-		"`.`, e.g. `HEADSCALE_LOG_LEVEL` for `log.level`. Each key below names its variable. A variable wins over the\n" +
-		"configuration file, which wins over the default. An empty variable, like a key written with no value in the\n" +
-		"file, counts as unset and keeps the default. A variable set to `\"\"` means what `\"\"` means in the configuration\n" +
-		"file: it clears a key with a default, as `prefixes.v6: \"\"` does, and is an error where the file's `\"\"` is one. A\n" +
-		"list also clears with `[]`. Quote the value so the quotes reach headscale:\n\n" +
+		"Every key can also be set with an environment variable: `HEADSCALE_` followed by the key in capitals, e.g.\n" +
+		"`HEADSCALE_LOG_LEVEL` for `log.level`. Each key below names its variable.\n\n" +
+		"- A variable takes precedence over the configuration file, which takes precedence over the default.\n" +
+		"- An empty variable counts as unset and keeps the default.\n" +
+		"- A list is a JSON array or its values separated by spaces. A map is a JSON object and replaces the map in the\n" +
+		"  configuration file.\n" +
+		"- An unknown or removed `HEADSCALE_` variable logs a warning, it does not stop Headscale.\n" +
+		"- The settings of a DNS provider have variables of their own, see\n" +
+		"  [`dns.challenge.provider`](#dns.challenge.provider).\n\n" +
+		"To clear a key that has a default, set its variable to `\"\"`, or to `[]` for a list. Quote the value so the quotes reach\n" +
+		"Headscale:\n\n" +
 		"```shell\n" +
 		"export HEADSCALE_PREFIXES_V6='\"\"'\n" +
 		"export HEADSCALE_DERP_URLS='[]'\n" +
-		"```\n\n" +
-		"```yaml title=\"docker-compose.yaml\"\n" +
-		"environment:\n" +
-		"  HEADSCALE_PREFIXES_V6: '\"\"'\n" +
-		"  HEADSCALE_DERP_URLS: '[]'\n" +
-		"```\n\n" +
-		"An env file (a Compose `env_file`, a systemd `EnvironmentFile=`) and a systemd `Environment=` strip one level of\n" +
-		"quotes, so `KEY=\"\"` there arrives empty and keeps the default: write `KEY='\"\"'` in an env file and\n" +
-		"`Environment='KEY=\"\"'` in a unit.\n\n" +
-		"A list is a JSON array or, unless its values are objects, its values separated by spaces. A map is a JSON object,\n" +
-		"which replaces the map in the configuration file instead of merging into it. The examples below write every list\n" +
-		"and map as JSON.\n\n" +
-		"A `HEADSCALE_` variable that names no key logs a warning, and one for a removed key also says what to do instead.\n" +
-		"Other software uses the same prefix, so neither stops headscale.\n\n" +
-		"A DNS provider setting that takes text can also be set on its own as `HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>`,\n" +
-		"e.g. `HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN`; see [`dns.challenge.provider`](#dns.challenge.provider).\n\n"
+		"```\n\n"
 
 	referenceSecrets = "### Secrets { #secrets }\n\n" +
-		"A secret takes the value itself or `file:<path>`, which reads it from that file. Environment variables in the path\n" +
-		"are expanded, as in `file:${CREDENTIALS_DIRECTORY}/oidc_client_secret`, and whitespace around the file's contents\n" +
-		"is trimmed; an empty file is an error. Headscale reads the file only where the secret is used, and\n" +
-		"`headscale check config` and `headscale check all` never read it. `headscale generate config --running` and\n" +
-		"`/debug/config` show a literal secret as `<redacted>` and a `file:` reference as written.\n\n"
+		"A secret takes the value itself or `file:<path>` to read it from a file, e.g.\n" +
+		"`file:${CREDENTIALS_DIRECTORY}/oidc_client_secret`.\n\n" +
+		"- Environment variables in the path are expanded.\n" +
+		"- Whitespace around the content of the file is trimmed, an empty file is an error.\n" +
+		"- `headscale generate config --running` and `/debug/config` show a literal secret as `<redacted>`.\n\n"
 
-	referenceNixSecret = "On NixOS, keep a secret out of the Nix store: load it as a systemd credential and point the key at it.\n\n" +
+	referenceNixSecret = "On NixOS, load the secret as a systemd credential to keep it out of the Nix store:\n\n" +
 		"```nix\n" +
 		"services.headscale.settings.oidc.client_secret = \"file:\\${CREDENTIALS_DIRECTORY}/oidc_client_secret\";\n" +
 		"systemd.services.headscale.serviceConfig.LoadCredential = [ \"oidc_client_secret:/run/secrets/oidc_client_secret\" ];\n" +

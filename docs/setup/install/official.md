@@ -24,8 +24,9 @@ distributions are Ubuntu 22.04 or newer, Debian 12 or newer.
     sudo apt install ./headscale.deb
     ```
 
-1. [Configure headscale by editing the configuration file](../../ref/configuration.md). An up-to date example
-   configuration file is also available in `/usr/share/doc/headscale/examples/config-example.yaml`:
+1. [Configure Headscale by editing the configuration file](../../ref/configuration.md). A new install will find the
+   default configuration file under `/etc/headscale/config.yaml`. Set `server_url`. A copy of the shipped file is in
+   `/usr/share/doc/headscale/examples/config-example.yaml`:
 
     ```shell
     sudo nano /etc/headscale/config.yaml
@@ -82,24 +83,19 @@ managed by systemd.
      headscale
     ```
 
-1. Download the example configuration for your chosen version and save it as: `/etc/headscale/config.yaml`. Adjust the
-   configuration to suit your local environment. See [Configuration](../../ref/configuration.md) for details.
+1. Generate a default configuration and write it to `/etc/headscale/config.yaml`, then adjust it to suit your needs.
+   Set `server_url`. Check the configuration with `headscale check config`. See
+   [Configuration](../../ref/configuration.md) for details.
 
     ```shell
     sudo mkdir -p /etc/headscale
+    headscale generate config | sudo tee /etc/headscale/config.yaml
     sudo nano /etc/headscale/config.yaml
     ```
 
 1. Copy [headscale's systemd service file](https://github.com/juanfont/headscale/blob/main/packaging/systemd/headscale.service)
    to `/etc/systemd/system/headscale.service` and adjust it to suit your local setup. The following parameters likely need
    to be modified: `ExecStart`, `WorkingDirectory`, `ReadWritePaths`.
-
-1. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with a path that is writable by the
-   `headscale` user or group:
-
-    ```yaml title="config.yaml"
-    unix_socket: /var/run/headscale/headscale.sock
-    ```
 
 1. Reload systemd to load the new configuration file:
 

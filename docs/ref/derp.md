@@ -7,8 +7,8 @@ DERP server to ensure seamless connectivity between nodes.
 ## Configuration
 
 DERP related settings are configured within the `derp` section of the [configuration file](configuration.md). The
-following sections only use a few of the available settings, check the [example configuration](configuration.md) for
-all available configuration options.
+following sections only use a few of the available settings; [`derp`](configuration-options.md#derp) in the
+configuration options lists all of them.
 
 ### Enable embedded DERP
 

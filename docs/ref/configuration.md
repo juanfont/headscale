@@ -1,41 +1,49 @@
 # Configuration
 
-- Headscale loads its configuration from a YAML file
-- It searches for `config.yaml` in the following paths:
+- Headscale loads its configuration from a YAML, JSON or HuJSON file
+- It searches for `config.json`, `config.yaml`, `config.yml` or `config.hujson`, in that order, in the following paths:
     - `/etc/headscale`
+    - `$XDG_CONFIG_HOME/headscale` (default `$HOME/.config/headscale`)
+    - `headscale` under each directory in `$XDG_CONFIG_DIRS` (default `/etc/xdg`)
     - `$HOME/.headscale`
     - the current working directory
+- Configuration keys are always lower case. An unknown or removed configuration entry prevents Headscale from starting
+- An unknown or removed `HEADSCALE_*` environment variable logs a warning
+- A [secret](configuration-options.md#secrets) can be either a string value or a file path starting with `file:`:
+    - an empty file is an error
+    - file is only read where the secret is used
 - To load the configuration from a different path, use:
     - the command line flag `-c`, `--config`
     - the environment variable `HEADSCALE_CONFIG`
-- Validate the configuration file with: `headscale configtest`
+- The configuration can be checked with: `headscale check config`. Use `-f <path>` to load from path.
+- Additional configuration can be checked with: `headscale check all`:
+    - [Policy](configuration-options.md#policy.path)
+    - [DERP Maps](configuration-options.md#derp.paths)
+    - [TLS Certs](configuration-options.md#tls.cert_path)
+    - [Extra records](configuration-options.md#dns.extra_records_path)
 
-!!! example "Get the [example configuration from the GitHub repository](https://github.com/juanfont/headscale/blob/main/config-example.yaml)"
+## Example configuration
 
-    Always select the [same GitHub tag](https://github.com/juanfont/headscale/tags) as the released version you use to
-    ensure you have the correct example configuration. The `main` branch might contain unreleased changes.
+The full configuration for your version can be generated using `headscale generate config` and will print a
+configuration file with all configuration options, their documentation and the default values.
 
-    === "View on GitHub"
+Write it to a file to start a new configuration:
 
-        - Development version: <https://github.com/juanfont/headscale/blob/main/config-example.yaml>
-        - Version {{ headscale.version }}: https://github.com/juanfont/headscale/blob/v{{ headscale.version }}/config-example.yaml
+```shell
+headscale generate config > /etc/headscale/config.yaml
+```
 
-    === "Download with `wget`"
+Use `--no-docs` to print a dense configuration file without the comments/documentation.
 
-        ```shell
-        # Development version
-        wget -O config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
+Use `--minimal` to print the most essential configuration options.
 
-        # Version {{ headscale.version }}
-        wget -O config.yaml https://raw.githubusercontent.com/juanfont/headscale/v{{ headscale.version }}/config-example.yaml
-        ```
+Use `--running` to print the current running configuration of the live Headscale server, with secrets redacted.
 
-    === "Download with `curl`"
+[Configuration options](configuration-options.md) describes every key, with examples for the configuration file, the
+environment and NixOS.
 
-        ```shell
-        # Development version
-        curl -o config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
+??? example "Example configuration of this version"
 
-        # Version {{ headscale.version }}
-        curl -o config.yaml https://raw.githubusercontent.com/juanfont/headscale/v{{ headscale.version }}/config-example.yaml
-        ```
+    ```yaml
+    {% include "./config-example.yaml" start="do not edit.\n" %}
+    ```

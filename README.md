@@ -6,13 +6,13 @@ An open source, self-hosted implementation of the Tailscale control server.
 
 Join our [Discord server](https://discord.gg/c84AZQhmpx) for a chat.
 
-**Note:** Always select the same GitHub tag as the released version you use
-to ensure you have the correct example configuration. The `main` branch might
-contain unreleased changes. The documentation is available for stable and
+**Note:** Use `headscale generate config` to print the example configuration of the
+version you have installed. The documentation is available for stable and
 development versions:
 
 - [Documentation for the stable version](https://headscale.net/stable/)
-- [Documentation for the development version](https://headscale.net/development/)
+- [Documentation for the development version](https://headscale.net/development/),
+  which follows the `main` branch and might describe unreleased changes
 
 ## What is Tailscale
 

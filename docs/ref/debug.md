@@ -34,12 +34,13 @@ log:
 
 ### Database logging
 
-The database debug mode logs all database queries. Enable it to see how Headscale interacts with its database. This also
-requires the application log level to be set to either `debug` or `trace`.
+The database debug mode logs database queries: ordinary queries at level `debug`, queries slower than
+`database.gorm.slow_threshold` at `warn` and failed queries at `error`. Enable it to see how Headscale interacts with its
+database. Ordinary queries show only with the application log level set to either `debug` or `trace`.
 
 ```yaml hl_lines="3 7"
 database:
-  # Enable debug mode. This setting requires the log.level to be set to "debug" or "trace".
+  # Enable query logging. Ordinary queries need log.level "debug" or "trace".
   debug: false
 
 log:
