@@ -978,6 +978,24 @@ in
       example = true;
     };
   };
+  tailsql = {
+    enabled = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Runs tailsql. It needs `database.type` sqlite.
+      '';
+      example = true;
+    };
+    state_dir = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/headscale/tailsql";
+      description = ''
+        Holds the node's identity. Losing it registers a new node, `tailsql-1`, and leaves the old one for an admin to delete.
+      '';
+      example = "/srv/headscale/tailsql";
+    };
+  };
   tuning = {
     batch_change_delay = lib.mkOption {
       type = t.duration;

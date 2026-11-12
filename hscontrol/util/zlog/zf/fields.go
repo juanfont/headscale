@@ -201,5 +201,4 @@ const (
 	DebugDumpConfig            = "HEADSCALE_DEBUG_DUMP_CONFIG"
 	DebugHighCardinalityMetric = "HEADSCALE_DEBUG_HIGH_CARDINALITY_METRICS"
 	DebugProfilingEnabled      = "HEADSCALE_DEBUG_PROFILING_ENABLED"
-	DebugTailSQLEnabled        = "HEADSCALE_DEBUG_TAILSQL_ENABLED"
 )

@@ -4226,6 +4226,9 @@ oidc:
   client_secret: secret
   pkce:
     method: ""
+tailsql:
+  enabled: true
+  state_dir: ""
 `
 
 	tests := []struct {
@@ -4243,6 +4246,12 @@ oidc:
 			name: "extra records next to a path",
 			file: valid + "  extra_records: [{name: a.example.com, type: A, value: 100.64.0.1}]\n  extra_records_path: /var/lib/headscale/records.json\n",
 			want: []string{"dns.extra_records and dns.extra_records_path are mutually exclusive"},
+		},
+		{name: "tailsql on sqlite", file: valid + "tailsql:\n  enabled: true\n"},
+		{
+			name: "tailsql on postgres",
+			file: strings.Replace(valid, "type: sqlite", "type: postgres", 1) + "tailsql:\n  enabled: true\n",
+			want: []string{"tailsql.enabled needs database.type sqlite"},
 		},
 		{
 			name: "every rule, in order",
@@ -4265,6 +4274,8 @@ oidc:
 				"derp.server.region_id is required when the embedded DERP server is enabled",
 				"derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
 				"database.type has an unsupported value",
+				"tailsql.enabled needs database.type sqlite",
+				"tailsql.state_dir is required when tailsql.enabled is true",
 				"policy.mode has an unsupported value",
 				"log.level has an unsupported value",
 				"log.format has an unsupported value",
@@ -4301,6 +4312,7 @@ oidc:
 				"derp.server.region_id is required when the embedded DERP server is enabled",
 				"derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
 				"database.sqlite.path is required when database.type is sqlite",
+				"tailsql.state_dir is required when tailsql.enabled is true",
 				"policy.mode has an unsupported value",
 				"log.level has an unsupported value",
 				"log.format has an unsupported value",
