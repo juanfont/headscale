@@ -266,6 +266,11 @@ func TestConfigToURL(t *testing.T) {
 			},
 			want: "file:/test.db?_pragma=busy_timeout=1000&_pragma=foreign_keys=ON",
 		},
+		{
+			name:   "read-only",
+			config: ReadOnly("/test.db"),
+			want:   "file:/test.db?_pragma=busy_timeout=10000&_pragma=query_only=1&mode=ro",
+		},
 	}
 
 	for _, tt := range tests {

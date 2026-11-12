@@ -277,7 +277,7 @@ type Config struct {
 	Synchronous       Synchronous // synchronous mode (affects durability vs performance)
 	ForeignKeys       bool        // enable foreign key constraints (data integrity)
 	TxLock            TxLock      // transaction lock mode (affects write concurrency)
-	ReadOnly          bool        // open with SQLite's mode=ro
+	ReadOnly          bool        // open with mode=ro and query_only, for untrusted readers
 }
 
 // Default returns the production configuration optimized for Headscale's usage patterns.
@@ -298,6 +298,20 @@ func Default(path string) *Config {
 		Synchronous:       SynchronousNormal,
 		ForeignKeys:       true,
 		TxLock:            TxLockImmediate,
+	}
+}
+
+// ReadOnly returns a configuration for a connection that must never write the
+// database: mode=ro opens the file read-only, query_only rejects writes at the
+// statement level. No write pragmas are set. It does not stop ATTACH or VACUUM
+// INTO from creating other files; callers running untrusted SQL must reject
+// those statements themselves.
+func ReadOnly(path string) *Config {
+	return &Config{
+		Path:              path,
+		BusyTimeout:       DefaultBusyTimeout,
+		WALAutocheckpoint: -1,
+		ReadOnly:          true,
 	}
 }
 
@@ -395,7 +409,7 @@ func (c *Config) ToURL() (string, error) {
 	}
 
 	if c.ReadOnly {
-		queryParts = append(queryParts, "mode=ro")
+		queryParts = append(queryParts, "_pragma=query_only=1", "mode=ro")
 	}
 
 	if len(queryParts) > 0 {
