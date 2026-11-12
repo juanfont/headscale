@@ -13,6 +13,15 @@ on:
       database_name:
         required: true
         type: string
+    secrets:
+      TS_OAUTH_CLIENT_ID:
+        required: false
+      TS_OAUTH_SECRET:
+        required: false
+      DOCKERHUB_CI_USERNAME:
+        required: false
+      DOCKERHUB_CI_TOKEN:
+        required: false
 
 jobs:
   test:
