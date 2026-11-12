@@ -19,6 +19,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      # mike pushes to gh-pages.
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
