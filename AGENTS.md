@@ -28,7 +28,7 @@ Read `cmd/hi/README.md` in full before any `hi` command. Never guess flags.
 ## Pre-commit
 
 `prek install` once in the dev shell; hooks match CI (treefmt, mdformat,
-`golangci-lint --new-from-rev=HEAD~1`, vendor hash). Never skip them
+zizmor, `golangci-lint --new-from-rev=HEAD~1`, vendor hash). Never skip them
 (`--no-verify`, `SKIP=`).
 
 ## Rules that are not visible in the code
