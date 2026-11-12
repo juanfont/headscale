@@ -1,0 +1,17 @@
+# Each ignore names why the finding does not apply here.
+rules:
+  dangerous-triggers:
+    ignore:
+      # Runs no PR code: checks out the base branch's message template and hands
+      # vouch only the PR number.
+      - vouch-check-pr.yml
+      # vouch fetches the comment through the API and checks the commenter's
+      # role before it writes; non-command comments skip the job.
+      - vouch-manage-by-issue.yml
+      # Removes a label by issue number; no checkout, no comment text used.
+      - needs-more-info-timer.yml
+  unpinned-uses:
+    ignore:
+      # headscale-up/action.yml: a lockfile cannot pin a composite action file,
+      # but actions.lock pins its uses under each workflow calling it with $/.
+      - action.yml
