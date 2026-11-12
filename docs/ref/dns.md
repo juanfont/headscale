@@ -114,15 +114,16 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
 
 ## DNS-01 challenge provider
 
-Headscale answers ACME DNS-01 challenges by writing TXT records through a DNS provider. Two features use it:
+Headscale supports ACME DNS-01 challenges with the help of a DNS provider. A provider is required to:
 
-- `dns.certificates.enabled` lets nodes get certificates for their MagicDNS names with `tailscale cert`.
-- `tls.acme.challenge_type: DNS-01` gets headscale's own certificate for `tls.acme.hostname`.
+- Issue certificates for nodes via `tailscale cert`, enabled with `dns.certificates.enabled`
+    - Required for [`tailscale serve`](https://tailscale.com/docs/features/tailscale-serve) with HTTPS
+    - Required for [tsnet](https://tailscale.com/docs/features/tsnet) with HTTPS
+    - Required for the [Kubernetes operator](https://tailscale.com/docs/kubernetes-operator)
+- Get Headscale's own [TLS certificate](tls.md) with `tls.acme.challenge_type: DNS-01`
 
-Configure the provider under `dns.challenge.provider` in the [configuration file](configuration.md): `name` selects the
-provider and the other keys are its settings. Every provider and its settings are listed in the [configuration
-options](configuration-options.md#dns.challenge.provider). Any string setting may be `file:<path>` to read the value
-from a file, which keeps credentials out of the configuration.
+Configure the provider in the `dns.challenge.provider` section of the [configuration file](configuration.md). Use `name`
+to select the provider, the remaining keys are its settings:
 
 ```yaml title="config.yaml"
 dns:
@@ -130,38 +131,44 @@ dns:
     enabled: true
   challenge:
     provider:
-      name: cloudflare
-      api_token: "file:${CREDENTIALS_DIRECTORY}/cloudflare-token"
+      name: gigahost
+      api_key: "file:${CREDENTIALS_DIRECTORY}/gigahost-api-key"
 ```
+
+See the [configuration options](configuration-options.md#dns.challenge.provider) for all providers and their settings.
+
+!!! tip "Keep credentials out of the configuration file"
+
+    Any text setting accepts `file:<path>` to read its value from a file. See
+    [secrets](configuration-options.md#secrets).
 
 ### Environment variables
 
-`HEADSCALE_DNS_CHALLENGE_PROVIDER` takes the whole provider as a JSON object. Each text setting can also be set on its
-own as `HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>`, which wins over the same setting in the JSON object and in the
-configuration file. A variable for a setting the provider does not have is ignored.
+Each text setting may also be set with `HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>`:
 
 ```shell
-export HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME=cloudflare
-export HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN=file:/run/secrets/cloudflare-token
+export HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME=gigahost
+export HEADSCALE_DNS_CHALLENGE_PROVIDER_API_KEY=file:/run/secrets/gigahost-api-key
 ```
 
-A setting that holds an object, such as the `config` of `acmedns`, can only be set in the JSON object.
+Use `HEADSCALE_DNS_CHALLENGE_PROVIDER` to pass the whole provider as a JSON object. This is the only way to set the
+`config` of `acmedns`.
 
 ### acme-dns
 
 [acme-dns](https://github.com/joohoi/acme-dns) serves challenge records from its own zone. Each certificate name needs
-a registration of its own:
+its own registration:
 
-1. Register once per certificate name with acme-dns's `/register` endpoint. Keep the `username`, `password`,
-   `subdomain` and `fulldomain` it returns.
+1. Register the name with acme-dns, see its [documentation](https://github.com/joohoi/acme-dns#register-endpoint). Note
+   the returned `username`, `password`, `subdomain` and `fulldomain`.
 
-1. Point the name's `_acme-challenge` record at the registration's `fulldomain` with a CNAME:
+1. Point the `_acme-challenge` record of the name to `fulldomain` with a CNAME:
 
     ```text
     _acme-challenge.laptop.example.com. CNAME 8e5700ea-a4bf-41c7-8a77-e990661dcc6a.auth.acme-dns.io.
     ```
 
-1. List each registration under `config`, keyed by its certificate name:
+1. Add the registration to `config`, keyed by the certificate name:
 
     ```yaml title="config.yaml"
     dns:
@@ -176,11 +183,8 @@ a registration of its own:
               server_url: https://auth.acme-dns.io
     ```
 
-A node whose name has no registration gets no certificate. acme-dns cannot delete a record: a registration keeps serving
-the last two TXT values written to it until later challenges replace them. Headscale therefore refuses another challenge
-while the older value is still in use. It releases a node's value once it has gone unused for a while, and the value for
-its own certificate once the CA has finished validating it, so a later challenge can take its place.
+!!! warning "Limitations"
 
-A single account, with `username`, `password`, `subdomain` and `server_url` instead of `config`, serves headscale's own
-certificate only: with `dns.certificates.enabled`, headscale refuses to start with it, as every node's challenge would
-be answered from the same record.
+    - A node without a registration gets no certificate.
+    - A single account (`username`, `password`, `subdomain` and `server_url` instead of `config`) only serves
+      Headscale's own certificate. Headscale refuses to start if it is used together with `dns.certificates.enabled`.
