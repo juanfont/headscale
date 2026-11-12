@@ -396,8 +396,12 @@ jobs:
           - TestTS2021WebSocketGET
           - TestTS2021WASMClientUnderNode
           - TestTailscaleRustAxum
-    uses: ./.github/workflows/integration-test-template.yml
-    secrets: inherit
+    uses: $/.github/workflows/integration-test-template.yml
+    secrets:
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+      DOCKERHUB_CI_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
+      DOCKERHUB_CI_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
     with:
       test: ${{ matrix.test }}
       postgres_flag: "--postgres=0"
@@ -414,8 +418,12 @@ jobs:
           - TestEphemeral2006DeletedTooQuickly
           - TestPingAllByIPManyUpDown
           - TestSubnetRouterMultiNetwork
-    uses: ./.github/workflows/integration-test-template.yml
-    secrets: inherit
+    uses: $/.github/workflows/integration-test-template.yml
+    secrets:
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+      DOCKERHUB_CI_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
+      DOCKERHUB_CI_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
     with:
       test: ${{ matrix.test }}
       postgres_flag: "--postgres=1"
