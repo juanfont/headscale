@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
       - name: build
@@ -32,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
       - name: gotest
@@ -42,6 +46,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
       - name: gorace
@@ -51,6 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
       - name: golangci-lint
@@ -60,6 +68,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
       - name: formatting
@@ -69,6 +79,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
       - name: nixos-options
@@ -78,6 +90,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
       - name: nixos-module

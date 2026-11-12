@@ -26,6 +26,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
         with:
+          # mike pushes to gh-pages with it.
+          persist-credentials: true
           fetch-depth: 0
       - name: Install python
         uses: actions/setup-python@v7.1.0
