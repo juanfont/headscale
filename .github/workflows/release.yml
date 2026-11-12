@@ -15,6 +15,11 @@ jobs:
   goreleaser:
     if: github.repository == 'juanfont/headscale'
     runs-on: ubuntu-latest
+    permissions:
+      # The GitHub release.
+      contents: write
+      # ko pushes to ghcr.io.
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1

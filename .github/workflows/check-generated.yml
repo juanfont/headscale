@@ -16,6 +16,9 @@ defaults:
   run:
     shell: nix develop --fallback --command bash -e {0}
 
+permissions:
+  contents: read
+
 jobs:
   check-generated:
     runs-on: ubuntu-latest

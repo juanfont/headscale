@@ -9,6 +9,8 @@ concurrency:
 defaults:
   run:
     shell: nix develop --fallback --command bash -e {0}
+permissions:
+  contents: read
 jobs:
   # build: Builds binaries and Docker images once, uploads as artifacts for reuse.
   # build-postgres: Pulls postgres image separately to avoid Docker Hub rate limits.
