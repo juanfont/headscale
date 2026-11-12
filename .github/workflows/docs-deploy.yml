@@ -31,11 +31,6 @@ jobs:
         uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.x
-      - name: Setup cache
-        uses: actions/cache@v6.1.0
-        with:
-          key: ${{ github.ref }}
-          path: .cache
       - name: Setup dependencies
         run: pip install -r docs/requirements.txt
       - name: Configure git
