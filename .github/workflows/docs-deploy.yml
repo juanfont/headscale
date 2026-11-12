@@ -19,20 +19,20 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      # mike pushes to gh-pages.
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
         with:
+          # mike pushes to gh-pages with it.
+          persist-credentials: true
           fetch-depth: 0
       - name: Install python
         uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.x
-      - name: Setup cache
-        uses: actions/cache@v6.1.0
-        with:
-          key: ${{ github.ref }}
-          path: .cache
       - name: Setup dependencies
         run: pip install -r docs/requirements.txt
       - name: Configure git

@@ -14,13 +14,20 @@ defaults:
   run:
     shell: nix develop --fallback --command bash -e {0}
 
+permissions:
+  contents: read
+
 jobs:
   build-nix:
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: read
+      # The vendor hash review comment.
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 2
       - name: Get changed files
         id: changed-files
@@ -51,6 +58,9 @@ jobs:
       - name: Vendor hash diverging
         uses: actions/github-script@v9.0.0
         if: failure() && steps.vendorhash.outcome == 'failure'
+        env:
+          EXPECTED_SRI: ${{ steps.vendorhash.outputs.expected_sri }}
+          ACTUAL_SRI: ${{ steps.vendorhash.outputs.actual_sri }}
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
@@ -58,7 +68,7 @@ jobs:
               pull_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: 'Vendor hash in `flakehashes.json` is stale (was `${{ steps.vendorhash.outputs.expected_sri }}`, should be `${{ steps.vendorhash.outputs.actual_sri }}`). Run `go run ./cmd/vendorhash update` and commit the result.'
+              body: `Vendor hash in \`flakehashes.json\` is stale (was \`${process.env.EXPECTED_SRI}\`, should be \`${process.env.ACTUAL_SRI}\`). Run \`go run ./cmd/vendorhash update\` and commit the result.`
             })
 
       - name: Run nix build
@@ -81,6 +91,8 @@ jobs:
           - "GOARCH=amd64 GOOS=darwin"
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
 

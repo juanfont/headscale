@@ -16,12 +16,16 @@ defaults:
   run:
     shell: nix develop --fallback --command bash -e {0}
 
+permissions:
+  contents: read
+
 jobs:
   check-generated:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 2
       - name: Get changed files
         id: changed-files

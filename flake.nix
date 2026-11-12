@@ -142,6 +142,7 @@
 
             gh
             gh-actions-lock
+            zizmor
             ksh
             ko
             yq-go
@@ -385,6 +386,30 @@
               grep -F '"file:\''${CREDENTIALS_DIRECTORY}/oidc_client_secret"' ${doc.optionsCommonMark}
               touch $out
             '';
+
+        # Offline, so a new advisory for some action cannot fail unrelated
+        # pull requests. Not named zizmor: that would shadow pkgs.zizmor in
+        # devDeps' `with pkgs`.
+        zizmor-check =
+          pkgs.runCommand "headscale-zizmor"
+            {
+              nativeBuildInputs = [ pkgs.zizmor ];
+              src = pkgs.lib.fileset.toSource {
+                root = ./.;
+                fileset = pkgs.lib.fileset.unions [
+                  ./.github
+                  ./.pre-commit-config.yaml
+                ];
+              };
+            }
+            ''
+              # zizmor reads actions.lock only from a directory with a .git.
+              cp -r "$src" tree
+              chmod -R u+w tree
+              mkdir tree/.git
+              zizmor --offline --no-progress --cache-dir "$TMPDIR" tree
+              touch $out
+            '';
       in
       {
         # `nix develop`
@@ -442,6 +467,7 @@
             headscale-checks = pkgs.testers.runNixOSTest (import ./nix/tests/checks.nix self);
             nixos-module = import ./nix/tests/module.nix self pkgs;
             inherit nixos-options;
+            zizmor = zizmor-check;
           }
         );
       }

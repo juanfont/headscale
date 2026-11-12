@@ -31,9 +31,12 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
       - name: Run garbage collection
-        run: '"${HESTIA_BIN}" gc ${{ inputs.dry-run && ''--dry-run'' || '''' }}'
+        run: |
+          "${HESTIA_BIN}" gc ${{ inputs.dry-run && '--dry-run' || '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}

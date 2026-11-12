@@ -62,6 +62,15 @@ repos:
         types: [go]
         pass_filenames: false
 
+      # zizmor audits the whole tree at once: actions.lock and
+      # .github/zizmor.yml shape each file's findings.
+      - id: zizmor
+        name: zizmor
+        entry: nix develop --command -- zizmor --offline --no-progress .
+        language: system
+        files: ^(\.github/|\.pre-commit-config\.yaml$)
+        pass_filenames: false
+
       # vendor-hash keeps flakehashes.json in sync with go.mod/go.sum.
       - id: vendor-hash
         name: vendor-hash

@@ -9,6 +9,8 @@ concurrency:
 defaults:
   run:
     shell: nix develop --fallback --command bash -e {0}
+permissions:
+  contents: read
 jobs:
   # build: Builds binaries and Docker images once, uploads as artifacts for reuse.
   # build-postgres: Pulls postgres image separately to avoid Docker Hub rate limits.
@@ -24,6 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 2
       - name: Get changed files
         id: changed-files
@@ -156,6 +159,8 @@ jobs:
     if: needs.build.outputs.files-changed == 'true'
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
       - name: Force overlay2 storage driver
@@ -180,6 +185,8 @@ jobs:
           echo "versions=${versions}" >> "$GITHUB_OUTPUT"
           echo "Pre-pulling: ${versions}"
       - name: Pull Tailscale images
+        env:
+          VERSIONS: ${{ steps.versions.outputs.versions }}
         run: |
           # Releases come from ghcr.io (anonymous, unmetered). The
           # "unstable" floating tag on ghcr.io has been stale since 2022,
@@ -187,7 +194,7 @@ jobs:
           # out one process per tag and returns non-zero if any pull
           # fails.
           refs=""
-          for v in ${{ steps.versions.outputs.versions }}; do
+          for v in ${VERSIONS}; do
             if [ "${v}" = "unstable" ]; then
               refs="${refs} tailscale/tailscale:${v}"
             else
@@ -392,8 +399,12 @@ jobs:
           - TestTS2021WebSocketGET
           - TestTS2021WASMClientUnderNode
           - TestTailscaleRustAxum
-    uses: ./.github/workflows/integration-test-template.yml
-    secrets: inherit
+    uses: $/.github/workflows/integration-test-template.yml
+    secrets:
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+      DOCKERHUB_CI_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
+      DOCKERHUB_CI_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
     with:
       test: ${{ matrix.test }}
       postgres_flag: "--postgres=0"
@@ -410,8 +421,12 @@ jobs:
           - TestEphemeral2006DeletedTooQuickly
           - TestPingAllByIPManyUpDown
           - TestSubnetRouterMultiNetwork
-    uses: ./.github/workflows/integration-test-template.yml
-    secrets: inherit
+    uses: $/.github/workflows/integration-test-template.yml
+    secrets:
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+      DOCKERHUB_CI_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
+      DOCKERHUB_CI_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
     with:
       test: ${{ matrix.test }}
       postgres_flag: "--postgres=1"
