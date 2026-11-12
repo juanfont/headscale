@@ -1,0 +1,28 @@
+policy in the tailnet now has an accept-all rule: [{"action":"accept","dst":["*:*"],"src":["*"]}]
+# P. One exit prefix, seen by another node (exit node id 1814056011328633, other node id 1575466652163777)
+P1 nothing enabled
+   api enabledRoutes : []
+   exit node itself  : {"exitRoutes":[],"ExitNodeOption":false}
+   the other node    : {"exitRoutes":[],"ExitNodeOption":false}
+   exit-node list    : 0 line(s) for the node
+P  enabled through the API: ["0.0.0.0/0"]
+   api enabledRoutes : ["0.0.0.0/0"]
+   exit node itself  : {"exitRoutes":["0.0.0.0/0","::/0"],"ExitNodeOption":true}
+   the other node    : {"exitRoutes":[],"ExitNodeOption":false}
+   exit-node list    : 0 line(s) for the node
+P  enabled through the API: ["::/0"]
+   api enabledRoutes : ["::/0"]
+   exit node itself  : {"exitRoutes":["::/0"],"ExitNodeOption":false}
+   the other node    : {"exitRoutes":[],"ExitNodeOption":false}
+   exit-node list    : 0 line(s) for the node
+P  enabled through the API: ["0.0.0.0/0","::/0"]
+   api enabledRoutes : ["0.0.0.0/0","::/0"]
+   exit node itself  : {"exitRoutes":["0.0.0.0/0","::/0"],"ExitNodeOption":true}
+   the other node    : {"exitRoutes":["0.0.0.0/0","::/0"],"ExitNodeOption":true}
+   exit-node list    : 1 line(s) for the node
+P  enabled through the API: []
+   api enabledRoutes : []
+   exit node itself  : {"exitRoutes":[],"ExitNodeOption":false}
+   the other node    : {"exitRoutes":[],"ExitNodeOption":false}
+   exit-node list    : 0 line(s) for the node
+cleanup: devices 200 200, keys 200 200

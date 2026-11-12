@@ -1,0 +1,6 @@
+# N. One exit prefix on Tailscale (node advertises both exit routes)
+N1 nothing enabled        : api []  node {"AllowedIPs":["100.94.89.122/32","fd7a:115c:a1e0::a128:597b/128"],"ExitNodeOption":false}
+N2 only 0.0.0.0/0 enabled : api ["0.0.0.0/0"]  node {"AllowedIPs":["100.94.89.122/32","fd7a:115c:a1e0::a128:597b/128","0.0.0.0/0","::/0"],"ExitNodeOption":true}
+N3 only ::/0 enabled      : api ["::/0"]  node {"AllowedIPs":["100.94.89.122/32","fd7a:115c:a1e0::a128:597b/128","::/0"],"ExitNodeOption":false}
+N4 both enabled           : api ["0.0.0.0/0","::/0"]  node {"AllowedIPs":["100.94.89.122/32","fd7a:115c:a1e0::a128:597b/128","0.0.0.0/0","::/0"],"ExitNodeOption":true}
+cleanup: device 200 key 200 devices left 0
