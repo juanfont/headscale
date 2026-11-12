@@ -27,7 +27,6 @@ workflows:
         - 'mic92/hestia@v3.1.0'
         - 'nixos/nix-installer-action@v1.0.0'
     '.github/workflows/docs-deploy.yml':
-        - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-python@v7.1.0'
     '.github/workflows/docs-test.yml':
