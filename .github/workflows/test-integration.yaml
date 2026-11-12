@@ -180,6 +180,8 @@ jobs:
           echo "versions=${versions}" >> "$GITHUB_OUTPUT"
           echo "Pre-pulling: ${versions}"
       - name: Pull Tailscale images
+        env:
+          VERSIONS: ${{ steps.versions.outputs.versions }}
         run: |
           # Releases come from ghcr.io (anonymous, unmetered). The
           # "unstable" floating tag on ghcr.io has been stale since 2022,
@@ -187,7 +189,7 @@ jobs:
           # out one process per tag and returns non-zero if any pull
           # fails.
           refs=""
-          for v in ${{ steps.versions.outputs.versions }}; do
+          for v in ${VERSIONS}; do
             if [ "${v}" = "unstable" ]; then
               refs="${refs} tailscale/tailscale:${v}"
             else

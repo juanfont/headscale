@@ -81,15 +81,19 @@ jobs:
         id: bump
         env:
           GH_TOKEN: ${{ github.token }}
+          GATE: ${{ inputs.gate || 'full' }}
+          AREAS: ${{ inputs.areas }}
+          DRY_RUN: ${{ inputs.dry-run || false }}
+          FORCE: ${{ inputs.force || false }}
         run: |
           # Built before the run moves HEAD, so Publish does not compile the
           # freshly bumped dependencies.
           go build -o "$RUNNER_TEMP/bump" ./tools/bump
           "$RUNNER_TEMP/bump" run \
-            --gate="${{ inputs.gate || 'full' }}" \
-            --areas="${{ inputs.areas }}" \
-            --dry-run="${{ inputs.dry-run || false }}" \
-            --force="${{ inputs.force || false }}" \
+            --gate="$GATE" \
+            --areas="$AREAS" \
+            --dry-run="$DRY_RUN" \
+            --force="$FORCE" \
             --handoff="$RUNNER_TEMP/bump.json"
           if [ -f "$RUNNER_TEMP/bump.json" ]; then
             echo "handoff=true" >> "$GITHUB_OUTPUT"
