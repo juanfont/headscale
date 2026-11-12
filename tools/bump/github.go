@@ -90,25 +90,6 @@ func latestRelease(ctx context.Context, owner, name string) (string, error) {
 	return release.TagName, nil
 }
 
-// commitOfRef resolves a tag or branch to the commit it points at, following
-// annotated tags the way an action pin must.
-func commitOfRef(ctx context.Context, owner, name, ref string) (string, error) {
-	var commit struct {
-		SHA string `json:"sha"`
-	}
-
-	err := githubJSON(ctx, fmt.Sprintf("/repos/%s/%s/commits/%s", owner, name, ref), &commit)
-	if err != nil {
-		return "", err
-	}
-
-	if commit.SHA == "" {
-		return "", fmt.Errorf("%w: %s/%s@%s", errNoRelease, owner, name, ref)
-	}
-
-	return commit.SHA, nil
-}
-
 // currentSlug is the repository the run is acting on. It defaults to whatever
 // the job is running in rather than a constant: a hardcoded upstream slug let a
 // fork push its branch and then try to open the pull request on someone else's

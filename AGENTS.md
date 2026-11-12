@@ -281,7 +281,7 @@ Key reminders:
 day. `bump plan` reports what is stale without touching anything; `bump verify`
 exits non-zero when the pins no longer agree.
 
-Three rules it encodes. A hand-written bump has to follow them too:
+Four rules it encodes. A hand-written bump has to follow them too:
 
 1. **`modernc.org/libc` moves only to the version `modernc.org/sqlite`
    requires**, and **`gvisor.dev/gvisor` only to the version `tailscale.com`
@@ -298,6 +298,13 @@ Three rules it encodes. A hand-written bump has to follow them too:
    command then downloads one, so `go build` succeeds locally. The nix builders
    set `GOTOOLCHAIN=local` and fail. `bump verify` reports the drift; the tool
    never edits the directive itself.
+4. **Actions are named by release tag; the commit lives in
+   `.github/workflows/actions.lock`.** After changing any `uses:`, in a workflow
+   or in `.github/actions/`, run `gh-actions-lock` (in the dev shell) and commit
+   the lockfile with it; GitHub runs the locked commit and the
+   `check-generated` workflow fails a stale lockfile. Same-repo actions are
+   written `$/.github/actions/...`, not `./`, so the lockfile covers what they
+   use. Never pass `--accept-moved`: a release tag that moved needs a human.
 
 The tool does not encode one more rule: the DNS providers (`github.com/libdns/*`)
 and `github.com/caddyserver/certmagic` must agree on the `github.com/libdns/libdns`

@@ -32,6 +32,7 @@ func cmdVerify(ctx context.Context) error {
 	findings = append(findings, verifyToolchain(ctx, r)...)
 	findings = append(findings, verifyVendorHash(ctx, r)...)
 	findings = append(findings, verifyProviders(ctx, r)...)
+	findings = append(findings, verifyActionsLock(ctx, r)...)
 
 	if len(findings) == 0 {
 		log.Print("all version pins agree")
@@ -125,6 +126,17 @@ func verifyToolchain(ctx context.Context, r *repo) []finding {
 	err := checkToolchain(ctx, r)
 	if err != nil {
 		return []finding{finding(err.Error())}
+	}
+
+	return nil
+}
+
+// verifyActionsLock catches a workflow edited without relocking, and a locked
+// commit its tag or branch no longer reaches, which the runner would reject.
+func verifyActionsLock(ctx context.Context, r *repo) []finding {
+	_, err := r.nixRun(ctx, "gh-actions-lock", "--no-interactive", "--verify")
+	if err != nil {
+		return []finding{finding(actionsLock + " does not verify; run gh-actions-lock: " + err.Error())}
 	}
 
 	return nil
