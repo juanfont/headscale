@@ -224,7 +224,7 @@ require (
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/setec v0.0.0-20260824224040-f8d7a936837c // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20260917222731-e0ed2d0d0fea // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20261002162406-18e99eba5393 // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20261105205217-79ead109a81a // indirect
 	github.com/toqueteos/webbrowser v1.2.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
@@ -280,3 +280,5 @@ tool (
 	tailscale.com/cmd/viewer
 	tailscale.com/tstest/mts
 )
+
+replace tailscale.com => /home/kradalby/worktrees/tailscale/kradalby/tsnet-system-dial
