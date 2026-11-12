@@ -61,3 +61,24 @@ jobs:
           else
             echo "✅ All generated files are up to date."
           fi
+
+  # actions.lock is generated from GitHub, not from the tree, so it is
+  # verified upstream rather than regenerated and diffed.
+  actions-lock:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: NixOS/nix-installer-action@v1.0.0
+      # The flake's own nixpkgs, so flake.lock moves the version rather than a
+      # second pin someone has to remember.
+      - name: Verify actions.lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: nix run --inputs-from . nixpkgs#gh-actions-lock -- --no-interactive --verify
