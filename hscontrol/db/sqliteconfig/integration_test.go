@@ -327,3 +327,73 @@ func TestToURLOpensExactPath(t *testing.T) {
 		})
 	}
 }
+
+// TestReadOnlyRejectsWrites proves a ReadOnly connection cannot change the
+// database, even when a statement lifts query_only. ATTACH and VACUUM INTO
+// still create other files; see [ReadOnly].
+func TestReadOnlyRejectsWrites(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "ro.db")
+
+	rwURL, err := Default(dbPath).ToURL()
+	if err != nil {
+		t.Fatalf("rw url: %v", err)
+	}
+
+	rw, err := sql.Open("sqlite", rwURL)
+	if err != nil {
+		t.Fatalf("open rw: %v", err)
+	}
+	defer rw.Close()
+
+	_, err = rw.ExecContext(ctx, "CREATE TABLE t (v INTEGER); INSERT INTO t VALUES (1)")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	roURL, err := ReadOnly(dbPath).ToURL()
+	if err != nil {
+		t.Fatalf("ro url: %v", err)
+	}
+
+	ro, err := sql.Open("sqlite", roURL)
+	if err != nil {
+		t.Fatalf("open ro: %v", err)
+	}
+	defer ro.Close()
+
+	// One connection, so a PRAGMA in one statement carries to the next.
+	conn, err := ro.Conn(ctx)
+	if err != nil {
+		t.Fatalf("conn: %v", err)
+	}
+	defer conn.Close()
+
+	writes := []string{
+		"INSERT INTO t VALUES (2)",
+		"UPDATE t SET v = 3",
+		"DELETE FROM t",
+		"DROP TABLE t",
+		"CREATE TABLE x (a)",
+		"PRAGMA query_only = 0; DELETE FROM t",
+		"DELETE FROM t",
+	}
+	for _, q := range writes {
+		_, err := conn.ExecContext(ctx, q)
+		if err == nil {
+			t.Errorf("%q succeeded on a read-only connection", q)
+		}
+	}
+
+	var n int
+
+	err = conn.QueryRowContext(ctx, "SELECT count(*) FROM t WHERE v = 1").Scan(&n)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	if n != 1 {
+		t.Errorf("table changed: %d rows with v=1, want 1", n)
+	}
+}
