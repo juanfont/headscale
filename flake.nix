@@ -141,6 +141,7 @@
             gotools
 
             gh
+            gh-actions-lock
             ksh
             ko
             yq-go

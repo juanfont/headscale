@@ -1,46 +1,52 @@
 package main
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
-func TestActionPinMatch(t *testing.T) {
+func TestActionRefMatch(t *testing.T) {
 	tests := []struct {
 		name             string
 		line             string
 		owner, repo, sub string
-		sha, ref         string
+		ref              string
 		match            bool
 	}{
 		{
-			name:  "sha pinned with version comment",
-			line:  "      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1\n",
+			name:  "release tag",
+			line:  "      - uses: actions/checkout@v7.0.1\n",
 			owner: "actions", repo: "checkout",
-			sha:   "8e8c483db84b4bee98b60c0593521ed34d9990e8",
-			ref:   "v6.0.1",
+			ref:   "v7.0.1",
 			match: true,
 		},
 		{
-			name:  "branch comment",
-			line:  "      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main\n",
-			owner: "NixOS", repo: "nix-installer-action",
-			sha:   "6b8548fe06acfb0155a50ab5d561accb215764cc",
-			ref:   "main",
+			name:  "action in a subdirectory",
+			line:  "        uses: mitchellh/vouch/action/check-pr@v1.5.0\n",
+			owner: "mitchellh", repo: "vouch", sub: "/action/check-pr",
+			ref:   "v1.5.0",
 			match: true,
 		},
 		{
-			// No SHA to replace and no comment to correct; leave it alone
-			// rather than silently changing how it is pinned.
-			name: "unpinned branch reference",
-			line: "        uses: alexellis/setup-sshd-actor@master\n",
+			name:  "branch",
+			line:  "        uses: self-actuated/block-with-tmux@master\n",
+			owner: "self-actuated", repo: "block-with-tmux",
+			ref:   "master",
+			match: true,
 		},
 		{
 			name: "local reusable workflow",
 			line: "    uses: ./.github/workflows/integration-test-template.yml\n",
 		},
+		{
+			name: "same-repo action",
+			line: "        uses: $/.github/actions/headscale-up\n",
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			m := actionPin.FindStringSubmatch(test.line)
+			m := actionRef.FindStringSubmatch(test.line)
 			if (m != nil) != test.match {
 				t.Fatalf("match = %v, want %v", m != nil, test.match)
 			}
@@ -49,7 +55,7 @@ func TestActionPinMatch(t *testing.T) {
 				return
 			}
 
-			for i, want := range map[int]string{2: test.owner, 3: test.repo, 4: test.sub, 5: test.sha, 7: test.ref} {
+			for i, want := range map[int]string{2: test.owner, 3: test.repo, 4: test.sub, 5: test.ref} {
 				if m[i] != want {
 					t.Errorf("group %d = %q, want %q", i, m[i], want)
 				}
@@ -58,15 +64,79 @@ func TestActionPinMatch(t *testing.T) {
 	}
 }
 
-func TestActionPinRewrite(t *testing.T) {
-	const line = "      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1\n"
+func TestRewriteActions(t *testing.T) {
+	const content = `    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: mitchellh/vouch/action/check-pr@v1.5.0
+      - uses: self-actuated/block-with-tmux@master
+      - uses: $/.github/actions/headscale-up
+`
 
-	m := actionPin.FindStringSubmatch(line)
-	got := m[1] + m[2] + "/" + m[3] + m[4] + "@" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" + m[6] + "v7.0.0"
+	const want = `    steps:
+      - uses: actions/checkout@v7.1.0
+        with:
+          persist-credentials: false
+      - uses: mitchellh/vouch/action/check-pr@v1.5.0
+      - uses: self-actuated/block-with-tmux@master
+      - uses: $/.github/actions/headscale-up
+`
 
-	const want = "uses: actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa # v7.0.0"
+	// Pre-resolved, so the test needs no network; the branch is never looked up.
+	latest := map[string]string{"actions/checkout": "v7.1.0", "mitchellh/vouch": "v1.5.0"}
+	moved := map[string]string{}
+
+	got, err := rewriteActions(t.Context(), content, latest, moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if got != want {
-		t.Errorf("rewrite = %q, want %q", got, want)
+		t.Errorf("rewrite =\n%s\nwant\n%s", got, want)
+	}
+
+	if len(moved) != 1 || moved["actions/checkout"] != "actions/checkout v7.0.1 -> v7.1.0" {
+		t.Errorf("moved = %v", moved)
+	}
+}
+
+func TestLockMoves(t *testing.T) {
+	const before = `version: 'v0.0.3'
+dependencies:
+    'actions/checkout@v7.0.1':
+        ref: 'v7.0.1'
+        commit: 'sha1-3d3c42e5aac5ba805825da76410c181273ba90b1'
+    'self-actuated/block-with-tmux@master':
+        ref: 'master'
+        commit: 'sha1-4d7a7ea0000000000000000000000000000000000'
+    'mic92/hestia@v3.1.0':
+        ref: 'v3.1.0'
+        commit: 'sha1-dfed9ced335d28978ba74e513939a10db1f71025'
+`
+
+	const after = `version: 'v0.0.3'
+dependencies:
+    'actions/checkout@v7.1.0':
+        ref: 'v7.1.0'
+        commit: 'sha1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    'self-actuated/block-with-tmux@master':
+        ref: 'master'
+        commit: 'sha1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    'mic92/hestia@v3.1.0':
+        ref: 'v3.1.0'
+        commit: 'sha1-dfed9ced335d28978ba74e513939a10db1f71025'
+`
+
+	got, err := lockMoves(before, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The checkout tag move is a new entry, not a move; only the branch counts.
+	want := []string{"self-actuated/block-with-tmux@master 4d7a7ea -> bbbbbbb"}
+	if !slices.Equal(got, want) {
+		t.Errorf("lockMoves = %q, want %q", got, want)
 	}
 }
 
