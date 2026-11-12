@@ -115,12 +115,14 @@ jobs:
           # which works but is one step further from the source).
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
+          POSTGRES_FLAG: ${{ inputs.postgres_flag }}
+          TEST_NAME: ${{ inputs.test }}
         run: |
           /tmp/artifacts/hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 \
             --test-binary=/tmp/artifacts/integration.test \
             --timeout=120m \
-            ${{ inputs.postgres_flag }} \
-            "^${{ inputs.test }}$"
+            ${POSTGRES_FLAG} \
+            "^${TEST_NAME}$"
       # Sanitize test name for artifact upload (replace invalid characters: " : < > | * ? \ / with -)
       - name: Sanitize test name for artifacts
         if: always()

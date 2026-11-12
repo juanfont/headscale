@@ -51,6 +51,9 @@ jobs:
       - name: Vendor hash diverging
         uses: actions/github-script@v9.0.0
         if: failure() && steps.vendorhash.outcome == 'failure'
+        env:
+          EXPECTED_SRI: ${{ steps.vendorhash.outputs.expected_sri }}
+          ACTUAL_SRI: ${{ steps.vendorhash.outputs.actual_sri }}
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
@@ -58,7 +61,7 @@ jobs:
               pull_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: 'Vendor hash in `flakehashes.json` is stale (was `${{ steps.vendorhash.outputs.expected_sri }}`, should be `${{ steps.vendorhash.outputs.actual_sri }}`). Run `go run ./cmd/vendorhash update` and commit the result.'
+              body: `Vendor hash in \`flakehashes.json\` is stale (was \`${process.env.EXPECTED_SRI}\`, should be \`${process.env.ACTUAL_SRI}\`). Run \`go run ./cmd/vendorhash update\` and commit the result.`
             })
 
       - name: Run nix build
