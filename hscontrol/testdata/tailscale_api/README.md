@@ -53,13 +53,13 @@ Facts:
    the call: "Mark a device's node key as expired. This will require the device
    to re-authenticate in order to connect to the tailnet." With key expiry
    disabled the device does not have to re-authenticate.
-2. **A 200 for a call that had no effect.** The caller cannot tell that nothing
+1. **A 200 for a call that had no effect.** The caller cannot tell that nothing
    happened. An admin who expires a compromised tagged server believes it is
    cut off, and it is not.
-3. **The state afterwards contradicts itself.** `GET /device/{id}` shows
+1. **The state afterwards contradicts itself.** `GET /device/{id}` shows
    `expires` in the past, `connectedToControl: true` and
    `keyExpiryDisabled: true` at the same time.
-4. **The expire fires later, from another call.** When somebody enables key
+1. **The expire fires later, from another call.** When somebody enables key
    expiry on that device days later, it is logged out at once, because the old
    expire is still stored. The cause and the effect are far apart.
 
@@ -82,83 +82,84 @@ think it might be wrong."
 
 Files: `probe-A`, `probe-E`, `probe-F`, `probe-G`, `probe-J`.
 
-| Case                                              | Tailscale                                                                                   | Headscale `/api/v2`                               | v0 (002)                                   |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------ |
-| tag not in `tagOwners`, admin API key             | 400 "requested tags [tag:x] are invalid or not permitted"                                   | refused for OAuth callers only                    | **decided:** refuse, `tags_not_permitted`  |
-| tag without `tag:` prefix                         | 400, the same message                                                                       | not checked                                       | `invalid_field` or `tags_not_permitted`    |
-| no `expirySeconds`, or `0`                        | 90 days                                                                                     | 90 days                                           | expiry required; the CLI gives the default |
-| `expirySeconds` over 90 days                      | 400 "expirySeconds must be less than or equal to 7776000"                                   | the same cap                                      | **decided:** no cap                        |
-| negative `expirySeconds`                          | 400 "expirySeconds must be greater than or equal to 0"                                      | not checked                                       | `expiry_in_past`                           |
-| defaults                                          | `reusable`, `ephemeral`, `preauthorized` all `false`                                        | not checked                                       | the same                                   |
-| description of 51 characters                      | 200, accepted                                                                               | `maxLength: 50`, refused                          | no limit stated                            |
-| empty body                                        | 400 "exactly one capability scope must be populated"                                        | not checked                                       | `invalid_field`                            |
-| unknown field in the body                         | ignored, 200                                                                                | not checked                                       | refused (422)                              |
-| bad JSON                                          | 400 "invalid JSON in request body"                                                          | not checked                                       | `invalid_request`                          |
-| `keyType: "api"`                                  | 400 "invalid key type, \"api\" is not supported"                                            | not checked                                       | API keys are their own resource            |
-| a tagged key                                      | has a `userId`: the user whose API key made it                                              | not checked                                       | `createdBy`                                |
-| `DELETE` a key (unused, or in use, or ephemeral)  | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true`         | the same (soft revoke, reaped after 168 h)        | one operation, a soft delete               |
-| `DELETE` it again                                 | 200                                                                                         | 200                                               | 204 again                                  |
-| a node that joined with the deleted key           | keeps running; stays ephemeral                                                              | keeps running                                     | keeps running                              |
-| a single-use key after a node used it             | `invalid: true` and `revoked` set to the time of use                                        | a `used` flag                                     | state `used`                               |
-| a key past its expiry                             | `invalid: true`, `revoked: null`                                                            | not checked                                       | state `expired`                            |
-| the key list                                      | hides revoked, used and expired keys; entries have no `capabilities`                        | hides them too                                    | lists every key, with `state`              |
-| an unknown key ID                                 | `GET` 404 "not found"; `DELETE` 404 "key not found"                                         | 404                                               | `not_found`                                |
-| revoked keys, 15 minutes later                    | still readable by ID. How long they stay was not measured.                                  | deleted after `preauth_keys.revoked_retention`    | the same retention                         |
+| Case                                             | Tailscale                                                                           | Headscale `/api/v2`                            | v0 (002)                                   |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------ |
+| tag not in `tagOwners`, admin API key            | 400 "requested tags [tag:x] are invalid or not permitted"                           | refused for OAuth callers only                 | **decided:** refuse, `tags_not_permitted`  |
+| tag without `tag:` prefix                        | 400, the same message                                                               | not checked                                    | `invalid_field` or `tags_not_permitted`    |
+| no `expirySeconds`, or `0`                       | 90 days                                                                             | 90 days                                        | expiry required; the CLI gives the default |
+| `expirySeconds` over 90 days                     | 400 "expirySeconds must be less than or equal to 7776000"                           | the same cap                                   | **decided:** no cap                        |
+| negative `expirySeconds`                         | 400 "expirySeconds must be greater than or equal to 0"                              | not checked                                    | `expiry_in_past`                           |
+| defaults                                         | `reusable`, `ephemeral`, `preauthorized` all `false`                                | not checked                                    | the same                                   |
+| description of 51 characters                     | 200, accepted                                                                       | `maxLength: 50`, refused                       | no limit stated                            |
+| empty body                                       | 400 "exactly one capability scope must be populated"                                | not checked                                    | `invalid_field`                            |
+| unknown field in the body                        | ignored, 200                                                                        | not checked                                    | refused (422)                              |
+| bad JSON                                         | 400 "invalid JSON in request body"                                                  | not checked                                    | `invalid_request`                          |
+| `keyType: "api"`                                 | 400 "invalid key type, "api" is not supported"                                      | not checked                                    | API keys are their own resource            |
+| a tagged key                                     | has a `userId`: the user whose API key made it                                      | not checked                                    | `createdBy`                                |
+| `DELETE` a key (unused, or in use, or ephemeral) | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true` | the same (soft revoke, reaped after 168 h)     | one operation, a soft delete               |
+| `DELETE` it again                                | 200                                                                                 | 200                                            | 204 again                                  |
+| a node that joined with the deleted key          | keeps running; stays ephemeral                                                      | keeps running                                  | keeps running                              |
+| a single-use key after a node used it            | `invalid: true` and `revoked` set to the time of use                                | a `used` flag                                  | state `used`                               |
+| a key past its expiry                            | `invalid: true`, `revoked: null`                                                    | not checked                                    | state `expired`                            |
+| the key list                                     | hides revoked, used and expired keys; entries have no `capabilities`                | hides them too                                 | lists every key, with `state`              |
+| an unknown key ID                                | `GET` 404 "not found"; `DELETE` 404 "key not found"                                 | 404                                            | `not_found`                                |
+| revoked keys, 15 minutes later                   | still readable by ID. How long they stay was not measured.                          | deleted after `preauth_keys.revoked_retention` | the same retention                         |
 
 ## 3. OAuth clients
 
 File: `probe-G`.
 
-| Case                                | Tailscale                                                                                  | Headscale `/api/v2`             | v0 (002)                |
-| ----------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------- | ----------------------- |
-| create with a read scope, no tags   | 200; `expires: null`; has a `userId`                                                       | allowed                         | allowed                 |
-| a scope that needs tags, no tags    | 400 "OAuth clients with auth key write scope must specify one or more tags"                | refused                         | `scope_requires_tags`   |
-| unknown scope                       | 400 `invalid scopes: ["devices:cor"]`                                                      | not checked                     | `invalid_scope`         |
-| no scopes                           | 400 "scopes cannot be empty, at least one scope is required for OAuth clients"             | not checked                     | `invalid_field`         |
-| in the key list                     | only with `?all=true`                                                                      | the same                        | its own resource        |
-| `DELETE`                            | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true`        | a hard delete, with its tokens  | a soft delete           |
-| `DELETE` again                      | 200                                                                                        | not checked                     | 204                     |
+| Case                              | Tailscale                                                                           | Headscale `/api/v2`                    | v0 (002)                 |
+| --------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------- | ------------------------ |
+| create with a read scope, no tags | 200; `expires: null`; has a `userId`                                                | allowed                                | allowed                  |
+| a scope that needs tags, no tags  | 400 "OAuth clients with auth key write scope must specify one or more tags"         | refused                                | `scope_requires_tags`    |
+| unknown scope                     | 400 `invalid scopes: ["devices:cor"]`                                               | not checked                            | `invalid_scope`          |
+| no scopes                         | 400 "scopes cannot be empty, at least one scope is required for OAuth clients"      | not checked                            | `invalid_field`          |
+| in the key list                   | only with `?all=true`                                                               | the same                               | its own resource         |
+| `DELETE`                          | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true` | a hard delete, with its tokens         | a soft delete            |
+| `DELETE` again                    | 200                                                                                 | not checked                            | 204                      |
+| a token deletes its own client    | 200 `null`; the next call with that token is 401 "API token invalid" (`probe-Q`)    | tokens of a deleted client are refused | 204, then `unauthorized` |
 
 ## 4. Devices
 
 File: `probe-J`. The `lastSeen` values are in `probe-B`.
 
-| Case                                        | Tailscale                                                                           | Headscale `/api/v2`              | v0 (002)                                      |
-| ------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------- | --------------------------------------------- |
-| ID in the path                              | the numeric `id` and the `nodeId` both work                                         | one ID                           | one ID                                        |
-| `user` of a tagged device                   | the user whose key made the auth key                                                | the same                         | `owner.user` is `null`; `createdBy` is open   |
-| rename                                      | 200                                                                                 | 200                              | `PATCH`, returns the node                     |
-| rename to a name another device has         | 400 `name "x" is already taken`                                                     | not checked                      | `name_taken`                                  |
-| rename to `""`                              | 200; the name goes back to the one made from the hostname                           | not checked                      | the same: the name is reset                   |
-| rename to `"Bad Name!"`                     | 200; the resulting name was not recorded                                            | not checked                      | `invalid_field`                               |
-| tags `[]` on a tagged device                | 400 "tagged nodes cannot be untagged without reauth"                                | accepted as "no change"          | `tags_required`                               |
-| a tag that is not in the policy             | 400 "requested tags [...] are invalid or not permitted"                             | refused                          | `tags_not_permitted`                          |
-| tag a user-owned device                     | 200; `user` stays; `keyExpiryDisabled` stays `false`                                | 200; the expiry stays            | 200; the owner becomes the tags               |
-| enable one exit prefix (`0.0.0.0/0`)        | only that one is enabled; `::/0` is not                                             | not checked                      | "one exit prefix approves both"               |
-| enable a route the node does not advertise  | 200; it is stored as enabled                                                        | not checked                      | not stated                                    |
-| a route that is not a prefix                | 400 `"not-a-route" is not a valid IP address or CIDR prefix`                        | not checked                      | `invalid_field`                               |
-| routes `[]`                                 | 200; clears                                                                         | clears                           | clears                                        |
-| `authorized: false`                         | 200; the device is deauthorized, also with device approval off                      | refused (400)                    | reserved, not built                           |
-| attributes                                  | `ip:country`, `ip:publicAddress` (`{"type": "IpAddr", "value": ...}`), `node:os`, `node:osVersion`, `node:tsAutoUpdate`, `node:tsReleaseTrack`, `node:tsStateEncrypted`, `node:tsVersion` | only `ip:publicAddress`, as a string | `attributes`, a map; today one entry |
-| `lastSeen` of a connected device            | the current time                                                                    | the current time                 | **decided:** the current time                 |
-| `updateAvailable`                           | `true` for an old client                                                            | always `false`                   | no such field                                 |
-| unknown field in a body                     | ignored, 200                                                                        | ignored                          | refused (422)                                 |
-| `DELETE`                                    | 200                                                                                 | 200                              | 204                                           |
-| `GET` or `DELETE` a deleted device          | 404 "no manageable device matching this ID found"                                   | 404                              | `not_found`                                   |
+| Case                                       | Tailscale                                                                                                                                                                                 | Headscale `/api/v2`                  | v0 (002)                                    |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------- |
+| ID in the path                             | the numeric `id` and the `nodeId` both work                                                                                                                                               | one ID                               | one ID                                      |
+| `user` of a tagged device                  | the user whose key made the auth key                                                                                                                                                      | the same                             | `owner.user` is `null`; `createdBy` is open |
+| rename                                     | 200                                                                                                                                                                                       | 200                                  | `PATCH`, returns the node                   |
+| rename to a name another device has        | 400 `name "x" is already taken`                                                                                                                                                           | not checked                          | `name_taken`                                |
+| rename to `""`                             | 200; the name goes back to the one made from the hostname                                                                                                                                 | not checked                          | the same: the name is reset                 |
+| rename to `"Bad Name!"`                    | 200; the resulting name was not recorded                                                                                                                                                  | not checked                          | `invalid_field`                             |
+| tags `[]` on a tagged device               | 400 "tagged nodes cannot be untagged without reauth"                                                                                                                                      | accepted as "no change"              | `tags_required`                             |
+| a tag that is not in the policy            | 400 "requested tags [...] are invalid or not permitted"                                                                                                                                   | refused                              | `tags_not_permitted`                        |
+| tag a user-owned device                    | 200; `user` stays; `keyExpiryDisabled` stays `false`                                                                                                                                      | 200; the expiry stays                | 200; the owner becomes the tags             |
+| enable one exit prefix (`0.0.0.0/0`)       | only that one is enabled; `::/0` is not                                                                                                                                                   | not checked                          | "one exit prefix approves both"             |
+| enable a route the node does not advertise | 200; it is stored as enabled                                                                                                                                                              | not checked                          | not stated                                  |
+| a route that is not a prefix               | 400 `"not-a-route" is not a valid IP address or CIDR prefix`                                                                                                                              | not checked                          | `invalid_field`                             |
+| routes `[]`                                | 200; clears                                                                                                                                                                               | clears                               | clears                                      |
+| `authorized: false`                        | 200; the device is deauthorized, also with device approval off                                                                                                                            | refused (400)                        | reserved, not built                         |
+| attributes                                 | `ip:country`, `ip:publicAddress` (`{"type": "IpAddr", "value": ...}`), `node:os`, `node:osVersion`, `node:tsAutoUpdate`, `node:tsReleaseTrack`, `node:tsStateEncrypted`, `node:tsVersion` | only `ip:publicAddress`, as a string | `attributes`, a map; today one entry        |
+| `lastSeen` of a connected device           | the current time                                                                                                                                                                          | the current time                     | **decided:** the current time               |
+| `updateAvailable`                          | `true` for an old client                                                                                                                                                                  | always `false`                       | no such field                               |
+| unknown field in a body                    | ignored, 200                                                                                                                                                                              | ignored                              | refused (422)                               |
+| `DELETE`                                   | 200                                                                                                                                                                                       | 200                                  | 204                                         |
+| `GET` or `DELETE` a deleted device         | 404 "no manageable device matching this ID found"                                                                                                                                         | 404                                  | `not_found`                                 |
 
 ## 5. Policy
 
 File: `probe-KLM`. Nothing was written.
 
-| Case                                  | Tailscale                                                                                    | v0 (002)                               |
-| ------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `GET /acl`                            | HuJSON by default; JSON with `Accept: application/json`; an `ETag` header                    | JSON with the policy as a string; ETag |
-| `GET /acl?details=1`                  | `{acl, errors, warnings}`                                                                    | none                                   |
-| `POST /acl` with a wrong `If-Match`   | 412 "precondition failed, invalid old hash"; checked before the policy is read               | 412 `precondition_failed`              |
-| validate: a valid policy              | 200 `{}`                                                                                     | 200 with the policy (dry run)          |
-| validate: bad syntax                  | **200** `{"message": "line 1, column 11: parsing value: unexpected EOF"}`                    | 422 `policy_invalid`                   |
-| validate: an unknown tag              | **200** `{"message": "src=tag not found: \"tag:nope\""}`                                     | 422 `policy_invalid`                   |
-| validate: a failing test              | **200** `{"message": "test(s) failed", "data": [{"user": "tag:server", "errors": ["... want: Accept, got: Drop"]}]}` | 422 `policy_invalid`, `failedTests` |
+| Case                                | Tailscale                                                                                                            | v0 (002)                               |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `GET /acl`                          | HuJSON by default; JSON with `Accept: application/json`; an `ETag` header                                            | JSON with the policy as a string; ETag |
+| `GET /acl?details=1`                | `{acl, errors, warnings}`                                                                                            | none                                   |
+| `POST /acl` with a wrong `If-Match` | 412 "precondition failed, invalid old hash"; checked before the policy is read                                       | 412 `precondition_failed`              |
+| validate: a valid policy            | 200 `{}`                                                                                                             | 200 with the policy (dry run)          |
+| validate: bad syntax                | **200** `{"message": "line 1, column 11: parsing value: unexpected EOF"}`                                            | 422 `policy_invalid`                   |
+| validate: an unknown tag            | **200** `{"message": "src=tag not found: \"tag:nope\""}`                                                             | 422 `policy_invalid`                   |
+| validate: a failing test            | **200** `{"message": "test(s) failed", "data": [{"user": "tag:server", "errors": ["... want: Accept, got: Drop"]}]}` | 422 `policy_invalid`, `failedTests`    |
 
 Tailscale answers 200 for an invalid policy in validate, and the body says it
 is invalid. A client must read the body to know. v0 uses the status.
@@ -178,17 +179,17 @@ File: `probe-KLM`.
 
 File: `probe-G`.
 
-| Case                         | Tailscale                                                                                  | v0 (002)                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------ | ------------------------ |
-| error body                   | `{"message": "..."}`; no code                                                              | a problem with a `code`  |
-| no or wrong credential       | 401 "API token invalid"                                                                    | `unauthorized`           |
-| unknown device               | 404 "no manageable device matching this ID found"                                          | `not_found`              |
-| unknown query parameter      | ignored, 200                                                                               | refused (422)            |
-| `fields=bogus`               | 400 `"bogus" is not a valid fields parameter`                                              | no `fields` parameter    |
-| wrong method                 | 405 `{"error": "method_not_allowed", "message": "..."}` (another body shape)               | `method_not_allowed`     |
-| unknown path                 | 404, plain text "404 page not found"                                                       | a problem                |
-| another tailnet's name       | 404 `tailnet "example.invalid" not found`                                                  | no tailnet in the path   |
-| request ID                   | header `x-tailscale-request-id`                                                            | `requestId` in a problem |
+| Case                    | Tailscale                                                                    | v0 (002)                 |
+| ----------------------- | ---------------------------------------------------------------------------- | ------------------------ |
+| error body              | `{"message": "..."}`; no code                                                | a problem with a `code`  |
+| no or wrong credential  | 401 "API token invalid"                                                      | `unauthorized`           |
+| unknown device          | 404 "no manageable device matching this ID found"                            | `not_found`              |
+| unknown query parameter | ignored, 200                                                                 | refused (422)            |
+| `fields=bogus`          | 400 `"bogus" is not a valid fields parameter`                                | no `fields` parameter    |
+| wrong method            | 405 `{"error": "method_not_allowed", "message": "..."}` (another body shape) | `method_not_allowed`     |
+| unknown path            | 404, plain text "404 page not found"                                         | a problem                |
+| another tailnet's name  | 404 `tailnet "example.invalid" not found`                                    | no tailnet in the path   |
+| request ID              | header `x-tailscale-request-id`                                              | `requestId` in a problem |
 
 ## 8. Where Headscale's `/api/v2` differs from Tailscale
 
@@ -197,18 +198,18 @@ so each is a candidate for an issue.
 
 1. `POST /device/{id}/expire` logs out a node whose key expiry is disabled.
    Tailscale does not. (See section 1; which side is right is open.)
-2. `POST /device/{id}/key {"keyExpiryDisabled": false}` is a no-op. On
+1. `POST /device/{id}/key {"keyExpiryDisabled": false}` is a no-op. On
    Tailscale it turns key expiry on.
-3. A key description is limited to 50 characters. Tailscale accepted 51.
-4. `POST /device/{id}/tags` with `[]` is accepted as "no change". Tailscale
+1. A key description is limited to 50 characters. Tailscale accepted 51.
+1. `POST /device/{id}/tags` with `[]` is accepted as "no change". Tailscale
    answers 400 "tagged nodes cannot be untagged without reauth".
-5. Deleting an OAuth client is a hard delete. On Tailscale it is a soft revoke,
+1. Deleting an OAuth client is a hard delete. On Tailscale it is a soft revoke,
    and the client can still be read by its ID.
-6. An auth key with a tag that is not in the policy is accepted from an API
+1. An auth key with a tag that is not in the policy is accepted from an API
    key. Tailscale refuses it for every caller.
-7. `POST /device/{id}/authorized {"authorized": false}` is refused. Tailscale
+1. `POST /device/{id}/authorized {"authorized": false}` is refused. Tailscale
    accepts it.
-8. Attributes: only `ip:publicAddress`, and as a plain string. Tailscale sends
+1. Attributes: only `ip:publicAddress`, and as a plain string. Tailscale sends
    an object `{"type": "IpAddr", "value": ...}` and the `node:` attributes.
 
 Not checked in Headscale: a route that is not advertised, rename to `""`.
@@ -263,11 +264,11 @@ understand how the soft delete work and when or how it is cleaned up."
 
 Captured (`probe-E`, `probe-F`, `probe-G`, `probe-J`):
 
-| Kind         | `DELETE`                | `GET` by ID afterwards                    | In the list afterwards | `DELETE` again |
-| ------------ | ----------------------- | ----------------------------------------- | ---------------------- | -------------- |
-| auth key     | 200                     | 200, with `revoked` and `invalid: true`   | no                     | 200            |
-| OAuth client | 200                     | 200, with `revoked` and `invalid: true`   | not checked            | 200            |
-| API key      | not tested, see below   |                                           |                        |                |
+| Kind         | `DELETE`              | `GET` by ID afterwards                  | In the list afterwards | `DELETE` again |
+| ------------ | --------------------- | --------------------------------------- | ---------------------- | -------------- |
+| auth key     | 200                   | 200, with `revoked` and `invalid: true` | no                     | 200            |
+| OAuth client | 200                   | 200, with `revoked` and `invalid: true` | not checked            | 200            |
+| API key      | not tested, see below |                                         |                        |                |
 
 - Auth keys and OAuth clients behave the same: `DELETE` is a soft revoke.
 - A single-use auth key is revoked by Tailscale itself when a node uses it: it
@@ -297,11 +298,11 @@ Captured (`probe-E`, `probe-F`, `probe-G`, `probe-J`):
 
 ### Headscale today
 
-| Kind         | Soft revoke                                              | Clean-up                                                                 |
-| ------------ | -------------------------------------------------------- | ------------------------------------------------------------------------ |
-| auth key     | yes: `db.RevokePreAuthKey`, used by `/api/v2` `DELETE`   | a job, see below                                                         |
-| OAuth client | no: `DELETE` removes the client and its tokens at once   | none needed                                                              |
-| API key      | no: "expire" sets the expiry to now; delete removes it   | none                                                                     |
+| Kind         | Soft revoke                                            | Clean-up         |
+| ------------ | ------------------------------------------------------ | ---------------- |
+| auth key     | yes: `db.RevokePreAuthKey`, used by `/api/v2` `DELETE` | a job, see below |
+| OAuth client | no: `DELETE` removes the client and its tokens at once | none needed      |
+| API key      | no: "expire" sets the expiry to now; delete removes it | none             |
 
 How the soft revoke of an auth key works:
 
@@ -333,7 +334,7 @@ How the soft revoke of an auth key works:
 - v0's lists show every key with its `state`, so a revoked key is visible until
   the job removes it. That is more than Tailscale's list shows; it is what the
   CLI's `--all` needs.
-**Decided for v0:** auth keys, API keys and OAuth clients end with one
-operation, `DELETE`, a soft delete. The CLI verb is `delete`. Headscale's
-clean-up rule applies to all three kinds. A used single-use key keeps its own
-state, `used`.
+  **Decided for v0:** auth keys, API keys and OAuth clients end with one
+  operation, `DELETE`, a soft delete. The CLI verb is `delete`. Headscale's
+  clean-up rule applies to all three kinds. A used single-use key keeps its own
+  state, `used`.
