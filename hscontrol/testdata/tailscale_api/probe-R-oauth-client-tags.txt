@@ -1,0 +1,8 @@
+# R. Tags of a new OAuth client, made with an admin API key (2026-11-13T16:24Z)
+R0 tagOwners in the policy                  : ["tag:client","tag:db","tag:exit","tag:exit-a","tag:exit-b","tag:fearow","tag:group-a","tag:group-b","tag:ha","tag:ha-a","tag:ha-a1","tag:ha-a2","tag:ha-b","tag:ha-b1","tag:ha-b2","tag:pidgeotto","tag:pidgey","tag:prod","tag:router","tag:router-a","tag:router-b","tag:router-c","tag:server","tag:spearow","tag:web"]
+R1 tag that is in the policy                : {"id":"kgBwmWZXZ811CNTRL","key":"tskey-client-kgBwmW-REDACTED","keyType":"client","created":"2026-11-13T16:24:31Z","scopes":["auth_keys"],"tags":["tag:server"],"description":"hs probe R1","userId":"uRWUsmwMTZ11CNTRL"} HTTP 200
+R2 tag that is not in the policy            : {"message":"requested tags [tag:hsprobe-nopolicy] are invalid or not permitted"} HTTP 400
+R3 one tag in, one tag not                  : {"message":"requested tags [tag:hsprobe-nopolicy] are invalid or not permitted"} HTTP 400
+R4 read scope, tag not in the policy        : {"message":"requested tags [tag:hsprobe-nopolicy] are invalid or not permitted"} HTTP 400
+R5 tag without the tag: prefix              : {"message":"requested tags [server] are invalid or not permitted"} HTTP 400
+cleanup DELETE kgBwmWZXZ811CNTRL -> 200

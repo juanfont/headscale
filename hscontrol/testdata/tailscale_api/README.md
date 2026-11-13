@@ -109,16 +109,17 @@ Files: `probe-A`, `probe-E`, `probe-F`, `probe-G`, `probe-J`.
 
 File: `probe-G`.
 
-| Case                              | Tailscale                                                                           | Headscale `/api/v2`                    | v0 (002)                 |
-| --------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------- | ------------------------ |
-| create with a read scope, no tags | 200; `expires: null`; has a `userId`                                                | allowed                                | allowed                  |
-| a scope that needs tags, no tags  | 400 "OAuth clients with auth key write scope must specify one or more tags"         | refused                                | `scope_requires_tags`    |
-| unknown scope                     | 400 `invalid scopes: ["devices:cor"]`                                               | not checked                            | `invalid_scope`          |
-| no scopes                         | 400 "scopes cannot be empty, at least one scope is required for OAuth clients"      | not checked                            | `invalid_field`          |
-| in the key list                   | only with `?all=true`                                                               | the same                               | its own resource         |
-| `DELETE`                          | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true` | a hard delete, with its tokens         | a soft delete            |
-| `DELETE` again                    | 200                                                                                 | not checked                            | 204                      |
-| a token deletes its own client    | 200 `null`; the next call with that token is 401 "API token invalid" (`probe-Q`)    | tokens of a deleted client are refused | 204, then `unauthorized` |
+| Case                              | Tailscale                                                                                      | Headscale `/api/v2`                    | v0 (002)                 |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------ |
+| create with a read scope, no tags | 200; `expires: null`; has a `userId`                                                           | allowed                                | allowed                  |
+| a scope that needs tags, no tags  | 400 "OAuth clients with auth key write scope must specify one or more tags"                    | refused                                | `scope_requires_tags`    |
+| a tag that is not in the policy   | 400 "requested tags [...] are invalid or not permitted", also for an admin API key (`probe-R`) | refused for a token only               | `tags_not_permitted`     |
+| unknown scope                     | 400 `invalid scopes: ["devices:cor"]`                                                          | not checked                            | `invalid_scope`          |
+| no scopes                         | 400 "scopes cannot be empty, at least one scope is required for OAuth clients"                 | not checked                            | `invalid_field`          |
+| in the key list                   | only with `?all=true`                                                                          | the same                               | its own resource         |
+| `DELETE`                          | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true`            | a hard delete, with its tokens         | a soft delete            |
+| `DELETE` again                    | 200                                                                                            | not checked                            | 204                      |
+| a token deletes its own client    | 200 `null`; the next call with that token is 401 "API token invalid" (`probe-Q`)               | tokens of a deleted client are refused | 204, then `unauthorized` |
 
 ## 4. Devices
 
@@ -211,6 +212,9 @@ so each is a candidate for an issue.
    accepts it.
 1. Attributes: only `ip:publicAddress`, and as a plain string. Tailscale sends
    an object `{"type": "IpAddr", "value": ...}` and the `node:` attributes.
+1. An OAuth client with a tag that is not in the policy is accepted from an
+   API key. Tailscale refuses it for every caller, also with a read scope
+   (`probe-R`).
 
 Not checked in Headscale: a route that is not advertised, rename to `""`.
 
