@@ -1,0 +1,43 @@
+# G. Keys
+G1 no expirySeconds          : {"expirySeconds":7776000,"life_days":90,"caps":{"reusable":false,"ephemeral":false,"preauthorized":false},"hasUserId":true}
+G2 empty body {}              : {"message":"exactly one capability scope must be populated"} HTTP 400
+G3 no capabilities.create     : {"id":"knXBWyaxCM11CNTRL","key":"tskey-auth-knXBWy-REDACTED","keyType":"auth","expirySeconds":60,"created":"2026-11-12T18:38:54Z","expires":"2026-11-12T18:39:54Z","capabilities":{"devices":{"cre HTTP 200
+G4 description 51 chars       : {"id":"kremE3f1po11CNTRL","key":"tskey-auth-kremE3-REDACTED","keyType":"auth","expirySeconds":60,"created":"2026-11-12T18:38:54Z","expires":"2026-11-12T18:39:54Z","capabilities":{"devices":{"cre HTTP 200
+G5 expirySeconds 0            : {"message":null,"expirySeconds":7776000}
+G6 expirySeconds -5           : {"message":"expirySeconds must be greater than or equal to 0"} HTTP 400
+G7 unknown body field         : {"id":"kJygcemSr621CNTRL","key":"tskey-auth-kJygce-REDACTED HTTP 200
+G8 bad JSON                   : {"message":"invalid JSON in request body"} HTTP 400
+G9 tag without tag: prefix    : {"message":"requested tags [server] are invalid or not permitted"} HTTP 400
+G10 a key 3s past its expiry  : GET {"invalid":true,"revoked":null,"pastExpiry":true}  in list: 0
+G11 list shape                : {"top":["keys"],"fieldsOfFirst":["created","description","expires","expirySeconds","id","keyType","scopes","userId"]}
+G12 keyType api via the API   : {"message":"invalid key type, \"api\" is not supported"} HTTP 400
+
+# H. OAuth clients
+H1 create, read scope, no tags: {"keyType":"client","scopes":["devices:core:read"],"tags":null,"hasKey":true,"expires":null,"hasUserId":true}
+H2 scope that needs tags      : {"message":"OAuth clients with auth key write scope must specify one or more tags"} HTTP 400
+H3 unknown scope              : {"message":"invalid scopes: [\"devices:cor\"]"} HTTP 400
+H4 no scopes                  : {"message":"scopes cannot be empty, at least one scope is required for OAuth clients"} HTTP 400
+H5 client in list             : default 0  all=true 1
+H6 DELETE client              : null HTTP 200
+H7 GET client after delete    : {"id":"kiJueGvH4521CNTRL","keyType":"client","created":"2026-11-12T18:39:01Z","revoked":"2026-11-12T18:39:02Z","invalid":true,"scopes":["devices:core:read"],"description":"hs probe H1","userId":"uRWUsmwMTZ11CNTRL"} HTTP 200
+H8 DELETE client again        : null HTTP 200
+
+# I. Errors and strictness
+I1 no credential              : {"message":"API token invalid"} HTTP 401
+I2 wrong credential           : {"message":"API token invalid"} HTTP 401
+I3 unknown device             : {"message":"no manageable device matching this ID found"} HTTP 404
+I4 unknown query parameter    : HTTP 200
+I5 fields=bogus               : {"message":"\"bogus\" is not a valid fields parameter"} HTTP 400
+I6 wrong method (PUT devices) : {"error": "method_not_allowed", "message": "HTTP method not allowed for this endpoint"} HTTP 405
+I7 unknown path               : 404 page not found HTTP 404
+I8 other tailnet name         : {"message":"tailnet \"example.invalid\" not found"} HTTP 404
+I9 response headers           : content-type: application/json;x-tailscale-request-id: REQ-2026111218390292177855af467169;x-tailscale-s: 40;
+
+# cleanup: only the 7 keys this probe created
+ DELETE kBk4xUbRuB21CNTRL -> 200
+ DELETE kgyM5rwex121CNTRL -> 200
+ DELETE kiJueGvH4521CNTRL -> 200
+ DELETE kJygcemSr621CNTRL -> 200
+ DELETE knXBWyaxCM11CNTRL -> 200
+ DELETE kremE3f1po11CNTRL -> 200
+ DELETE kz2U2Smfrs11CNTRL -> 200

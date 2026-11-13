@@ -1,0 +1,11 @@
+### A1: auth key, tag NOT in tagOwners (API key of an admin)
+{"message":"requested tags [tag:not-in-policy-probe] are invalid or not permitted"}
+HTTP 400
+
+### A2: auth key, tag IN tagOwners (tag:server)
+{"id":"kWtRcJ6TTH11CNTRL","key":"tskey-auth-kWtRcJ-REDACTED","keyType":"auth","expirySeconds":600,"created":"2026-11-12T18:09:42Z","expires":"2026-11-12T18:19:42Z","capabilities":{"devices":{"create":{"reusable":false,"ephemeral":false,"preauthorized":true,"tags":["tag:server"]}}},"description":"hs probe A2","userId":"uRWUsmwMTZ11CNTRL"}
+HTTP 200
+
+### A3: auth key, expirySeconds over 90 days (100 days)
+{"message":"expirySeconds must be less than or equal to 7776000"}
+HTTP 400

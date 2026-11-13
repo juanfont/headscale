@@ -1,0 +1,27 @@
+# J. Devices   (tagged node id=7990515889368926 nodeId=n1LduZJvP521CNTRL, user node id=7968549144901955)
+J1 fields, default            : ["addresses","authorized","blocksIncomingConnections","clientVersion","connectedToControl","created","expires","hostname","id","isExternal","keyExpiryDisabled","lastSeen","machineKey","name","nodeId","nodeKey","oauthClientId","os","tags","tailnetLockError","tailnetLockKey","updateAvailable","user"]
+J1 fields, extra with all     : ["advertisedRoutes","clientConnectivity","distro","enabledRoutes","postureStatus","sshEnabled"]
+J1 tagged node, some values   : {"name":"hs-probe-tag.tail78f774.ts.net","hostname":"hs-probe-tag","user":"kratail2tid@passkey","tags":["tag:server"],"authorized":true,"isEphemeral":null,"isExternal":false,"blocksIncomingConnections":false,"updateAvailable":true,"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":[],"keyExpiryDisabled":true}
+J1 user node, some values     : {"name":"hs-probe-usr.tail78f774.ts.net","hostname":"hs-probe-usr","user":"kratail2tid@passkey","tags":null,"keyExpiryDisabled":false}
+J1 used single-use keys now   : {"invalid":true,"revoked":"2026-11-12T18:39:44Z"} {"invalid":true,"revoked":"2026-11-12T18:39:45Z"}  in list: 0
+J2 GET by nodeId              : HTTP 200
+J3 rename user node           : null HTTP 200  -> name=hs-probe-renamed.<tailnet>
+J4 rename to a taken name     : {"message":"name \"hs-probe-tag\" is already taken"} HTTP 400  -> name=hs-probe-renamed.<tailnet>
+J5 rename to an invalid name  : null HTTP 200
+J6 rename to empty            : null HTTP 200  -> name=hs-probe-usr.<tailnet>
+J7 tags [] on the tagged node : {"message":"tagged nodes cannot be untagged without reauth"} HTTP 400  -> {"tags":["tag:server"],"user":"kratail2tid@passkey"}
+J8 unknown tag on tagged node : {"message":"requested tags [tag:not-in-policy-probe] are invalid or not permitted"} HTTP 400
+J9 tag the user-owned node    : null HTTP 200  -> {"tags":["tag:server"],"user":"kratail2tid@passkey","keyExpiryDisabled":false}
+J10 tags [] on it afterwards  : {"message":"tagged nodes cannot be untagged without reauth"} HTTP 400  -> {"tags":["tag:server"],"user":"kratail2tid@passkey","keyExpiryDisabled":false}
+J11 GET routes                : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":[]} HTTP 200
+J12 enable one exit prefix    : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":["0.0.0.0/0"]} HTTP 200
+J13 enable a route not offered: {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":["192.168.77.0/24"]} HTTP 200
+J14 invalid route text        : {"message":"\"not-a-route\" is not a valid IP address or CIDR prefix"} HTTP 400
+J15 routes []                 : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":[]} HTTP 200
+J16 attributes                : {"attributes":{"ip:country":"NL","ip:publicAddress":{"type":"IpAddr","value":"REDACTED-IP"},"node:os":"linux","node:osVersion":"6.18.59","node:tsAutoUpdate":false,"node:tsReleaseTrack":"unstable","node:tsStateEncrypted":false,"node:tsVer
+J17 authorized:false          : null HTTP 200  -> authorized=false
+J18 unknown field in body     : null HTTP 200
+J19 DELETE device             : null HTTP 200
+J20 GET deleted device        : {"message":"no manageable device matching this ID found"} HTTP 404
+J21 DELETE it again           : {"message":"no manageable device matching this ID found"} HTTP 404
+cleanup                       : device 200, keys 200 200 , devices left: 0

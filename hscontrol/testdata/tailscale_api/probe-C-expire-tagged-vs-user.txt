@@ -1,0 +1,30 @@
+## tagged: joined
+ api : {"tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2027-05-11T18:10:53Z","connectedToControl":true,"now":"2026-11-12T18:10:56Z"}
+ node: {"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true}
+## tagged: POST /device/{id}/expire ->null HTTP 200
+ after 15s  api : {"tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2026-11-12T18:10:56Z","connectedToControl":true,"now":"2026-11-12T18:11:11Z"}
+ after 15s  node: {"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true}
+## tagged: POST /device/{id}/key {keyExpiryDisabled:false} ->null HTTP 200
+ after 12s  api : {"tags":["tag:server"],"keyExpiryDisabled":false,"expires":"2026-11-12T18:10:56Z","connectedToControl":true,"now":"2026-11-12T18:11:23Z"}
+ after 12s  node: {"BackendState":"NeedsLogin","AuthURL":"","KeyExpiry":"2026-11-12T18:10:55Z","Online":true}
+## tagged: 'tailscale up' with no key (12s):
+   To authenticate, visit:
+   	https://login.tailscale.com/a/REDACTED
+   context canceled
+   node: {"BackendState":"NeedsLogin","AuthURL":"set","KeyExpiry":"2026-11-12T18:10:55Z","Online":false}
+## tagged cleanup: devicenull HTTP 200 keynull HTTP 200
+
+## userowned: joined
+ api : {"tags":null,"keyExpiryDisabled":false,"expires":"2027-05-11T18:11:40Z","connectedToControl":true,"now":"2026-11-12T18:11:44Z"}
+ node: {"BackendState":"Running","AuthURL":"","KeyExpiry":"2027-05-11T18:11:40Z","Online":true}
+## userowned: POST /device/{id}/expire ->null HTTP 200
+ after 15s  api : {"tags":null,"keyExpiryDisabled":false,"expires":"2026-11-12T18:11:43Z","connectedToControl":true,"now":"2026-11-12T18:11:59Z"}
+ after 15s  node: {"BackendState":"NeedsLogin","AuthURL":"","KeyExpiry":"2026-11-12T18:11:43Z","Online":true}
+## userowned: 'tailscale up' with no key (12s):
+   To authenticate, visit:
+   	https://login.tailscale.com/a/REDACTED
+   context canceled
+   node: {"BackendState":"NeedsLogin","AuthURL":"set","KeyExpiry":"2026-11-12T18:11:43Z","Online":false}
+## userowned cleanup: devicenull HTTP 200 keynull HTTP 200
+
+devices left: 0

@@ -1,0 +1,22 @@
+# K. Users (read only)
+K1 list shape                 : {"top":["users"],"count":3,"fieldsOfFirst":["created","displayName","id","lastSeen","loginName","profilePicUrl","role","status","tailnetId","type"]}
+K2 one user (values masked)   : {"id":"uRW…","displayName":"kra…","loginName":"kra…","profilePicUrl":"…","tailnetId":"126…","created":"202…","type":"mem…","role":"own…","status":"act…","lastSeen":"202…"}
+K3 unknown user               : {"message":"404 page not found"} HTTP 404
+K4 filter type=member         : HTTP 200   type=bogus: {"message":"invalid type \"bogus\""} HTTP 400
+
+# L. Policy (nothing is written: every POST to /acl carries a wrong If-Match)
+L1 GET default                : content-type=application/hujson  etag="abbe19c850b74…  bytes=1064
+L2 GET Accept: json           : content-type=application/json
+L3 GET ?details=1             : ["acl","errors","warnings"]
+L4 POST, wrong If-Match       : {"message":"precondition failed, invalid old hash"} HTTP 412
+L5 POST invalid, wrong If-Match: {"message":"precondition failed, invalid old hash"} HTTP 412
+L6 validate: the current file : {} HTTP 200
+L7 validate: bad syntax       : {"message":"line 1, column 11: parsing value: unexpected EOF"} HTTP 200
+L8 validate: unknown tag      : {"message":"src=tag not found: \"tag:nope\""} HTTP 200
+L9 validate: a failing test   : {"message":"test(s) failed","data":[{"user":"tag:server","errors":["[acl test error]: address \"tag:server:80\" (protocol \"tcp\"): want: Accept, got: Drop"]}]} HTTP 200
+L10 validate: tests as JSON list: {"message":"test(s) failed","data":[{"user":"tag:server","errors":["[acl test error]: address \"tag:server:80\" (protocol \"tcp\"): want: Accept, got: Drop"]}]} HTTP 200
+L11 policy unchanged          : etag now "abbe19c850b74…
+
+# M. Tailnet settings (read only)
+M1 settings                   : {"aclsExternallyManagedOn":false,"devicesApprovalOn":false,"devicesAutoUpdatesOn":false,"devicesKeyDurationDays":180,"usersApprovalOn":false,"usersRoleAllowedToJoinExternalTailnets":"admin","networkFlowLoggingOn":false,"postureIdentityCollectionOn":false,"httpsEnabled":false,"regionalRoutingOn":false,"routeSelection":"active-passive-failover"}
+M2 device list top keys       : ["devices"]
