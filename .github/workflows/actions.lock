@@ -104,6 +104,10 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
         - 'mitchellh/vouch@v1.5.0'
+    '.github/workflows/windows-client.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'actions/setup-go@v7.0.0'
+        - 'actions/upload-artifact@v7.0.2'
 dependencies:
     'actions/cache@v6.1.0':
         ref: 'v6.1.0'
@@ -130,6 +134,11 @@ dependencies:
         commit: 'sha1-3a2844b7e9c422d3c10d287c895573f7108da1b3'
         owner_id: 44036562
         repo_id: 205262760
+    'actions/setup-go@v7.0.0':
+        ref: 'v7.0.0'
+        commit: 'sha1-b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
+        owner_id: 44036562
+        repo_id: 192624594
     'actions/setup-python@v7.1.0':
         ref: 'v7.1.0'
         commit: 'sha1-6d4fd22b20465ccc0f7354476588e8df7c9ca0e0'
