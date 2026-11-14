@@ -481,7 +481,7 @@ func apiv2ACLValidateTerraform(t *testing.T, version string, srv *servertest.Tes
 // the Terraform tests run against: the newest three, kept by tools/bump.
 // Committed rather than resolved at test time, so a new release arrives as a
 // bump pull request instead of failing unrelated ones.
-var terraformProviderVersions = []string{"0.29.1", "0.29.2", "0.29.3"}
+var terraformProviderVersions = []string{"0.29.2", "0.29.3", "0.30.0"}
 
 // providerACLValidate is the first provider release that validates
 // tailscale_acl at plan time, through acl/validate.
