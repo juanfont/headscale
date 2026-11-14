@@ -2484,6 +2484,68 @@ func ap(addr string) *netip.Addr  { return new(netip.MustParseAddr(addr)) }
 func pp(pref string) *Prefix      { return new(Prefix(mp(pref))) }
 func p(pref string) Prefix        { return Prefix(mp(pref)) }
 
+func TestResolveUserDomainUsesCurrentUsers(t *testing.T) {
+	const allowed = "alice@allowed.example"
+
+	tests := []struct {
+		name      string
+		email     string
+		nodeUser  *types.User
+		tags      []string
+		omitUsers bool
+		omitKey   bool
+		twoUsers  bool
+		want      bool
+	}{
+		{name: "current user revoked", email: "alice@removed.example", nodeUser: &types.User{ID: 1, Email: allowed}},
+		{name: "current user joined", email: allowed, nodeUser: &types.User{ID: 1, Email: "alice@removed.example"}, want: true},
+		{name: "current user unchanged", email: allowed, nodeUser: &types.User{ID: 1, Email: allowed}, want: true},
+		{name: "second matching user", email: allowed, nodeUser: &types.User{ID: 2}, twoUsers: true, want: true},
+		{name: "association without foreign key", email: allowed, nodeUser: &types.User{ID: 1}, omitKey: true, want: true},
+		{name: "cleared email", nodeUser: &types.User{ID: 1, Email: allowed}},
+		{name: "malformed email", email: "alice.allowed.example", nodeUser: &types.User{ID: 1, Email: allowed}},
+		{name: "case folded domain", email: "alice@ALLOWED.EXAMPLE", nodeUser: &types.User{ID: 1}, want: true},
+		{name: "domain suffix", email: "alice@allowed.example.evil", nodeUser: &types.User{ID: 1, Email: allowed}},
+		{name: "domain prefix", email: "alice@notallowed.example", nodeUser: &types.User{ID: 1, Email: allowed}},
+		{name: "user missing from current list", omitUsers: true, nodeUser: &types.User{ID: 1, Email: allowed}},
+		{name: "different user ID", email: allowed, nodeUser: &types.User{ID: 2, Email: allowed}},
+		{name: "unhydrated owner", email: allowed},
+		{name: "tagged node", email: allowed, nodeUser: &types.User{ID: 1, Email: allowed}, tags: []string{"tag:server"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			users := types.Users{{ID: 1, Name: allowed, Email: tt.email}}
+			if tt.twoUsers {
+				users = append(users, types.User{ID: 2, Email: allowed})
+			}
+
+			if tt.omitUsers {
+				users = nil
+			}
+
+			userID := new(uint(1))
+			if tt.omitKey {
+				userID = nil
+			}
+
+			nodes := types.Nodes{{
+				ID: 1, IPv4: ap("100.64.0.1"), UserID: userID, User: tt.nodeUser, Tags: tt.tags,
+			}}
+			token := Username("user:*@allowed.example")
+			addresses, err := token.Resolve(nil, users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			var want []netip.Prefix
+			if tt.want {
+				want = []netip.Prefix{mp("100.64.0.1/32")}
+			}
+
+			require.ElementsMatch(t, want, addresses.Prefixes())
+		})
+	}
+}
+
 func TestResolvePolicy(t *testing.T) {
 	users := map[string]types.User{
 		"testuser":   {ID: 1, Name: "testuser"},
