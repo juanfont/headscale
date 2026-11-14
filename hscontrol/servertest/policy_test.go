@@ -13,11 +13,15 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/state"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/logger"
 	"tailscale.com/types/netmap"
+	"tailscale.com/wgengine/filter"
 )
 
 // TestPolicyChanges verifies that ACL policy changes propagate
@@ -221,6 +225,104 @@ func TestPolicyChanges(t *testing.T) {
 		servertest.AssertMeshComplete(t,
 			[]*servertest.TestClient{c1, c2, c3})
 	})
+}
+
+// TestUserEmailDomainChangeRevokesLiveAccess checks that changing a user's
+// email updates connected clients without reloading the policy.
+func TestUserEmailDomainChangeRevokesLiveAccess(t *testing.T) {
+	t.Parallel()
+
+	for name, revokedEmail := range map[string]string{
+		"move_domain": "alice@other.example",
+		"clear_email": "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := servertest.NewServer(t)
+			st := srv.State()
+			user, _, err := st.CreateUser(types.User{Name: "alice@example.com", Email: "alice@example.com"})
+			require.NoError(t, err)
+			targetUser := srv.CreateUser(t, "target")
+
+			_, err = st.SetPolicy([]byte(`{
+		"acls": [{"action": "accept", "src": ["user:*@example.com"], "dst": ["target@:443"]}]
+	}`))
+			require.NoError(t, err)
+
+			source := servertest.NewClient(t, srv, "source", servertest.WithUser(user))
+			target := servertest.NewClient(t, srv, "target", servertest.WithUser(targetUser))
+			source.WaitForPeers(t, 1, 10*time.Second)
+			target.WaitForPeers(t, 1, 10*time.Second)
+
+			sourceNode, targetNode := source.Netmap().SelfNode, target.Netmap().SelfNode
+			for _, node := range []tailcfg.NodeView{sourceNode, targetNode} {
+				require.Equal(t, 2, node.Addresses().Len())
+				require.True(t, node.Addresses().At(0).Addr().Is4())
+				require.True(t, node.Addresses().At(1).Addr().Is6())
+			}
+
+			var localIPs netipx.IPSetBuilder
+			for _, prefix := range targetNode.Addresses().All() {
+				localIPs.AddPrefix(prefix)
+			}
+
+			local, err := localIPs.IPSet()
+			require.NoError(t, err)
+
+			waitForAccess := func(allowed bool) {
+				t.Helper()
+
+				wantPeers, wantFilter := 0, filter.Drop
+				if allowed {
+					wantPeers, wantFilter = 1, filter.Accept
+				}
+
+				for _, client := range []*servertest.TestClient{source, target} {
+					peerID := targetNode.ID()
+					if client == target {
+						peerID = sourceNode.ID()
+					}
+
+					client.WaitForCondition(t, fmt.Sprintf("email-domain access allowed=%t", allowed), 10*time.Second,
+						func(nm *netmap.NetworkMap) bool {
+							if len(nm.Peers) != wantPeers || (allowed && nm.Peers[0].ID() != peerID) {
+								return false
+							}
+
+							if client != target {
+								return true
+							}
+
+							packetFilter := filter.New(nm.PacketFilter, nil, local, nil, nil, logger.Discard)
+
+							for family, dst := range targetNode.Addresses().All() {
+								src := sourceNode.Addresses().At(family).Addr()
+								if packetFilter.CheckTCP(src, dst.Addr(), 443) != wantFilter ||
+									packetFilter.CheckTCP(src, dst.Addr(), 80) != filter.Drop {
+									return false
+								}
+							}
+
+							return true
+						})
+				}
+			}
+
+			waitForAccess(true)
+
+			for _, email := range []string{revokedEmail, "alice@example.com"} {
+				_, c, err := st.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
+					u.Email = email
+					return nil
+				})
+				require.NoError(t, err)
+				// OIDC dispatches the returned change before registration confirmation.
+				srv.App.Change(c)
+				waitForAccess(email == "alice@example.com")
+			}
+		})
+	}
 }
 
 // TestIPv6OnlyPrefixACL verifies that an ACL using only IPv6 prefixes
