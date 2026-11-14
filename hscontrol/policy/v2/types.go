@@ -531,13 +531,21 @@ func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types
 
 	// user:*@domain names every user of that email domain, as on SaaS.
 	if domain, ok := strings.CutPrefix(string(*u), "user:*@"); ok {
+		matchingUsers := make(map[uint]bool)
+
+		for _, user := range users {
+			_, emailDomain, found := strings.CutLast(user.Email, "@")
+			if found && strings.EqualFold(emailDomain, domain) {
+				matchingUsers[user.ID] = true
+			}
+		}
+
 		for _, node := range nodes.All() {
 			if node.IsTagged() || !node.User().Valid() {
 				continue
 			}
 
-			_, emailDomain, found := strings.CutLast(node.User().Email(), "@")
-			if found && strings.EqualFold(emailDomain, domain) {
+			if matchingUsers[node.User().ID()] {
 				node.AppendToIPSet(&ips)
 			}
 		}
