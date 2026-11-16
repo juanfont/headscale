@@ -4428,6 +4428,7 @@ func TestEnvNames(t *testing.T) {
 		reflect.TypeFor[[]types.HTTPURL]():     "https://example.com/x",
 		reflect.TypeFor[types.FileMode]():      "0700",
 		reflect.TypeFor[[]string]():            "a b",
+		reflect.TypeFor[[]int]():               "443 8443",
 		reflect.TypeFor[[]tailcfg.DNSRecord](): `[{"name":"a.example.com","type":"A","value":"100.64.0.1"}]`,
 		reflect.TypeFor[map[string][]string](): `{"a.example.com":["1.1.1.1"]}`,
 		reflect.TypeFor[map[string]string]():   `{"k":"v"}`,
@@ -4614,6 +4615,120 @@ func TestMapKeyCollision(t *testing.T) {
 			_, err := Load(dir, false, tt.env)
 			require.ErrorContains(t, err, tt.want)
 			requireHidden(t, err, "marker")
+		})
+	}
+}
+
+func TestFunnelConfig(t *testing.T) {
+	base := `---
+server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+dns:
+  magic_dns: true
+  override_local_dns: false
+  base_domain: ts.example.com
+  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: tok
+`
+
+	tests := []struct {
+		name    string
+		yaml    string
+		want    types.FunnelConfig
+		wantErr string
+	}{
+		{
+			name: "disabled by default",
+			yaml: base,
+			want: types.FunnelConfig{Ports: []int{443, 8443, 10000}},
+		},
+		{
+			name: "enabled with relay tag",
+			yaml: base + `funnel:
+  enabled: true
+  relay_tags: [tag:funnel-relay]
+`,
+			want: types.FunnelConfig{Enabled: true, Ports: []int{443, 8443, 10000}, RelayTags: []string{"tag:funnel-relay"}},
+		},
+		{
+			name: "enabled with custom ports",
+			yaml: base + `funnel:
+  enabled: true
+  ports: [8443]
+  relay_tags: [tag:funnel-relay]
+`,
+			want: types.FunnelConfig{Enabled: true, Ports: []int{8443}, RelayTags: []string{"tag:funnel-relay"}},
+		},
+		{
+			name: "enabled without certificates",
+			yaml: strings.Replace(base, "    enabled: true\n", "    enabled: false\n", 1) + `funnel:
+  enabled: true
+  relay_tags: [tag:funnel-relay]
+`,
+			wantErr: "funnel requires dns.certificates",
+		},
+		{
+			name: "enabled without relay tags",
+			yaml: base + `funnel:
+  enabled: true
+`,
+			wantErr: "funnel requires at least one relay tag",
+		},
+		{
+			name: "relay tag without prefix",
+			yaml: base + `funnel:
+  enabled: true
+  relay_tags: [funnel-relay]
+`,
+			wantErr: "funnel.relay_tags entries must start with tag:",
+		},
+		{
+			name: "port out of range",
+			yaml: base + `funnel:
+  enabled: true
+  ports: [0]
+  relay_tags: [tag:funnel-relay]
+`,
+			wantErr: "funnel.ports entries must be between 1 and 65535",
+		},
+		{
+			name: "no ports",
+			yaml: base + `funnel:
+  enabled: true
+  ports: []
+  relay_tags: [tag:funnel-relay]
+`,
+			wantErr: "funnel requires at least one port",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(tt.yaml), 0o600))
+
+			l, err := Load(tmpDir, false, os.Environ())
+			if err == nil {
+				err = Validate(l.Config)
+			}
+
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, l.Config.Funnel)
 		})
 	}
 }

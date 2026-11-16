@@ -247,6 +247,12 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// AutoUpdate is the tailnet-wide default for client auto-updates.
 	AutoUpdate AutoUpdateConfig `koanf:"auto_update"`
 
+	// Funnel lets nodes publish a service to the internet with
+	// `tailscale funnel`, through relays the operator runs. Headscale
+	// itself exposes nothing. See
+	// [Funnel](https://headscale.net/stable/ref/funnel/).
+	Funnel FunnelConfig `koanf:"funnel"`
+
 	// CLI is how the headscale CLI reaches the server: the local
 	// `unix_socket` without authentication, or a remote `cli.address`
 	// with `cli.api_key`. The CLI reads these keys from its own
@@ -842,6 +848,27 @@ type TaildropConfig struct {
 	// Enabled gives every node the file-sharing capability. False omits
 	// it from the baseline; a policy `nodeAttrs` grant can still give it.
 	Enabled bool `koanf:"enabled"`
+}
+
+// FunnelConfig controls Tailscale Funnel. A node may funnel when a policy
+// `nodeAttrs` entry gives it the `funnel` attribute and it has a
+// certificate name (`dns.certificates`). Relays are ordinary nodes
+// carrying one of RelayTags: headscale grants them the ingress capability
+// towards funnel nodes, and they forward TLS connections by SNI without
+// terminating them.
+type FunnelConfig struct {
+	// Enabled delivers the `funnel` node attribute from the policy.
+	// It requires `dns.certificates.enabled` and `funnel.relay_tags`.
+	Enabled bool `koanf:"enabled"`
+
+	// Ports are the public ports nodes may funnel on, sent to them as
+	// the `funnel-ports` capability. The relays listen on them.
+	Ports []int `example:"[443,8443]" koanf:"ports"`
+
+	// RelayTags are the tags of the relay nodes. Headscale grants nodes
+	// carrying one of them the ingress capability towards every node
+	// with the `funnel` attribute.
+	RelayTags []string `example:"[\"tag:funnel-relay\"]" koanf:"relay_tags"`
 }
 
 // AutoUpdateConfig controls the tailnet-wide default for client

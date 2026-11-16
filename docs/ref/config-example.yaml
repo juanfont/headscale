@@ -418,6 +418,23 @@ auto_update:
   # clients.
   enabled: false
 
+# Lets nodes publish a service to the internet with `tailscale funnel`, through
+# relays the operator runs. Headscale itself exposes nothing. See
+# [Funnel](https://headscale.net/stable/ref/funnel/).
+funnel:
+  # Delivers the `funnel` node attribute from the policy. It requires
+  # `dns.certificates.enabled` and `funnel.relay_tags`.
+  enabled: false
+  # The public ports nodes may funnel on, sent to them as the `funnel-ports`
+  # capability. The relays listen on them.
+  ports:
+    - 443
+    - 8443
+    - 10000
+  # The tags of the relay nodes. Headscale grants nodes carrying one of them the
+  # ingress capability towards every node with the `funnel` attribute.
+  relay_tags: []
+
 # How the headscale CLI reaches the server: the local `unix_socket` without
 # authentication, or a remote `cli.address` with `cli.api_key`. The CLI reads
 # these keys from its own configuration, such as
