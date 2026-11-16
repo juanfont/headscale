@@ -20,6 +20,7 @@ import (
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/hetzner/v2"
 	"github.com/libdns/libdns"
+	"github.com/libdns/ovh"
 	"github.com/libdns/powerdns"
 	"github.com/libdns/rfc2136"
 )
@@ -69,6 +70,18 @@ var providers = map[string]struct {
 		build:    func() Provider { return new(hetzner.Provider) },
 		required: []string{"api_token"},
 		env:      map[string]string{"api_token": "LIBDNS_HETZNER_TOKEN"}, //nolint:gosec // a variable's name, not a credential
+	},
+	// endpoint is the API region, such as ovh-eu; the keys are an
+	// application's, with a consumer key limited to the zone.
+	"ovh": {
+		build:    func() Provider { return new(ovh.Provider) },
+		required: []string{"endpoint", "application_key", "application_secret", "consumer_key"},
+		env: map[string]string{ //nolint:gosec // variables' names, not credentials
+			"endpoint":           "OVH_ENDPOINT",
+			"application_key":    "OVH_APPLICATION_KEY",
+			"application_secret": "OVH_APPLICATION_SECRET",
+			"consumer_key":       "OVH_CONSUMER_KEY",
+		},
 	},
 	"powerdns": {build: func() Provider { return new(powerdns.Provider) }, required: []string{"server_url", "api_token"}},
 	// Every request is TSIG-signed.

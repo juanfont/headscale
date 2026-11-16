@@ -2876,6 +2876,32 @@ dns:
 			wantProvider: "*hetzner.Provider",
 		},
 		{
+			name: "ovh without keys",
+			yaml: base + `  challenge:
+    provider:
+      name: ovh
+      endpoint: ovh-eu
+`,
+			env:     map[string]string{"OVH_APPLICATION_KEY": "", "OVH_APPLICATION_SECRET": "", "OVH_CONSUMER_KEY": ""},
+			wantErr: "ovh: missing application_key, application_secret, consumer_key",
+		},
+		{
+			// The provider's client reads its settings from these variables when they are unset.
+			name: "ovh settings from its own variables",
+			yaml: base + `  challenge:
+    provider:
+      name: ovh
+`,
+			env: map[string]string{
+				"OVH_ENDPOINT":           "ovh-eu",
+				"OVH_APPLICATION_KEY":    "marker-key",
+				"OVH_APPLICATION_SECRET": "marker-secret",
+				"OVH_CONSUMER_KEY":       "marker-consumer",
+			},
+			wantZone:     "ts.example.com",
+			wantProvider: "*ovh.Provider",
+		},
+		{
 			name: "gigahost without api_key",
 			yaml: base + `  challenge:
     provider:
