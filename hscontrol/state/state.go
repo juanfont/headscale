@@ -422,7 +422,14 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
 
-	polMan, err := policy.NewPolicyManager(pol, users, nodes.ViewSlice())
+	// Relay tags reach the policy only with funnel enabled, so a disabled
+	// funnel grants no ingress capability.
+	var funnelRelayTags []string
+	if cfg.Funnel.Enabled {
+		funnelRelayTags = cfg.Funnel.RelayTags
+	}
+
+	polMan, err := policy.NewPolicyManager(pol, users, nodes.ViewSlice(), policy.WithFunnelRelayTags(funnelRelayTags))
 	if err != nil {
 		return nil, fmt.Errorf("initializing policy manager: %w", err)
 	}
