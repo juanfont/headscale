@@ -113,6 +113,37 @@ stream {
 }
 ```
 
+### Behind a reverse proxy that terminates TLS
+
+A reverse proxy that only proxies HTTP, such as Nginx Proxy Manager, cannot pass TLS through. It can still front the
+relay, so that only the proxy is exposed: it terminates the client's TLS with its own certificate, then opens a new TLS
+connection to `funneld` named after the requested host, which the node terminates with its own certificate. `funneld`
+then needs no public port:
+
+```console
+funneld -login-server https://headscale.example.com -listen 127.0.0.1 -ports 443
+```
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name *.ts.example.com;
+    # A certificate for *.ts.example.com.
+
+    location / {
+        proxy_pass https://127.0.0.1:443;
+        proxy_ssl_server_name on;   # send the requested host as server name,
+        proxy_ssl_name $host;       # or funneld cannot tell which node it is for
+        proxy_set_header Host $host;
+    }
+}
+```
+
+In Nginx Proxy Manager, forward the proxy host to `funneld` with the `https` scheme and put the two `proxy_ssl_*` lines
+in its advanced configuration.
+
+The proxy sees the traffic in clear between the two connections, and nodes see the proxy's address as the client's.
+
 ## Limitations
 
 - Behind an SNI proxy without `-proxy-protocol-from`, nodes see the proxy's address as the client's.

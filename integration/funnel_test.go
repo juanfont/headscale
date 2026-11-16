@@ -2,9 +2,14 @@ package integration
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -194,20 +199,28 @@ func TestTailscaleFunnel(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	fetch := func(port uint16) (string, error) {
-		host, relayPort, err := net.SplitHostPort(relayAddr[port])
+	// fetchVia fetches https://fqdn:port/ from the fetcher, connecting to
+	// addr instead of resolving fqdn.
+	fetchVia := func(addr string, port uint16, extra ...string) (string, error) {
+		host, addrPort, err := net.SplitHostPort(addr)
 		if err != nil {
 			return "", err
 		}
 
-		body, _, err := fetcher.Execute([]string{
+		args := append([]string{
 			"curl", "--silent", "--fail", "--max-time", "10",
-			"--connect-to", fmt.Sprintf("%s:%d:%s:%s", fqdn, port, host, relayPort),
-			"https://" + net.JoinHostPort(fqdn, strconv.Itoa(int(port))) + "/",
-		}, dockertestutil.ExecuteCommandTimeout(20*time.Second))
+			"--connect-to", fmt.Sprintf("%s:%d:%s:%s", fqdn, port, host, addrPort),
+		}, extra...)
+
+		body, _, err := fetcher.Execute(
+			append(args, "https://"+net.JoinHostPort(fqdn, strconv.Itoa(int(port)))+"/"),
+			dockertestutil.ExecuteCommandTimeout(20*time.Second),
+		)
 
 		return body, err
 	}
+
+	fetch := func(port uint16) (string, error) { return fetchVia(relayAddr[port], port) }
 
 	// The first request also waits for the node's certificate from Pebble.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -219,6 +232,21 @@ func TestTailscaleFunnel(t *testing.T) {
 	_, err = fetch(8443)
 	require.Error(t, err, "a port served to the tailnet only must not be reachable through the relay")
 
+	// Behind a reverse proxy that terminates TLS, as Nginx Proxy Manager
+	// does: it opens a new TLS connection to the relay named after the
+	// requested host, which the node terminates with its own certificate.
+	nodeRoots := x509.NewCertPool()
+	require.True(t, nodeRoots.AppendCertsFromPEM(issuerRoot))
+
+	proxyAddr := startTerminatingProxy(t, suiteIP, relayAddr[443], nodeRoots)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		// The proxy's own certificate is self-signed.
+		body, err := fetchVia(proxyAddr, 443, "--insecure")
+		assert.NoError(c, err)
+		assert.Contains(c, body, "Tailscale-Funnel-Request")
+	}, 30*time.Second, time.Second, "https://%s should be funnelled behind a TLS-terminating proxy", fqdn)
+
 	_, stderr, err = client.Execute([]string{"tailscale", "funnel", "--https=443", "off"})
 	require.NoError(t, err, "tailscale funnel off: %s", stderr)
 
@@ -226,4 +254,50 @@ func TestTailscaleFunnel(t *testing.T) {
 		_, err := fetch(443)
 		assert.Error(c, err)
 	}, 30*time.Second, time.Second, "https://%s should no longer be funnelled", fqdn)
+}
+
+// startTerminatingProxy plays a reverse proxy that terminates TLS in front
+// of the relay at relayAddr, such as Nginx Proxy Manager with
+// `proxy_ssl_server_name on; proxy_ssl_name $host;`: it serves its own
+// certificate, then opens a new TLS connection to the relay with the
+// requested host as server name, verifying the node's certificate against
+// nodeRoots. It returns the address the proxy listens on.
+func startTerminatingProxy(t *testing.T, suiteIP, relayAddr string, nodeRoots *x509.CertPool) string {
+	t.Helper()
+
+	cert, _ := selfSignedCert(t, suiteIP)
+
+	transport := &http.Transport{
+		// Every request goes to the relay; the URL host only names the node.
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+
+			return d.DialContext(ctx, network, relayAddr)
+		},
+		TLSClientConfig: &tls.Config{RootCAs: nodeRoots, MinVersion: tls.VersionTLS12},
+	}
+
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(&url.URL{Scheme: "https", Host: pr.In.Host})
+			pr.Out.Host = pr.In.Host
+			pr.SetXForwarded()
+		},
+		Transport: transport,
+	}
+
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", net.JoinHostPort(suiteIP, "0"))
+	require.NoError(t, err)
+
+	srv := &http.Server{
+		Handler:           proxy,
+		ReadHeaderTimeout: 10 * time.Second,
+		TLSConfig:         &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+	}
+
+	go func() { _ = srv.ServeTLS(ln, "", "") }()
+
+	t.Cleanup(func() { _ = srv.Close() })
+
+	return ln.Addr().String()
 }
