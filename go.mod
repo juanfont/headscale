@@ -41,6 +41,7 @@ require (
 	github.com/oapi-codegen/runtime v1.9.0
 	github.com/oauth2-proxy/mockoidc v0.0.0-20261103160011-e06ed0b7cb7f
 	github.com/ory/dockertest/v3 v3.12.0
+	github.com/pires/go-proxyproto v0.15.0
 	github.com/pkg/profile v1.7.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/common v0.73.1
@@ -210,7 +211,6 @@ require (
 	github.com/pandatix/go-abnf v0.5.3 // indirect
 	github.com/peterbourgon/ff/v3 v3.4.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260330135022-df67b199bc81 // indirect
-	github.com/pires/go-proxyproto v0.15.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect

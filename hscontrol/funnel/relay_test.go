@@ -259,3 +259,109 @@ func TestPeerAPIAddrPrefersIPv4(t *testing.T) {
 	_, err = peerAPIAddr(&ipnstate.PeerStatus{})
 	require.ErrorIs(t, err, errNoPeerAPI)
 }
+
+// startRelayBehindProxy serves a relay that trusts PROXY headers from
+// trusted on a loopback listener and returns its address.
+func startRelayBehindProxy(t *testing.T, backend Backend, trusted []string) string {
+	t.Helper()
+
+	raw, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	ln, err := ProxyProtocolListener(raw, trusted)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+
+	r := &Relay{Backend: backend, HelloTimeout: 2 * time.Second, DialTimeout: 2 * time.Second}
+
+	go func() { _ = r.Serve(ctx, ln, 443) }()
+
+	return ln.Addr().String()
+}
+
+// dialTLSWithHeader opens a TCP connection to addr, sends header first
+// when it is not empty, then speaks TLS for serverName.
+func dialTLSWithHeader(ctx context.Context, addr, header string) (*tls.Conn, error) {
+	raw, err := (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	if header != "" {
+		_, err = io.WriteString(raw, header)
+		if err != nil {
+			raw.Close()
+
+			return nil, err
+		}
+	}
+
+	tc := tls.Client(raw, &tls.Config{
+		ServerName:         nodeName,
+		InsecureSkipVerify: true, //nolint:gosec // self-signed test certificate
+	})
+
+	err = tc.HandshakeContext(ctx)
+	if err != nil {
+		raw.Close()
+
+		return nil, err
+	}
+
+	return tc, nil
+}
+
+func TestRelayBehindProxy(t *testing.T) {
+	t.Parallel()
+
+	const header = "PROXY TCP4 203.0.113.7 127.0.0.1 51234 443\r\n"
+
+	t.Run("client address from the header", func(t *testing.T) {
+		t.Parallel()
+
+		node := newFakeNode(t, http.StatusSwitchingProtocols)
+		addr := startRelayBehindProxy(t, fakeBackend{peerAPI: node.ln.Addr().String()}, []string{"127.0.0.0/8"})
+
+		conn, err := dialTLSWithHeader(t.Context(), addr, header)
+		require.NoError(t, err)
+
+		defer conn.Close()
+
+		_, err = io.WriteString(conn, "hello\n")
+		require.NoError(t, err)
+
+		line, err := bufio.NewReader(conn).ReadString('\n')
+		require.NoError(t, err)
+		assert.Equal(t, "echo hello\n", line)
+		assert.Equal(t, "203.0.113.7:51234", node.header("Tailscale-Ingress-Src"))
+	})
+
+	for _, tt := range []struct {
+		name    string
+		trusted []string
+		header  string
+	}{
+		{name: "trusted source without header", trusted: []string{"127.0.0.1"}},
+		{name: "untrusted source with header", trusted: []string{"192.0.2.1"}, header: header},
+		{name: "untrusted source without header", trusted: []string{"192.0.2.0/24"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			node := newFakeNode(t, http.StatusSwitchingProtocols)
+			addr := startRelayBehindProxy(t, fakeBackend{peerAPI: node.ln.Addr().String()}, tt.trusted)
+
+			conn, err := dialTLSWithHeader(t.Context(), addr, tt.header)
+			if err == nil {
+				conn.Close()
+			}
+
+			require.Error(t, err, "the relay must drop the connection")
+		})
+	}
+
+	_, err := ProxyProtocolListener(nil, []string{"not-an-address"})
+	require.Error(t, err)
+}

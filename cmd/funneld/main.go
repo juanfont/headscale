@@ -55,6 +55,7 @@ func run() error {
 		hostname   = flag.String("hostname", "funnel-relay", "hostname of the embedded node")
 		stateDir   = flag.String("state-dir", "", "state directory of the embedded node (empty: tsnet default)")
 		verbose    = flag.Bool("verbose", false, "log every dropped connection")
+		proxyFrom  = flag.String("proxy-protocol-from", "", "comma-separated addresses or CIDR ranges of an SNI proxy in front; their connections must start with a PROXY protocol header, others are dropped")
 		listeners  []listener
 	)
 
@@ -118,6 +119,13 @@ func run() error {
 		ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", l.addr)
 		if err != nil {
 			return fmt.Errorf("listening for port %d: %w", l.port, err)
+		}
+
+		if *proxyFrom != "" {
+			ln, err = funnel.ProxyProtocolListener(ln, strings.Split(*proxyFrom, ","))
+			if err != nil {
+				return err
+			}
 		}
 
 		log.Info().Str("addr", ln.Addr().String()).Uint16("port", l.port).Msg("relaying funnel connections")

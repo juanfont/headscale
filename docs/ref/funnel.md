@@ -88,8 +88,12 @@ When another server already listens on port 443 of the relay host, put a proxy t
 without terminating TLS, in front of both, and give `funneld` a local address for public port 443 with `PORT=ADDR`:
 
 ```console
-funneld -local -ports 443=127.0.0.1:8443
+funneld -local -ports 443=127.0.0.1:8443 -proxy-protocol-from 127.0.0.1
 ```
+
+`-proxy-protocol-from` makes the proxy pass the client address with the PROXY protocol: connections from the listed
+addresses or CIDR ranges must start with a PROXY header, and connections from anywhere else are dropped. Without it,
+nodes see the proxy's address as the client's.
 
 With Nginx:
 
@@ -104,12 +108,13 @@ stream {
         listen 443;
         ssl_preread on;
         proxy_pass $backend;
+        proxy_protocol on;   # funneld -proxy-protocol-from 127.0.0.1; the default backend must accept it too
     }
 }
 ```
 
 ## Limitations
 
-- The node sees the relay's view of the client address. Behind an SNI proxy, that is the proxy's address.
+- Behind an SNI proxy without `-proxy-protocol-from`, nodes see the proxy's address as the client's.
 - Only TLS is relayed: `tailscale funnel` with `--tcp` is not supported.
 - Custom domains for funnel are not supported.
