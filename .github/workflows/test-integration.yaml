@@ -295,6 +295,7 @@ jobs:
           - TestResolveMagicDNSExtraRecordsPath
           - TestDERPServerScenario
           - TestDERPServerWebsocketScenario
+          - TestTailscaleFunnel
           - TestPingAllByIP
           - TestPingAllByIPPublicDERP
           - TestEphemeral

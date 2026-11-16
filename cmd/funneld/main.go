@@ -31,6 +31,11 @@ import (
 	"tailscale.com/tsnet"
 )
 
+var (
+	errNoLoginServer = errors.New("-login-server is required for the embedded node")
+	errInvalidPort   = errors.New("invalid port")
+)
+
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
@@ -42,15 +47,15 @@ func main() {
 
 func run() error {
 	var (
-		ports       = flag.String("ports", "443", "comma-separated public ports to relay, among headscale's funnel.ports")
-		listen      = flag.String("listen", "", "address to listen on (empty: all)")
-		useLocal    = flag.Bool("local", false, "use the tailscaled running on this machine instead of an embedded node")
-		socket      = flag.String("socket", "", "tailscaled socket with -local (empty: platform default)")
-		controlURL  = flag.String("login-server", "", "headscale URL, for the embedded node")
-		hostname    = flag.String("hostname", "funnel-relay", "hostname of the embedded node")
-		stateDir    = flag.String("state-dir", "", "state directory of the embedded node (empty: tsnet default)")
-		verbose     = flag.Bool("verbose", false, "log every dropped connection")
-		portNumbers []uint16
+		ports      = flag.String("ports", "443", "comma-separated public ports to relay, among headscale's funnel.ports; PORT=ADDR listens on ADDR for public port PORT, behind an SNI proxy")
+		listen     = flag.String("listen", "", "address to listen on (empty: all)")
+		useLocal   = flag.Bool("local", false, "use the tailscaled running on this machine instead of an embedded node")
+		socket     = flag.String("socket", "", "tailscaled socket with -local (empty: platform default)")
+		controlURL = flag.String("login-server", "", "headscale URL, for the embedded node")
+		hostname   = flag.String("hostname", "funnel-relay", "hostname of the embedded node")
+		stateDir   = flag.String("state-dir", "", "state directory of the embedded node (empty: tsnet default)")
+		verbose    = flag.Bool("verbose", false, "log every dropped connection")
+		listeners  []listener
 	)
 
 	flag.Parse()
@@ -62,12 +67,12 @@ func run() error {
 	}
 
 	for p := range strings.SplitSeq(*ports, ",") {
-		n, err := strconv.ParseUint(strings.TrimSpace(p), 10, 16)
-		if err != nil || n == 0 {
-			return fmt.Errorf("invalid port %q", p)
+		l, err := parseListener(strings.TrimSpace(p), *listen)
+		if err != nil {
+			return err
 		}
 
-		portNumbers = append(portNumbers, uint16(n))
+		listeners = append(listeners, l)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -79,7 +84,7 @@ func run() error {
 		backend = &local.Client{Socket: *socket}
 	} else {
 		if *controlURL == "" {
-			return errors.New("-login-server is required for the embedded node")
+			return errNoLoginServer
 		}
 
 		// The embedded node must not send its logs to Tailscale.
@@ -99,7 +104,7 @@ func run() error {
 			return fmt.Errorf("joining the tailnet: %w", err)
 		}
 
-		backend, err = newTSNetBackend(srv)
+		backend, err = funnel.NewTSNetBackend(srv)
 		if err != nil {
 			return err
 		}
@@ -109,37 +114,39 @@ func run() error {
 
 	g, gctx := errgroup.WithContext(ctx)
 
-	for _, port := range portNumbers {
-		ln, err := net.Listen("tcp", net.JoinHostPort(*listen, strconv.Itoa(int(port))))
+	for _, l := range listeners {
+		ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", l.addr)
 		if err != nil {
-			return fmt.Errorf("listening on port %d: %w", port, err)
+			return fmt.Errorf("listening for port %d: %w", l.port, err)
 		}
 
-		log.Info().Str("addr", ln.Addr().String()).Msg("relaying funnel connections")
+		log.Info().Str("addr", ln.Addr().String()).Uint16("port", l.port).Msg("relaying funnel connections")
 
-		g.Go(func() error { return relay.Serve(gctx, ln, port) })
+		g.Go(func() error { return relay.Serve(gctx, ln, l.port) })
 	}
 
 	return g.Wait()
 }
 
-// tsnetBackend reads the status from the embedded node and dials through
-// its netstack.
-type tsnetBackend struct {
-	*local.Client
-
-	srv *tsnet.Server
+// listener is a public funnel port and the address funneld listens on for
+// it: the same port by default, another one behind an SNI proxy.
+type listener struct {
+	port uint16
+	addr string
 }
 
-func newTSNetBackend(srv *tsnet.Server) (*tsnetBackend, error) {
-	lc, err := srv.LocalClient()
-	if err != nil {
-		return nil, fmt.Errorf("embedded node client: %w", err)
+// parseListener parses PORT or PORT=ADDR.
+func parseListener(s, host string) (listener, error) {
+	portStr, addr, mapped := strings.Cut(s, "=")
+
+	n, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil || n == 0 {
+		return listener{}, fmt.Errorf("%w %q", errInvalidPort, s)
 	}
 
-	return &tsnetBackend{Client: lc, srv: srv}, nil
-}
+	if !mapped {
+		addr = net.JoinHostPort(host, portStr)
+	}
 
-func (b *tsnetBackend) DialTCP(ctx context.Context, host string, port uint16) (net.Conn, error) {
-	return b.srv.Dial(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(int(port))))
+	return listener{port: uint16(n), addr: addr}, nil
 }
