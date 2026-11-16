@@ -84,6 +84,14 @@ clients, and how to run the same setup without Nix.
 the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 `cloudflare`, `gigahost`, `hetzner`, `powerdns` or `rfc2136`. `dns.base_domain` must be a public domain you control. [#3554](https://github.com/juanfont/headscale/pull/3554)
 
+### Funnel
+
+`tailscale funnel` now works, through relays the operator runs: `funneld`, an
+ordinary tagged node that forwards TLS connections by server name to the node,
+which terminates them with its own certificate. Enable it with `funnel.enabled`
+and `funnel.relay_tags`, and give nodes the `funnel` attribute in the policy's
+`nodeAttrs`. See [Funnel](https://headscale.net/stable/ref/funnel/). [#3435](https://github.com/juanfont/headscale/issues/3435)
+
 ### Update clients remotely
 
 `headscale nodes update-client` and `POST /api/v2/device/{id}/update-client` ask a
