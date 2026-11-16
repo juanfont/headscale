@@ -1451,7 +1451,8 @@ func (nv NodeView) TailNode(
 		capMap[nodecap.FileSharing] = []tailcfg.RawMessage{}
 	}
 
-	if _, ok := nv.CertDomain(cfg); ok {
+	_, hasCertDomain := nv.CertDomain(cfg)
+	if hasCertDomain {
 		capMap[nodecap.HTTPS] = []tailcfg.RawMessage{}
 	}
 
@@ -1470,6 +1471,18 @@ func (nv NodeView) TailNode(
 	// Policy nodeAttrs overlay the baseline on the self view. Peers
 	// pass nil; their CapMap is replaced downstream by [policyv2.PeerCapMap].
 	maps.Copy(capMap, selfPolicyCaps)
+
+	// The funnel attribute from the policy reaches the node only when the
+	// server enables funnel and the node has a certificate name: funnel
+	// connections arrive as TLS the node terminates itself. The ports it
+	// may funnel on travel with it, or the client refuses every port.
+	if _, ok := capMap[nodecap.Funnel]; ok {
+		if cfg.Funnel.Enabled && hasCertDomain {
+			capMap[FunnelPortsCap(cfg.Funnel.Ports)] = nil
+		} else {
+			delete(capMap, nodecap.Funnel)
+		}
+	}
 
 	tNode := tailcfg.Node{
 		//nolint:gosec // G115: NodeID values are within int64 range
@@ -1554,4 +1567,15 @@ func PeerHostinfo(hi tailcfg.HostinfoView) tailcfg.HostinfoView {
 	}
 
 	return out.View()
+}
+
+// FunnelPortsCap is the [nodecap.FunnelPorts] capability allowing ports,
+// e.g. "https://tailscale.com/cap/funnel-ports?ports=443,8443".
+func FunnelPortsCap(ports []int) nodecap.Cap {
+	strs := make([]string, len(ports))
+	for i, p := range ports {
+		strs[i] = strconv.Itoa(p)
+	}
+
+	return nodecap.FunnelPorts + nodecap.Cap("?ports="+strings.Join(strs, ","))
 }
