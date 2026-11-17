@@ -370,6 +370,41 @@ WHERE auth_key_id IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Key expiry becomes a switch beside the expiry time, as on
+				// Tailscale. Tagged nodes had expiry turned off by clearing the
+				// time; the switch now says so, so they still never expire.
+				ID: "202611171200-node-key-expiry-disabled",
+				Migrate: func(tx *gorm.DB) error {
+					return tx.Transaction(func(tx *gorm.DB) error {
+						if tx.Migrator().HasColumn(&types.Node{}, "key_expiry_disabled") {
+							return nil
+						}
+
+						colType := "numeric"
+						if tx.Name() != sqlite.DriverName {
+							colType = "boolean"
+						}
+
+						err := tx.Exec(`ALTER TABLE nodes ADD COLUMN key_expiry_disabled ` + colType + ` DEFAULT false`).Error
+						if err != nil {
+							return fmt.Errorf("adding key_expiry_disabled to nodes: %w", err)
+						}
+
+						// The tagged-node predicate of 202607241200-clear-tagged-node-expiry.
+						err = tx.Exec(`
+UPDATE nodes SET key_expiry_disabled = true
+WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null';
+							`).Error
+						if err != nil {
+							return fmt.Errorf("disabling key expiry on tagged nodes: %w", err)
+						}
+
+						return nil
+					})
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
