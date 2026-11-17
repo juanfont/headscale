@@ -186,6 +186,10 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 - `settings.ephemeral_node_inactivity_timeout` is removed; set `settings.node.ephemeral.inactivity_timeout`, which headscale reads instead
 - `settings.dns.split` is removed; headscale never read it, set `settings.dns.nameservers.split`
 - `settings.tls_*` options move to `settings.tls.*`; old `settings.tls_*` values still work [#3554](https://github.com/juanfont/headscale/pull/3554)
+- A config, or a Nix store file policy, that headscale rejects now fails the build; a config or a file it names that headscale rejects fails a switch before headscale restarts. Turn the checks off with `check.config = false` and `check.policy = false`; see `nix/README.md` [#3682](https://github.com/juanfont/headscale/pull/3682)
+- `user` and `group` are read-only; headscale always runs as `headscale:headscale` [#3682](https://github.com/juanfont/headscale/pull/3682)
+- A `settings.cli` key fails evaluation; the server never reads `cli.*`, and it would be written to the Nix store [#3682](https://github.com/juanfont/headscale/pull/3682)
+- `nixosModules.default` now defaults `services.headscale.package` to this flake's headscale instead of `pkgs.headscale`, because the checks need `headscale check` [#3682](https://github.com/juanfont/headscale/pull/3682)
 
 ### Changes
 
