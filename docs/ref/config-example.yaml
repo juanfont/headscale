@@ -2,8 +2,10 @@
 # Every key: https://headscale.net/stable/ref/configuration-options/
 
 # The URL clients connect to, with its `http://` or `https://` scheme, e.g.
-# `https://headscale.example.com:443`. A trailing slash is trimmed on load. Its
-# host must not be `dns.base_domain` or a name below it.
+# `https://headscale.example.com:443`. A trailing slash is trimmed on load. The
+# hostname cannot be the same as `dns.base_domain` or any sub-domain that would
+# cause the Headscale instance to have a `server_url` inside the MagicDNS
+# namespace.
 # Required. Example: https://headscale.example.com
 server_url: ""
 
@@ -26,8 +28,8 @@ unix_socket_permission: "0770"
 
 # The CIDRs of reverse proxies whose `True-Client-IP`, `X-Real-IP` and
 # `X-Forwarded-For` headers are honoured. Empty ignores those headers. Set
-# without a proxy in front, clients can spoof their source IP in logs and the v2
-# API.
+# without a proxy in front, clients can spoof their source IP in logs and the
+# `ip:publicAddress` posture attribute.
 trusted_proxies: []
 
 # Skips the check for a newer headscale release that commands make at start.
@@ -45,10 +47,13 @@ noise:
 # `fd7a:115c:a1e0::/48`, or ranges inside them: the client assumes them, and
 # other ranges are unsupported.
 prefixes:
-  # The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address.
+  # The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address. Use
+  # a prefix inside `100.64.0.0/10`. A range outside it is not supported and
+  # logs a warning.
   v4: 100.64.0.0/10
   # The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6
-  # address.
+  # address. Use a prefix inside `fd7a:115c:a1e0::/48`. A range outside it is
+  # not supported and logs a warning.
   v6: fd7a:115c:a1e0::/48
   # How a new node's addresses are picked.
   # One of: `sequential`, `random`.
@@ -109,10 +114,10 @@ node:
 # Covers the cleanup of revoked pre-auth keys. See [Pre authenticated
 # key](https://headscale.net/stable/ref/registration/#pre-authenticated-key).
 preauth_keys:
-  # How long a soft-revoked pre-auth key or OAuth client (revoked via the v2
-  # API's DELETE) is kept retrievable before the background collector
-  # hard-deletes it. Keys still backing a node are kept until the node is
-  # deleted. A zero or negative duration disables the collector.
+  # How long a revoked pre-auth key or OAuth client is kept retrievable before
+  # the background collector hard-deletes it. Keys still backing a node are kept
+  # until the node is deleted. A zero or negative duration disables the
+  # collector.
   revoked_retention: 168h
 
 # The DERP map: the relay servers clients use when they cannot connect directly,
