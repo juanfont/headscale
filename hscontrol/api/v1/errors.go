@@ -55,7 +55,10 @@ func mapError(msg string, err error) error {
 		errors.Is(err, state.ErrInvalidPolicy):
 		return huma.Error400BadRequest(msg, err)
 
-	case errors.Is(err, state.ErrNodeKeyInUse),
+	// A unique index refused the write, e.g. a racing create or a rename to a
+	// taken user name.
+	case errors.Is(err, gorm.ErrDuplicatedKey),
+		errors.Is(err, state.ErrNodeKeyInUse),
 		errors.Is(err, state.ErrAmbiguousNodeOwnership),
 		errors.Is(err, state.ErrAuthCacheEntryExists):
 		return huma.Error409Conflict(msg, err)
