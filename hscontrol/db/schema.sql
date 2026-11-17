@@ -91,6 +91,7 @@ CREATE TABLE nodes(
   ephemeral numeric DEFAULT false,
   last_seen datetime,
   expiry datetime,
+  key_expiry_disabled numeric DEFAULT false,
   approved_routes text,
   auto_approved_routes text,
 
