@@ -250,6 +250,11 @@ func (v NodeView) AuthKey() CredentialView { return v.ж.AuthKey.View() }
 func (v NodeView) Ephemeral() bool                       { return v.ж.Ephemeral }
 func (v NodeView) Expiry() views.ValuePointer[time.Time] { return views.ValuePointerOf(v.ж.Expiry) }
 
+// KeyExpiryDisabled keeps the node from expiring while it is set; Expiry
+// is kept, and counts again once it is cleared. Tailscale stores the two
+// apart the same way.
+func (v NodeView) KeyExpiryDisabled() bool { return v.ж.KeyExpiryDisabled }
+
 // LastSeen is when the node was last in contact with
 // headscale. It is best effort and not persisted.
 func (v NodeView) LastSeen() views.ValuePointer[time.Time] {
@@ -328,6 +333,7 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	AuthKey            *Credential
 	Ephemeral          bool
 	Expiry             *time.Time
+	KeyExpiryDisabled  bool
 	LastSeen           *time.Time
 	ApprovedRoutes     Prefixes
 	AutoApprovedRoutes Prefixes
