@@ -118,10 +118,10 @@ type RouteConfig struct {
 
 // PreAuthKeysConfig contains configuration for pre-auth key lifecycle.
 type PreAuthKeysConfig struct {
-	// RevokedRetention is how long a soft-revoked pre-auth key (revoked via the
-	// v2 API's DELETE) is kept retrievable before the background collector
-	// hard-deletes it. Keys still backing a node are kept until the node is
-	// deleted. A zero or negative duration disables the collector.
+	// RevokedRetention is how long a revoked pre-auth key is kept retrievable
+	// before the background collector hard-deletes it. Keys still backing a
+	// node are kept until the node is deleted. A zero or negative duration
+	// disables the collector.
 	RevokedRetention time.Duration `example:"\"720h\"" koanf:"revoked_retention"`
 }
 
@@ -149,9 +149,10 @@ type NodeConfig struct {
 // except 0.
 type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Config value is redacted too
 	// ServerURL is the URL clients connect to, with its `http://` or
-	// `https://` scheme, e.g. `https://headscale.example.com:443`. A
-	// trailing slash is trimmed on load. Its host must not be
-	// `dns.base_domain` or a name below it.
+	// `https://` scheme, e.g. `https://headscale.example.com:443`. A trailing
+	// slash is trimmed on load. The hostname cannot be the same as
+	// `dns.base_domain` or any sub-domain that would cause the Headscale
+	// instance to have a `server_url` inside the MagicDNS namespace.
 	ServerURL string `example:"\"https://headscale.example.com\"" koanf:"server_url"`
 
 	// Addr is the host:port the server listens on for clients, the API and
@@ -173,10 +174,10 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// octal (`"0770"`): unquoted, YAML reads `0770` as the number 504.
 	UnixSocketPermission FileMode `example:"\"0660\"" koanf:"unix_socket_permission"`
 
-	// TrustedProxies are the CIDRs of reverse proxies whose
-	// `True-Client-IP`, `X-Real-IP` and `X-Forwarded-For` headers are
-	// honoured. Empty ignores those headers. Set without a proxy in front,
-	// clients can spoof their source IP in logs and the v2 API.
+	// TrustedProxies are the CIDRs of reverse proxies whose `True-Client-IP`,
+	// `X-Real-IP` and `X-Forwarded-For` headers are honoured. Empty ignores
+	// those headers. Set without a proxy in front, clients can spoof their
+	// source IP in logs and the `ip:publicAddress` posture attribute.
 	TrustedProxies []netip.Prefix `example:"[\"192.0.2.10/32\",\"2001:db8::10/128\"]" koanf:"trusted_proxies"`
 
 	// DisableUpdateCheck skips the check for a newer headscale release
@@ -281,12 +282,14 @@ type NoiseConfig struct {
 // or subsets of them: the client assumes them, and breaks in subtle ways
 // outside them.
 type PrefixesConfig struct {
-	// V4 is the IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no
-	// IPv4 address.
+	// V4 is the IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4
+	// address. Use a prefix inside `100.64.0.0/10`. A range outside it is not
+	// supported and logs a warning.
 	V4 *netip.Prefix `example:"\"100.64.0.0/24\"" koanf:"v4"`
 
-	// V6 is the IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes
-	// no IPv6 address.
+	// V6 is the IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no
+	// IPv6 address. Use a prefix inside `fd7a:115c:a1e0::/48`. A range outside
+	// it is not supported and logs a warning.
 	V6 *netip.Prefix `example:"\"fd7a:115c:a1e0::/64\"" koanf:"v6"`
 
 	// Allocation is how a new node's addresses are picked.
@@ -399,7 +402,7 @@ type DNSChallengeConfig struct {
 	// [DNS-01 challenge provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider)
 	// to set a provider up, acme-dns included, and to set it from
 	// environment variables.
-	ProviderSettings map[string]any `example:"{\"name\":\"cloudflare\",\"api_token\":\"file:/run/secrets/cloudflare\"}" json:"-" koanf:"provider" mapkey:"setting"`
+	ProviderSettings map[string]any `example:"{\"name\":\"gigahost\",\"api_key\":\"file:/run/secrets/gigahost\"}" json:"-" koanf:"provider" mapkey:"setting"`
 
 	// Provider is a DNS provider set from Go, by an embedder or a test; it
 	// cannot be set from a file. It wins over ProviderSettings.
