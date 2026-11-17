@@ -961,6 +961,10 @@ func (r *stepReplay) daemon(ctx context.Context, t *testing.T, stepName string, 
 		r.hostinfo[a.Node].Hostname = strings.TrimPrefix(args, "set --hostname=")
 		r.sendHostinfo(ctx, t, a.Node)
 
+	case a.Kind == "cli" && strings.HasPrefix(args, "ping "):
+		// A reachability probe changes nothing; the harness has no data
+		// plane, and the peer's netmap checks judge what it showed.
+
 	case a.Kind == "down", a.Kind == "cli" && args == "down":
 		cl.Disconnect(t)
 

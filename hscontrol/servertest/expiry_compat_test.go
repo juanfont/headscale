@@ -55,6 +55,12 @@ func TestNodeExpiryCompat(t *testing.T) {
 
 		runNodeExpiryCompat(t, "expiry", "observer")
 	})
+
+	t.Run("expire-key-expiry", func(t *testing.T) {
+		t.Parallel()
+
+		runNodeExpiryCompat(t, "expire-key-expiry", "observer")
+	})
 }
 
 func runNodeExpiryCompat(t *testing.T, id, observer string) {
@@ -168,9 +174,9 @@ func runNodeExpiryCompat(t *testing.T, id, observer string) {
 		prevCaps = step.Captures
 	}
 
-	// The map serves this capture alone, so every entry must name a check.
+	// Every entry for this capture must name a check.
 	for k := range expirySkipReasons {
-		if !evaluated[k] {
+		if strings.HasPrefix(k, id+"/") && !evaluated[k] {
 			t.Errorf("skip entry %q names no check", k)
 		}
 	}
@@ -392,7 +398,8 @@ func (e *expiryStep) apiChecks(t *testing.T, saasPrev, hsPrev map[string]deviceV
 				return fmt.Sprintf("devices %d", len(views))
 			}
 
-			return renderKeyExpiry(views[0], prevGot, hadGot)
+			// Judged against an earlier reading only where SaaS has one.
+			return renderKeyExpiry(views[0], prevGot, hadGot && hadWant)
 		}})
 	}
 
@@ -478,7 +485,8 @@ func captureKeyDuration(t *testing.T, c *testcapture.Capture) time.Duration {
 				KeyExpiryDisabled bool      `json:"keyExpiryDisabled"`
 				Tags              []string  `json:"tags"`
 			}
-			if json.Unmarshal(a.Response, &d) == nil && !d.KeyExpiryDisabled && len(d.Tags) == 0 {
+			// A device list decodes to all zero fields.
+			if json.Unmarshal(a.Response, &d) == nil && !d.Created.IsZero() && !d.KeyExpiryDisabled && len(d.Tags) == 0 {
 				return d.Expires.Sub(d.Created)
 			}
 		}
