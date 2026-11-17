@@ -2319,9 +2319,14 @@ func (s *State) ListOAuthClients() ([]types.OAuthClient, error) {
 	return s.db.ListOAuthClients()
 }
 
-// RevokeOAuthClient deletes a client and the access tokens it issued.
+// RevokeOAuthClient revokes a client and deletes the access tokens it issued.
 func (s *State) RevokeOAuthClient(clientID string) error {
 	return s.db.RevokeOAuthClient(clientID)
+}
+
+// DestroyRevokedOAuthClientsBefore hard-deletes clients revoked before cutoff.
+func (s *State) DestroyRevokedOAuthClientsBefore(cutoff time.Time) (int64, error) {
+	return s.db.DestroyRevokedOAuthClientsBefore(cutoff)
 }
 
 // MintAccessToken stores a new scoped access token for an OAuth client.
