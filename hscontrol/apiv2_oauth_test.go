@@ -551,10 +551,11 @@ func TestAPIv2OAuth_ScopeEnforcement(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, createTaggedKey(t, baseURL, readTok, []string{"tag:ci"}),
 		"read scope denied write")
 
-	// The wrong write scope (devices:core) cannot create auth keys.
+	// The wrong write scope (devices:core) cannot create auth keys; with no
+	// key scope at all it is told not found (probe-U U5n).
 	_, devSecret := createClient(t, baseURL, admin, []string{"devices:core"}, []string{"tag:ci"})
 	devTok := tokenFor(t, baseURL, devSecret)
-	assert.Equal(t, http.StatusForbidden, createTaggedKey(t, baseURL, devTok, []string{"tag:ci"}),
+	assert.Equal(t, http.StatusNotFound, createTaggedKey(t, baseURL, devTok, []string{"tag:ci"}),
 		"wrong scope denied")
 
 	// The "all" super-scope grants auth_keys.
@@ -595,13 +596,13 @@ func TestAPIv2OAuth_ClientManagementScopes(t *testing.T) {
 	statusDeny, _ := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", akTok, apiv2.CreateKeyRequest{
 		KeyType: "client", Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"},
 	})
-	assert.Equal(t, http.StatusForbidden, statusDeny, "auth_keys (no oauth_keys) cannot create a client")
+	assert.Equal(t, http.StatusNotFound, statusDeny, "auth_keys (no oauth_keys) cannot create a client")
 }
 
 // TestAPIv2OAuth_TaggedAllClientStaysInTags asserts an all-scope client with
-// tags mints tokens only inside its tags, and that a tagged token cannot
-// escape them through an untagged all-scope child, whose tokens may take any
-// tag.
+// tags mints tokens only inside its tags. A tagged token may still create an
+// untagged all-scope child, whose tokens take any tag: Tailscale allows this
+// (probe-U U1a, U1h-U1j, U1'a-U1'i), and the maintainer chose to follow it.
 func TestAPIv2OAuth_TaggedAllClientStaysInTags(t *testing.T) {
 	_, baseURL, admin := newOAuthTestServer(t)
 
@@ -623,9 +624,9 @@ func TestAPIv2OAuth_TaggedAllClientStaysInTags(t *testing.T) {
 
 	createClient(t, baseURL, tok, []string{"auth_keys", "oauth_keys"}, []string{"tag:a"})
 
-	st, body := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", tok,
-		apiv2.CreateKeyRequest{KeyType: "client", Scopes: []string{"all"}})
-	assert.Equalf(t, http.StatusForbidden, st, "untagged all-scope child: %s", body)
+	_, child := createClient(t, baseURL, tok, []string{"all"}, nil)
+	st, m = mintTokenWithTags(t, baseURL, child, "tag:b")
+	assert.Equalf(t, http.StatusOK, st, "untagged all-scope child takes any tag: %v", m)
 
 	// An admin API key still creates an untagged all-scope client, whose
 	// tokens may take any tag.
@@ -737,9 +738,9 @@ func TestAPIv2OAuth_SetDeviceTagsGrant(t *testing.T) {
 	assert.Equal(t, []string{"tag:other"}, got.Tags().AsSlice())
 }
 
-// TestAPIv2OAuth_UndefinedTagRejected asserts an OAuth token cannot create a
-// client or auth key carrying a tag absent from policy (matching SetNodeTags),
-// while an admin key retains the historical syntax-only validation.
+// TestAPIv2OAuth_UndefinedTagRejected asserts no caller, an admin API key
+// included, can create a client or auth key carrying a tag absent from policy:
+// Tailscale answers 400 for each (probe-A A1, probe-R R2-R5).
 func TestAPIv2OAuth_UndefinedTagRejected(t *testing.T) {
 	_, baseURL, admin := newOAuthTestServer(t)
 
@@ -757,10 +758,14 @@ func TestAPIv2OAuth_UndefinedTagRejected(t *testing.T) {
 	})
 	assert.Equal(t, http.StatusBadRequest, st, "token may not create a client with an undefined tag")
 
-	// An admin key keeps the historical behaviour: a syntactically valid but
-	// undefined tag is accepted (consistent with the v1/CLI pre-auth-key path).
-	assert.Equal(t, http.StatusOK, createTaggedKey(t, baseURL, admin, []string{"tag:adminhistorical"}),
-		"admin retains syntax-only tag validation")
+	assert.Equal(t, http.StatusBadRequest, createTaggedKey(t, baseURL, admin, []string{"tag:undefined"}),
+		"admin may not create an auth key with an undefined tag")
+
+	st, body := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", admin, apiv2.CreateKeyRequest{
+		KeyType: "client", Scopes: []string{"devices:core:read"}, Tags: []string{"tag:ci", "tag:undefined"},
+	})
+	assert.Equal(t, http.StatusBadRequest, st, "admin may not create a read client with an undefined tag")
+	assert.JSONEq(t, `{"message":"requested tags [tag:undefined] are invalid or not permitted","status":400}`, string(body))
 }
 
 // TestAPIv2OAuth_DenialBranches covers the token-endpoint and bearer-dispatch

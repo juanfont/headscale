@@ -420,7 +420,7 @@ func TestPollNetMapHandler_LastControlAddress(t *testing.T) {
 
 	api := registerAPIV2(t, app)
 	attrs := getDevicePostureAttributes(t, api, view.StringID())
-	assert.Equal(t, wantUnchanged.String(), attrs.Attributes["ip:publicAddress"])
+	assert.Equal(t, map[string]any{"type": "IpAddr", "value": wantUnchanged.String()}, attrs.Attributes["ip:publicAddress"])
 	encodedAttrs, err := json.Marshal(attrs)
 	require.NoError(t, err)
 	assert.NotContains(t, string(encodedAttrs), "198.51.100.77",

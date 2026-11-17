@@ -164,7 +164,7 @@ resource "tailscale_tailnet_key" "k" {
 			tags:         []string{"tag:ci"},
 			config:       authKeyConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "missing the required scope"},
+			denyContains: []string{"calling actor does not"},
 		},
 		{
 			name:         "devices:core denies tailnet_key",
@@ -172,7 +172,7 @@ resource "tailscale_tailnet_key" "k" {
 			tags:         []string{"tag:ci"},
 			config:       authKeyConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "missing the required scope"},
+			denyContains: []string{"not found (404)"},
 		},
 		{
 			name:   "all allows tailnet_key",
@@ -186,7 +186,7 @@ resource "tailscale_tailnet_key" "k" {
 			tags:         []string{"tag:ci"},
 			config:       authKeyConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "missing the required scope"},
+			denyContains: []string{"calling actor does not"},
 		},
 
 		// oauth_keys: managing OAuth clients. Read and wrong scopes are denied, and
@@ -201,7 +201,7 @@ resource "tailscale_tailnet_key" "k" {
 			scopes:       []string{"oauth_keys:read"},
 			config:       oauthClientConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "missing the required scope"},
+			denyContains: []string{"calling actor does not"},
 		},
 		{
 			name:         "auth_keys denies oauth_client",
@@ -209,14 +209,14 @@ resource "tailscale_tailnet_key" "k" {
 			tags:         []string{"tag:ci"},
 			config:       oauthClientConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "missing the required scope"},
+			denyContains: []string{"not found (404)"},
 		},
 		{
 			name:         "oauth_keys cannot escalate client scope",
 			scopes:       []string{"oauth_keys"},
 			config:       oauthClientEscalateConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "beyond the creating token"},
+			denyContains: []string{"actor cannot set scopes: [devices:core:read]"},
 		},
 
 		// policy_file: write scope sets the ACL; read does not.
@@ -230,7 +230,7 @@ resource "tailscale_tailnet_key" "k" {
 			scopes:       []string{"policy_file:read"},
 			config:       aclConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "missing the required scope"},
+			denyContains: []string{"calling actor does not"},
 		},
 
 		// devices:core:read reads the devices data source.
@@ -244,7 +244,7 @@ resource "tailscale_tailnet_key" "k" {
 			scopes:       []string{"policy_file:read"},
 			config:       devicesReadConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "missing the required scope"},
+			denyContains: []string{"not found (404)"},
 		},
 
 		// devices:core: a write-scoped token authorizes a device; the read scope
@@ -261,14 +261,14 @@ resource "tailscale_tailnet_key" "k" {
 			scopes:       []string{"devices:core:read"},
 			config:       deviceAuthorizeConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "missing the required scope"},
+			denyContains: []string{"calling actor does not"},
 		},
 		{
 			name:         "policy_file denies device authorize",
 			scopes:       []string{"policy_file"},
 			config:       deviceAuthorizeConfig,
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "missing the required scope"},
+			denyContains: []string{"not found (404)"},
 		},
 
 		// Tag owned-by: a tag:k8s-operator client may use its own tag and the

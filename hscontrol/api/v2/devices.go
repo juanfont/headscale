@@ -722,7 +722,8 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 func devicePostureAttributesFromView(view types.NodeView) DevicePostureAttributes {
 	attributes := make(map[string]any)
 	if addr := view.LastControlAddress(); addr.Valid() {
-		attributes["ip:publicAddress"] = addr.Get().String()
+		// Tailscale's typed value (probe-J J16).
+		attributes["ip:publicAddress"] = map[string]string{"type": "IpAddr", "value": addr.Get().String()}
 	}
 
 	return DevicePostureAttributes{Attributes: attributes}

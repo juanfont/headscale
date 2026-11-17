@@ -52,12 +52,18 @@ func apiReq(t *testing.T, method, target, bearer string, body any) (int, []byte)
 }
 
 // scopeDenied reports whether a response is a scope-enforcement denial. The scope
-// gate runs in the middleware before the handler, so a denial is exactly a 403
-// carrying this message; any other status (200, or a 400/404 from the handler on
-// minimal input) means the request passed the scope gate.
+// gate runs in the middleware before the handler and answers as Tailscale: 403
+// when the token holds the read half of a write scope, otherwise 404 "not
+// found". Any other answer means the request passed the scope gate.
 func scopeDenied(status int, body []byte) bool {
-	return status == http.StatusForbidden &&
-		strings.Contains(string(body), "missing the required scope")
+	switch status {
+	case http.StatusForbidden:
+		return strings.Contains(string(body), "calling actor does not have enough permissions")
+	case http.StatusNotFound:
+		return strings.Contains(string(body), `"message":"not found"`)
+	}
+
+	return false
 }
 
 // mintScopedToken creates an OAuth client holding exactly scope s (tagged tag:ci so
@@ -146,9 +152,8 @@ func TestAPIv2OAuthMatrix_Enforcement(t *testing.T) {
 
 			wantDenied := !scope.Grants([]scope.Scope{s}, op.need)
 
-			// A multiplexed keys op denies via uniform not-found (no existence
-			// oracle), so denial is "resource not returned"; every other op
-			// denies with the middleware's scope-403.
+			// A multiplexed keys op denies in its handler, so denial is
+			// "resource not returned"; every other op denies in the middleware.
 			denied := scopeDenied(status, body)
 			if op.multiplexed {
 				denied = status != http.StatusOK
@@ -157,6 +162,15 @@ func TestAPIv2OAuthMatrix_Enforcement(t *testing.T) {
 			assert.Equalf(t, wantDenied, denied,
 				"op %s with scope %q (needs %q): status=%d body=%s",
 				op.name, s, op.need, status, body)
+
+			if wantDenied && !op.multiplexed {
+				wantStatus := http.StatusNotFound
+				if op.need.IsWrite() && scope.Grants([]scope.Scope{s}, op.need+":read") {
+					wantStatus = http.StatusForbidden
+				}
+
+				assert.Equalf(t, wantStatus, status, "op %s with scope %q: body=%s", op.name, s, body)
+			}
 		}
 	}
 }
