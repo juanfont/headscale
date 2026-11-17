@@ -1,0 +1,52 @@
+# W. Keys in use, and joins with keys that ended (2026-11-13T17:39:48Z)
+## W-E. An ephemeral, reusable, tagged auth key; one node joined with it; the key is deleted
+E1 the key                                                : {"id":"krczVbN4pV11CNTRL","revoked":null,"invalid":null,"capabilities":{"devices":{"create":{"reusable":true,"ephemeral":true,"preauthorized":true,"tags":["tag:server"]}}}} HTTP 200
+E2 the device                                             : {"hostname":"hs-ov-we","isEphemeral":true,"tags":["tag:server"],"connectedToControl":true,"keyExpiryDisabled":true} HTTP 200
+E3 DELETE the key while the node is connected             : null HTTP 200
+E4 GET the key after                                      : {"revoked":"2026-11-13T17:39:56Z","invalid":true,"expires":"2026-11-13T17:49:49Z"} HTTP 200
+E5 the device 10 s after                                  : {"hostname":"hs-ov-we","isEphemeral":true,"tags":["tag:server"],"connectedToControl":true,"keyExpiryDisabled":true} HTTP 200
+E6 the node itself                                        : {"BackendState": "Running", "AuthURL": "", "KeyExpiry": null, "Online": true, "Expired": null, "Health": []}
+E7 the node after a restart of tailscaled                 : {"BackendState": "Running", "AuthURL": "", "KeyExpiry": null, "Online": true, "Expired": null, "Health": []}
+E8 the device after the restart                           : {"hostname":"hs-ov-we","isEphemeral":true,"tags":["tag:server"],"connectedToControl":true,"keyExpiryDisabled":true} HTTP 200
+E9 DELETE the key again                                   : null HTTP 200
+E10 a second node tries to join with the deleted key      : {"upExit": 1, "upSays": "backend error: invalid key: API key krczVbN4pV11CNTRL not valid", "node": "NeedsLogin", "deviceMade": false}
+
+## W-S. Joins with a spent single-use key and with an expired key
+S1 a single-use key after a node used it                  : {"created":"2026-11-13T17:40:34Z","revoked":"2026-11-13T17:40:35Z","invalid":true,"expires":"2026-11-13T17:50:34Z"} HTTP 200
+S2 the device that used it                                : {"created":"2026-11-13T17:40:35Z","hostname":"hs-ov-ws"} HTTP 200
+S3 a second node tries to join with the spent key         : {"upExit": 1, "upSays": "backend error: invalid key: API key kgjZd2wqfb11CNTRL not valid", "node": "NeedsLogin", "deviceMade": false}
+S4 a key 6 s after create, expirySeconds 3                : {"created":"2026-11-13T17:40:43Z","revoked":null,"invalid":true,"expires":"2026-11-13T17:40:46Z"} HTTP 200
+S5 a node tries to join with the expired key              : {"upExit": 1, "upSays": "backend error: invalid key: API key kyWr6a82KM11CNTRL not valid", "node": "NeedsLogin", "deviceMade": false}
+S6 DELETE the expired key                                 : null HTTP 200
+S7 GET it after                                           : {"revoked":"2026-11-13T17:40:53Z","invalid":true,"expires":"2026-11-13T17:40:46Z"} HTTP 200
+
+## W-D. Which description texts are refused (auth key, expirySeconds 30)
+D description 'plain text 123'                            : {"stored":"plain text 123"} HTTP 200
+D description 'a-b'                                       : {"stored":"a-b"} HTTP 200
+D description 'a_b'                                       : {"stored":"a_b"} HTTP 200
+D description 'a.b'                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'a:b'                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'a+b'                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'a,b'                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'a/b'                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description "a'b"                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'a@b'                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'a(b)'                                      : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'a=b'                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'a#b'                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'ünï'                                       : {"message":"keys: description had invalid characters"} HTTP 400
+D description 'a\tb'                                      : {"stored":"a\tb"} HTTP 200
+D description ''                                          : {"stored":"absent"} HTTP 200
+
+## cleanup: only what this probe made, by ID
+ device 8799678617885445: DELETE -> 200
+ device 5729389185110159: DELETE -> 200
+ krczVbN4pV11CNTRL: HTTP 200, revoked or invalid already; left
+ kgjZd2wqfb11CNTRL: HTTP 200, revoked or invalid already; left
+ kyWr6a82KM11CNTRL: HTTP 200, revoked or invalid already; left
+ DELETE kN3zQdqvLT11CNTRL -> 200
+ DELETE k4HzJqzUDS11CNTRL -> 200
+ DELETE kJmKBQS3g711CNTRL -> 200
+ DELETE kLyxVGUka521CNTRL -> 200
+ DELETE kDLMk3nYcy11CNTRL -> 200
+done 2026-11-13T17:41:09Z

@@ -1,0 +1,144 @@
+# U. OAuth token rules on keys and clients (2026-11-13T17:32:00Z)
+# the admin API key belongs to user uRWUsmwMTZ11CNTRL
+# U. OAuth token rules on keys and clients (2026-11-13T17:32:06Z)
+# the admin API key belongs to user uRWUsmwMTZ11CNTRL
+setup all+tag:server: scopes ['all'] tags ['tag:server']      : {"client":"kuKtJrbrqK11CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"all","tags":"tag:server"}} HTTP 200
+setup all, no tags: scopes ['all'] tags None                  : {"client":"ku1tRoAJtZ11CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"all"}} HTTP 200
+setup auth_keys+tag:server: scopes ['auth_keys'] tags ['tag:server']: {"client":"kf3oyBMFTJ11CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"auth_keys","tags":"tag:server"}} HTTP 200
+setup auth_keys:read: scopes ['auth_keys:read'] tags None     : {"client":"khwmH9Rkgt11CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"auth_keys:read"}} HTTP 200
+setup oauth_keys: scopes ['oauth_keys'] tags None             : {"client":"ktU7zKH9Vy11CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"oauth_keys"}} HTTP 200
+setup oauth_keys:read: scopes ['oauth_keys:read'] tags None   : {"client":"khvmCjnqk311CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"oauth_keys:read"}} HTTP 200
+setup auth_keys+oauth_keys+tag:server: scopes ['auth_keys', 'oauth_keys'] tags ['tag:server']: {"client":"ksFSRj21W421CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"auth_keys oauth_keys","tags":"tag:server"}} HTTP 200
+setup devices:core:read: scopes ['devices:core:read'] tags None: {"client":"kK82XJqKW711CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"devices:core:read"}} HTTP 200
+setup users:read: scopes ['users:read'] tags None             : {"client":"kMv4nrjXmJ11CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"users:read"}} HTTP 200
+setup policy_file:read: scopes ['policy_file:read'] tags None : {"client":"k7A9u6txRQ11CNTRL","token":{"token_type":"Bearer","expires_in":3600,"scope":"policy_file:read"}} HTTP 200
+
+## U1. A token with scope all and tag:server makes OAuth clients
+U1a client: scopes [all], NO tags                                 : {"id":"kzdAQH8mrB21CNTRL","keyType":"client","scopes":["all"]} HTTP 200
+U1b client: scopes [all], tags [tag:server]                       : {"id":"kBWwfvK1qN11CNTRL","keyType":"client","scopes":["all"],"tags":["tag:server"]} HTTP 200
+U1c client: scopes [all], tags [tag:prod]                         : {"message":"requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+U1d client: scopes [all], tags [tag:hsov-child]                   : {"id":"kbm7Tu6L7821CNTRL","keyType":"client","scopes":["all"],"tags":["tag:hsov-child"]} HTTP 200
+U1e client: scopes [auth_keys], tags [tag:prod]                   : {"message":"requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+U1f client: scopes [devices:core:read], no tags                   : {"id":"k6WxWkFmBT11CNTRL","keyType":"client","scopes":["devices:core:read"]} HTTP 200
+## U1, continued: can the untagged client from U1a reach a tag its maker did not have?
+U1g token from the U1a client, no tags asked                      : {"token_type":"Bearer","expires_in":3600,"scope":"all"} HTTP 200
+U1h token from the U1a client, tags=tag:prod asked                : {"token_type":"Bearer","expires_in":3600,"scope":"all","tags":"tag:prod"} HTTP 200
+U1i that token makes an auth key for tag:prod                     : {"id":"k5XRLVdZ3621CNTRL","keyType":"auth","capTags":["tag:prod"]} HTTP 200
+U1j the U1g token makes an auth key for tag:prod                  : {"id":"kqX8W5y9n121CNTRL","keyType":"auth","capTags":["tag:prod"]} HTTP 200
+U1k the U1g token makes an auth key with no tags                  : {"message":"tailnet-owned auth key must have tags set"} HTTP 400
+
+## U2. Tokens make auth keys
+U2a all+tag:server: key for tag:server                            : {"id":"kWgrpH9HJf11CNTRL","keyType":"auth","capTags":["tag:server"]} HTTP 200
+U2b all+tag:server: key for tag:prod                              : {"message":"requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+U2c all+tag:server: key for tag:hsov-child (owned by tag:server)  : {"id":"kNDXUomUSs11CNTRL","keyType":"auth","capTags":["tag:hsov-child"]} HTTP 200
+U2d all+tag:server: key with no tags (a user's key)               : {"message":"tailnet-owned auth key must have tags set"} HTTP 400
+U2e all, no tags: key with no tags (a user's key)                 : {"message":"tailnet-owned auth key must have tags set"} HTTP 400
+U2f all, no tags: key for tag:prod                                : {"id":"k3GfLn5eyz11CNTRL","keyType":"auth","capTags":["tag:prod"]} HTTP 200
+U2g auth_keys+tag:server: key for tag:server                      : {"id":"kC5kFvFBu111CNTRL","keyType":"auth","capTags":["tag:server"]} HTTP 200
+U2h auth_keys+tag:server: key for tag:prod                        : {"message":"requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+U2i auth_keys+tag:server: key for tag:hsov-child                  : {"id":"kh7TmUHMz321CNTRL","keyType":"auth","capTags":["tag:hsov-child"]} HTTP 200
+U2j auth_keys+tag:server: key with no tags                        : {"message":"tailnet-owned auth key must have tags set"} HTTP 400
+U2k auth_keys+tag:server: key for both tag:server and tag:prod    : {"message":"requested tags [tag:server tag:prod] are invalid or not permitted"} HTTP 400
+U2l auth_keys+tag:server: keyType api                             : {"message":"invalid key type, \"api\" is not supported"} HTTP 400
+U2m all, no tags: keyType api                                     : {"message":"invalid key type, \"api\" is not supported"} HTTP 400
+
+## U3. Tokens make OAuth clients: scopes the token lacks
+U3a oauth_keys: client with [devices:core:read]                   : {"message":"actor cannot set scopes: [devices:core:read]"} HTTP 403
+U3b oauth_keys: client with [all]                                 : {"message":"actor cannot set scopes: [all]"} HTTP 403
+U3c oauth_keys: client with [oauth_keys]                          : {"id":"kGQiDWcGqq11CNTRL","keyType":"client","scopes":["oauth_keys"]} HTTP 200
+U3d oauth_keys: client with [auth_keys] tags [tag:server]         : {"message":"actor cannot set scopes: [auth_keys]"} HTTP 403
+U3e parent (ak+ok, tag:server): client [auth_keys] tags [tag:server]: {"id":"kPkF6cXzcR11CNTRL","keyType":"client","scopes":["auth_keys"],"tags":["tag:server"]} HTTP 200
+U3f parent: client [auth_keys] tags [tag:prod]                    : {"message":"requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+U3g parent: client [devices:core] tags [tag:server]               : {"message":"actor cannot set scopes: [devices:core]"} HTTP 403
+U3h parent: client [all] no tags                                  : {"message":"actor cannot set scopes: [all]"} HTTP 403
+U3i oauth_keys:read: client with [oauth_keys:read]                : {"message":"calling actor does not have enough permissions to perform this function"} HTTP 403
+
+## U4. The token endpoint
+U4a devices:core:read client asks for scope devices:core          : {"message":"OAuth client cannot grant scopes \"devices:core\""} HTTP 403
+U4b all+tag:server client asks for scope auth_keys                : {"token_type":"Bearer","expires_in":3600,"scope":"auth_keys","tags":"tag:server"} HTTP 200
+U4c all+tag:server client asks for tags=tag:prod                  : {"message":"requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+U4d all+tag:server client asks for tags=tag:hsov-child            : {"token_type":"Bearer","expires_in":3600,"scope":"all","tags":"tag:hsov-child"} HTTP 200
+U4e all, no tags client asks for tags=tag:prod                    : {"token_type":"Bearer","expires_in":3600,"scope":"all","tags":"tag:prod"} HTTP 200
+U4f wrong client secret                                           : {"message":"API token invalid"} HTTP 401
+U4g client secret as HTTP Basic user name, no client_id           : {"token_type":"Bearer","expires_in":3600,"scope":"devices:core:read"} HTTP 200
+
+## U5. What a token without the scope is answered (403 or 404?)
+U5a auth_keys:read: POST a key                                    : {"message":"calling actor does not have enough permissions to perform this function"} HTTP 403
+U5b auth_keys:read: DELETE a key                                  : {"message":"calling actor does not have enough permissions to perform this function"} HTTP 403
+U5c auth_keys:read: GET a key by ID                               : {"id":"k15ptN59G721CNTRL","keyType":"auth","userId":"uRWUsmwMTZ11CNTRL","capTags":["tag:server"]} HTTP 200
+U5d auth_keys:read: GET an OAuth client by ID                     : {"message":"not found"} HTTP 404
+U5e auth_keys:read: GET devices                                   : {"message":"not found"} HTTP 404
+U5f auth_keys:read: GET /acl                                      : {"message":"not found"} HTTP 404
+U5g auth_keys:read: GET users                                     : {"message":"not found"} HTTP 404
+U5h auth_keys:read: GET settings                                  : {} HTTP 200
+U5i oauth_keys:read: GET an auth key by ID                        : {"message":"not found"} HTTP 404
+U5j oauth_keys:read: GET an OAuth client by ID                    : {"id":"kK82XJqKW711CNTRL","keyType":"client","scopes":["devices:core:read"],"userId":"uRWUsmwMTZ11CNTRL"} HTTP 200
+U5k oauth_keys:read: DELETE an OAuth client                       : {"message":"calling actor does not have enough permissions to perform this function"} HTTP 403
+U5l auth_keys+tag:server: DELETE an OAuth client                  : {"message":"not found"} HTTP 404
+U5m devices:core:read: GET keys                                   : {"message":"calling actor does not have enough permissions to perform this function"} HTTP 403
+U5n devices:core:read: POST a key                                 : {"message":"not found"} HTTP 404
+U5o devices:core:read: POST an OAuth client                       : {"message":"not found"} HTTP 404
+U5p users:read: GET users                                         : {"count":3} HTTP 200
+U5q users:read: GET devices                                       : {"message":"not found"} HTTP 404
+U5r policy_file:read: GET /acl                                    : (policy text) HTTP 200
+U5s policy_file:read: POST /acl/validate {}                       : {} HTTP 200
+U5t policy_file:read: GET devices                                 : {"message":"not found"} HTTP 404
+U5u auth_keys+tag:server: DELETE an admin-made tag:server key     : null HTTP 200
+
+## U6. What a token sees in the key list
+U6 auth_keys:read: GET keys                                       : {"count":7,"types":{"auth":7}} HTTP 200
+U6 auth_keys:read: GET keys?all=true                              : {"count":7,"types":{"auth":7}} HTTP 200
+U6 oauth_keys:read: GET keys                                      : {"count":16,"types":{"client":16}} HTTP 200
+U6 oauth_keys:read: GET keys?all=true                             : {"count":16,"types":{"client":16}} HTTP 200
+U6 auth_keys+tag:server: GET keys                                 : {"count":7,"types":{"auth":7}} HTTP 200
+U6 auth_keys+tag:server: GET keys?all=true                        : {"count":7,"types":{"auth":7}} HTTP 200
+U6 all+tag:server: GET keys                                       : {"count":23,"types":{"auth":7,"client":16}} HTTP 200
+U6 all+tag:server: GET keys?all=true                              : {"count":26,"types":{"api":3,"auth":7,"client":16}} HTTP 200
+U6 all, no tags: GET keys                                         : {"count":23,"types":{"auth":7,"client":16}} HTTP 200
+U6 all, no tags: GET keys?all=true                                : {"count":26,"types":{"api":3,"auth":7,"client":16}} HTTP 200
+U6 the admin API key: GET keys                                    : {"count":1,"types":{"api":1}} HTTP 200
+U6 the admin API key: GET keys?all=true                           : {"count":26,"types":{"api":3,"auth":7,"client":16}} HTTP 200
+
+## cleanup: only what this probe made, by ID
+ DELETE kuKtJrbrqK11CNTRL (client) -> 200
+ DELETE ku1tRoAJtZ11CNTRL (client) -> 200
+ DELETE kf3oyBMFTJ11CNTRL (client) -> 200
+ DELETE khwmH9Rkgt11CNTRL (client) -> 200
+ DELETE ktU7zKH9Vy11CNTRL (client) -> 200
+ DELETE khvmCjnqk311CNTRL (client) -> 200
+ DELETE ksFSRj21W421CNTRL (client) -> 200
+ DELETE kK82XJqKW711CNTRL (client) -> 200
+ DELETE kMv4nrjXmJ11CNTRL (client) -> 200
+ DELETE k7A9u6txRQ11CNTRL (client) -> 200
+ DELETE kzdAQH8mrB21CNTRL (client) -> 200
+ DELETE kBWwfvK1qN11CNTRL (client) -> 200
+ DELETE kbm7Tu6L7821CNTRL (client) -> 200
+ DELETE k6WxWkFmBT11CNTRL (client) -> 200
+ DELETE k5XRLVdZ3621CNTRL (auth) -> 200
+ DELETE kqX8W5y9n121CNTRL (auth) -> 200
+ DELETE kWgrpH9HJf11CNTRL (auth) -> 200
+ DELETE kNDXUomUSs11CNTRL (auth) -> 200
+ DELETE k3GfLn5eyz11CNTRL (auth) -> 200
+ DELETE kC5kFvFBu111CNTRL (auth) -> 200
+ DELETE kh7TmUHMz321CNTRL (auth) -> 200
+ DELETE kGQiDWcGqq11CNTRL (client) -> 200
+ DELETE kPkF6cXzcR11CNTRL (client) -> 200
+ k15ptN59G721CNTRL: HTTP 200, revoked or invalid already; left
+
+## U1, second run (2026-11-13T17:51:29Z), with tag:prod as the token's tag and tag:server as the foreign one
+U1' admin makes a client: scopes [all], tags [tag:prod]           : {"id":"kizmTP4Lu611CNTRL","keyType":"client","scopes":["all"],"tags":["tag:prod"],"userId":"uRWUsmwMTZ11CNTRL"} HTTP 200
+U1' its token                                                     : {"token_type":"Bearer","expires_in":3600,"scope":"all","tags":"tag:prod"} HTTP 200
+U1'b that token: auth key for tag:server                          : {"message":"requested tags [tag:server] are invalid or not permitted"} HTTP 400
+U1'c the client asks for tags=tag:server                          : {"message":"requested tags [tag:server] are invalid or not permitted"} HTTP 400
+U1'a that token: client with scopes [all], NO tags                : {"id":"kB77qEVuW411CNTRL","keyType":"client","scopes":["all"]} HTTP 200
+U1'h the child client asks for tags=tag:server                    : {"token_type":"Bearer","expires_in":3600,"scope":"all","tags":"tag:server"} HTTP 200
+U1'i that token: auth key for tag:server                          : {"id":"kWyVunmet211CNTRL","keyType":"auth","capTags":["tag:server"]} HTTP 200
+U1'x the child client, read by the admin key                      : {"id":"kB77qEVuW411CNTRL","keyType":"client","scopes":["all"]} HTTP 200
+## cleanup of the second run, by ID (devices: see probe-V)
+ device 6629546248399217 (va): DELETE -> 200
+ device 6940095435769730 (vb): DELETE -> 200
+ DELETE kizmTP4Lu611CNTRL (client) -> 200
+ DELETE kB77qEVuW411CNTRL (client) -> 200
+ DELETE kWyVunmet211CNTRL (auth) -> 200
+ kxAtBBrapw11CNTRL: revoked or invalid already; left
+ kDjSeu2T9h11CNTRL: revoked or invalid already; left
