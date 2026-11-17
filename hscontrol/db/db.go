@@ -545,6 +545,8 @@ func openDB(cfg types.DatabaseConfig, sqlitePath string) (*gorm.DB, error) {
 			sqlite.Open(connectionURL),
 			&gorm.Config{
 				Logger: dbLogger,
+				// Callers match gorm.ErrDuplicatedKey, not driver text.
+				TranslateError: true,
 			},
 		)
 		if err != nil {
@@ -583,7 +585,8 @@ func openDB(cfg types.DatabaseConfig, sqlitePath string) (*gorm.DB, error) {
 		pg.Pass = types.Secret(pass)
 
 		db, err := gorm.Open(postgres.Open(pg.DSN()), &gorm.Config{
-			Logger: dbLogger,
+			Logger:         dbLogger,
+			TranslateError: true,
 		})
 		if err != nil {
 			return nil, err
