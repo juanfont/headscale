@@ -1,0 +1,10 @@
+# Q. A credential that deletes itself (2026-11-13T13:53Z)
+Q1 admin key creates a client     : {"id":"kPyuQBqjwn11CNTRL","key":"tskey-client-kPyuQB-REDACTED","keyType":"client","created":"2026-11-13T13:53:05Z","scopes":["oauth_keys"],"description":"hs probe Q self revoke","userId":"uRWUsmwMTZ11CNTRL"} HTTP 200
+Q2 token from the client          : {"token_type":"Bearer","expires_in":3600,"scope":"oauth_keys"} HTTP 200
+Q3 token reads its own client     : {"id":"kPyuQBqjwn11CNTRL","keyType":"client","created":"2026-11-13T13:53:05Z","scopes":["oauth_keys"],"description":"hs probe Q self revoke","userId":"uRWUsmwMTZ11CNTRL"} HTTP 200
+Q4 token deletes its own client   : null HTTP 200
+Q5 token reads its client again   : {"message":"API token invalid"} HTTP 401
+Q6 token lists keys after         : {"message":"API token invalid"} HTTP 401
+Q7 token deletes it again         : {"message":"API token invalid"} HTTP 401
+Q8 admin key reads the client     : {"id":"kPyuQBqjwn11CNTRL","keyType":"client","created":"2026-11-13T13:53:05Z","revoked":"2026-11-13T13:53:06Z","invalid":true,"scopes":["oauth_keys"],"description":"hs probe Q self revoke","userId":"uRWUsmwMTZ11CNTRL"} HTTP 200
+cleanup: client kPyuQBqjwn11CNTRL is revoked already; nothing to delete

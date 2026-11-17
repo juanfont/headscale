@@ -1,0 +1,224 @@
+# V. Devices (2026-11-13T17:35:08Z)
+joined vt = hs-ov-vt device 5137834464279452 tags ['tag:server']
+joined vp = hs-ov-vp device 5634160180376393 tags ['tag:prod']
+joined vu = hs-ov-vu device 4923444444017101 tags None
+joined vw = hs-ov-vw device 4376300691662747 tags None
+
+## V-J. Device rows, admin API key
+J1 fields, default                                          : ["addresses", "authorized", "blocksIncomingConnections", "clientVersion", "connectedToControl", "created", "expires", "hostname", "id", "isExternal", "keyExpiryDisabled", "lastSeen", "machineKey", "name", "nodeId", "nodeKey", "oauthClientId", "os", "tags", "tailnetLockError", "tailnetLockKey", "updateAvailable", "user"]
+J1 fields, extra with fields=all                            : ["advertisedRoutes", "clientConnectivity", "distro", "enabledRoutes", "postureStatus", "sshEnabled"]
+J1 tagged node vt                                           : {"name":"hs-ov-vt.tail78f774.ts.net","hostname":"hs-ov-vt","user":"REDACTED-USER","tags":["tag:server"],"authorized":true,"isEphemeral":"absent","isExternal":false,"blocksIncomingConnections":false,"updateAvailable":true,"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":[],"keyExpiryDisabled":true,"expires":"2027-05-12T17:35:09Z","created":"2026-11-13T17:35:09Z","clientVersion":"1.105.0-ERR-BuildInfo","os":"linux"} HTTP 200
+J1 user node vu                                             : {"name":"hs-ov-vu.tail78f774.ts.net","hostname":"hs-ov-vu","user":"REDACTED-USER","tags":"absent","keyExpiryDisabled":false,"expires":"2027-05-12T17:35:12Z","created":"2026-11-13T17:35:12Z"} HTTP 200
+J1 vt: what is in clientConnectivity and postureStatus      : {"clientConnectivity":["clientSupports","endpoints","latency","mappingVariesByDestIP"],"endpointsCount":4,"postureStatus":{}} HTTP 200
+J2 GET by nodeId                                            : {"id":"5137834464279452","nodeId":"nMbQvYCw7h11CNTRL","hostname":"hs-ov-vt"} HTTP 200
+J3 rename vu to hs-ov-renamed                               : null HTTP 200
+   stored name                                              : hs-ov-renamed.tail78f774.ts.net
+J4 rename vu to the name of vt                              : {"message":"name \"hs-ov-vt\" is already taken"} HTTP 400
+   stored name                                              : hs-ov-renamed.tail78f774.ts.net
+J5 rename vu to 'Bad Name!'                                 : {"answer":null,"storedName":"bad-name.tail78f774.ts.net"} HTTP 200
+J5 rename vu to 'UPPER-Case'                                : {"answer":null,"storedName":"upper-case.tail78f774.ts.net"} HTTP 200
+J5 rename vu to 'under_score'                               : {"answer":null,"storedName":"under-score.tail78f774.ts.net"} HTTP 200
+J5 rename vu to 'trailing-'                                 : {"answer":null,"storedName":"trailing.tail78f774.ts.net"} HTTP 200
+J5 rename vu to '-leading'                                  : {"answer":null,"storedName":"leading.tail78f774.ts.net"} HTTP 200
+J5 rename vu to 'dot.ted'                                   : {"answer":null,"storedName":"dot-ted.tail78f774.ts.net"} HTTP 200
+J5 rename vu to 'ax64'                                      : {"answer":null,"storedName":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.tail78f774.ts.net"} HTTP 200
+J5 rename vu to 'ax63'                                      : {"answer":null,"storedName":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.tail78f774.ts.net"} HTTP 200
+J5 rename vu to 'ünïcode'                                   : {"answer":null,"storedName":"ncode.tail78f774.ts.net"} HTTP 200
+J5 rename vu to ' spaced '                                  : {"answer":null,"storedName":"spaced.tail78f774.ts.net"} HTTP 200
+J5 rename vu to '!!!'                                       : {"answer":{"message":"empty DNS label"},"storedName":"spaced.tail78f774.ts.net"} HTTP 500
+J5 rename vu to 'hs-ov-vt.tail78f774.ts.net'                : {"answer":{"message":"name \"hs-ov-vt\" is already taken"},"storedName":"spaced.tail78f774.ts.net"} HTTP 400
+J5 rename vu to 'hs-ov-full.tail78f774.ts.net'              : {"answer":null,"storedName":"hs-ov-full.tail78f774.ts.net"} HTTP 200
+J6 rename vu to ""                                          : null HTTP 200
+   stored name                                              : hs-ov-vu.tail78f774.ts.net
+J6b name endpoint, body {}                                  : null HTTP 200
+J18 rename with an unknown field in the body                : null HTTP 200
+   stored name                                              : hs-ov-vu.tail78f774.ts.net
+J7 tags [] on the tagged node vt                            : {"message":"tagged nodes cannot be untagged without reauth"} HTTP 400
+J7b tags null on vt                                         : {"message":"tagged nodes cannot be untagged without reauth"} HTTP 400
+J7c body {} on vt                                           : {"message":"tagged nodes cannot be untagged without reauth"} HTTP 400
+   vt afterwards                                            : {"tags":["tag:server"],"user":"REDACTED-USER","keyExpiryDisabled":true,"expires":"2027-05-12T17:35:09Z"} HTTP 200
+J8 a tag that is not in the policy, on vt                   : {"message":"requested tags [tag:not-in-policy-probe] are invalid or not permitted"} HTTP 400
+   vu before it is tagged                                   : {"tags":"absent","user":"REDACTED-USER","keyExpiryDisabled":false,"expires":"2027-05-12T17:35:12Z"} HTTP 200
+J9 tag the user-owned node vu with tag:server               : null HTTP 200
+   vu afterwards                                            : {"tags":["tag:server"],"user":"REDACTED-USER","keyExpiryDisabled":false,"expires":"2027-05-12T17:35:12Z"} HTTP 200
+   vu, the node itself                                      : {"Tags": ["tag:server"], "KeyExpiry": "2027-05-12T17:35:12Z", "UserID is the tagged-devices user": 4923444444017101}
+J10 tags [] on vu afterwards                                : {"message":"tagged nodes cannot be untagged without reauth"} HTTP 400
+   vu afterwards                                            : {"tags":["tag:server"],"user":"REDACTED-USER","keyExpiryDisabled":false,"expires":"2027-05-12T17:35:12Z"} HTTP 200
+J11 GET routes of vt                                        : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":[]} HTTP 200
+J12 enable one exit prefix, 0.0.0.0/0                       : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":["0.0.0.0/0"]} HTTP 200
+J13 enable a route vt does not offer, 192.168.77.0/24       : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":["192.168.77.0/24"]} HTTP 200
+J14 a route that is not a prefix                            : {"message":"\"not-a-route\" is not a valid IP address or CIDR prefix"} HTTP 400
+J14b a bare address, 10.99.0.1                              : {"message":"\"10.99.0.1\" is not a valid IP address or CIDR prefix"} HTTP 400
+J14c a prefix with host bits, 10.99.0.1/24                  : {"message":"10.99.0.1/24 has non-address bits set; expected 10.99.0.0/24"} HTTP 400
+J15 routes []                                               : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":[]} HTTP 200
+J15b body {}                                                : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","::/0"],"enabledRoutes":[]} HTTP 200
+J16 attributes of vt (ip: values masked)                    : {"ip:country":"(str)","ip:publicAddress":"{type: IpAddr, value: \u2026}","node:os":"linux","node:osVersion":"6.18.59","node:tsAutoUpdate":false,"node:tsReleaseTrack":"unstable","node:tsStateEncrypted":false,"node:tsVersion":"1.105.0"} HTTP 200
+   top-level keys of the answer                             : ['attributes']
+
+## V-A. authorized, key, update-client
+J17 authorized:false on vw (device approval is off)         : null HTTP 200
+   vw in the API                                            : {"authorized":false,"connectedToControl":true,"keyExpiryDisabled":false} HTTP 200
+   vw, the node itself                                      : {"BackendState": "NeedsMachineAuth", "AuthURL": "", "KeyExpiry": "2027-05-12T17:35:13Z", "Online": true, "Expired": null, "Health": []}
+   vw as vp sees it                                         : null
+J17b authorized:true on vw                                  : null HTTP 200
+   vw in the API                                            : {"authorized":true,"connectedToControl":true} HTTP 200
+   vw, the node itself                                      : {"BackendState": "Running", "AuthURL": "", "KeyExpiry": "2027-05-12T17:35:13Z", "Online": true, "Expired": null, "Health": []}
+   vw as vp sees it                                         : {"Online": true, "KeyExpiry": "2027-05-12T17:35:13Z", "Expired": null, "Active": false, "ExitNodeOption": false, "AllowedIPs": ["100.99.201.10/32", "fd7a:115c:a1e0::1728:c90b/128"], "Tags": null}
+J22 key endpoint, body {}                                   : null HTTP 200
+J22b key endpoint, keyExpiryDisabled:"yes"                  : {"message":"invalid JSON in request body"} HTTP 400
+J22c key endpoint, keyExpiryDisabled:true                   : null HTTP 200
+   vw in the API                                            : {"keyExpiryDisabled":true,"expires":"2027-05-12T17:35:13Z"} HTTP 200
+J22d key endpoint, keyExpiryDisabled:false                  : null HTTP 200
+   vw in the API                                            : {"keyExpiryDisabled":false,"expires":"2027-05-12T17:35:13Z"} HTTP 200
+J23 POST /device/{id}/update-client, no body (vt, connected): {"message":"not found"} HTTP 404
+J23b the same with body {}                                  : {"message":"not found"} HTTP 404
+J23c GET /device/{id}/update-client                         : {"message":"not found"} HTTP 404
+J23d GET /device/{id}/update-status                         : {"message":"not found"} HTTP 404
+J23e POST update-client, unknown device                     : {"message":"no manageable device matching this ID found"} HTTP 404
+J23f GET update-status, unknown device                      : {"message":"no manageable device matching this ID found"} HTTP 404
+   vt after the update calls                                : {"clientVersion":"1.105.0-ERR-BuildInfo","updateAvailable":true,"connectedToControl":true} HTTP 200
+   vt, the node itself                                      : {"BackendState": "Running", "AuthURL": "", "KeyExpiry": null, "Online": true, "Expired": null, "Health": []}
+
+## V-P. One exit prefix: the API, the exit node itself, and the peer vp (accept-all policy)
+P1 nothing enabled                                          : {"apiEnabled":[],"apiAdvertised":["0.0.0.0/0","10.99.0.0/24","::/0"],"ownAllowedIPs(routes)":[],"peerAllowedIPs(routes)":[],"peerExitNodeOption":false,"peerExitNodeListLines":0}
+P enabled through the API: ["0.0.0.0/0"] (HTTP 200)         : {"apiEnabled":["0.0.0.0/0"],"apiAdvertised":["0.0.0.0/0","10.99.0.0/24","::/0"],"ownAllowedIPs(routes)":["0.0.0.0/0","::/0"],"peerAllowedIPs(routes)":[],"peerExitNodeOption":false,"peerExitNodeListLines":0}
+P enabled through the API: ["::/0"] (HTTP 200)              : {"apiEnabled":["::/0"],"apiAdvertised":["0.0.0.0/0","10.99.0.0/24","::/0"],"ownAllowedIPs(routes)":["::/0"],"peerAllowedIPs(routes)":[],"peerExitNodeOption":false,"peerExitNodeListLines":0}
+P enabled through the API: ["0.0.0.0/0", "::/0"] (HTTP 200) : {"apiEnabled":["0.0.0.0/0","::/0"],"apiAdvertised":["0.0.0.0/0","10.99.0.0/24","::/0"],"ownAllowedIPs(routes)":["0.0.0.0/0","::/0"],"peerAllowedIPs(routes)":["0.0.0.0/0","::/0"],"peerExitNodeOption":true,"peerExitNodeListLines":1}
+P enabled through the API: [] (HTTP 200)                    : {"apiEnabled":[],"apiAdvertised":["0.0.0.0/0","10.99.0.0/24","::/0"],"ownAllowedIPs(routes)":[],"peerAllowedIPs(routes)":[],"peerExitNodeOption":false,"peerExitNodeListLines":0}
+## V-P. A route that is enabled before the node offers it
+P6 192.168.77.0/24 enabled, not offered (HTTP 200)          : {"apiEnabled":["192.168.77.0/24"],"apiAdvertised":["0.0.0.0/0","10.99.0.0/24","::/0"],"ownAllowedIPs(routes)":[],"peerAllowedIPs(routes)":[],"peerExitNodeOption":false,"peerExitNodeListLines":0}
+P7 vt now offers 192.168.77.0/24 too (set rc=0)             : {"apiEnabled":["192.168.77.0/24"],"apiAdvertised":["0.0.0.0/0","10.99.0.0/24","192.168.77.0/24","::/0"],"ownAllowedIPs(routes)":["192.168.77.0/24"],"peerAllowedIPs(routes)":["192.168.77.0/24"],"peerExitNodeOption":false,"peerExitNodeListLines":0}
+
+## V-AA. autoApprovers: routes with one exit prefix, exitNode, and a subnet route
+joined ve = hs-ov-ve device 6480010133651139 tags ['tag:exit']
+joined vea = hs-ov-vea device 3608002295240475 tags ['tag:exit-a']
+joined vr = hs-ov-vr device 4255599410298843 tags ['tag:router']
+AA1 ve: tag:exit, autoApprovers.routes {0.0.0.0/0: [tag:exit]}: {"apiEnabled":[],"apiAdvertised":["0.0.0.0/0","::/0"],"ownAllowedIPs(routes)":[],"peerAllowedIPs(routes)":[],"peerExitNodeOption":false,"peerExitNodeListLines":1}
+AA2 vea: tag:exit-a, autoApprovers.exitNode [tag:exit-a]    : {"apiEnabled":["0.0.0.0/0","::/0"],"apiAdvertised":["0.0.0.0/0","::/0"],"ownAllowedIPs(routes)":["0.0.0.0/0","::/0"],"peerAllowedIPs(routes)":["0.0.0.0/0","::/0"],"peerExitNodeOption":true,"peerExitNodeListLines":1}
+AA3 vr: tag:router, autoApprovers.routes {10.77.0.0/24: [tag:router]}: {"apiEnabled":["10.77.0.0/24"],"apiAdvertised":["10.77.0.0/24","10.78.0.0/24"],"ownAllowedIPs(routes)":["10.77.0.0/24"],"peerAllowedIPs(routes)":["10.77.0.0/24"],"peerExitNodeOption":false,"peerExitNodeListLines":0}
+
+## V-Y. What an OAuth token may read and change on a device
+setup core: scopes ['devices:core'] tags ['tag:server']     : {"token_type":"Bearer","expires_in":3600,"scope":"devices:core","tags":"tag:server"} HTTP 200
+setup coreread: scopes ['devices:core:read'] tags None      : {"token_type":"Bearer","expires_in":3600,"scope":"devices:core:read"} HTTP 200
+setup routes: scopes ['devices:routes'] tags ['tag:server'] : {"token_type":"Bearer","expires_in":3600,"scope":"devices:routes"} HTTP 200
+setup routesread: scopes ['devices:routes:read'] tags None  : {"token_type":"Bearer","expires_in":3600,"scope":"devices:routes:read"} HTTP 200
+setup posture: scopes ['devices:posture_attributes'] tags ['tag:server']: {"token_type":"Bearer","expires_in":3600,"scope":"devices:posture_attributes"} HTTP 200
+setup postureread: scopes ['devices:posture_attributes:read'] tags None: {"token_type":"Bearer","expires_in":3600,"scope":"devices:posture_attributes:read"} HTTP 200
+setup authkeys: scopes ['auth_keys'] tags ['tag:server']    : {"token_type":"Bearer","expires_in":3600,"scope":"auth_keys","tags":"tag:server"} HTTP 200
+setup: devices:routes with no tags                          : {"id":"kXb7RmTowu11CNTRL","scopes":["devices:routes"],"tags":"absent","message":"absent"} HTTP 200
+setup: devices:posture_attributes with no tags              : {"id":"k1mFepEeTK11CNTRL","scopes":["devices:posture_attributes"],"tags":"absent","message":"absent"} HTTP 200
+Y1 coreread: GET device                                     : {"fieldCount":23,"has":["nodeKey","machineKey","user","tags","addresses","tailnetLockKey"],"endpoints":0} HTTP 200
+Y1 coreread: GET device?fields=all                          : {"fieldCount":29,"has":["advertisedRoutes","enabledRoutes","clientConnectivity","nodeKey","machineKey","user","tags","postureStatus","addresses","tailnetLockKey"],"endpoints":4} HTTP 200
+Y1 coreread: GET device list?fields=all                     : {"count":12,"first":{"fieldCount":28,"has":["advertisedRoutes","enabledRoutes","clientConnectivity","nodeKey","machineKey","user","postureStatus","addresses","tailnetLockKey"],"endpoints":4}} HTTP 200
+Y1 coreread: GET routes                                     : {"message":"not found"} HTTP 404
+Y1 coreread: GET attributes                                 : {"message":"not found"} HTTP 404
+Y1 core: GET device                                         : {"fieldCount":23,"has":["nodeKey","machineKey","user","tags","addresses","tailnetLockKey"],"endpoints":0} HTTP 200
+Y1 core: GET device?fields=all                              : {"fieldCount":29,"has":["advertisedRoutes","enabledRoutes","clientConnectivity","nodeKey","machineKey","user","tags","postureStatus","addresses","tailnetLockKey"],"endpoints":4} HTTP 200
+Y1 core: GET device list?fields=all                         : {"count":12,"first":{"fieldCount":28,"has":["advertisedRoutes","enabledRoutes","clientConnectivity","nodeKey","machineKey","user","postureStatus","addresses","tailnetLockKey"],"endpoints":4}} HTTP 200
+Y1 core: GET routes                                         : {"message":"not found"} HTTP 404
+Y1 core: GET attributes                                     : {"message":"not found"} HTTP 404
+Y1 routesread: GET device                                   : {"message":"not found"} HTTP 404
+Y1 routesread: GET device?fields=all                        : {"message":"not found"} HTTP 404
+Y1 routesread: GET device list?fields=all                   : {"message":"not found"} HTTP 404
+Y1 routesread: GET routes                                   : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","192.168.77.0/24","::/0"],"enabledRoutes":[]} HTTP 200
+Y1 routesread: GET attributes                               : {"message":"not found"} HTTP 404
+Y1 routes: GET device                                       : {"message":"not found"} HTTP 404
+Y1 routes: GET device?fields=all                            : {"message":"not found"} HTTP 404
+Y1 routes: GET device list?fields=all                       : {"message":"not found"} HTTP 404
+Y1 routes: GET routes                                       : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","192.168.77.0/24","::/0"],"enabledRoutes":[]} HTTP 200
+Y1 routes: GET attributes                                   : {"message":"not found"} HTTP 404
+Y1 postureread: GET device                                  : {"message":"not found"} HTTP 404
+Y1 postureread: GET device?fields=all                       : {"message":"not found"} HTTP 404
+Y1 postureread: GET device list?fields=all                  : {"message":"not found"} HTTP 404
+Y1 postureread: GET routes                                  : {"message":"not found"} HTTP 404
+Y1 postureread: GET attributes                              : {"attributes":["ip:country","ip:publicAddress","node:os","node:osVersion","node:tsAutoUpdate","node:tsReleaseTrack","node:tsStateEncrypted","node:tsVersion"]} HTTP 200
+Y1 posture: GET device                                      : {"message":"not found"} HTTP 404
+Y1 posture: GET device?fields=all                           : {"message":"not found"} HTTP 404
+Y1 posture: GET device list?fields=all                      : {"message":"not found"} HTTP 404
+Y1 posture: GET routes                                      : {"message":"not found"} HTTP 404
+Y1 posture: GET attributes                                  : {"attributes":["ip:country","ip:publicAddress","node:os","node:osVersion","node:tsAutoUpdate","node:tsReleaseTrack","node:tsStateEncrypted","node:tsVersion"]} HTTP 200
+## V-Y. Writes
+Y2 routes: POST routes [10.99.0.0/24] on vt                 : {"advertisedRoutes":["0.0.0.0/0","10.99.0.0/24","192.168.77.0/24","::/0"],"enabledRoutes":["10.99.0.0/24"]} HTTP 200
+Y2 routesread: POST routes [10.99.0.0/24] on vt             : {"message":"calling actor does not have enough permissions to perform this function"} HTTP 403
+Y2 core: POST routes [10.99.0.0/24] on vt                   : {"message":"not found"} HTTP 404
+Y2 coreread: POST routes [10.99.0.0/24] on vt               : {"message":"not found"} HTTP 404
+Y2 routes: rename vt to hs-ov-vt                            : {"message":"not found"} HTTP 404
+Y2 coreread: rename vt to hs-ov-vt                          : {"message":"calling actor does not have enough permissions to perform this function"} HTTP 403
+Y2 core: rename vt to hs-ov-vt                              : null HTTP 200
+## V-Y. A token with devices:core and tag:server changes tags
+Y3a vt (tag:server) -> [tag:prod]                           : {"message":"requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+Y3b vt (tag:server) -> [tag:server, tag:prod]               : {"message":"requested tags [tag:server tag:prod] are invalid or not permitted"} HTTP 400
+Y3c vp (tag:prod) -> [tag:server]                           : {"message":"cannot remove current tags: requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+Y3d vp (tag:prod) -> [tag:server, tag:prod]                 : {"message":"cannot remove current tags: requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+Y3e vp (tag:prod) -> [tag:prod] (no change)                 : null HTTP 200
+Y3f vt (tag:server) -> [tag:hsov-child] (owned by tag:server): null HTTP 200
+   vt afterwards                                            : {"tags":["tag:hsov-child"],"user":"REDACTED-USER","keyExpiryDisabled":true,"expires":"2027-05-12T17:35:09Z"} HTTP 200
+Y3g vt (tag:hsov-child) -> [tag:server]                     : null HTTP 200
+   vt afterwards                                            : {"tags":["tag:server"],"user":"REDACTED-USER","keyExpiryDisabled":true,"expires":"2027-05-12T17:35:09Z"} HTTP 200
+Y3h vt -> []                                                : {"message":"tagged nodes cannot be untagged without reauth"} HTTP 400
+Y3i vw (user-owned) -> [tag:prod]                           : {"message":"requested tags [tag:prod] are invalid or not permitted"} HTTP 400
+Y3j vw (user-owned) -> [tag:server]                         : null HTTP 200
+   vw afterwards                                            : {"tags":["tag:server"],"user":"REDACTED-USER","keyExpiryDisabled":false,"expires":"2027-05-12T17:35:13Z"} HTTP 200
+## V-Y. Does the tag of the token limit other writes? (vp has tag:prod, the token has tag:server)
+Y4a rename vp                                               : null HTTP 200
+   stored name                                              : hs-ov-vp-renamed.tail78f774.ts.net
+Y4b key expiry of vp                                        : null HTTP 200
+Y4c authorized:true on vp                                   : null HTTP 200
+Y4d update-client on vt                                     : {"message":"not found"} HTTP 404
+Y4e coreread: update-client on vt                           : {"message":"not found"} HTTP 404
+Y4f coreread: key expiry of vt                              : {"message":"calling actor does not have enough permissions to perform this function"} HTTP 403
+Y4g coreread: DELETE vr                                     : {"message":"calling actor does not have enough permissions to perform this function"} HTTP 403
+## V-Y. A node that joins with a key an OAuth token made
+Y5a token (auth_keys, tag:server) makes a tag:server key    : {"id":"kUCDxmr2H111CNTRL","userId":"absent","keyType":"auth"} HTTP 200
+joined vk = hs-ov-vk device 2026072860829947 tags ['tag:server']
+Y5b vk in the API                                           : {"hostname":"hs-ov-vk","user":"","tags":["tag:server"],"keyExpiryDisabled":true,"oauthClientId":"kArR4GMbWK11CNTRL"} HTTP 200
+Y5c vt (admin-made key) for comparison                      : {"hostname":"hs-ov-vt","user":"REDACTED-USER","tags":["tag:server"],"keyExpiryDisabled":true,"oauthClientId":"kRtixQb2nq11CNTRL"} HTTP 200
+
+## V-D. Delete, and lastSeen of a device that is gone
+D1 vr, 45 s after its tailscaled was stopped                : {"connectedToControl":false,"lastSeen":"2026-11-13T17:37:50Z","now":"2026-11-13T17:38:20Z"} HTTP 200
+J19a token (devices:core, tag:server): DELETE vp (tag:prod) : null HTTP 200
+J19 DELETE vu                                               : null HTTP 200
+J20 GET the deleted device                                  : {"message":"no manageable device matching this ID found"} HTTP 404
+J21 DELETE it again                                         : {"message":"no manageable device matching this ID found"} HTTP 404
+   vu, the node itself, 10 s after the delete               : {"BackendState": "NeedsLogin", "AuthURL": "", "KeyExpiry": "2027-05-12T17:35:12Z", "Online": false, "Expired": null, "Health": ["This device has been removed from the tailnet. Log in again to reconnect.", "Tailscale could not connect to the 'Amsterdam' relay server. Your Internet connection might be down, or the server might be temporarily unavailable.", "Some peers are advertising routes but --accept-routes is false"]}
+D2 vr, 85 s after its tailscaled was stopped                : {"connectedToControl":false,"lastSeen":"2026-11-13T17:37:50Z","now":"2026-11-13T17:39:02Z"} HTTP 200
+
+## cleanup: only what this probe made, by ID
+ device 5137834464279452 (hs-ov-vt): DELETE -> 200
+ device 5634160180376393 (hs-ov-vp): HTTP 404, gone already
+ device 4923444444017101 (hs-ov-vu): HTTP 404, gone already
+ device 4376300691662747 (hs-ov-vw): DELETE -> 200
+ device 6480010133651139 (hs-ov-ve): DELETE -> 200
+ device 3608002295240475 (hs-ov-vea): DELETE -> 200
+ device 4255599410298843 (hs-ov-vr): DELETE -> 200
+ device 2026072860829947 (hs-ov-vk): DELETE -> 200
+ kRtixQb2nq11CNTRL: HTTP 200, revoked or invalid already; left
+ kM87kBsZfg11CNTRL: HTTP 200, revoked or invalid already; left
+ k5SMGfXpt921CNTRL: HTTP 200, revoked or invalid already; left
+ kK3GxfMEN421CNTRL: HTTP 200, revoked or invalid already; left
+ kBnZzUQD3L11CNTRL: HTTP 200, revoked or invalid already; left
+ kVLw4Kb4o811CNTRL: HTTP 200, revoked or invalid already; left
+ k489QJViMT11CNTRL: HTTP 200, revoked or invalid already; left
+ DELETE k5o7zCHDwt11CNTRL (client) -> 200
+ DELETE ka41Hk6dAf11CNTRL (client) -> 200
+ DELETE koS4u4Xs2v11CNTRL (client) -> 200
+ DELETE k4jZmEyRsq11CNTRL (client) -> 200
+ DELETE k1fa2UW4zf11CNTRL (client) -> 200
+ DELETE kBnqrQ6dFY11CNTRL (client) -> 200
+ DELETE kArR4GMbWK11CNTRL (client) -> 200
+ DELETE kXb7RmTowu11CNTRL (client) -> 200
+ DELETE k1mFepEeTK11CNTRL (client) -> 200
+ kUCDxmr2H111CNTRL: HTTP 200, revoked or invalid already; left
+done 2026-11-13T17:39:20Z
+
+## notes added after the run
+- AA1 "peerExitNodeListLines":1 is not ve: the count matched the hostname as a substring, and "hs-ov-ve" is inside "hs-ov-vea", the exit node of AA2. For ve, the readings that count are apiEnabled [], peerAllowedIPs [] and peerExitNodeOption false.
+- Y5b/Y5c "oauthClientId": for vt it is the ID of the admin-made auth key it joined with; for vk it is the ID of the OAuth client whose token made the auth key (see created-objects.tsv).
+
+## second run of two rows that rested on one run (2026-11-13T17:51:32Z)
+Y5' va joined with an admin-made key                              : {"user":"REDACTED-USER","oauthClientId":"kDjSeu2T9h11CNTRL","theAuthKey":"kDjSeu2T9h11CNTRL"} HTTP 200
+Y5' vb joined with a token-made key                               : {"user":"","oauthClientId":"kB77qEVuW411CNTRL","theAuthKey":"kxAtBBrapw11CNTRL","theClientOfTheToken":"kB77qEVuW411CNTRL"} HTTP 200
+J5' rename va to '!!!'                                            : {"answer":{"message":"empty DNS label"},"storedName":"hs-ov-va.tail78f774.ts.net"} HTTP 500
+J5' rename va to '---'                                            : {"answer":{"message":"empty DNS label"},"storedName":"hs-ov-va.tail78f774.ts.net"} HTTP 500
+J5' rename va to 'é'                                              : {"answer":{"message":"empty DNS label"},"storedName":"hs-ov-va.tail78f774.ts.net"} HTTP 500
+J5' rename va to 'a!'                                             : {"answer":null,"storedName":"a.tail78f774.ts.net"} HTTP 200
