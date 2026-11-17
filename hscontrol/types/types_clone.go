@@ -105,6 +105,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	AuthKey            *Credential
 	Ephemeral          bool
 	Expiry             *time.Time
+	KeyExpiryDisabled  bool
 	LastSeen           *time.Time
 	ApprovedRoutes     Prefixes
 	AutoApprovedRoutes Prefixes
