@@ -322,7 +322,8 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 			expiry = *customExpiry
 		}
 
-		node, nodeChange, err := b.State.SetNodeExpiry(nodeID, &expiry)
+		// As before key expiry could be turned off: the node expires.
+		node, nodeChange, err := b.State.ExpireNodeAt(nodeID, expiry)
 		b.Change(nodeChange)
 
 		if err != nil {
@@ -626,8 +627,8 @@ func nodeFromView(view types.NodeView) Node {
 		n.LastSeen = &ls
 	}
 
-	if view.Expiry().Valid() {
-		exp := view.Expiry().Get()
+	// A node with key expiry off shows none, as before the switch existed.
+	if exp, ok := view.KeyExpiry(); ok {
 		n.Expiry = &exp
 	}
 

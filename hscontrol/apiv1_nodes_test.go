@@ -238,6 +238,23 @@ func TestAPIV1NodeExpire(t *testing.T) {
 		assert.NotNil(t, got.Node["expiry"])
 	})
 
+	// As before the key expiry switch existed: v1 expire logs the node out.
+	t.Run("huma expires a node with key expiry off", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		seedNodes(newNodeSeed("alice", "node-a"))(t, h.app)
+
+		_, _, err := h.app.state.SetNodeKeyExpiryDisabled(1, true)
+		require.NoError(t, err)
+
+		res := h.callHuma(http.MethodPost, "/api/v1/node/1/expire", nil)
+		require.Equal(t, http.StatusOK, res.status)
+
+		node, ok := h.app.state.GetNodeByID(1)
+		require.True(t, ok)
+		assert.False(t, node.KeyExpiryDisabled())
+		assert.True(t, node.IsExpired())
+	})
+
 	t.Run("huma refuses an unencodable expiry", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 		seedNodes(newNodeSeed("alice", "node-a"))(t, h.app)

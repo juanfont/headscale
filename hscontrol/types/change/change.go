@@ -630,10 +630,8 @@ func NodeKeyRotated(node types.NodeView) Change {
 	// It does not clear [tailcfg.Node.Expired]. It is sent in UTC, as
 	// [types.NodeView.TailNode] sends it: the stored zone depends on the
 	// database.
-	var expiry time.Time
-	if e, ok := node.Expiry().GetOk(); ok {
-		expiry = e.UTC()
-	}
+	expiry, _ := node.KeyExpiry()
+	expiry = expiry.UTC()
 
 	// Peers get an expired node without its endpoints.
 	var endpoints []netip.AddrPort

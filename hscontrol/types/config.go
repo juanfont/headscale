@@ -127,11 +127,12 @@ type PreAuthKeysConfig struct {
 
 // NodeConfig contains configuration for node lifecycle and expiry.
 type NodeConfig struct {
-	// Expiry is the key expiry given to a non-tagged node that registers
-	// without one, whatever the method (auth key, CLI, web, OIDC). An
-	// expiry the client asks for, `oidc.use_expiry_from_token` and an
-	// admin's `headscale nodes expire` still apply. Tagged nodes never get
-	// this default. Zero or negative disables the default.
+	// Expiry is the key expiry given to a node that registers without one,
+	// whatever the method (auth key, CLI, web, OIDC). An expiry the client
+	// asks for, `oidc.use_expiry_from_token` and an admin's `headscale nodes
+	// expire` still apply. A tagged node registers with key expiry turned
+	// off and keeps this time for when it is turned on. Zero or negative
+	// disables the default.
 	Expiry time.Duration `example:"\"2160h\"" koanf:"expiry"`
 
 	// Ephemeral covers ephemeral nodes, which register with an ephemeral
