@@ -1096,8 +1096,8 @@ func TestIssue3371_TaggedNodePastExpirySelfHealsOnReregister(t *testing.T) {
 
 	reloaded, ok := s2.GetNodeByID(nodeID)
 	require.True(t, ok)
-	require.True(t, reloaded.IsExpired(),
-		"precondition: a persisted past expiry survives restart and re-triggers the lockout")
+	require.False(t, reloaded.IsExpired(),
+		"a tagged node's key expiry is off, so a stale past expiry does not lock it out")
 
 	// Re-register (rotating the node key). The stale past expiry must be cleared.
 	reregReq := tailcfg.RegisterRequest{
@@ -1110,8 +1110,8 @@ func TestIssue3371_TaggedNodePastExpirySelfHealsOnReregister(t *testing.T) {
 	require.True(t, healed.IsTagged(), "node stays tagged")
 	require.False(t, healed.IsExpired(),
 		"issue #3371: re-registration must self-heal a tagged node broken by an older version")
-	require.Nil(t, healed.AsStruct().Expiry,
-		"issue #3371: self-healed tagged node must have key-expiry disabled (DB NULL)")
+	require.True(t, healed.KeyExpiryDisabled(),
+		"issue #3371: a tagged node keeps key expiry off")
 	require.Equal(t, nodeID, healed.ID(), "must be the same node")
 }
 
@@ -1123,7 +1123,7 @@ func TestExpiredTaggedNodeRequiresValidPreAuthKey(t *testing.T) {
 			require.NoError(t, err)
 			c := registerForPAKRereg(t, s, pak)
 			past := time.Now().Add(-time.Hour)
-			_, _, err = s.SetNodeExpiry(c.node.ID(), &past)
+			_, _, err = s.ExpireNodeAt(c.node.ID(), past)
 			require.NoError(t, err)
 			nsBefore, rowBefore := c.fields(t)
 			require.Equal(t, past.UnixNano(), nsBefore.Expiry)
@@ -1147,14 +1147,15 @@ func TestExpiredTaggedNodeRequiresValidPreAuthKey(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, c.node.ID(), node.ID())
-			require.False(t, node.Expiry().Valid(), "a valid key disables tagged node expiry")
+			require.True(t, node.KeyExpiryDisabled(), "a valid tagged key turns key expiry off")
+			require.False(t, node.IsExpired(), "a valid key renews the node")
 			current, ok := s.GetNodeByID(c.node.ID())
 			require.True(t, ok)
-			require.False(t, current.Expiry().Valid())
+			require.False(t, current.IsExpired())
 
 			stored, err := s.db.GetNodeByID(c.node.ID())
 			require.NoError(t, err)
-			require.Nil(t, stored.Expiry)
+			require.False(t, stored.IsExpired())
 		})
 	}
 }
@@ -1562,6 +1563,7 @@ func TestExpiredTaggedNodeReauthRetags(t *testing.T) {
 	past := time.Now().Add(-1 * time.Hour)
 	_, ok := s.nodeStore.UpdateNode(first.ID(), func(n *types.Node) {
 		n.Expiry = &past
+		n.KeyExpiryDisabled = false
 	})
 	require.True(t, ok)
 
@@ -1576,8 +1578,8 @@ func TestExpiredTaggedNodeReauthRetags(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"tag:tag2"}, second.Tags().AsSlice(),
 		"an expired (stale logout stamp) tagged node must retag on fresh-key re-auth")
-	require.Nil(t, second.AsStruct().Expiry,
-		"retag must clear a stale expiry: the node is tagged and tagged nodes never expire")
+	require.True(t, second.KeyExpiryDisabled(),
+		"a tagged key turns key expiry off, as on Tailscale SaaS")
 	require.False(t, second.IsExpired(),
 		"a retagged node must not remain expired")
 }
@@ -2760,7 +2762,7 @@ func TestPAKReregisterRollbackKeepsConcurrentWrites(t *testing.T) {
 					pending = append(pending, expiryDone)
 
 					go func() {
-						_, _, err := s.SetNodeExpiry(b.node.ID(), &expiry)
+						_, _, err := s.ExpireNodeAt(b.node.ID(), expiry)
 						expiryDone <- err
 					}()
 
@@ -3280,7 +3282,7 @@ func TestUserKeyOnTaggedMachine(t *testing.T) {
 				switch mode {
 				case "expired":
 					past := time.Now().Add(-time.Hour)
-					_, _, err = s.SetNodeExpiry(c.node.ID(), &past)
+					_, _, err = s.ExpireNodeAt(c.node.ID(), past)
 					require.NoError(t, err)
 				case "rotated":
 					req.NodeKey = key.NewNode().Public()
@@ -3350,7 +3352,7 @@ func TestPAKWakeRechecksAuthorityAtMutation(t *testing.T) {
 	view, pak := c.lookup(t, guestKey.Key)
 
 	past := time.Now().Add(-time.Hour)
-	_, _, err = s.SetNodeExpiry(c.node.ID(), &past)
+	_, _, err = s.ExpireNodeAt(c.node.ID(), past)
 	require.NoError(t, err)
 
 	beforeCache, beforeDB := c.fields(t)
@@ -3386,7 +3388,7 @@ func TestExpiredNodeSameKeyLoginAsksForNewKey(t *testing.T) {
 
 			c := registerForPAKRereg(t, s, pak)
 			past := time.Now().Add(-time.Hour)
-			_, _, err = s.SetNodeExpiry(c.node.ID(), &past)
+			_, _, err = s.ExpireNodeAt(c.node.ID(), past)
 			require.NoError(t, err)
 
 			beforeCache, beforeDB := c.fields(t)

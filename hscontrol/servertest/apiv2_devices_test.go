@@ -146,11 +146,11 @@ func apiv2DevicesGoClient(t *testing.T, srv *servertest.TestServer, baseURL, api
 	dev, err = dr.Get(ctx, deviceID)
 	require.NoError(t, err)
 	assert.True(t, dev.KeyExpiryDisabled)
-	assert.False(t, srvNodeView(t, srv, id).Expiry().Valid())
+	assert.True(t, srvNodeView(t, srv, id).KeyExpiryDisabled())
+	assert.True(t, srvNodeView(t, srv, id).Expiry().Valid(), "the time is kept")
 
-	// Re-enable is a no-op; expiry stays cleared.
 	require.NoError(t, dr.SetKey(ctx, deviceID, tsclient.DeviceKey{KeyExpiryDisabled: false}))
-	assert.False(t, srvNodeView(t, srv, id).Expiry().Valid())
+	assert.False(t, srvNodeView(t, srv, id).KeyExpiryDisabled())
 
 	// SetTags — flips ownership to the tags; the user is dropped, and the
 	// device shows the login that made its key.
@@ -314,7 +314,7 @@ func apiv2DevicesTSCLI(t *testing.T, srv *servertest.TestServer, baseURL, apiKey
 
 	run("set", "device", "key", "--device", deviceID, "--disable-expiry")
 	assert.Contains(t, run("get", "device", "--device", deviceID, "-o", "json"), `"keyExpiryDisabled": true`)
-	assert.False(t, srvNodeView(t, srv, id).Expiry().Valid())
+	assert.True(t, srvNodeView(t, srv, id).KeyExpiryDisabled())
 
 	// Tags — flips to tag ownership.
 	run("set", "device", "tags", "--device", deviceID, "--tag", "tag:ci")

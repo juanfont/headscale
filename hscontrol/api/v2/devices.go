@@ -438,15 +438,7 @@ func registerDevices(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		// Only disabling expiry maps cleanly (expiry=nil never expires).
-		// Re-enabling has no target expiry in the Tailscale request and Headscale
-		// stores no original, so it is accepted as a no-op (keeps Terraform
-		// destroy working) rather than guessing a lifetime.
-		if !in.Body.KeyExpiryDisabled {
-			return &emptyOutput{}, nil
-		}
-
-		_, nodeChange, err := b.State.SetNodeExpiry(node.ID(), nil)
+		_, nodeChange, err := b.State.SetNodeKeyExpiryDisabled(node.ID(), in.Body.KeyExpiryDisabled)
 		b.Change(nodeChange)
 
 		if err != nil {
@@ -650,7 +642,7 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 		Authorized:         true, // Headscale has no post-registration de-auth state.
 		User:               deviceUser(view),
 		Tags:               emptyIfNil(view.Tags().AsSlice()),
-		KeyExpiryDisabled:  !view.Expiry().Valid(),
+		KeyExpiryDisabled:  view.KeyExpiryDisabled(),
 		Created:            view.CreatedAt(),
 		Hostname:           view.Hostname(),
 		IsEphemeral:        view.IsEphemeral(),

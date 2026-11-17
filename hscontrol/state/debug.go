@@ -305,7 +305,7 @@ func (s *State) DebugOverviewJSON() DebugOverviewInfo {
 				info.Nodes.Online++
 			}
 
-			if node.Expiry().Valid() && node.Expiry().Get().Before(now) {
+			if node.IsExpiredAt(now) {
 				info.Nodes.Expired++
 			}
 
