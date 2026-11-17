@@ -286,6 +286,12 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 				assert.False(t, node5.IsTagged(), "node5 (tags='[]') should be untagged")
 				require.NotNil(t, node5.Expiry, "node5 (user-owned) expiry must be preserved")
 				assert.Equal(t, 2099, node5.Expiry.UTC().Year(), "node5 future expiry preserved")
+
+				// 202611171200-node-key-expiry-disabled: the switch is on for
+				// tagged nodes only.
+				for _, n := range nodes {
+					assert.Equal(t, n.IsTagged(), n.KeyExpiryDisabled, "%s key expiry switch", n.Hostname)
+				}
 			},
 		},
 	}
