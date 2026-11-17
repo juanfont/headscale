@@ -153,7 +153,7 @@ Headscale checks if the policy is valid during startup and refuses to start if i
 indicates which part of the policy is invalid. Follow these steps to fix your policy:
 
 - Dump the policy to a file: `headscale policy get --bypass-server-and-access-database-directly > policy.json`
-- Edit and fixup `policy.json`. Use the command `headscale policy check --file policy.json` to validate the policy.
+- Edit and fixup `policy.json`. Use the command `headscale check policy --file policy.json` to validate the policy.
 - Load the modified policy: `headscale policy set --bypass-server-and-access-database-directly --file policy.json`
 - Start Headscale as usual.
 
