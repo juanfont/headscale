@@ -342,3 +342,20 @@ How the soft revoke of an auth key works:
   operation, `DELETE`, a soft delete. The CLI verb is `delete`. Headscale's
   clean-up rule applies to all three kinds. A used single-use key keeps its own
   state, `used`.
+
+## 11. The second run, 2026-11-13
+
+The same tailnet and the same rules, one day later: every claim above was
+tried again, and some new calls were added. The rows above were not changed;
+where the second run shows something else, it is listed in
+`docs/proposals/002-api.md`, "In the Tailscale API of Headscale".
+
+| File | What |
+| --- | --- |
+| `probe-S-baseline.txt` | the tailnet before and after; the five revoked IDs read again |
+| `probe-T-keys-oauth-errors.txt` | auth keys, OAuth clients, self-revoke, errors, users, policy reads and validate (second run of A, F, G, K, L, Q, R) |
+| `probe-U-oauth-token-rules.txt` | what an OAuth token may do with keys and clients |
+| `probe-V-devices.txt` | devices (second run of J, N, P), invalid names, update-client, authorized, routes, autoApprovers, tokens on devices |
+| `probe-W-key-in-use-and-joins.txt` | a key deleted while a node uses it (second run of E); joins with a revoked, a spent and an expired key; description texts |
+| `probe-X-expire-long-watch.txt` | expire with key expiry disabled, 5 nodes, watched for 3 h 31 min, with a peer's view |
+| `probe-Z-expire-variants.txt` | expire, third run; a node tagged later; a second expire; enable and disable key expiry; the login URL |
