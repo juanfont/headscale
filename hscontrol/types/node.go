@@ -186,6 +186,11 @@ type Node struct {
 
 	Expiry *time.Time
 
+	// KeyExpiryDisabled keeps the node from expiring while it is set; Expiry
+	// is kept, and counts again once it is cleared. Tailscale stores the two
+	// apart the same way.
+	KeyExpiryDisabled bool `gorm:"default:false"`
+
 	// LastSeen is when the node was last in contact with
 	// headscale. It is best effort and not persisted.
 	LastSeen *time.Time `gorm:"column:last_seen"`
@@ -262,6 +267,10 @@ func (node *Node) IsExpired() bool {
 
 // IsExpiredAt reports whether the node registration has expired at now.
 func (node *Node) IsExpiredAt(now time.Time) bool {
+	if node.KeyExpiryDisabled {
+		return false
+	}
+
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefore considered
 	// to mean "not expired"
@@ -1142,6 +1151,16 @@ func (nv NodeView) IsExpiredAt(now time.Time) bool {
 	return nv.ж.IsExpiredAt(now)
 }
 
+// KeyExpiry is the expiry clients are sent: none while expiry is disabled,
+// whatever time is kept for when it is enabled again.
+func (nv NodeView) KeyExpiry() (time.Time, bool) {
+	if !nv.Valid() || nv.KeyExpiryDisabled() {
+		return time.Time{}, false
+	}
+
+	return nv.Expiry().GetOk()
+}
+
 // Online reports the node's last known connectivity.
 func (nv NodeView) Online() bool {
 	if !nv.Valid() {
@@ -1375,10 +1394,7 @@ func (nv NodeView) TailNode(
 		derp = nv.Hostinfo().NetInfo().PreferredDERP()
 	}
 
-	var keyExpiry time.Time
-	if nv.Expiry().Valid() {
-		keyExpiry = nv.Expiry().Get()
-	}
+	keyExpiry, _ := nv.KeyExpiry()
 
 	// Fail here, where the mapper drops just this peer, rather than in
 	// json.Marshal, which fails the whole response.
