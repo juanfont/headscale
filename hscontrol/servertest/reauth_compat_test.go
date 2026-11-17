@@ -649,11 +649,11 @@ func (r *stepReplay) hsViews(alias string) []deviceView {
 			v.owner = "user " + nv.User().Name()
 		}
 
-		if exp := nv.Expiry(); exp.Valid() && !exp.Get().IsZero() {
-			v.expires = exp.Get().String()
+		if exp, ok := nv.KeyExpiry(); ok && !exp.IsZero() {
+			v.expires = exp.String()
 
 			v.expiry = "future"
-			if exp.Get().Before(time.Now()) {
+			if exp.Before(time.Now()) {
 				v.expiry = "past"
 			}
 		}
