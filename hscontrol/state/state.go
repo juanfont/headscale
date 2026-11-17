@@ -61,6 +61,10 @@ var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 // [State.ValidatePolicy] for a policy they refuse.
 var ErrInvalidPolicy = errors.New("invalid policy")
 
+// ErrPolicyPrecondition is returned by [State.UpdatePolicyIf] when the stored
+// policy fails the caller's check.
+var ErrPolicyPrecondition = errors.New("policy precondition failed")
+
 // invalidPolicyError marks a refusal as [ErrInvalidPolicy] and keeps the
 // reason's own text, which API answers show as is.
 type invalidPolicyError struct{ reason error }
@@ -1898,6 +1902,14 @@ func (s *State) ValidatePolicy(pol []byte) error {
 // it untouched. The changes are returned alongside a reload error, as from
 // [State.ReloadPolicy].
 func (s *State) UpdatePolicy(pol []byte) (*types.Policy, []change.Change, error) {
+	return s.UpdatePolicyIf(pol, nil)
+}
+
+// UpdatePolicyIf is [State.UpdatePolicy] that first passes the stored policy
+// data ("" when none is set) to match, under the same lock as the write, so
+// two writers cannot both pass a check against the same policy. A false match
+// returns [ErrPolicyPrecondition]; a nil match always passes.
+func (s *State) UpdatePolicyIf(pol []byte, match func(stored string) bool) (*types.Policy, []change.Change, error) {
 	err := s.ValidatePolicy(pol)
 	if err != nil {
 		return nil, nil, err
@@ -1907,6 +1919,22 @@ func (s *State) UpdatePolicy(pol []byte) (*types.Policy, []change.Change, error)
 	// otherwise commit an older row after a newer one pruned the rest.
 	s.policyMu.Lock()
 	defer s.policyMu.Unlock()
+
+	if match != nil {
+		current, err := s.db.GetPolicy()
+		if err != nil && !errors.Is(err, types.ErrPolicyNotFound) {
+			return nil, nil, fmt.Errorf("loading policy: %w", err)
+		}
+
+		var data string
+		if current != nil {
+			data = current.Data
+		}
+
+		if !match(data) {
+			return nil, nil, ErrPolicyPrecondition
+		}
+	}
 
 	stored, err := s.db.SetPolicy(string(pol))
 	if err != nil {

@@ -231,7 +231,7 @@ func TestAPIv2Device_GetPostureAttributes(t *testing.T) {
 			))
 
 			attrs := getDevicePostureAttributes(t, e.api, e.deviceID)
-			assert.Equal(t, test.addr, attrs.Attributes["ip:publicAddress"])
+			assert.Equal(t, map[string]any{"type": "IpAddr", "value": test.addr}, attrs.Attributes["ip:publicAddress"])
 			assert.Empty(t, attrs.Expiries)
 		})
 	}
