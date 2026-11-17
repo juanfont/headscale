@@ -182,62 +182,7 @@ func registerKeys(api huma.API, b Backend) {
 			http.StatusNotFound,
 		},
 	}, func(ctx context.Context, in *listKeysInput) (*listKeysOutput, error) {
-		err := requireDefaultTailnet(in.Tailnet)
-		if err != nil {
-			return nil, err
-		}
-
-		scopes, isOAuth := principalScopes(ctx)
-		readAuth := !isOAuth || scope.Grants(scope.Parse(scopes), scope.AuthKeysRead)
-		readClients := !isOAuth || scope.Grants(scope.Parse(scopes), scope.OAuthKeysRead)
-
-		// As Tailscale (probe-U U5m): a token that can read no kind of key.
-		if !readAuth && !readClients {
-			return nil, huma.Error403Forbidden(errNotEnoughPermissions)
-		}
-
-		out := &listKeysOutput{}
-		out.Body.Keys = []Key{}
-
-		// A token sees the key kinds it has read scope for; an admin key sees all.
-		if readAuth {
-			keys, err := b.State.ListPreAuthKeys()
-			if err != nil {
-				return nil, huma.Error500InternalServerError("listing auth keys", err)
-			}
-
-			now := time.Now()
-
-			// As Tailscale lists them: never an invalid key, and to a token
-			// without all=true only the keys tokens made.
-			for i := range keys {
-				if !keyVisibleInList(&keys[i], now, isOAuth, in.All) {
-					continue
-				}
-
-				out.Body.Keys = append(out.Body.Keys, keyFromStored(&keys[i]))
-			}
-		}
-
-		// As Tailscale (probe-T H5, H7b; probe-U U6): an admin key lists clients
-		// only with all=true, a token whenever it may read them, and a revoked
-		// client never.
-		if readClients && (isOAuth || in.All) {
-			clients, err := b.State.ListOAuthClients()
-			if err != nil {
-				return nil, huma.Error500InternalServerError("listing oauth clients", err)
-			}
-
-			for i := range clients {
-				if clients[i].Revoked != nil {
-					continue
-				}
-
-				out.Body.Keys = append(out.Body.Keys, oauthClientToKey(&clients[i], ""))
-			}
-		}
-
-		return out, nil
+		return listKeys(ctx, b, in)
 	})
 
 	huma.Register(api, huma.Operation{
@@ -343,6 +288,65 @@ func registerKeys(api huma.API, b Backend) {
 
 		return &deleteKeyOutput{}, nil
 	})
+}
+
+func listKeys(ctx context.Context, b Backend, in *listKeysInput) (*listKeysOutput, error) {
+	err := requireDefaultTailnet(in.Tailnet)
+	if err != nil {
+		return nil, err
+	}
+
+	scopes, isOAuth := principalScopes(ctx)
+	readAuth := !isOAuth || scope.Grants(scope.Parse(scopes), scope.AuthKeysRead)
+	readClients := !isOAuth || scope.Grants(scope.Parse(scopes), scope.OAuthKeysRead)
+
+	// As Tailscale (probe-U U5m): a token that can read no kind of key.
+	if !readAuth && !readClients {
+		return nil, huma.Error403Forbidden(errNotEnoughPermissions)
+	}
+
+	out := &listKeysOutput{}
+	out.Body.Keys = []Key{}
+
+	// A token sees the key kinds it has read scope for; an admin key sees all.
+	if readAuth {
+		keys, err := b.State.ListPreAuthKeys()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("listing auth keys", err)
+		}
+
+		now := time.Now()
+
+		// As Tailscale lists them: never an invalid key, and to a token
+		// without all=true only the keys tokens made.
+		for i := range keys {
+			if !keyVisibleInList(&keys[i], now, isOAuth, in.All) {
+				continue
+			}
+
+			out.Body.Keys = append(out.Body.Keys, keyFromStored(&keys[i]))
+		}
+	}
+
+	// As Tailscale (probe-T H5, H7b; probe-U U6): an admin key lists clients
+	// only with all=true, a token whenever it may read them, and a revoked
+	// client never.
+	if readClients && (isOAuth || in.All) {
+		clients, err := b.State.ListOAuthClients()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("listing oauth clients", err)
+		}
+
+		for i := range clients {
+			if clients[i].Revoked != nil {
+				continue
+			}
+
+			out.Body.Keys = append(out.Body.Keys, oauthClientToKey(&clients[i], ""))
+		}
+	}
+
+	return out, nil
 }
 
 func keyVisibleInList(key *types.PreAuthKey, now time.Time, isOAuth, all bool) bool {
