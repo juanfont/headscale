@@ -7,8 +7,8 @@ DERP server to ensure seamless connectivity between nodes.
 ## Configuration
 
 DERP related settings are configured within the `derp` section of the [configuration file](configuration.md). The
-following sections only use a few of the available settings, check the [example configuration](configuration.md) for
-all available configuration options.
+following sections only use a few of the available settings; [`derp`](configuration-options.md#derp) in the
+configuration options lists all of them.
 
 ### Enable embedded DERP
 
@@ -16,13 +16,19 @@ Headscale ships with an embedded DERP server which allows to run your own self-h
 DERP server is disabled by default and needs to be enabled. In addition, you should configure the public IPv4 and public
 IPv6 address of your Headscale server for improved connection stability:
 
-```yaml title="config.yaml" hl_lines="3-5"
+```yaml title="config.yaml" hl_lines="3-8"
 derp:
   server:
     enabled: true
+    region_id: 999
+    stun_listen_addr: 0.0.0.0:3478
+    private_key_path: /var/lib/headscale/derp_server_private.key
     ipv4: 198.51.100.1
     ipv6: 2001:db8::1
 ```
+
+`region_id`, `stun_listen_addr` and `private_key_path` are required. Tailscale keeps the region IDs 900-999 for your own
+regions.
 
 Keep in mind that [additional ports are needed to run a DERP server](../setup/requirements.md#ports-in-use). Besides
 relaying traffic, it also uses STUN (udp/3478) to help clients discover their public IP addresses and perform NAT
@@ -34,10 +40,13 @@ Once enabled, Headscale's embedded DERP is added to the list of free-to-use [DER
 servers](https://tailscale.com/docs/reference/derp-servers) offered by Tailscale Inc. To only use Headscale's embedded
 DERP server, disable the loading of the default DERP map:
 
-```yaml title="config.yaml" hl_lines="6"
+```yaml title="config.yaml" hl_lines="9"
 derp:
   server:
     enabled: true
+    region_id: 999
+    stun_listen_addr: 0.0.0.0:3478
+    private_key_path: /var/lib/headscale/derp_server_private.key
     ipv4: 198.51.100.1
     ipv6: 2001:db8::1
   urls: []
