@@ -584,7 +584,7 @@ Covers node key expiry, ephemeral nodes and subnet routes.
 - **Default:** `0s`
 - **Env:** `HEADSCALE_NODE_EXPIRY`
 
-The key expiry given to a non-tagged node that registers without one, whatever the method (auth key, CLI, web, OIDC). An expiry the client asks for, [`oidc.use_expiry_from_token`](#oidc.use_expiry_from_token) and an admin's `headscale nodes expire` still apply. Tagged nodes never get this default. Zero or negative disables the default.
+The key expiry given to a node that registers without one, whatever the method (auth key, CLI, web, OIDC). An expiry the client asks for, [`oidc.use_expiry_from_token`](#oidc.use_expiry_from_token) and an admin's `headscale nodes expire` still apply. A tagged node registers with key expiry turned off and keeps this time for when it is turned on. Zero or negative disables the default.
 
 === "YAML"
 
