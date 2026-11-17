@@ -12,8 +12,6 @@ aim to be upstreamed to nixpkgs.
 ## Files
 
 - **[`module.nix`](./module.nix)** - The NixOS module implementation
-- **[`example-configuration.nix`](./example-configuration.nix)** - Example
-  configuration demonstrating all major features
 - **[`testkit.nix`](./testkit.nix)**,
   **[`testkit-peer.nix`](./testkit-peer.nix)** - Test kit: a control node for
   NixOS VM tests of Tailscale clients, and a peer that joins it (see below)
@@ -33,8 +31,38 @@ Then import the module:
 imports = [ inputs.headscale.nixosModules.default ];
 ```
 
-See [`example-configuration.nix`](./example-configuration.nix) for configuration
-options.
+Each `services.headscale.settings` option is one key of
+[Configuration options](https://headscale.net/stable/ref/configuration-options/).
+
+The flake's module defaults `services.headscale.package` to the flake's
+headscale. Another package must provide `headscale check` while the checks
+below are on.
+
+## Checks
+
+`services.headscale.check.config` and `check.policy` run `headscale check` on
+the new config and policy: while building the system, and before a switch
+restarts headscale. Their descriptions in [`module.nix`](./module.nix) say what
+each runs.
+
+To skip a check:
+
+- A config that is valid only with the unit's `EnvironmentFile` or %-specifiers
+  fails: set `check.config = false`.
+- `check.config` checks the policy before a switch too: set both to `false` to
+  skip every policy check.
+- `NIXOS_NO_CHECK=1 nixos-rebuild switch` skips the switch check once.
+
+Limits of the switch check:
+
+- It runs before activation, so it sees files as they were: `/etc` entries,
+  sops-nix or agenix secrets and new users arrive after it. A `headscale` user
+  or group that does not exist yet skips it.
+- `nixos-rebuild switch` sets the system profile before it, and does not undo
+  it. The boot menu is not updated, so a reboot starts the old generation.
+  `nixos-rebuild switch --rollback` resets the profile.
+- A pass does not prove that migrations, the network, an OIDC provider or the
+  listeners work.
 
 ## Test kit
 
