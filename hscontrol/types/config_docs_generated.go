@@ -111,7 +111,7 @@ var configFieldDocs = map[string]string{
 	"PostgresConfig.Port":                                 "The server's port or, with a Unix socket directory in `database.postgres.host`, the port in the socket's file name. Zero uses the driver's default.",
 	"PostgresConfig.Ssl":                                  "The TLS mode: `true` keeps the driver's default `sslmode`, `false` disables TLS, any other value is passed as `sslmode` (`require`, `verify-full`, ...).",
 	"PostgresConfig.User":                                 "The user to connect as.",
-	"PreAuthKeysConfig.RevokedRetention":                  "How long a soft-revoked pre-auth key (revoked via the v2 API's DELETE) is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.",
+	"PreAuthKeysConfig.RevokedRetention":                  "How long a soft-revoked pre-auth key or OAuth client (revoked via the v2 API's DELETE) is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.",
 	"PrefixesConfig.Allocation":                           "How a new node's addresses are picked.",
 	"PrefixesConfig.V4":                                   "The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address.",
 	"PrefixesConfig.V6":                                   "The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6 address.",

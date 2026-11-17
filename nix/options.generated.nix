@@ -252,7 +252,7 @@ in
       type = t.duration;
       default = "168h";
       description = ''
-        How long a soft-revoked pre-auth key (revoked via the v2 API's DELETE) is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.
+        How long a soft-revoked pre-auth key or OAuth client (revoked via the v2 API's DELETE) is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.
       '';
       example = "720h";
     };
