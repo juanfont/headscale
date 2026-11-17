@@ -142,7 +142,7 @@ var leafTypes = []leafType{
 	{
 		Kinds: []reflect.Kind{reflect.Interface}, Label: "value", Plural: "values",
 		Format: "Whatever the setting takes: text, a number, a boolean, a list or a map.",
-		Sample: "`file:/run/secrets/cloudflare`", Nix: "lib.types.anything",
+		Sample: "`file:/run/secrets/gigahost`", Nix: "lib.types.anything",
 	},
 	{
 		Kinds: []reflect.Kind{reflect.Slice}, Label: "list",
