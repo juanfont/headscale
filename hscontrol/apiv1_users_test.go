@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -51,9 +52,53 @@ func TestAPIV1CreateUser(t *testing.T) {
 			[]byte(`{"name":"dup"}`))
 		assertStatus(t, res, http.StatusConflict)
 	})
+
+	// Concurrent creates all pass the handler's pre-check; the losers must
+	// still see a conflict when the unique index refuses their insert.
+	t.Run("concurrent duplicate name conflicts", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+
+		const n = 16
+
+		var wg sync.WaitGroup
+
+		start := make(chan struct{})
+		statuses := make(chan int, n)
+
+		for range n {
+			wg.Go(func() {
+				<-start
+
+				statuses <- h.callHuma(http.MethodPost, "/api/v1/user", []byte(`{"name":"race"}`)).status
+			})
+		}
+
+		close(start)
+		wg.Wait()
+		close(statuses)
+
+		counts := map[int]int{}
+		for s := range statuses {
+			counts[s]++
+		}
+
+		assert.Equal(t, map[int]int{http.StatusOK: 1, http.StatusConflict: n - 1}, counts)
+	})
 }
 
 func TestAPIV1RenameUser(t *testing.T) {
+	t.Run("duplicate name conflicts", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		seedUsers("alice", "bob")(t, h.app)
+
+		res := h.callHuma(http.MethodPost, "/api/v1/user/2/rename/alice", nil)
+		assertStatus(t, res, http.StatusConflict)
+
+		got, err := h.app.state.GetUserByID(2)
+		require.NoError(t, err)
+		assert.Equal(t, "bob", got.Name)
+	})
+
 	t.Run("parity", func(t *testing.T) {
 		assertParityIsolated(t, seedUsers("alice"), http.MethodPost,
 			"/api/v1/user/1/rename/bob", nil)
