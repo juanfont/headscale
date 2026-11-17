@@ -1297,7 +1297,10 @@ func TestGrantViaSubnetFailover(t *testing.T) {
 				require.True(t, changed, "a via health change must trigger a recompute")
 				srv.App.Change(change.PolicyChange())
 			case "expired":
-				setExpiry(t, srv, router1ID, new(time.Now().Add(-time.Minute)))
+				// The routers are tagged, so expiry is turned on with it.
+				_, c, err := srv.State().ExpireNodeAt(router1ID, time.Now().Add(-time.Minute))
+				require.NoError(t, err)
+				srv.App.Change(c)
 			}
 
 			clients["client"].WaitForCondition(t, "route moves to router-2",

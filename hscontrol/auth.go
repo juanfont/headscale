@@ -288,7 +288,7 @@ func (h *Headscale) handleLogout(
 		expiry = now
 	}
 
-	updatedNode, c, err := h.state.SetNodeExpiry(node.ID(), &expiry)
+	updatedNode, c, err := h.state.ExpireNodeAt(node.ID(), expiry)
 	h.Change(c)
 
 	if err != nil {

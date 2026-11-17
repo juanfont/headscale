@@ -263,6 +263,7 @@ func updateChanges(pre, post *types.Node) (bool, bool) {
 	}
 
 	return false, pre.Online() != post.Online() ||
+		pre.KeyExpiryDisabled != post.KeyExpiryDisabled ||
 		!preView.Expiry().GetOr(time.Time{}).Equal(postView.Expiry().GetOr(time.Time{})) ||
 		pre.Unhealthy != post.Unhealthy ||
 		!pre.SessionStart.Equal(post.SessionStart)
