@@ -103,7 +103,8 @@ var listOAuthClientsCmd = &cobra.Command{
 		}
 		defer cancel()
 
-		resp, err := client.ListKeysWithResponse(ctx, oauthTailnet, nil)
+		// As on Tailscale, an admin key lists OAuth clients only with all=true.
+		resp, err := client.ListKeysWithResponse(ctx, oauthTailnet, &clientv2.ListKeysParams{All: new(true)})
 		if err != nil {
 			return fmt.Errorf("listing oauth clients: %w", err)
 		}
