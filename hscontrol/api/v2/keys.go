@@ -2,6 +2,7 @@ package apiv2
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -187,12 +188,19 @@ func registerKeys(api huma.API, b Backend) {
 		}
 
 		scopes, isOAuth := principalScopes(ctx)
+		readAuth := !isOAuth || scope.Grants(scope.Parse(scopes), scope.AuthKeysRead)
+		readClients := !isOAuth || scope.Grants(scope.Parse(scopes), scope.OAuthKeysRead)
+
+		// As Tailscale (probe-U U5m): a token that can read no kind of key.
+		if !readAuth && !readClients {
+			return nil, huma.Error403Forbidden(errNotEnoughPermissions)
+		}
 
 		out := &listKeysOutput{}
 		out.Body.Keys = []Key{}
 
 		// A token sees the key kinds it has read scope for; an admin key sees all.
-		if !isOAuth || scope.Grants(scope.Parse(scopes), scope.AuthKeysRead) {
+		if readAuth {
 			keys, err := b.State.ListPreAuthKeys()
 			if err != nil {
 				return nil, huma.Error500InternalServerError("listing auth keys", err)
@@ -211,13 +219,20 @@ func registerKeys(api huma.API, b Backend) {
 			}
 		}
 
-		if !isOAuth || scope.Grants(scope.Parse(scopes), scope.OAuthKeysRead) {
+		// As Tailscale (probe-T H5, H7b; probe-U U6): an admin key lists clients
+		// only with all=true, a token whenever it may read them, and a revoked
+		// client never.
+		if readClients && (isOAuth || in.All) {
 			clients, err := b.State.ListOAuthClients()
 			if err != nil {
 				return nil, huma.Error500InternalServerError("listing oauth clients", err)
 			}
 
 			for i := range clients {
+				if clients[i].Revoked != nil {
+					continue
+				}
+
 				out.Body.Keys = append(out.Body.Keys, oauthClientToKey(&clients[i], ""))
 			}
 		}
@@ -289,11 +304,16 @@ func registerKeys(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		// Gated on oauth_keys (write) for the same no-existence-oracle reason as
-		// getKey: a token without it must not learn that an id is an OAuth client.
-		if requireKeyScope(ctx, scope.OAuthKeys) == nil {
+		// Gated on oauth_keys:read for the same no-existence-oracle reason as
+		// getKey; a reader that may not write is then refused (probe-U U5k).
+		if requireKeyScope(ctx, scope.OAuthKeysRead) == nil {
 			_, err = b.State.GetOAuthClientByClientID(in.KeyID)
 			if err == nil {
+				err = requireKeyScope(ctx, scope.OAuthKeys)
+				if err != nil {
+					return nil, err
+				}
+
 				err = b.State.RevokeOAuthClient(in.KeyID)
 				if err != nil {
 					return nil, mapError("deleting oauth client", err)
@@ -342,7 +362,7 @@ func requireKeyScope(ctx context.Context, need scope.Scope) error {
 	}
 
 	if !scope.Grants(scope.Parse(scopes), need) {
-		return huma.Error403Forbidden("token is missing the required scope " + string(need))
+		return scopeRefusal(scope.Parse(scopes), need)
 	}
 
 	return nil
@@ -354,8 +374,13 @@ func requireCreateKeyScope(api huma.API) func(huma.Context, func(huma.Context)) 
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if requireKeyScope(ctx.Context(), scope.AuthKeys) != nil &&
 			requireKeyScope(ctx.Context(), scope.OAuthKeys) != nil {
-			_ = huma.WriteErr(api, ctx, http.StatusForbidden,
-				"token is missing the required scope auth_keys or oauth_keys")
+			status, message := http.StatusNotFound, "not found"
+			if requireKeyScope(ctx.Context(), scope.AuthKeysRead) == nil ||
+				requireKeyScope(ctx.Context(), scope.OAuthKeysRead) == nil {
+				status, message = http.StatusForbidden, errNotEnoughPermissions
+			}
+
+			_ = huma.WriteErr(api, ctx, status, message)
 
 			return
 		}
@@ -392,11 +417,15 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 
 	switch {
 	case len(create.Tags) > 0:
-		// A key minted by an OAuth token may only carry tags within the token's
-		// grant (held directly, or owned by a held tag) and defined in policy,
-		// matching SetNodeTags. An admin key keeps the historical behaviour of
-		// validating only tag syntax (db.validateACLTags), and records its
-		// user as the key's creator.
+		// Every tag must be defined in policy, also for an admin key (probe-A
+		// A1). A key minted by an OAuth token may only carry tags within the
+		// token's grant (held directly, or owned by a held tag), matching
+		// SetNodeTags. An admin key records its user as the key's creator.
+		err = undefinedTagsRefused(b, create.Tags)
+		if err != nil {
+			return nil, err
+		}
+
 		if !isOAuth {
 			if uid, ok := ownerUser(ctx); ok {
 				userID = &uid
@@ -404,12 +433,6 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 		}
 
 		if isOAuth {
-			for _, tag := range create.Tags {
-				if !b.State.TagExists(tag) {
-					return nil, huma.Error400BadRequest("tag " + tag + " is not defined in policy")
-				}
-			}
-
 			if refused := unownedTags(b, create.Tags, tokenTags); len(refused) > 0 {
 				return nil, tagsRefused("", refused)
 			}
@@ -417,8 +440,8 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 
 	case isOAuth:
 		// OAuth-minted keys are tailnet/tag-owned; an untagged (user-owned) key
-		// cannot be created from a token.
-		return nil, huma.Error403Forbidden("an OAuth client must create tagged auth keys")
+		// cannot be created from a token (probe-U U2d, U2e).
+		return nil, huma.Error400BadRequest("tailnet-owned auth key must have tags set")
 
 	default:
 		uid, ok := ownerUser(ctx)
@@ -479,37 +502,32 @@ func createOAuthClient(ctx context.Context, b Backend, body CreateKeyRequest) (*
 		)
 	}
 
-	// A client created by an OAuth token may not be granted authority the token
-	// lacks: its scopes must each be within the token's grant, and its tags within
-	// the token's tags and defined in policy (matching SetNodeTags). Otherwise an
-	// oauth_keys token could mint an all-access client and escalate. An admin API
-	// key (not an OAuth token) is unrestricted and keeps the historical tag
-	// behaviour (syntax-only validation).
+	// A client created by an OAuth token may not be granted a scope the token
+	// lacks, or an oauth_keys token could mint an all-access client and
+	// escalate. Its tags must be within the token's tags. Every caller, an admin
+	// API key too, may only name tags defined in policy (probe-R).
 	if tokenScopes, isOAuth := principalScopes(ctx); isOAuth {
+		var refused []string
+
 		for _, s := range body.Scopes {
 			if !scope.Grants(scope.Parse(tokenScopes), scope.Scope(s)) {
-				return nil, huma.Error403Forbidden(
-					"client may not be granted scope " + s + " beyond the creating token",
-				)
+				refused = append(refused, s)
 			}
 		}
 
-		tokenTags, _ := principalTags(ctx)
-
-		// An untagged "all" client may mint tokens for any tag (narrowTags), so a
-		// tag-limited token would escape its tags one client away.
-		if len(tokenTags) > 0 && canAssignAnyTag(body.Tags, body.Scopes) {
-			return nil, huma.Error403Forbidden(
-				"client may not be granted scope all without tags by a tagged token",
-			)
+		if len(refused) > 0 {
+			return nil, huma.Error403Forbidden(fmt.Sprintf("actor cannot set scopes: %v", refused))
 		}
+	}
 
-		for _, tag := range body.Tags {
-			if !b.State.TagExists(tag) {
-				return nil, huma.Error400BadRequest("tag " + tag + " is not defined in policy")
-			}
-		}
+	err = undefinedTagsRefused(b, body.Tags)
+	if err != nil {
+		return nil, err
+	}
 
+	// A tagged token may still create an untagged "all" client, whose tokens
+	// then take any tag: Tailscale allows it (probe-U U1a, U1h-U1j).
+	if tokenTags, isOAuth := principalTags(ctx); isOAuth {
 		if refused := unownedTags(b, body.Tags, tokenTags); len(refused) > 0 {
 			return nil, tagsRefused("", refused)
 		}

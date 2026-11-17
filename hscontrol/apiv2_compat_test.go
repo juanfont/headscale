@@ -45,15 +45,6 @@ import (
 // when the call flips. v1-* checks are TestAPIV1PolicyVerdictCompat's. A
 // listed check that matches fails, so a fix must delete its entry.
 var apiv2CompatSkipReasons = map[string]string{
-	"oauth/R2/4/status":  missingScopeNotFound,
-	"oauth/R3/1/status":  missingScopeNotFound,
-	"oauth/R3/2/status":  missingScopeNotFound,
-	"oauth/R3/3/status":  missingScopeNotFound,
-	"oauth/K3/0/status":  missingScopeNotFound,
-	"oauth/J2/0/status":  missingScopeNotFound,
-	"oauth/K4/0/status":  missingScopeNotFound,
-	"oauth/D1/0/message": missingScopeText,
-
 	"oauth/O3/0/status": mintScopeRefusalStatus,
 	"oauth/O4/0/scope":  unknownScopeGranted,
 	"oauth/O4/0/tags":   unknownScopeGranted,
@@ -64,8 +55,6 @@ var apiv2CompatSkipReasons = map[string]string{
 
 	"oauth/D0/1/listed": emptyKeyListNull,
 
-	"oauth/D7/2/status":  deletedClientGone,
-	"oauth/D7/2/outcome": deletedClientGone,
 	"oauth/D7/3/message": deletedClientCredentialText,
 	"oauth/D7/4/message": deletedClientCredentialText,
 	"oauth/B7/0/message": deletedClientCredentialText,
@@ -94,10 +83,7 @@ var apiv2CompatNotCompared = []string{
 // apiv2CompatNotReplayed lists steps left out, keyed <test_id>/<step>, with
 // the objects only they create, which listings then leave out: SaaS's answer
 // there is in doubt, so it is no reference.
-var apiv2CompatNotReplayed = map[string][]string{
-	"oauth/E7":  {"{client:C-all-2}"},
-	"oauth/E9b": {"{key:K-E9b}"},
-}
+var apiv2CompatNotReplayed = map[string][]string{}
 
 // notCompared reports whether key falls under one of prefixes.
 func notCompared(prefixes []string, key string) bool {
@@ -112,16 +98,13 @@ const (
 	mintTagsSorted              = "TOKEN_TAGS_SORTED: SaaS's token answer names the tags in the order its client was made with; headscale stores a client's tags sorted"
 	unknownKeyType              = "UNKNOWN_KEY_TYPE: SaaS refuses an unknown keyType with 400 before it checks scopes; headscale checks the scope first and answers 403"
 	emptyKeyListNull            = "EMPTY_KEY_LIST_NULL: SaaS answers a listing that holds no key with keys null; headscale with []"
-	deletedClientGone           = "DELETED_CLIENT_GONE: SaaS keeps a deleted OAuth client readable as invalid and revoked; headscale removes it"
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
-	missingScopeText            = "MISSING_SCOPE_TEXT: SaaS refuses a delete outside the token's scopes with calling actor does not have enough permissions; headscale names the missing scope"
 	hujsonFormatted             = "HUJSON_FORMATTED: SaaS stores a HuJSON policy formatted, comments kept; headscale stores the bytes as sent"
 )
 
 // SaaS behaviour recorded as it is; following it is the maintainer's call.
 const (
 	deviceOAuthClientMaker = "DEVICE_OAUTH_CLIENT_ID: SaaS names, in oauthClientId, the OAuth client whose token made the device's key; headscale does not record which client that was, so it leaves the field out"
-	missingScopeNotFound   = "MISSING_SCOPE_NOT_FOUND: SaaS answers a call outside the token's scopes with 404 not found; headscale answers 403"
 	unknownScopeGranted    = "UNKNOWN_SCOPE_GRANTED: SaaS ignores an unknown requested scope and grants the client's own; headscale grants the unknown scope alone"
 )
 
@@ -283,6 +266,13 @@ func newAPIReplay(t *testing.T, c *testcapture.Capture, useV1 bool) *apiReplay {
 	r.admin = admin
 
 	r.v2, _ = apiv2.Handler(apiv2.Backend{State: app.state, Change: app.Change, Cfg: app.cfg})
+
+	// SaaS held this policy before the first step, so its tags exist for
+	// the keys a setup step makes before it writes a policy.
+	if c.Input.FullPolicy != "" {
+		_, _, err := app.state.UpdatePolicy(r.policyBody(t, json.RawMessage(c.Input.FullPolicy)))
+		require.NoError(t, err)
+	}
 
 	return r
 }

@@ -35,6 +35,10 @@ func newKeyTestAPI(t *testing.T) (*Headscale, humatest.TestAPI) {
 
 	app := createTestApp(t)
 
+	// A key may only carry tags the policy defines.
+	_, _, err := app.state.UpdatePolicy([]byte(`{"tagOwners":{"tag:test":[]}}`))
+	require.NoError(t, err)
+
 	_, api := humatest.New(t, apiv2.Config())
 	apiv2.Register(api, apiv2.Backend{State: app.state})
 

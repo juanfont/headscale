@@ -204,8 +204,8 @@ func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Contex
 			}
 
 			if want, ok := requiredScope(ctx.Operation()); ok && !scope.Grants(scope.Parse(at.Scopes), want) {
-				_ = huma.WriteErr(api, ctx, http.StatusForbidden,
-					"token is missing the required scope "+string(want))
+				refusal := scopeRefusal(scope.Parse(at.Scopes), want)
+				_ = huma.WriteErr(api, ctx, refusal.GetStatus(), refusal.Error())
 
 				return
 			}
@@ -330,6 +330,19 @@ func requireScope(op huma.Operation, s scope.Scope) huma.Operation {
 
 	return op
 }
+
+// scopeRefusal is Tailscale's answer to a token without want: 403 when the
+// token can read what it may not write, otherwise 404, as if nothing were there
+// (probe-U U5, probe-V Y1, Y2).
+func scopeRefusal(granted []scope.Scope, want scope.Scope) huma.StatusError {
+	if want.IsWrite() && scope.Grants(granted, want+":read") {
+		return huma.Error403Forbidden(errNotEnoughPermissions)
+	}
+
+	return huma.Error404NotFound("not found")
+}
+
+const errNotEnoughPermissions = "calling actor does not have enough permissions to perform this function"
 
 // requiredScope returns the scope an operation declared via requireScope, if any.
 func requiredScope(op *huma.Operation) (scope.Scope, bool) {

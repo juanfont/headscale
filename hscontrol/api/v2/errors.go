@@ -137,6 +137,24 @@ func unownedTags(b Backend, tags, tokenTags []string) []string {
 	return out
 }
 
+// undefinedTagsRefused refuses the tags no policy defines, as Tailscale does
+// for any caller (probe-A A1, probe-R).
+func undefinedTagsRefused(b Backend, tags []string) error {
+	var refused []string
+
+	for _, tag := range tags {
+		if !b.State.TagExists(tag) {
+			refused = append(refused, tag)
+		}
+	}
+
+	if len(refused) > 0 {
+		return tagsRefused("", refused)
+	}
+
+	return nil
+}
+
 // tagsRefused is Tailscale's 400 for tags a token may not apply.
 func tagsRefused(prefix string, tags []string) error {
 	return huma.Error400BadRequest(

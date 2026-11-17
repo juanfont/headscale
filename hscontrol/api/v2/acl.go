@@ -125,19 +125,25 @@ func registerACL(api huma.API, b Backend) {
 			)
 		}
 
+		// Checked under the policy lock, so two writers holding the same ETag
+		// cannot both pass.
+		var match func(string) bool
 		if in.IfMatch != "" {
-			current, err := currentPolicy(b)
-			if err != nil {
-				return nil, err
-			}
+			match = func(stored string) bool {
+				if stored == "" {
+					stored = defaultPolicy
+				}
 
-			if !etagMatches(in.IfMatch, current) {
-				return nil, huma.Error412PreconditionFailed("precondition failed, invalid old hash")
+				return etagMatches(in.IfMatch, []byte(stored))
 			}
 		}
 
-		updated, cs, err := b.State.UpdatePolicy(in.RawBody)
+		updated, cs, err := b.State.UpdatePolicyIf(in.RawBody, match)
 		b.Change(cs...)
+
+		if errors.Is(err, state.ErrPolicyPrecondition) {
+			return nil, huma.Error412PreconditionFailed("precondition failed, invalid old hash")
+		}
 
 		if err != nil {
 			return nil, mapError("setting policy", err)
