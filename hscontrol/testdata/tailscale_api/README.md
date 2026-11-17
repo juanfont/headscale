@@ -82,44 +82,44 @@ think it might be wrong."
 
 Files: `probe-A`, `probe-E`, `probe-F`, `probe-G`, `probe-J`.
 
-| Case                                             | Tailscale                                                                           | Headscale `/api/v2`                            | v0 (002)                                   |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------ |
-| tag not in `tagOwners`, admin API key            | 400 "requested tags [tag:x] are invalid or not permitted"                           | refused for OAuth callers only                 | **decided:** refuse, `tags_not_permitted`  |
-| tag without `tag:` prefix                        | 400, the same message                                                               | not checked                                    | `invalid_field` or `tags_not_permitted`    |
-| no `expirySeconds`, or `0`                       | 90 days                                                                             | 90 days                                        | expiry required; the CLI gives the default |
-| `expirySeconds` over 90 days                     | 400 "expirySeconds must be less than or equal to 7776000"                           | the same cap                                   | **decided:** no cap                        |
-| negative `expirySeconds`                         | 400 "expirySeconds must be greater than or equal to 0"                              | not checked                                    | `expiry_in_past`                           |
-| defaults                                         | `reusable`, `ephemeral`, `preauthorized` all `false`                                | not checked                                    | the same                                   |
-| description of 51 characters                     | 200, accepted                                                                       | `maxLength: 50`, refused                       | no limit stated                            |
-| empty body                                       | 400 "exactly one capability scope must be populated"                                | not checked                                    | `invalid_field`                            |
-| unknown field in the body                        | ignored, 200                                                                        | not checked                                    | refused (422)                              |
-| bad JSON                                         | 400 "invalid JSON in request body"                                                  | not checked                                    | `invalid_request`                          |
-| `keyType: "api"`                                 | 400 "invalid key type, "api" is not supported"                                      | not checked                                    | API keys are their own resource            |
-| a tagged key                                     | has a `userId`: the user whose API key made it                                      | not checked                                    | `createdBy`                                |
-| `DELETE` a key (unused, or in use, or ephemeral) | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true` | the same (soft revoke, reaped after 168 h)     | one operation, a soft delete               |
-| `DELETE` it again                                | 200                                                                                 | 200                                            | 204 again                                  |
-| a node that joined with the deleted key          | keeps running; stays ephemeral                                                      | keeps running                                  | keeps running                              |
-| a single-use key after a node used it            | `invalid: true` and `revoked` set to the time of use                                | a `used` flag                                  | state `used`                               |
-| a key past its expiry                            | `invalid: true`, `revoked: null`                                                    | not checked                                    | state `expired`                            |
-| the key list                                     | hides revoked, used and expired keys; entries have no `capabilities`                | hides them too                                 | lists every key, with `state`              |
-| an unknown key ID                                | `GET` 404 "not found"; `DELETE` 404 "key not found"                                 | 404                                            | `not_found`                                |
-| revoked keys, 15 minutes later                   | still readable by ID. How long they stay was not measured.                          | deleted after `preauth_keys.revoked_retention` | the same retention                         |
+| Case                                             | Tailscale                                                                                                                                                    | Headscale `/api/v2`                            | v0 (002)                                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | ------------------------------------------ |
+| tag not in `tagOwners`, admin API key            | 400 "requested tags [tag:x] are invalid or not permitted"                                                                                                    | refused for OAuth callers only                 | **decided:** refuse, `tags_not_permitted`  |
+| tag without `tag:` prefix                        | 400, the same message                                                                                                                                        | not checked                                    | `invalid_field` or `tags_not_permitted`    |
+| no `expirySeconds`, or `0`                       | 90 days                                                                                                                                                      | 90 days                                        | expiry required; the CLI gives the default |
+| `expirySeconds` over 90 days                     | 400 "expirySeconds must be less than or equal to 7776000"                                                                                                    | the same cap                                   | **decided:** no cap                        |
+| negative `expirySeconds`                         | 400 "expirySeconds must be greater than or equal to 0"                                                                                                       | not checked                                    | `expiry_in_past`                           |
+| defaults                                         | `reusable`, `ephemeral`, `preauthorized` all `false`                                                                                                         | not checked                                    | the same                                   |
+| description over 50 characters                   | 200; the stored text is cut to 50 characters (`probe-T`, A11 to A13). Letters, digits, space, `-` and `_` pass; other characters are 400 (`probe-W`, D rows) | `maxLength: 50`, refused                       | no limit stated                            |
+| empty body                                       | 400 "exactly one capability scope must be populated"                                                                                                         | not checked                                    | `invalid_field`                            |
+| unknown field in the body                        | ignored, 200                                                                                                                                                 | not checked                                    | refused (422)                              |
+| bad JSON                                         | 400 "invalid JSON in request body"                                                                                                                           | not checked                                    | `invalid_request`                          |
+| `keyType: "api"`                                 | 400 "invalid key type, "api" is not supported"                                                                                                               | not checked                                    | API keys are their own resource            |
+| a tagged key                                     | has a `userId`: the user whose API key made it                                                                                                               | not checked                                    | `createdBy`                                |
+| `DELETE` a key (unused, or in use, or ephemeral) | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true`                                                                          | the same (soft revoke, reaped after 168 h)     | one operation, a soft delete               |
+| `DELETE` it again                                | 200                                                                                                                                                          | 200                                            | 204 again                                  |
+| a node that joined with the deleted key          | keeps running; stays ephemeral                                                                                                                               | keeps running                                  | keeps running                              |
+| a single-use key after a node used it            | `invalid: true` and `revoked` set to the time of use                                                                                                         | a `used` flag                                  | state `used`                               |
+| a key past its expiry                            | `invalid: true`, `revoked: null`                                                                                                                             | not checked                                    | state `expired`                            |
+| the key list                                     | hides revoked, used and expired keys; an auth key entry has the fields of `GET` by ID, with `capabilities` (`probe-T`, F18)                                  | hides them too                                 | lists every key, with `state`              |
+| an unknown key ID                                | `GET` 404 "not found"; `DELETE` 404 "key not found"                                                                                                          | 404                                            | `not_found`                                |
+| revoked keys, 15 minutes later                   | still readable by ID. How long they stay was not measured.                                                                                                   | deleted after `preauth_keys.revoked_retention` | the same retention                         |
 
 ## 3. OAuth clients
 
 File: `probe-G`.
 
-| Case                              | Tailscale                                                                                      | Headscale `/api/v2`                    | v0 (002)                 |
-| --------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------ |
-| create with a read scope, no tags | 200; `expires: null`; has a `userId`                                                           | allowed                                | allowed                  |
-| a scope that needs tags, no tags  | 400 "OAuth clients with auth key write scope must specify one or more tags"                    | refused                                | `scope_requires_tags`    |
-| a tag that is not in the policy   | 400 "requested tags [...] are invalid or not permitted", also for an admin API key (`probe-R`) | refused for a token only               | `tags_not_permitted`     |
-| unknown scope                     | 400 `invalid scopes: ["devices:cor"]`                                                          | not checked                            | `invalid_scope`          |
-| no scopes                         | 400 "scopes cannot be empty, at least one scope is required for OAuth clients"                 | not checked                            | `invalid_field`          |
-| in the key list                   | only with `?all=true`                                                                          | the same                               | its own resource         |
-| `DELETE`                          | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true`            | a hard delete, with its tokens         | a soft delete            |
-| `DELETE` again                    | 200                                                                                            | not checked                            | 204                      |
-| a token deletes its own client    | 200 `null`; the next call with that token is 401 "API token invalid" (`probe-Q`)               | tokens of a deleted client are refused | 204, then `unauthorized` |
+| Case                              | Tailscale                                                                                                                      | Headscale `/api/v2`                    | v0 (002)                 |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- | ------------------------ |
+| create with a read scope, no tags | 200; no `expires` field; has a `userId` (`probe-T`, H1)                                                                        | allowed                                | allowed                  |
+| a scope that needs tags, no tags  | 400 "OAuth clients with auth key write scope must specify one or more tags"                                                    | refused                                | `scope_requires_tags`    |
+| a tag that is not in the policy   | 400 "requested tags [...] are invalid or not permitted", also for an admin API key (`probe-R`)                                 | refused for a token only               | `tags_not_permitted`     |
+| unknown scope                     | 400 `invalid scopes: ["devices:cor"]`                                                                                          | not checked                            | `invalid_scope`          |
+| no scopes                         | 400 "scopes cannot be empty, at least one scope is required for OAuth clients"                                                 | not checked                            | `invalid_field`          |
+| in the key list                   | for an API key only with `?all=true`; a token with `oauth_keys:read` or `all` gets clients in the default list (`probe-U`, U6) | the same                               | its own resource         |
+| `DELETE`                          | 200. A soft revoke: `GET` by ID still returns it with `revoked` and `invalid: true`                                            | a hard delete, with its tokens         | a soft delete            |
+| `DELETE` again                    | 200                                                                                                                            | not checked                            | 204                      |
+| a token deletes its own client    | 200 `null`; the next call with that token is 401 "API token invalid" (`probe-Q`)                                               | tokens of a deleted client are refused | 204, then `unauthorized` |
 
 ## 4. Devices
 
@@ -170,7 +170,8 @@ is invalid. A client must read the body to know. v0 uses the status.
 File: `probe-KLM`.
 
 - A user has `id`, `displayName`, `loginName`, `profilePicUrl`, `tailnetId`,
-  `created`, `type`, `role`, `status`, `lastSeen`. There is no separate email
+  `created`, `type`, `role`, `status`, `lastSeen`, and since the second run
+  `currentlyConnected` and `deviceCount`. There is no separate email
   and no username; `loginName` is the one name. **Decided for v0:** `name` as
   stored, plus a read-only `loginName`.
 - `GET /users/{id}` for an unknown ID: 404 `{"message": "404 page not found"}`.
@@ -180,41 +181,23 @@ File: `probe-KLM`.
 
 File: `probe-G`.
 
-| Case                    | Tailscale                                                                    | v0 (002)                 |
-| ----------------------- | ---------------------------------------------------------------------------- | ------------------------ |
-| error body              | `{"message": "..."}`; no code                                                | a problem with a `code`  |
-| no or wrong credential  | 401 "API token invalid"                                                      | `unauthorized`           |
-| unknown device          | 404 "no manageable device matching this ID found"                            | `not_found`              |
-| unknown query parameter | ignored, 200                                                                 | refused (422)            |
-| `fields=bogus`          | 400 `"bogus" is not a valid fields parameter`                                | no `fields` parameter    |
-| wrong method            | 405 `{"error": "method_not_allowed", "message": "..."}` (another body shape) | `method_not_allowed`     |
-| unknown path            | 404, plain text "404 page not found"                                         | a problem                |
-| another tailnet's name  | 404 `tailnet "example.invalid" not found`                                    | no tailnet in the path   |
-| request ID              | header `x-tailscale-request-id`                                              | `requestId` in a problem |
+| Case                    | Tailscale                                                                                                                                                                                                  | v0 (002)                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| error body              | `{"message": "..."}`; no code                                                                                                                                                                              | a problem with a `code`  |
+| no or wrong credential  | 401 "API token invalid"                                                                                                                                                                                    | `unauthorized`           |
+| unknown device          | 404 "no manageable device matching this ID found"                                                                                                                                                          | `not_found`              |
+| unknown query parameter | ignored, 200                                                                                                                                                                                               | refused (422)            |
+| `fields=bogus`          | 400 `"bogus" is not a valid fields parameter`                                                                                                                                                              | no `fields` parameter    |
+| wrong method            | 405 `{"error": "method_not_allowed", "message": "..."}` (another body shape)                                                                                                                               | `method_not_allowed`     |
+| unknown path            | 404, in three shapes: JSON `{"message": "404 page not found"}` under `/api/v2/`, plain text "404 page not found" under a tailnet or a device, plain text "unknown endpoint" outside `/api` (`probe-T`, I7) | a problem                |
+| another tailnet's name  | 404 `tailnet "example.invalid" not found`                                                                                                                                                                  | no tailnet in the path   |
+| request ID              | header `x-tailscale-request-id`                                                                                                                                                                            | `requestId` in a problem |
 
 ## 8. Where Headscale's `/api/v2` differs from Tailscale
 
-These are outside both proposals. `/api/v2` exists to answer as Tailscale does,
-so each is a candidate for an issue.
-
-1. `POST /device/{id}/expire` logs out a node whose key expiry is disabled.
-   Tailscale does not. (See section 1; which side is right is open.)
-1. `POST /device/{id}/key {"keyExpiryDisabled": false}` is a no-op. On
-   Tailscale it turns key expiry on.
-1. A key description is limited to 50 characters. Tailscale accepted 51.
-1. `POST /device/{id}/tags` with `[]` is accepted as "no change". Tailscale
-   answers 400 "tagged nodes cannot be untagged without reauth".
-1. Deleting an OAuth client is a hard delete. On Tailscale it is a soft revoke,
-   and the client can still be read by its ID.
-1. An auth key with a tag that is not in the policy is accepted from an API
-   key. Tailscale refuses it for every caller.
-1. `POST /device/{id}/authorized {"authorized": false}` is refused. Tailscale
-   accepts it.
-1. Attributes: only `ip:publicAddress`, and as a plain string. Tailscale sends
-   an object `{"type": "IpAddr", "value": ...}` and the `node:` attributes.
-1. An OAuth client with a tag that is not in the policy is accepted from an
-   API key. Tailscale refuses it for every caller, also with a read scope
-   (`probe-R`).
+The list is kept in one place: `docs/proposals/002-api.md`, "In the Tailscale
+API of Headscale". Each row there says whether Headscale is changed to do as
+Tailscale does, or the difference stays on purpose with a test.
 
 Not checked in Headscale: a route that is not advertised, rename to `""`.
 
@@ -350,12 +333,31 @@ tried again, and some new calls were added. The rows above were not changed;
 where the second run shows something else, it is listed in
 `docs/proposals/002-api.md`, "In the Tailscale API of Headscale".
 
-| File | What |
-| --- | --- |
-| `probe-S-baseline.txt` | the tailnet before and after; the five revoked IDs read again |
-| `probe-T-keys-oauth-errors.txt` | auth keys, OAuth clients, self-revoke, errors, users, policy reads and validate (second run of A, F, G, K, L, Q, R) |
-| `probe-U-oauth-token-rules.txt` | what an OAuth token may do with keys and clients |
-| `probe-V-devices.txt` | devices (second run of J, N, P), invalid names, update-client, authorized, routes, autoApprovers, tokens on devices |
+| File                               | What                                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `probe-S-baseline.txt`             | the tailnet before and after; the five revoked IDs read again                                                             |
+| `probe-T-keys-oauth-errors.txt`    | auth keys, OAuth clients, self-revoke, errors, users, policy reads and validate (second run of A, F, G, K, L, Q, R)       |
+| `probe-U-oauth-token-rules.txt`    | what an OAuth token may do with keys and clients                                                                          |
+| `probe-V-devices.txt`              | devices (second run of J, N, P), invalid names, update-client, authorized, routes, autoApprovers, tokens on devices       |
 | `probe-W-key-in-use-and-joins.txt` | a key deleted while a node uses it (second run of E); joins with a revoked, a spent and an expired key; description texts |
-| `probe-X-expire-long-watch.txt` | expire with key expiry disabled, 5 nodes, watched for 3 h 31 min, with a peer's view |
-| `probe-Z-expire-variants.txt` | expire, third run; a node tagged later; a second expire; enable and disable key expiry; the login URL |
+| `probe-X-expire-long-watch.txt`    | expire with key expiry disabled, 5 nodes, watched for 3 h 31 min, with a peer's view                                      |
+| `probe-Z-expire-variants.txt`      | expire, third run; a node tagged later; a second expire; enable and disable key expiry; the login URL                     |
+
+New in the second run:
+
+- A node name that is not a DNS label is repaired, not refused: `Bad Name!`
+  is stored as `bad-name`. A name with nothing left after the repair (`!!!`)
+  answers 500 "empty DNS label" (`probe-V`, J5).
+- A token that has tags can make an OAuth client with the scope `all` and no
+  tags (`probe-U`, U1).
+- A token that breaks a token rule gets 400 for tags and for a key of a user,
+  403 for scopes (`probe-U`).
+- A token without the scope gets 404 when it has nothing for that resource,
+  and 403 when it has the read scope and needs the write scope (`probe-U`, U5;
+  `probe-V`, Y1 to Y4).
+- A key that a token made has no `userId`. A device has `oauthClientId`
+  (`probe-V`, Y5).
+- A node that cannot update itself answers 404 "not found" to
+  `POST /device/{id}/update-client` (`probe-V`, J23).
+- Expire with key expiry disabled was reproduced three times and watched for
+  3 h 31 min (`probe-X`, `probe-Z`); see section 1.
