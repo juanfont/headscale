@@ -207,7 +207,7 @@ func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 
 	err = db.DB.Where("kind = ? AND id = ?", types.CredentialPreAuthKey, key.ID).
 		Delete(&types.Credential{}).Error
-	require.ErrorContains(t, err, "constraint failed: FOREIGN KEY constraint failed")
+	require.ErrorIs(t, err, gorm.ErrForeignKeyViolated)
 }
 
 func TestPreAuthKeyAuthentication(t *testing.T) {

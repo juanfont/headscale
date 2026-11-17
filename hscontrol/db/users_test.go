@@ -331,6 +331,41 @@ func TestGetUserErrorPropagation(t *testing.T) {
 	}
 }
 
+// TestDuplicateUserNameIsTyped pins the root cause: a unique-index violation
+// must reach callers as a typed error on every backend, not as driver text.
+func TestDuplicateUserNameIsTyped(t *testing.T) {
+	backends := map[string]func(t *testing.T) *HSDatabase{
+		"sqlite": func(t *testing.T) *HSDatabase {
+			t.Helper()
+
+			db, err := newSQLiteTestDB()
+			require.NoError(t, err)
+
+			return db
+		},
+		"postgres": newPostgresTestDB,
+	}
+
+	for name, open := range backends {
+		t.Run(name+"/create", func(t *testing.T) {
+			db := open(t)
+			db.CreateUserForTest("dup")
+
+			_, err := db.CreateUser(types.User{Name: "dup"})
+			require.ErrorIs(t, err, gorm.ErrDuplicatedKey)
+		})
+
+		t.Run(name+"/rename", func(t *testing.T) {
+			db := open(t)
+			db.CreateUserForTest("dup")
+			other := db.CreateUserForTest("other")
+
+			err := db.RenameUser(types.UserID(other.ID), "dup")
+			require.ErrorIs(t, err, gorm.ErrDuplicatedKey)
+		})
+	}
+}
+
 func TestRenameUser(t *testing.T) {
 	tests := []struct {
 		name string
@@ -381,8 +416,7 @@ func TestRenameUser(t *testing.T) {
 				assert.Equal(t, "test2", userTest2.Name)
 
 				err := db.RenameUser(types.UserID(userTest2.ID), "test")
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "UNIQUE constraint failed")
+				require.ErrorIs(t, err, gorm.ErrDuplicatedKey)
 			},
 		},
 	}
