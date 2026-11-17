@@ -24,7 +24,7 @@ in
   server_url = lib.mkOption {
     type = lib.types.str;
     description = ''
-      The URL clients connect to, with its `http://` or `https://` scheme, e.g. `https://headscale.example.com:443`. A trailing slash is trimmed on load. Its host must not be `dns.base_domain` or a name below it.
+      The URL clients connect to, with its `http://` or `https://` scheme, e.g. `https://headscale.example.com:443`. A trailing slash is trimmed on load. The hostname cannot be the same as `dns.base_domain` or any sub-domain that would cause the Headscale instance to have a `server_url` inside the MagicDNS namespace.
 
       Required.
     '';
@@ -68,7 +68,7 @@ in
     type = lib.types.listOf t.prefix;
     default = [ ];
     description = ''
-      The CIDRs of reverse proxies whose `True-Client-IP`, `X-Real-IP` and `X-Forwarded-For` headers are honoured. Empty ignores those headers. Set without a proxy in front, clients can spoof their source IP in logs and the v2 API.
+      The CIDRs of reverse proxies whose `True-Client-IP`, `X-Real-IP` and `X-Forwarded-For` headers are honoured. Empty ignores those headers. Set without a proxy in front, clients can spoof their source IP in logs and the `ip:publicAddress` posture attribute.
     '';
     example = [
       "192.0.2.10/32"
@@ -100,7 +100,7 @@ in
       type = t.prefix;
       default = "100.64.0.0/10";
       description = ''
-        The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address.
+        The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address. Use a prefix inside `100.64.0.0/10`. A range outside it is not supported and logs a warning.
       '';
       example = "100.64.0.0/24";
     };
@@ -108,7 +108,7 @@ in
       type = t.prefix;
       default = "fd7a:115c:a1e0::/48";
       description = ''
-        The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6 address.
+        The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6 address. Use a prefix inside `fd7a:115c:a1e0::/48`. A range outside it is not supported and logs a warning.
       '';
       example = "fd7a:115c:a1e0::/64";
     };
@@ -252,7 +252,7 @@ in
       type = t.duration;
       default = "168h";
       description = ''
-        How long a soft-revoked pre-auth key or OAuth client (revoked via the v2 API's DELETE) is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.
+        How long a revoked pre-auth key or OAuth client is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.
       '';
       example = "720h";
     };
@@ -720,8 +720,8 @@ in
           On NixOS, keep a secret setting out of the Nix store: load it as a systemd credential with `systemd.services.headscale.serviceConfig.LoadCredential = [ "dns_challenge_provider_<setting>:/run/secrets/dns_challenge_provider_<setting>" ];` and set the setting to `"file:\''${CREDENTIALS_DIRECTORY}/dns_challenge_provider_<setting>"`. `name` is not a secret.
         '';
         example = {
-          api_token = "file:/run/secrets/cloudflare";
-          name = "cloudflare";
+          api_key = "file:/run/secrets/gigahost";
+          name = "gigahost";
         };
       };
     };

@@ -5,9 +5,10 @@
     This page is generated from the doc comments in `hscontrol/types/config.go` by
     `go generate ./hscontrol/types/`. Edit the comments there, not this page.
 
-Every key headscale reads, in the order `headscale generate config` prints them, with its type, default,
-environment variable and an example for a configuration file, the environment and NixOS. Keys that no longer
-work are listed under [Removed keys](#removed-keys). [Configuration](configuration.md) explains where headscale
+This reference contains all Headscale configuration options, in the order `headscale generate config` prints them,
+each with its type, default, environment variable and an example for a configuration file, the environment and NixOS.
+
+Removed keys are listed under [Removed keys](#removed-keys). [Configuration](configuration.md) explains where Headscale
 finds its configuration, how to check it, and shows the full example.
 
 ## Conventions { #conventions }
@@ -27,55 +28,43 @@ finds its configuration, how to check it, and shows the full example.
 | secret                                               | Text, or `file:<path>` to read it from a file.                                                                                 | `file:/run/secrets/oidc_client_secret`                    |
 | <span id="type-enum"></span>enum                     | One of the values listed with the key.                                                                                         | `sqlite`                                                  |
 | DNS record                                           | An object with `name`, `type` and `value`.                                                                                     | `{name: grafana.example.com, type: A, value: 100.64.0.3}` |
-| value                                                | Whatever the setting takes: text, a number, a boolean, a list or a map.                                                        | `file:/run/secrets/cloudflare`                            |
+| value                                                | Whatever the setting takes: text, a number, a boolean, a list or a map.                                                        | `file:/run/secrets/gigahost`                              |
 | <span id="type-list"></span>list                     | A list. A variable holds it as a JSON array or, unless its values are objects, separated by spaces. An empty item is an error. | `[9.9.9.9, 2620:fe::fe]`                                  |
 | <span id="type-map"></span>map                       | Keys you choose, each with a value. A variable holds a JSON object.                                                            | `{corp.example.com: [192.0.2.53]}`                        |
 
 ### Environment variables { #env }
 
-Every key can also be set with an environment variable: `HEADSCALE_` and the key's path in capitals, with `_` for
-`.`, e.g. `HEADSCALE_LOG_LEVEL` for `log.level`. Each key below names its variable. A variable wins over the
-configuration file, which wins over the default. An empty variable, like a key written with no value in the
-file, counts as unset and keeps the default. A variable set to `""` means what `""` means in the configuration
-file: it clears a key with a default, as `prefixes.v6: ""` does, and is an error where the file's `""` is one. A
-list also clears with `[]`. Quote the value so the quotes reach headscale:
+Every key can also be set with an environment variable: `HEADSCALE_` followed by the key in capitals, e.g.
+`HEADSCALE_LOG_LEVEL` for `log.level`. Each key below names its variable.
+
+- An environment variable takes precedence over the configuration file, which takes precedence over the default.
+- An empty variable counts as unset and keeps the default.
+- A list is a JSON array or its values separated by spaces. A map is a JSON object and replaces the map in the
+  configuration file.
+- An unknown or removed `HEADSCALE_` variable logs a warning, it does not stop Headscale.
+- The settings of a DNS provider have variables of their own, see
+  [`dns.challenge.provider`](#dns.challenge.provider).
+
+To clear a key that has a default, set its variable to `""`, or to `[]` for a list. Quote the value so the quotes reach
+Headscale:
 
 ```shell
 export HEADSCALE_PREFIXES_V6='""'
 export HEADSCALE_DERP_URLS='[]'
 ```
 
-```yaml title="docker-compose.yaml"
-environment:
-  HEADSCALE_PREFIXES_V6: '""'
-  HEADSCALE_DERP_URLS: '[]'
-```
-
-An env file (a Compose `env_file`, a systemd `EnvironmentFile=`) and a systemd `Environment=` strip one level of
-quotes, so `KEY=""` there arrives empty and keeps the default: write `KEY='""'` in an env file and
-`Environment='KEY=""'` in a unit.
-
-A list is a JSON array or, unless its values are objects, its values separated by spaces. A map is a JSON object,
-which replaces the map in the configuration file instead of merging into it. The examples below write every list
-and map as JSON.
-
-A `HEADSCALE_` variable that names no key logs a warning, and one for a removed key also says what to do instead.
-Other software uses the same prefix, so neither stops headscale.
-
-A DNS provider setting that takes text can also be set on its own as `HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>`,
-e.g. `HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN`; see [`dns.challenge.provider`](#dns.challenge.provider).
-
 ### Secrets { #secrets }
 
-A secret takes the value itself or `file:<path>`, which reads it from that file. Environment variables in the path
-are expanded, as in `file:${CREDENTIALS_DIRECTORY}/oidc_client_secret`, and whitespace around the file's contents
-is trimmed; an empty file is an error. Headscale reads the file only where the secret is used, and
-`headscale check config` and `headscale check all` never read it. `headscale generate config --running` and
-`/debug/config` show a literal secret as `<redacted>` and a `file:` reference as written.
+A secret takes the value itself or `file:<path>` to read it from a file, e.g.
+`file:${CREDENTIALS_DIRECTORY}/oidc_client_secret`.
+
+- Environment variables in the path are expanded.
+- Whitespace around the content of the file is trimmed, an empty file is an error.
+- `headscale generate config --running` and `/debug/config` show a literal secret as `<redacted>`.
 
 The secrets are [`database.postgres.pass`](#database.postgres.pass), [`oidc.client_secret`](#oidc.client_secret), [`cli.api_key`](#cli.api_key) and every setting of [`dns.challenge.provider`](#dns.challenge.provider), where a non-string one, such as acme-dns `config`, is the JSON in the file.
 
-On NixOS, keep a secret out of the Nix store: load it as a systemd credential and point the key at it.
+On NixOS, load the secret as a systemd credential to keep it out of the Nix store:
 
 ```nix
 services.headscale.settings.oidc.client_secret = "file:\${CREDENTIALS_DIRECTORY}/oidc_client_secret";
@@ -88,7 +77,7 @@ systemd.services.headscale.serviceConfig.LoadCredential = [ "oidc_client_secret:
 - **Required**
 - **Env:** `HEADSCALE_SERVER_URL`
 
-The URL clients connect to, with its `http://` or `https://` scheme, e.g. `https://headscale.example.com:443`. A trailing slash is trimmed on load. Its host must not be [`dns.base_domain`](#dns.base_domain) or a name below it.
+The URL clients connect to, with its `http://` or `https://` scheme, e.g. `https://headscale.example.com:443`. A trailing slash is trimmed on load. The hostname cannot be the same as [`dns.base_domain`](#dns.base_domain) or any sub-domain that would cause the Headscale instance to have a `server_url` inside the MagicDNS namespace.
 
 === "YAML"
 
@@ -218,7 +207,7 @@ The file mode of [`unix_socket`](#unix_socket), in quoted octal (`"0770"`): unqu
 - **Default:** `[]`
 - **Env:** `HEADSCALE_TRUSTED_PROXIES` ([space-separated or JSON array](#env))
 
-The CIDRs of reverse proxies whose `True-Client-IP`, `X-Real-IP` and `X-Forwarded-For` headers are honoured. Empty ignores those headers. Set without a proxy in front, clients can spoof their source IP in logs and the v2 API.
+The CIDRs of reverse proxies whose `True-Client-IP`, `X-Real-IP` and `X-Forwarded-For` headers are honoured. Empty ignores those headers. Set without a proxy in front, clients can spoof their source IP in logs and the `ip:publicAddress` posture attribute.
 
 === "YAML"
 
@@ -329,7 +318,7 @@ The IP ranges node addresses are allocated from. Keep at least one of [`prefixes
 - **Default:** `100.64.0.0/10`
 - **Env:** `HEADSCALE_PREFIXES_V4`
 
-The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address.
+The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address. Use a prefix inside `100.64.0.0/10`. A range outside it is not supported and logs a warning.
 
 === "YAML"
 
@@ -358,7 +347,7 @@ Replaces `ip_prefixes` ([removed](#ip_prefixes)).
 - **Default:** `fd7a:115c:a1e0::/48`
 - **Env:** `HEADSCALE_PREFIXES_V6`
 
-The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6 address.
+The IPv6 range, e.g. `fd7a:115c:a1e0::/48`. Empty gives nodes no IPv6 address. Use a prefix inside `fd7a:115c:a1e0::/48`. A range outside it is not supported and logs a warning.
 
 === "YAML"
 
@@ -752,7 +741,7 @@ Covers the cleanup of revoked pre-auth keys. See [Pre authenticated key](registr
 - **Default:** `168h`
 - **Env:** `HEADSCALE_PREAUTH_KEYS_REVOKED_RETENTION`
 
-How long a soft-revoked pre-auth key or OAuth client (revoked via the v2 API's DELETE) is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.
+How long a revoked pre-auth key or OAuth client is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.
 
 === "YAML"
 
@@ -2282,7 +2271,7 @@ The DNS provider that writes challenge records: `name` selects it, the other key
 | `powerdns`   | `api_token`, `debug`, `server_id`, `server_url`             |
 | `rfc2136`    | `key`, `key_alg`, `key_name`, `server`                      |
 
-Each text setting can also be set on its own as `HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>`, e.g. `HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN`, which wins over the same setting in `HEADSCALE_DNS_CHALLENGE_PROVIDER` and in the configuration file. An object setting, such as the `config` of `acmedns`, goes inside the JSON object of `HEADSCALE_DNS_CHALLENGE_PROVIDER`; see [Environment variables](dns.md#environment-variables).
+Each text setting can also be set on its own as `HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>`, e.g. `HEADSCALE_DNS_CHALLENGE_PROVIDER_API_KEY`, which wins over the same setting in `HEADSCALE_DNS_CHALLENGE_PROVIDER` and in the configuration file. An object setting, such as the `config` of `acmedns`, goes inside the JSON object of `HEADSCALE_DNS_CHALLENGE_PROVIDER`, or in a JSON file that its own variable names with `file:<path>`. See [Environment variables](dns.md#environment-variables).
 
 === "YAML"
 
@@ -2290,24 +2279,24 @@ Each text setting can also be set on its own as `HEADSCALE_DNS_CHALLENGE_PROVIDE
     dns:
       challenge:
         provider:
-          api_token: file:/run/secrets/cloudflare
-          name: cloudflare
+          api_key: file:/run/secrets/gigahost
+          name: gigahost
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_DNS_CHALLENGE_PROVIDER='{"api_token":"file:/run/secrets/cloudflare","name":"cloudflare"}'
+    export HEADSCALE_DNS_CHALLENGE_PROVIDER='{"api_key":"file:/run/secrets/gigahost","name":"gigahost"}'
     ```
 
 === "NixOS"
 
     ```nix
     services.headscale.settings.dns.challenge.provider = {
-      api_token = "file:\${CREDENTIALS_DIRECTORY}/dns_challenge_provider_api_token";
-      name = "cloudflare";
+      api_key = "file:\${CREDENTIALS_DIRECTORY}/dns_challenge_provider_api_key";
+      name = "gigahost";
     };
-    systemd.services.headscale.serviceConfig.LoadCredential = [ "dns_challenge_provider_api_token:/run/secrets/cloudflare" ];
+    systemd.services.headscale.serviceConfig.LoadCredential = [ "dns_challenge_provider_api_key:/run/secrets/gigahost" ];
     ```
 
 ## `tls` { #tls data-toc-label="tls" }
