@@ -162,10 +162,11 @@ func (hsdb *HSDatabase) ListOAuthClients() ([]types.OAuthClient, error) {
 	return clients, nil
 }
 
-// RevokeOAuthClient deletes a client and all access tokens it issued. An unknown
-// client id returns [ErrOAuthClientNotFound], so a repeated DELETE is a clean
-// 404. Unlike pre-auth keys (which soft-revoke for node-registration history), an
-// OAuth client has no such history and is removed outright, matching Tailscale.
+// RevokeOAuthClient soft-revokes a client, as Tailscale's DELETE does: the row
+// stays retrievable with its invalid flag set, and the access tokens it issued
+// are deleted. Revoking a revoked client keeps its first revoke time and
+// succeeds; an unknown client id returns [ErrOAuthClientNotFound]. The
+// background collector hard-deletes it after the retention window.
 func (hsdb *HSDatabase) RevokeOAuthClient(clientID string) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
 		err := tx.Where("kind = ? AND client_id = ?", types.CredentialOAuthToken, clientID).
@@ -174,8 +175,9 @@ func (hsdb *HSDatabase) RevokeOAuthClient(clientID string) error {
 			return fmt.Errorf("deleting oauth access tokens: %w", err)
 		}
 
-		res := tx.Where("kind = ? AND identifier = ?", types.CredentialOAuthClient, clientID).
-			Delete(&types.Credential{})
+		res := tx.Model(&types.Credential{}).
+			Where("kind = ? AND identifier = ?", types.CredentialOAuthClient, clientID).
+			Update("revoked", gorm.Expr("COALESCE(revoked, ?)", time.Now()))
 		if res.Error != nil {
 			return res.Error
 		}
@@ -186,6 +188,22 @@ func (hsdb *HSDatabase) RevokeOAuthClient(clientID string) error {
 
 		return nil
 	})
+}
+
+// DestroyRevokedOAuthClientsBefore hard-deletes every client revoked before
+// cutoff, returning how many were removed.
+func (hsdb *HSDatabase) DestroyRevokedOAuthClientsBefore(cutoff time.Time) (int64, error) {
+	var count int64
+
+	err := hsdb.Write(func(tx *gorm.DB) error {
+		res := tx.Where("kind = ? AND revoked IS NOT NULL AND revoked < ?", types.CredentialOAuthClient, cutoff).
+			Delete(&types.Credential{})
+		count = res.RowsAffected
+
+		return res.Error
+	})
+
+	return count, err
 }
 
 // MintAccessToken stores a new [types.OAuthAccessToken] for clientID with the

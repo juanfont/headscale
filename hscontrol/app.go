@@ -388,6 +388,13 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				log.Info().Int("count", reaped).Msg("reaped revoked pre-auth keys")
 			}
 
+			reapedClients, err := h.state.DestroyRevokedOAuthClientsBefore(cutoff)
+			if err != nil {
+				log.Error().Err(err).Msg("reaping revoked oauth clients")
+			} else if reapedClients > 0 {
+				log.Info().Int64("count", reapedClients).Msg("reaped revoked oauth clients")
+			}
+
 		case <-accessTokenTicker.C:
 			reaped, err := h.state.DeleteExpiredAccessTokens(time.Now())
 			if err != nil {
