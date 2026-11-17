@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -35,7 +36,13 @@ func TestOAuthClientCommand(t *testing.T) {
 
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("cli-oauthclient"))
+	// A client may only carry tags the policy defines, as on Tailscale.
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
+		hsic.WithTestName("cli-oauthclient"),
+		hsic.WithACLPolicy(&policyv2.Policy{
+			TagOwners: policyv2.TagOwners{policyv2.Tag("tag:k8s-operator"): policyv2.Owners{}},
+		}),
+	)
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
