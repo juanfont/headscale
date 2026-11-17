@@ -1,0 +1,193 @@
+# T. Keys, OAuth clients, errors, users, policy reads (2026-11-13T17:29:07Z)
+# policy tonight: accept-all, tagOwners as the tscap baseline plus tag:hsov-child owned by tag:server
+
+## T-A. Auth keys, admin API key
+A1 tag not in tagOwners                     : {"message":"requested tags [tag:not-in-policy-probe] are invalid or not permitted"} HTTP 400
+A2 tag in tagOwners                         : {"id":"kqhhNHsNoQ11CNTRL","key":"SECRET-REDACTED","keyType":"auth","expirySeconds":600,"created":"2026-11-13T17:29:08Z","expires":"2026-11-13T17:39:08Z","capabilities":{"devices":{"create":{"reusable":false,"ephemeral":false,"preauthorized":true,"tags":["tag:server"]}}},"description":"hs ov A2","userId":"uRWUsmwMTZ11CNTRL"} HTTP 200
+A3 expirySeconds 100 days                   : {"message":"expirySeconds must be less than or equal to 7776000"} HTTP 400
+A4 expirySeconds 7776001                    : {"message":"expirySeconds must be less than or equal to 7776000"} HTTP 400
+A5 expirySeconds 7776000                    : {"expirySeconds":7776000,"created":"2026-11-13T17:29:09Z","expires":"2027-02-11T17:29:09Z"} HTTP 200
+A6 no expirySeconds                         : {"expirySeconds":7776000,"caps":{"reusable":false,"ephemeral":false,"preauthorized":false},"hasUserId":true,"fields":["capabilities","created","expires","expirySeconds","id","key","keyType","userId"]} HTTP 200
+A7 expirySeconds 0                          : {"expirySeconds":7776000} HTTP 200
+A8 expirySeconds -5                         : {"message":"expirySeconds must be greater than or equal to 0"} HTTP 400
+A9 empty body {}                            : {"message":"exactly one capability scope must be populated"} HTTP 400
+A10 capabilities.devices, no create         : {"caps":{"devices":{"create":{"reusable":false,"ephemeral":false,"preauthorized":false}}},"keyType":"auth"} HTTP 200
+A11 description 51 chars                    : {"descriptionLen":50} HTTP 200
+A12 description 255 chars                   : {"descriptionLen":50} HTTP 200
+A13 description 2000 chars                  : {"descriptionLen":50} HTTP 200
+A14 unknown body field                      : {"id":"kC93Busjie11CNTRL","fields":["capabilities","created","expires","expirySeconds","id","key","keyType","userId"]} HTTP 200
+A15 bad JSON                                : {"message":"invalid JSON in request body"} HTTP 400
+A16 tag without tag: prefix                 : {"message":"requested tags [server] are invalid or not permitted"} HTTP 400
+A17 keyType api                             : {"message":"invalid key type, \"api\" is not supported"} HTTP 400
+A18 keyType nosuch                          : {"message":"invalid key type, \"nosuch\" is not supported"} HTTP 400
+A19 tags [] (empty list)                    : {"caps":{"reusable":false,"ephemeral":false,"preauthorized":false}} HTTP 200
+A20 two tags, one not in the policy         : {"message":"requested tags [tag:not-in-policy-probe] are invalid or not permitted"} HTTP 400
+
+## T-F. How a key ends
+F1 a plain key no node used                 : {"id":"kTniioEFtU11CNTRL","hasKey":true} HTTP 200
+F2 GET it by ID (is the secret there?)      : {"hasKey":false,"fields":["capabilities","created","description","expires","expirySeconds","id","keyType","userId"]} HTTP 200
+F3 in the list before                       : {"inList":true} HTTP 200
+F4 DELETE it                                : null HTTP 200
+F5 GET by ID after                          : {"revoked":"2026-11-13T17:29:17Z","invalid":true,"expires":"2026-11-13T17:39:16Z"} HTTP 200
+F6 in the list after                        : {"inList":false} HTTP 200
+F7 in the list after, all=true              : {"inList":false} HTTP 200
+F8 DELETE it again                          : null HTTP 200
+F9 GET by ID after the second DELETE        : {"revoked":"2026-11-13T17:29:17Z","invalid":true} HTTP 200
+F10 GET an unknown key ID                   : {"message":"not found"} HTTP 404
+F11 DELETE an unknown key ID                : {"message":"key not found"} HTTP 404
+F12 a key with expirySeconds 2              : {"id":"k4svmJnkkb11CNTRL","created":"2026-11-13T17:29:20Z","expires":"2026-11-13T17:29:22Z"} HTTP 200
+F13 the same key 5 s later                  : {"revoked":null,"invalid":true,"expires":"2026-11-13T17:29:22Z"} HTTP 200
+F14 the expired key in the list             : {"inList":false} HTTP 200
+F15 the key list, default                   : {"top":["keys"],"count":11,"types":["api","auth"],"fieldsOfFirst":["created","description","expires","expirySeconds","id","keyType","scopes","userId"]} HTTP 200
+F16 the key list, all=true                  : {"count":13,"types":{"api":3,"auth":10},"anyRevoked":0,"anyInvalid":0} HTTP 200
+F17 the still valid tagged key A2 by ID     : {"keyType":"auth","userId":"uRWUsmwMTZ11CNTRL","revoked":null,"invalid":null,"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":false,"preauthorized":true,"tags":["tag:server"]}}}} HTTP 200
+
+## T-H. OAuth clients, admin API key
+H1 create, read scope, no tags              : {"fields":["created","description","id","key","keyType","scopes","userId"],"keyType":"client","scopes":["devices:core:read"],"expires":"absent","hasUserId":true} HTTP 200
+H2 auth_keys, no tags                       : {"message":"OAuth clients with auth key write scope must specify one or more tags"} HTTP 400
+H2b devices:core, no tags                   : {"message":"OAuth clients with devices write scope must specify one or more tags"} HTTP 400
+H2c all, no tags                            : {"id":"kUZkb7eYA311CNTRL","scopes":["all"],"tags":null} HTTP 200
+H2d auth_keys:read, no tags                 : {"id":"kFanX8Q7YQ11CNTRL","scopes":["auth_keys:read"],"tags":null} HTTP 200
+H3 unknown scope                            : {"message":"invalid scopes: [\"devices:cor\"]"} HTTP 400
+H4 no scopes                                : {"message":"scopes cannot be empty, at least one scope is required for OAuth clients"} HTTP 400
+H4b scopes left out                         : {"message":"scopes cannot be empty, at least one scope is required for OAuth clients"} HTTP 400
+H4c every scope name Headscale has, one client: {"id":"kKBddZN7Jn11CNTRL","scopes":["all","all:read","auth_keys","auth_keys:read","devices:core","devices:core:read","devices:posture_attributes","devices:posture_attributes:read","devices:routes","devices:routes:read","feature_settings","feature_settings:read","oauth_keys","oauth_keys:read","policy_file","policy_file:read","users","users:read"],"message":null} HTTP 200
+H5 client H1 in the list, default           : {"inList":false} HTTP 200
+H5b client H1 in the list, all=true         : {"inList":true} HTTP 200
+H5c GET the client by ID (is the secret there?): {"hasKey":false,"fields":["created","description","id","keyType","scopes","userId"]} HTTP 200
+H6 DELETE the client                        : null HTTP 200
+H7 GET the client after                     : {"keyType":"client","revoked":"2026-11-13T17:29:33Z","invalid":true,"scopes":["devices:core:read"]} HTTP 200
+H7b the revoked client in the list, all=true: {"inList":false} HTTP 200
+H8 DELETE the client again                  : null HTTP 200
+
+## T-R. Tags of a new OAuth client, admin API key
+R1 tag in the policy                        : {"id":"krmDnUVtBk11CNTRL","scopes":["auth_keys"],"tags":["tag:server"],"userId":"uRWUsmwMTZ11CNTRL"} HTTP 200
+R2 tag not in the policy                    : {"message":"requested tags [tag:hsprobe-nopolicy] are invalid or not permitted"} HTTP 400
+R3 one tag in, one not                      : {"message":"requested tags [tag:hsprobe-nopolicy] are invalid or not permitted"} HTTP 400
+R4 read scope, tag not in the policy        : {"message":"requested tags [tag:hsprobe-nopolicy] are invalid or not permitted"} HTTP 400
+R5 tag without the tag: prefix              : {"message":"requested tags [server] are invalid or not permitted"} HTTP 400
+R6 tag owned by a tag (tag:hsov-child)      : {"id":"ko6WQGRhpq11CNTRL","scopes":["auth_keys"],"tags":["tag:hsov-child"]} HTTP 200
+
+## T-Q. A credential that deletes itself
+Q1 admin key creates a client (oauth_keys)  : {"id":"kfDxE7Xyis11CNTRL","scopes":["oauth_keys"]} HTTP 200
+Q2 token from the client                    : {"token_type":"Bearer","expires_in":3600,"scope":"oauth_keys"} HTTP 200
+Q3 token reads its own client               : {"id":"kfDxE7Xyis11CNTRL","revoked":null,"invalid":null} HTTP 200
+Q4 token deletes its own client             : null HTTP 200
+Q5 token reads its client again             : {"message":"API token invalid"} HTTP 401
+Q6 token lists keys after                   : {"message":"API token invalid"} HTTP 401
+Q7 token deletes it again                   : {"message":"API token invalid"} HTTP 401
+Q8 admin key reads the client               : {"id":"kfDxE7Xyis11CNTRL","revoked":"2026-11-13T17:29:38Z","invalid":true} HTTP 200
+Q9 a new token from the revoked client      : {"message":"API token invalid"} HTTP 401
+
+## T-I. Errors and strictness
+I1 no credential                            : {"message":"API token invalid"} HTTP 401
+I2 wrong credential                         : {"message":"API token invalid"} HTTP 401
+I3 unknown device                           : {"message":"no manageable device matching this ID found"} HTTP 404
+I3b unknown device, nodeId form             : {"message":"no manageable device matching this ID found"} HTTP 404
+I4 unknown query parameter                  : {"top":["devices"],"count":5} HTTP 200
+I4b devices?pageSize=1&limit=1              : {"top":["devices"],"count":5} HTTP 200
+I5 fields=bogus                             : {"message":"\"bogus\" is not a valid fields parameter"} HTTP 400
+I6 wrong method (PUT devices)               : {"error":"method_not_allowed","message":"HTTP method not allowed for this endpoint"} HTTP 405
+I6 headers: content-type=application/json allow=None
+I7 unknown path                             : {"message":"404 page not found"} HTTP 404
+I7 headers: content-type=application/json
+I8 other tailnet name                       : {"message":"tailnet \"example.invalid\" not found"} HTTP 404
+I9 response headers of a 200: content-type=application/json; x-tailscale-request-id present=True; names=['connection', 'content-type', 'date', 'referrer-policy', 'strict-transport-security', 'transfer-encoding', 'x-tailscale-request-id', 'x-tailscale-s']
+I10 HTTP Basic, API key as the user name    : {"top":["devices"],"count":5} HTTP 200
+I11 JSON body sent as text/plain            : {"id":"kmZXPkpgxr11CNTRL","message":null} HTTP 200
+
+## T-K. Users (read only; other users' values are masked)
+K1 list shape                               : {"top":["users"],"count":3,"fieldsOfFirst":["created","currentlyConnected","deviceCount","displayName","id","lastSeen","loginName","profilePicUrl","role","status","tailnetId","type"]} HTTP 200
+K2 the probe user                           : {"created":"\u2026","currentlyConnected":true,"deviceCount":3,"displayName":"\u2026","id":"\u2026","lastSeen":"\u2026","loginName":"REDACTED-USER","profilePicUrl":"\u2026","role":"owner","status":"active","tailnetId":"\u2026","type":"member"} HTTP 200
+K3 unknown user                             : {"message":"404 page not found"} HTTP 404
+K4 type=bogus                               : {"message":"invalid type \"bogus\""} HTTP 400
+K4b role=bogus                              : {"message":"invalid role \"bogus\""} HTTP 400
+K4c type=member                             : {"count":3} HTTP 200
+
+## T-L. Policy: reads and validate only. No POST /acl is sent.
+L1 GET /acl, default            : content-type=application/hujson etag="9710cc1ea50bcd255f101856c61b111e223cec396fae3bde566ffdc95befa888" bytes=1193 HTTP 200
+L2 GET /acl, Accept: json       : content-type=application/json etag="9710cc1ea50bcd255f101856c61b111e223cec396fae3bde566ffdc95befa888" HTTP 200
+L3 GET /acl?details=1                       : {"top":["acl","errors","warnings"],"aclType":"str","warnings":null,"errors":null} HTTP 200
+L6 validate: the current policy             : {} HTTP 200
+L6b validate: HuJSON with a comment and a trailing comma: {} HTTP 200
+L6c the same HuJSON sent as application/json: {} HTTP 200
+L7 validate: bad syntax                     : {"message":"line 1, column 11: parsing value: unexpected EOF"} HTTP 200
+L8 validate: unknown tag                    : {"message":"src=tag not found: \"tag:nope\""} HTTP 200
+L9 validate: a failing test                 : {"message":"src=tag not found: \"tag:client\""} HTTP 200
+L9b validate: unknown top-level key         : {"message":"json: unknown field \"nosuchsection\""} HTTP 200
+L10 validate: tests as a JSON list          :  HTTP 200
+L10b validate: empty body                   : {"message":"unexpected end of JSON input"} HTTP 400
+L11 policy unchanged             : etag="9710cc1ea50bcd255f101856c61b111e223cec396fae3bde566ffdc95befa888" HTTP 200
+M1 settings                                 : {"aclsExternallyManagedOn":false,"devicesApprovalOn":false,"devicesAutoUpdatesOn":false,"devicesKeyDurationDays":180,"usersApprovalOn":false,"usersRoleAllowedToJoinExternalTailnets":"admin","networkFlowLoggingOn":false,"postureIdentityCollectionOn":false,"httpsEnabled":false,"regionalRoutingOn":false,"routeSelection":"active-passive-failover"} HTTP 200
+
+## cleanup: only the keys and clients this probe made, by ID; revoked or expired ones are left as they are
+ DELETE kqhhNHsNoQ11CNTRL (auth) -> 200
+ DELETE kkZaz7Hqgu11CNTRL (auth) -> 200
+ DELETE kAKbZVxyZB21CNTRL (auth) -> 200
+ DELETE kx1gJ2pXBe11CNTRL (auth) -> 200
+ DELETE kt2mTKZdZ521CNTRL (auth) -> 200
+ DELETE kstLA4RR6X11CNTRL (auth) -> 200
+ DELETE kCXWaNA6P121CNTRL (auth) -> 200
+ DELETE kV2QreTuH511CNTRL (auth) -> 200
+ DELETE kC93Busjie11CNTRL (auth) -> 200
+ DELETE kKDSHrsxAH11CNTRL (auth) -> 200
+ kTniioEFtU11CNTRL: HTTP 200 revoked=2026-11-13T17:29:17Z invalid=True; left
+ k4svmJnkkb11CNTRL: HTTP 200 revoked=None invalid=True; left
+ kDa3udRpGY11CNTRL: HTTP 200 revoked=2026-11-13T17:29:33Z invalid=True; left
+ DELETE kUZkb7eYA311CNTRL (client) -> 200
+ DELETE kFanX8Q7YQ11CNTRL (client) -> 200
+ DELETE kKBddZN7Jn11CNTRL (client) -> 200
+ DELETE krmDnUVtBk11CNTRL (client) -> 200
+ DELETE ko6WQGRhpq11CNTRL (client) -> 200
+ kfDxE7Xyis11CNTRL: HTTP 200 revoked=2026-11-13T17:29:38Z invalid=True; left
+ DELETE kmZXPkpgxr11CNTRL (auth) -> 200
+for the poller: F1 revoked key kTniioEFtU11CNTRL; F12 expired key k4svmJnkkb11CNTRL; H1 revoked client kDa3udRpGY11CNTRL; Q self-revoked client kfDxE7Xyis11CNTRL
+
+## T-A, second part (2026-11-13T17:31:02Z): what is stored of a long description
+A21 description of 50 chars ending in END   : {"createAnswer":"abcdefghijabcdefghijabcdefghijabcdefghijabcdefgEND","len":50,"GETbyID":"abcdefghijabcdefghijabcdefghijabcdefghijabcdefgEND","GETlen":50} HTTP 200
+A21 description of 51 chars ending in END   : {"createAnswer":"abcdefghijabcdefghijabcdefghijabcdefghijabcdefghEN","len":50,"GETbyID":"abcdefghijabcdefghijabcdefghijabcdefghijabcdefghEN","GETlen":50} HTTP 200
+A21 description of 60 chars ending in END   : {"createAnswer":"abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij","len":50,"GETbyID":"abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij","GETlen":50} HTTP 200
+A22 OAuth client, description of 60 chars   : {"createAnswer":"abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij","len":50} HTTP 200
+
+## T-I, second part: unknown paths
+I7a /api/v2/nosuchpath                      : {"message":"404 page not found"} HTTP 404
+    content-type=application/json
+I7b /api/v2/tailnet/-/nosuchpath            : 404 page not found  HTTP 404
+    content-type=text/plain; charset=utf-8
+I7c /api/v2/device/1/nosuchpath             : 404 page not found  HTTP 404
+    content-type=text/plain; charset=utf-8
+I7d /api/v3/tailnet/-/devices               : {"message":"404 page not found"} HTTP 404
+    content-type=application/json
+I7e /api/nosuchpath                         : {"message":"404 page not found"} HTTP 404
+    content-type=application/json
+I7f /nosuchpath                             : unknown endpoint  HTTP 404
+    content-type=text/plain; charset=utf-8
+I6b DELETE /tailnet/-/devices               : {"error":"method_not_allowed","message":"HTTP method not allowed for this endpoint"} HTTP 405
+I6c PATCH /tailnet/-/keys                   : {"error":"method_not_allowed","message":"HTTP method not allowed for this endpoint"} HTTP 405
+I6d PUT /tailnet/-/acl/validate             : {"error":"method_not_allowed","message":"HTTP method not allowed for this endpoint"} HTTP 405
+
+## T-L, second part: validate with a failing test
+L9 validate: a policy whose test fails      : {"message":"test(s) failed","data":[{"user":"tag:server","errors":["[acl test error]: address \"tag:server:80\" (protocol \"tcp\"): want: Accept, got: Drop"]}]} HTTP 200
+    content-type=application/json content-length=160
+L9c validate: a policy whose test passes    : {} HTTP 200
+    content-type=application/json content-length=2
+L10 tests as a list, against the stored policy, failing: {"message":"test(s) failed","data":[{"user":"tag:server","errors":["[acl test error]: address \"tag:server:80\" (protocol \"tcp\"): want: Drop, got: Accept"]}]} HTTP 200
+    content-type=application/json content-length=160
+L10c tests as a list, against the stored policy, passing: (empty body) HTTP 200
+    content-type=None content-length=0
+L9d validate: two errors at once (unknown tag twice): {"message":"src=tag not found: \"tag:nope\""} HTTP 200
+    content-type=application/json content-length=45
+
+## cleanup of this part, by ID
+ DELETE kJjTnU4Tw621CNTRL -> 200
+ DELETE kwB3bLMc2H11CNTRL -> 200
+ DELETE kHNQ6LnuDm11CNTRL -> 200
+ DELETE ktH6sNeqeU11CNTRL -> 200
+
+## T-F, third part (2026-11-13T17:42:33Z): the fields of a key list entry, by keyType
+F18 list, default                           : {"count":3,"fieldsByType":{"api":["created","description","expires","expirySeconds","id","keyType","scopes","userId"],"auth":["capabilities","created","description","expires","expirySeconds","id","keyType","userId"]},"mine":{"kuDojX6ftJ11CNTRL":["capabilities","created","description","expires","expirySeconds","id","keyType","userId"],"k3upgqneru11CNTRL":["capabilities","created","description","expires","expirySeconds","id","keyType","userId"],"kodeWzTrUy11CNTRL":"not listed"}} HTTP 200
+F18 list, all=true                          : {"count":6,"fieldsByType":{"api":["created","description","expires","expirySeconds","id","keyType","scopes","userId"],"auth":["capabilities","created","description","expires","expirySeconds","id","keyType","userId"],"client":["created","description","id","keyType","scopes","userId"]},"mine":{"kuDojX6ftJ11CNTRL":["capabilities","created","description","expires","expirySeconds","id","keyType","userId"],"k3upgqneru11CNTRL":["capabilities","created","description","expires","expirySeconds","id","keyType","userId"],"kodeWzTrUy11CNTRL":["created","description","id","keyType","scopes","userId"]}} HTTP 200
+F19 GET a tagged auth key by ID: fields     : ["capabilities","created","description","expires","expirySeconds","id","keyType","userId"] HTTP 200
+ cleanup DELETE kuDojX6ftJ11CNTRL -> 200
+ cleanup DELETE k3upgqneru11CNTRL -> 200
+ cleanup DELETE kodeWzTrUy11CNTRL -> 200
