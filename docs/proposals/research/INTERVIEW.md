@@ -153,9 +153,46 @@ Capture:
 | D36 | How much of the research goes into the pull request? | (R) Summary in 003 plus the data that tests need                  | Everything: also the raw notes and all test builds, under `docs/proposals/research/` | **B**, against the recommendation |
 | D37 | Where do the raw notes and test builds live?         | (R) Moved to `~/git/headscale-cli-research`, local git, no remote | Left in `~/.cache`                                                                   | A                                 |
 
+## Review of 003 on the pull request (2026-11-18)
+
+Three review comments on `003-cmdline.md`, in his words:
+
+> strong typing and use of generics for type constraints must be a first class citizen.
+
+> would there be wins to use pflags?
+
+> Go no supports generic structs [...] I want the library to be strongly typed, and that we
+> leverage strict typing from top to bottom allowing us to have parsing of dedicated types being
+> implemented on given types. We should use typing to enforce a interface the implementer use.
+> In the 001-cli.md document, we define that we use types for the input and output `Command`
+> structure we introduce, it would be nice if some parts of that is first class in this library.
+> lets iterate on that and present some alternatives.
+
+And in chat: "what is unclear to me is where the line goes between the `Command` struct proposed
+on 001 and the `cmdline.Command`, I am keen on typing driving the interface, validation,
+programming and implementation style."
+
+The pflag answer given: no win. Its value types are not exported, its getters are by name with a
+check at run time, and its reader has the two measured faults (`-e=`, `-output json`).
+
+| #   | Question                                                                                | Option A                                                            | Option B                                        | Answer                                                                                                                                                                                                                                                                                                        |
+| --- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D42 | How does a command declare its flags and arguments?                                     | (R) A `Bind` method; the compiler checks each field type            | Struct tags; reflection checks at program start | First: "cannot 1B use the type from the struct field and therefor be strong aswell?" Both were then built; the one difference is build time against start time. Then: "first class, lets call it ideally, but not must, readability, go idiomatic might be more important". Read as **B**, and he confirmed B |
+| D43 | How does a type say how it is read?                                                     | (R) A method on the type, or a function for a type we do not own    | A method only, with wrapper types               | A. With tags the function is one `Register` line per type. He asked "should we reevaluate 2 and 3?"; kept                                                                                                                                                                                                     |
+| D44 | Which types of `Spec[In, Out]` does the library know?                                   | (R) Only `In`                                                       | `In` and `Out`                                  | A                                                                                                                                                                                                                                                                                                             |
+| D45 | Which method does a type carry?                                                         | (R) `encoding.TextUnmarshaler`                                      | An own `Parse(string) (T, error)`               | "show it."; both were built; then A                                                                                                                                                                                                                                                                           |
+| D46 | A field such as a node needs a lookup on the server. Who fills it?                      | (R) A late reader in the library; fields stay plain                 | A wrapper type `command.Ref[T]` in Headscale    | A                                                                                                                                                                                                                                                                                                             |
+| D47 | Where does the usage line come from?                                                    | (R) Made from the input struct                                      | Written in `Use` and checked, as 001 has it     | A                                                                                                                                                                                                                                                                                                             |
+| D48 | How does the library take flags that Headscale's builder adds outside the input struct? | (R) A list of flag structs, `Flags []any`, read with `Get[T](line)` | Typed handles, no `any`                         | A                                                                                                                                                                                                                                                                                                             |
+| D49 | `nodes list -o a -o b`: which mistake is reported?                                      | (R) The wrong value `a`; `Format` takes only `json`                 | "Given twice", as 001 said                      | A                                                                                                                                                                                                                                                                                                             |
+| D50 | How does a command name the library's types `Opt` and `Path`?                           | (R) Aliases in `command`: `command.Opt[T]`, `command.Path`          | Each command imports the library                | A                                                                                                                                                                                                                                                                                                             |
+
+D41 (the library is typed) is his review comment, not an answer to a question.
+
 ## Recommendations the maintainer did not follow
 
 - D17: `command.Opt[T]` instead of a pointer field.
+- D42: struct tags instead of a `Bind` method that the compiler checks.
 - D36: everything goes into the pull request, not only a summary and the test data.
 - D40: the faults in cobra's scripts are not reported upstream now.
 - D23: import cobra for the scripts instead of a copy. Known cost, measured: two Tab lines fail

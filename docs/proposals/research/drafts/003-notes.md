@@ -95,3 +95,44 @@ Draft: `drafts/003-cmdline.md`. These notes say where each part came from, where
 - Still open in 003: the name, the import path, reporting the script faults upstream.
 - `rules.md` was not yet changed when this round ended: the rule index has K7 and K8 from the prototype's tests; M5, K1, L11/K4 and S10 in 003 already follow section 3. Re-generate the index if `rules.md` renames or adds rules.
 - Style pass: removed the second statement of W4 and of "no variadic positionals" from "Commands and flags", S9 from "The hidden entry point" (it stays under "The scripts"), and the K1–K8 overlap in the calls table.
+
+## 6. Round three: 003 rewritten for the typed library (2026-11-18)
+
+Sections 0 to 5 are about the first 003 (strings in, strings out; `drafts/003-cmdline.orig.md`). This section is about the rewrite for D41–D49.
+
+- **Sources.** `typed-library.md` and `rules-typed.md` at `e434663`, the code in `spikes/final-typed/` (library unchanged since `662e45f`), `INTERVIEW.md`, `DECISIONS.md`. The protocol sections ("What a script sends" to "Known faults in the scripts"), the candidates, the bake-off and "What it cost" are the text of the first 003, unchanged.
+- **The example program** is `drafts/003-prog/` (`replace spike/cmdline => ../../spikes/final-typed/cmdline`). `main.go` and `main_test.go` are the code shown in 003. `probe_test.go` prints every `Parse` and Tab table of 003 (`probe.txt`); `console.sh` prints every console block (`console.txt`). `probe2_test.go` to `probe4_test.go` back single sentences that no library test holds. The folder is not committed yet. 003 links to it as `research/drafts/003-prog/`.
+- **Generated, not typed by hand:** the Go blocks, the tables of "Reading a command line" and of Tab, the console blocks, the default error texts, the error of `New`, `go doc -all`, and the rule index (from the "Held by" column of `rules-typed.md`). A script checked that every Go block is in `main.go` or `main_test.go` and every console block in `console.txt`.
+- **Commands** (in `nix develop` of the Headscale worktree, `GOFLAGS=-buildvcs=false`): `go test -count=1 ./...` and `go test -cover . ./internal/reader` in `spikes/final-typed/cmdline`; `go test -count=1 .` in `toy`; `go vet ./... && go test -count=1 -v .` in `drafts/003-prog`; `go doc -all .` and `go doc -all ./script`; `go build ./bad1` (and `bad2`, `bad3`, `bad-tags`) in `spikes/typed`; 5 × 500 calls of `headscale __complete nodes list --s` on the old and the typed test binary. `mdformat` with the repository's `.mdformat.toml` is a no-op on the draft; 278 links checked.
+- **Not run again by the writer:** the kit, the corpus, the differential, the fuzz targets and the real shells. Their numbers are those of `typed-library.md`.
+
+Where the code, the rule list and the notes did not agree:
+
+- **X3.** `rules-typed.md`: "only a repeat can meet another kind, and the repeat is reported". A flag given a second time as the last word without its value (`items list --sort id --sort`) is reported as a missing value: the reader stops there (`probe4_test.go`). 003 states both cases.
+- **The differential's "bug" bucket.** `typed-library.md` says "no bug or layer bucket on the typed build's pairs". `diff/results/final/run-final.md` has the bucket "bug: own drops flags read before a group word" in the pair grammar~pflag (1,394 lines). The fault is on the own-pflag side, and the old build has the same bucket. 003 says "no bucket without an explanation and no new bucket".
+- **T21.** "A type without `Complete` offers nothing: free text, numbers, and a late type." A late type with a `Complete` method offers words (`toy`'s `Host`, the example's `Item`). 003 says: Tab calls no late reader.
+- **M5.** Next to a repeat or a bad value the `Line` holds the whole line that the reader read, also the words after the mistake. `rules-typed.md` says "everything read before the refused word", which is true only for the reader's three kinds.
+- **`spikes/typed/bad-tags`.** Its comment says that the struct is wrong and the build passes. `go run ./bad-tags` now exits 0: `tags.go` reads `netip.Addr` through `UnmarshalText`. So no sketch shows "found at program start"; 003 names `New` and `TestNew` for it.
+- **`TestLate`** has the comment "rules N1–N5"; there are four.
+
+Behaviour that 003 states and only the writer's probes hold:
+
+- a slice type that reads itself is not cut at commas (the second half of Y5);
+- a named type of kind bool that reads itself is a bool flag (Y10);
+- a `Repeat` field with a default holds the default as one occurrence when the flag is not given;
+- an embedded struct is refused (K10);
+- the order of the problems in the error of `New`.
+
+Behaviour that 003 calls "not specified", and what the code does today: a second `Run` on one `Line` runs the command again without the lookups; `Run` on the `Line` that a `Complete` method gets panics at a leaf (`reflect: call of reflect.Value.Interface on zero Value`, `probe2_test.go`).
+
+Calls of the writer: the two "not specified" rows and "a `Repeat` may have a default" (all three are in 003's table of unconfirmed calls); the list of rules that the compatibility promise will cover (under "Compatibility"); the example program in `drafts/`, not in `spikes/`.
+
+## 7. Round four: the findings of section 6 closed (2026-11-18)
+
+Done by the builder of the typed prototype, after the writer. Code, `rules-typed.md`, `typed-library.md` and 003 now say the same.
+
+- **The rule list and the notes** follow the code for X3 (both cases), T21 (Tab calls no late reader), M5 (what the `Line` holds next to a repeat or a bad value) and the differential's "bug" bucket (it is own-pflag's, and the old build has it). The comment of `TestLate` says N1–N4. `spikes/typed/bad-tags` uses `time.Duration`, which has no reader, so the sketch stops at start again.
+- **The library changed in one place.** `Line.Run` on a `Line` that `Parse` did not make (the one a `Complete` method gets, or one made by hand) returns `ErrNotParsed`; it panicked. A line runs once: a second `Run` returns `ErrRan` and calls nothing. Rules G6 and G7, test `TestRun`.
+- **The five statements that only the probes held** are in the library's tests: `TestOddTypes` (a slice and a bool that read themselves, a `Repeat` with a default: Y5, Y10, Y9), rows of `TestNew` (embedded structs, K10 and K12; the order of the problems, new rule K19). No probe showed a behaviour that was changed.
+- **The example program moved** to `spikes/final-typed/prog/` (`replace spike/cmdline => ../cmdline`). `probe2_test.go` to `probe4_test.go` are gone. `probe.txt` and `console.txt` were made again and are the same text.
+- **Edits to 003**, and nothing else: the two links to the example program and its line under "References"; "Running a line" has G6 and G7; the "not specified" paragraph under "Limits" is gone; "A valid tree" names K19 for the order of the problems; the table of the typed layer's tests (`TestMistakes` 26 rows, `TestStructs` holds M5, `TestNew` 40 rows and K19, new rows `TestOddTypes` and `TestRun`); 21 tests became 23, twice; 152 rules became 155, 42 new became 45; the typed `FuzzParse` has one more property and the number of its new run (35.3 M); in "Calls not confirmed" the "not specified" row is now the call G6 and G7, a row for K19 is new, and the `Repeat` default row names Y9; the `go doc -all` block; the rule index rows of M5, X3, T21, K10, Y5, Y9, Y10 and G5, and new rows G6, G7 and K19. `mdformat` with the repository's `.mdformat.toml` was run on it; every relative link resolves.

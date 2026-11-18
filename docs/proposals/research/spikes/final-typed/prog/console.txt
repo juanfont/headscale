@@ -1,0 +1,138 @@
+$ prog items rm 12 --force
+delete 12 (apple) force=true
+[exit 0]
+$ prog -c other.yaml items rm 21
+delete 21 (pear) force=false
+[exit 0]
+$ prog items ls --sort=-id --columns id,name --filter a --filter b --name=
+list sort="-id" columns=["id" "name"] filter=["a" "b"] limit=50 name=""/true since=0s
+[exit 0]
+$ prog items list
+list sort="" columns=[] filter=[] limit=50 name=""/false since=0s
+[exit 0]
+$ prog items list --since 90m --limit 5
+list sort="" columns=[] filter=[] limit=5 name=""/false since=1h30m0s
+[exit 0]
+$ prog items
+usage: prog items
+[exit 0]
+$ prog
+usage: prog
+[exit 0]
+$ prog items delete -h
+usage: prog items delete <item>
+[exit 0]
+$ prog items delete --help=false 12
+delete 12 (apple) force=false
+[exit 0]
+$ prog check
+check "" given=false
+[exit 0]
+$ prog check a.yaml
+check "a.yaml" given=true
+[exit 0]
+$ prog items lst
+Error: "lst" is not a command of `prog items`.
+[exit 1]
+$ prog items list --sort
+Error: --sort needs a value.
+[exit 1]
+$ prog --force items delete 12
+Error: `prog` has no flag --force.
+[exit 1]
+$ prog items list --limit ten
+Error: --limit: "ten": strconv.ParseInt: parsing "ten": invalid syntax.
+[exit 1]
+$ prog items list --columns id,size
+Error: --columns: "id,size": want id or name.
+[exit 1]
+$ prog items list -o json -o yaml
+Error: --output is given twice.
+[exit 1]
+$ prog items list -o xml -o yaml
+Error: --output: "xml": want json or yaml.
+[exit 1]
+$ prog items delete
+Error: usage: prog items delete <item>.
+[exit 1]
+$ prog items delete 12 13
+Error: usage: prog items delete <item>.
+[exit 1]
+$ prog items rm 99
+Error: <item>: "99": no such item.
+[exit 1]
+$ prog items rm 99 --bogus
+Error: `prog items delete` has no flag --bogus.
+[exit 1]
+$ prog items rm 12 --force=yes
+Error: --force: "yes": not true or false.
+[exit 1]
+$ prog completion tcsh
+Error: no completion script for shell "tcsh".
+[exit 1]
+$ prog completion bash | head -1
+# bash completion V2 for prog                                 -*- shell-script -*-
+[exit 0]
+$ prog completion
+Error: usage: prog completion <shell>.
+[exit 1]
+$ prog __complete items ''
+list	List items
+delete	Delete an item
+:4
+[exit 0]
+$ prog __complete items rm ''
+12
+13
+:4
+[exit 0]
+$ prog __complete -c other.yaml items rm ''
+21
+22
+:4
+[exit 0]
+$ prog __complete items list --s
+--sort	Sort by
+--since	Keep items changed in this time
+:4
+[exit 0]
+$ prog __completeNoDesc items ''
+list
+delete
+:4
+[exit 0]
+$ prog __complete items list --config=
+:0
+[exit 0]
+$ prog __complete items list --columns id,
+id,id
+id,name
+:6
+[exit 0]
+$ prog __complete items list --columns=id,n
+id,name
+:6
+[exit 0]
+$ prog __complete items list -o ''
+json
+yaml
+:4
+[exit 0]
+$ prog __complete
+items	Manage items
+check	Check a file
+completion	Write a completion script
+:4
+[exit 0]
+$ prog __complete items list -
+--sort	Sort by
+--columns	Columns to show
+--filter	Keep matching rows
+--limit	Most rows to show
+--name	Keep items with this name
+--since	Keep items changed in this time
+--help	Show help
+--output	Output format
+--config	Config file
+:4
+[exit 0]

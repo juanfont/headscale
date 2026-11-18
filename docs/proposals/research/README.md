@@ -10,13 +10,15 @@ not in it; they can be made again.
 
 ## Read in this order
 
-| File           | What it holds                                                                                                                            |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `INTERVIEW.md` | Every question put to the maintainer, both alternatives, his answer in his own words                                                     |
-| `DECISIONS.md` | D1–D40 as rules; facts fixed without a question; calls made by the assistant                                                             |
-| `report.md`    | The report of round 2. It is out of date: written before D11 was relaxed and before D23–D40. `003-cmdline.md` replaces it as the summary |
-| `rules.md`     | Every rule of the consolidated library and layer, each tied to a test                                                                    |
-| `drafts/`      | The change table for `001-cli.md` and the writer's notes for `003-cmdline.md`                                                            |
+| File               | What it holds                                                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `INTERVIEW.md`     | Every question put to the maintainer, both alternatives, his answer in his own words                                                     |
+| `DECISIONS.md`     | D1–D50 as rules; facts fixed without a question; calls made by the assistant                                                             |
+| `report.md`        | The report of round 2. It is out of date: written before D11 was relaxed and before D23–D40. `003-cmdline.md` replaces it as the summary |
+| `rules.md`         | Every rule of the consolidated library and layer, each tied to a test                                                                    |
+| `typed-library.md` | The typed build (D41–D50): its API, the line between the library and Headscale, every design call with its alternative, all test results |
+| `rules-typed.md`   | The rules of the typed build: every rule of `rules.md` with its status, and the new ones                                                 |
+| `drafts/`          | The change table for `001-cli.md` and the writer's notes for `003-cmdline.md`                                                            |
 
 ## The research, by round
 
@@ -38,29 +40,31 @@ not in it; they can be made again.
 
 ## The code and data
 
-| Path                                                                        | What it is                                                                                    |
-| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `spikes/kit`, `spikes/kit-v2`                                               | The test kit: 112 and 155 MUST cases                                                          |
-| `spikes/cobra`, `urfave`, `kong`, `creachadair`, `own-grammar`, `own-pflag` | The six adapters as delivered, each with `RESULT.md`                                          |
-| `spikes/v2`                                                                 | The referee's copies with fixes, and the real-shell harness (`spikes/v2/shell`)               |
-| `spikes/corpus/corpus.jsonl`                                                | 485 upstream edge cases, each with its source; `inventory/` has all 1,628 rows with IN or OUT |
-| `spikes/diff`                                                               | Differential harness and three fuzz targets                                                   |
-| `spikes/lib`, `lib-headscale`, `lib-toy`                                    | The library prototype, its Headscale adapter, a second consumer                               |
-| `spikes/final`                                                              | The consolidated build with every decision and every fix                                      |
-| `spikes/probe-*`                                                            | Small proof programs from the desk research                                                   |
+| Path                                                                        | What it is                                                                                                                                                                     |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `spikes/kit`, `spikes/kit-v2`                                               | The test kit: 112 and 155 MUST cases                                                                                                                                           |
+| `spikes/cobra`, `urfave`, `kong`, `creachadair`, `own-grammar`, `own-pflag` | The six adapters as delivered, each with `RESULT.md`                                                                                                                           |
+| `spikes/v2`                                                                 | The referee's copies with fixes, and the real-shell harness (`spikes/v2/shell`)                                                                                                |
+| `spikes/corpus/corpus.jsonl`                                                | 485 upstream edge cases, each with its source; `inventory/` has all 1,628 rows with IN or OUT                                                                                  |
+| `spikes/diff`                                                               | Differential harness and three fuzz targets                                                                                                                                    |
+| `spikes/lib`, `lib-headscale`, `lib-toy`                                    | The library prototype, its Headscale adapter, a second consumer                                                                                                                |
+| `spikes/final`                                                              | The consolidated build with every decision and every fix, as specified in the first 003: values are strings                                                                    |
+| `spikes/final-typed`                                                        | The typed build: the library with the string reader under it, kit v4, Headscale's layer, a second consumer, the example program of 003 (`prog`), corpus, differential and fuzz |
+| `spikes/typed`                                                              | The sketches shown to the maintainer for D42–D47                                                                                                                               |
+| `spikes/probe-*`                                                            | Small proof programs from the desk research                                                                                                                                    |
 
 ## What the copy in the pull request leaves out
 
 The copy under `docs/proposals/research/` has all notes and all code. It leaves out only what can
 be made again or what is already in the pull request:
 
-| Left out                                                                                  | Why                                                                                                    |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `spikes/src/`                                                                             | Upstream clones; fetch them again                                                                      |
-| Built binaries, and the links to them under `spikes/v2/shell/path*/`                      | Build them again with the scripts in `spikes/v2/shell/`                                                |
-| `spikes/v2/modcheck/`                                                                     | `go.mod` and `go.sum` only, made by `go get` to measure module weight; the numbers are in `referee.md` |
-| `spikes/corpus/results.tsv`, `spikes/diff/results/smoke.md`                               | Test output; run the tests again                                                                       |
-| `drafts/001-cli.md`, `drafts/001-cli.orig.md`, `drafts/001.diff`, `drafts/003-cmdline.md` | They are `docs/proposals/001-cli.md` and `003-cmdline.md` and the git history                          |
+| Left out                                                                                                                | Why                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `spikes/src/`                                                                                                           | Upstream clones; fetch them again                                                                      |
+| Built binaries, and the links to them under `spikes/v2/shell/path*/`                                                    | Build them again with the scripts in `spikes/v2/shell/`                                                |
+| `spikes/v2/modcheck/`                                                                                                   | `go.mod` and `go.sum` only, made by `go get` to measure module weight; the numbers are in `referee.md` |
+| `spikes/corpus/results.tsv`, `spikes/diff/results/smoke.md`                                                             | Test output; run the tests again                                                                       |
+| `drafts/001-cli.md`, `drafts/001-cli.orig.md`, `drafts/001.diff`, `drafts/003-cmdline.md`, `drafts/003-cmdline.orig.md` | They are `docs/proposals/001-cli.md` and `003-cmdline.md` and the git history                          |
 
 Some notes name paths under `/home/kradalby/`. Those are the paths of the machine the work ran
 on.

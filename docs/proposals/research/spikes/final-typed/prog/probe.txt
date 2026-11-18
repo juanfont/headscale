@@ -1,0 +1,159 @@
+=== RUN   TestProbe
+### TABLE one-word
+| `check -` | `[check]`, argument `-` |
+| `check ""` | `[check]`, argument `""` |
+| `check -- -h` | `[check]`, argument `-h` |
+| `check a.yaml --` | `[check]`, argument `a.yaml` |
+| `check -5` | unknown flag `[check]` `-5` @1 |
+| `-` | unknown command `[]` `-` @0 |
+| `""` | unknown command `[]` `""` @0 |
+| `items -- list` | unknown command `[items]` `--` @1 |
+| `Items` | unknown command `[]` `Items` @0 |
+| `items list ---sort id` | unknown flag `[items list]` `---sort` @2 |
+| `items list --sor id` | unknown flag `[items list]` `--sor` @2 |
+| `items list -ojson` | unknown flag `[items list]` `-ojson` @2 |
+| `items list -output json` | unknown flag `[items list]` `-output` @2 |
+| `items list --o json` | unknown flag `[items list]` `--o` @2 |
+### TABLE flag-values
+| `items list -o json` | `[items list]`, `output=json@2` |
+| `items list -o=json` | `[items list]`, `output=json@2` |
+| `items list --sort -name` | `[items list]`, `sort=-name@2` |
+| `items list --filter --sort` | `[items list]`, `filter=--sort@2` |
+| `items list --name=a=b --filter=` | `[items list]`, `name=a=b@2`, `filter=@3` (`filter` is given and empty) |
+| `-c items items list` | `[items list]`, `config=items@0` |
+| `items list --sort` | missing value `[items list]` `--sort` @2 |
+| `-o` | missing value `[]` `-o` @0 |
+### TABLE bools
+| `items delete --force maybe` | `[items delete]`, `force=true@2`, argument `maybe` |
+| `items delete 12 --force=false` | `[items delete]`, `force=false@3`, argument `12` |
+| `items delete 12 --force=maybe` | bad value `[items delete]` `--force` @3: `not true or false` |
+| `items delete 12 --force=TRUE` | bad value `[items delete]` `--force` @3: `not true or false` |
+| `items delete 12 --no-force` | unknown flag `[items delete]` `--no-force` @3 |
+| `items delete 12 -hf` | unknown flag `[items delete]` `-hf` @3 |
+### TABLE repeat
+| `items list -o json -o yaml` | repeated `[items list]` `-o` @4 |
+| `-o json items list --output=yaml` | repeated `[items list]` `--output` @4 |
+| `items delete 12 --force --force=false` | repeated `[items delete]` `--force` @4 |
+| `items list --columns id --columns name` | repeated `[items list]` `--columns` @4 (a list is one value) |
+| `items list --filter a --filter b,c` | `[items list]`, `filter=a@2`, `filter=b,c@4`; `Filter` is `["a" "b,c"]` (a `Repeat[string]`) |
+### TABLE where
+| `-c x.yaml items list` | `[items list]`, `config=x.yaml@0` |
+| `items -c x.yaml list` | `[items list]`, `config=x.yaml@1` |
+| `items list -c x.yaml` | `[items list]`, `config=x.yaml@2` |
+| `items delete --force -h 12` | `[items delete]`, `force=true@2`, `help=true@3`, argument `12` |
+| `-h items -o json` | `[items]`, `help=true@0`, `output=json@2` |
+| `-o json check a.yaml` | unknown flag `[check]` `-o` @0 (`check` does not take `-o`) |
+| `items --sort id list` | unknown flag `[items]` `--sort` @1 |
+| `--force items delete 12` | unknown flag `[]` `--force` @0 |
+### TABLE walk
+| (none) | `[]` (the root) |
+| `items` | `[items]` (the group) |
+| `items ls` | `[items list]` |
+| `items rm 12` | `[items delete]`, argument `12` |
+| `items delete list` | `[items delete]`, argument `list` |
+| `items lst` | unknown command `[items]` `lst` @1 |
+| `help` | unknown command `[]` `help` @0 |
+| `items help` | unknown command `[items]` `help` @1 |
+| `prog items` | unknown command `[]` `prog` @0 |
+### TABLE count
+| `items delete` | argument count `[items delete]` @2 |
+| `items delete 12 13` | argument count `[items delete]` @4 |
+| `items list x` | argument count `[items list]` @3 |
+| `check` | `[check]` (`file` is optional) |
+| `check a b` | argument count `[check]` @3 |
+| `items delete --bogus` | unknown flag `[items delete]` `--bogus` @2 (the count is not reported) |
+| `items delete 12 13 --force=x` | bad value `[items delete]` `--force` @4: `not true or false` (the count is not reported) |
+### TABLE values
+| `items list --limit 10` | `[items list]`, `limit=10@2` | `Limit` is `10` |
+| `items list` | `[items list]` | `Limit` is `50`, the default |
+| `items list --limit 0x10` | bad value `[items list]` `--limit` @2: `strconv.ParseInt: parsing "0x10": invalid syntax` |  |
+| `items list --limit 1.5` | bad value `[items list]` `--limit` @2: `strconv.ParseInt: parsing "1.5": invalid syntax` |  |
+| `items list --limit=` | bad value `[items list]` `--limit` @2: `strconv.ParseInt: parsing "": invalid syntax` |  |
+| `items list -o yaml` | `[items list]`, `output=yaml@2` | `Output` is `"yaml"` |
+| `items list -o xml` | bad value `[items list]` `-o` @2: `want json or yaml` |  |
+| `items list --sort -name` | `[items list]`, `sort=-name@2` | `Sort` is `"-name"` |
+| `items list --since 90m` | `[items list]`, `since=90m@2` | `Since.Get()` is `1h30m0s`, `true` |
+| `items list --since 5` | bad value `[items list]` `--since` @2: `time: missing unit in duration "5"` |  |
+| `items list --columns id,-name` | `[items list]`, `columns=id,-name@2` | `Columns` is `["id" "-name"]` |
+| `items list --columns=` | bad value `[items list]` `--columns` @2: `the list is empty` |  |
+| `items list --columns id,,name` | bad value `[items list]` `--columns` @2: `the list has an empty item` |  |
+| `items list --columns id,` | bad value `[items list]` `--columns` @2: `the list has an empty item` |  |
+| `items list --columns id,size` | bad value `[items list]` `--columns` @2: `want id or name` |  |
+| `items list --name=` | `[items list]`, `name=@2` | `Name.Get()` is `""`, `true` |
+| `items list` | `[items list]` | `Name.Get()` is `""`, `false` |
+| `check a.yaml` | `[check]`, argument `a.yaml` | `File.Get()` is `"a.yaml"`, `true` |
+| `check` | `[check]` | `File.Get()` is `""`, `false` |
+| `-c x.yaml items delete 12` | `[items delete]`, `config=x.yaml@0`, argument `12` | `Config` is `"x.yaml"`; `Item` is `{ID:0 Name:}` until `Run` |
+### TABLE returns
+| `-o json items -c x lst` | `[items]`, `output=json@0`, `config=x@3` | unknown command `[items]` `lst` @5 | no |
+| `items list -o json --columns id --sort` | `[items list]`, `output=json@2`, `columns=id@4` | missing value `[items list]` `--sort` @6 | no |
+| `-c a -o json -c b check` | `[check]`, `config=a@0` | unknown flag `[check]` `-o` @2 | no |
+| `items delete -o=json 12 --bogus 13` | `[items delete]`, `output=json@2`, argument `12` @3 | unknown flag `[items delete]` `--bogus` @4 | no |
+| `items list --limit x --sort id` | `[items list]`, `limit=x@2`, `sort=id@4` | bad value `[items list]` `--limit` @2: `strconv.ParseInt: parsing "x": invalid syntax` | no |
+| `items delete -h` | `[items delete]`, `help=true@2` | argument count `[items delete]` @3 | yes |
+### TABLE several
+| `items list --limit x --bogus` | bad value `[items list]` `--limit` @2: `strconv.ParseInt: parsing "x": invalid syntax` | an unknown flag at 4 |
+| `items list --bogus --limit x` | unknown flag `[items list]` `--bogus` @2 | a bad value at 3; it is never read |
+| `items list --sort id --sort name --since` | repeated `[items list]` `--sort` @4 | a missing value at 6 |
+| `-h=x items lst` | bad value `[items]` `-h` @0: `not true or false` | an unknown command at 2 |
+| `items list -o xml -o yaml` | bad value `[items list]` `-o` @2: `want json or yaml` | a repeat at 4 |
+| `items delete 12 --force --force=x` | repeated `[items delete]` `--force` @4 | a bad value in the same word |
+| `items delete 12 13 --bogus` | unknown flag `[items delete]` `--bogus` @4 | a wrong count |
+| `items delete --bogus -h` | unknown flag `[items delete]` `--bogus` @2 | `-h`, and a wrong count |
+### TEXT default
+unknown command "lst"
+unknown command "lst" for "items"
+unknown flag --bogus for "items list"
+flag --sort needs a value
+flag --output is given more than once
+flag --limit: "ten": strconv.ParseInt: parsing "ten": invalid syntax
+wrong number of arguments for "completion"
+wrong number of arguments for "items delete"
+argument item: "99": no such item
+### TEXT unresolved
+unresolved `[items delete]` `99` @2: `no such item`; flag="" arg="item" value="99"
+--- PASS: TestProbe (0.00s)
+=== RUN   TestProbeTab
+### TABLE tab
+| (none) | `""` | `items`, `check`, `completion` | 4 |
+| `items` | `""` | `list`, `delete` | 4 |
+| `items` | `l` | `list` | 4 |
+| `items` | `r` | `rm` (no name fits, so the alias) | 4 |
+| `items list` | `-` | `--sort`, `--columns`, `--filter`, `--limit`, `--name`, `--since`, `--help`, `--output`, `--config` | 4 |
+| `items list` | `-o` | `-o` | 4 |
+| `items list` | `-s` | none: `--sort` has no short | 4 |
+| `items list -o` | `""` | `json`, `yaml` | 4 |
+| `items list` | `--output=j` | `json` | 4 |
+| `items list` | `-o=y` | `yaml` | 4 |
+| `items list --sort` | `-` | none: the `-` is the value of `--sort` | 4 |
+| `items list --sort id` | `--` | `--columns`, `--filter`, `--limit`, `--name`, `--since`, `--help`, `--output`, `--config` | 4 |
+| `items list --filter id` | `--f` | `--filter` (a `Repeat`) | 4 |
+| `items list -o json -o` | `""` | none: `-o` is given already | 4 |
+| `-o json items list` | `--` | `--sort`, `--columns`, `--filter`, `--limit`, `--name`, `--since`, `--help`, `--config` | 4 |
+| `items list` | `--config=` | none: files | 0 |
+| `items delete` | `--force=` | none: a bool | 4 |
+| `items` | `--` | `--help` (the group's own flags) | 4 |
+| `items delete` | `""` | `12`, `13` | 4 |
+| `items delete 12` | `""` | none: `delete` has one argument | 4 |
+| `items delete --` | `--` | none: an argument, completed by the type of argument 0 | 4 |
+| `items delete o` | `""` | none: `o` is an argument, not `-o` | 4 |
+| `check` | `""` | none: files | 0 |
+| `items list --columns` | `""` | `id`, `name` | 4 |
+| `items list --columns` | `id,` | `id,id`, `id,name` (a list) | 6 |
+| `items list` | `--columns=id,n` | `id,name` (a list) | 6 |
+| `items list --limit` | `""` | none: an `int` offers nothing | 4 |
+| `itemz` | `""` | `items`, `check`, `completion` | 4 |
+| `items lst` | `""` | `list`, `delete` | 4 |
+| `items list --bogus` | `--so` | `--sort` | 4 |
+| `items list -h` | `--` | `--sort`, `--columns`, `--filter`, `--limit`, `--name`, `--since`, `--output`, `--config` | 4 |
+--- PASS: TestProbeTab (0.00s)
+=== RUN   TestProbeNew
+### TEXT new
+prog items list: main.badIn.Wait: unknown tag "json"
+prog items list: main.badIn.Wait: time.Duration cannot be read: give it an UnmarshalText method, or New a Reader
+prog items list: main.badIn.Name: has no arg or flag tag
+prog items list: Run is missing
+prog items: "list" names two commands
+--- PASS: TestProbeNew (0.00s)
+PASS
+ok  	prog	0.003s

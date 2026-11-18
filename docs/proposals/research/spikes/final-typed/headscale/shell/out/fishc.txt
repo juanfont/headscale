@@ -1,0 +1,154 @@
+LINE: headscale no
+  nodes	Manage nodes
+LINE: headscale nodes 
+  delete	Delete a node
+  list	List the nodes
+  routes	Manage the routes of a node
+  set	Change the name or expiry of a node
+LINE: headscale nodes routes ap
+  approve	Replace the enabled routes of a node
+LINE: headscale -c x no
+  nodes	Manage nodes
+LINE: headscale nodes list --
+  --columns	Columns to show
+  --config	Config file to use
+  --filter	Rows to keep
+  --help	Show help
+  --list-columns	List the columns
+  --output	Output format: json
+  --sort	Column to sort by
+LINE: headscale nodes list -o 
+  json
+LINE: headscale nodes list --columns 
+  expiry
+  hostname
+  id
+  ip
+  last-seen
+  name
+  online
+  owner
+  version
+LINE: headscale nodes list --columns id,na
+  id,name
+  id,name.
+LINE: headscale nodes list --columns=id,na
+  string split: --columns=id,name: unknown option
+  
+  - (line 1): 
+  string split --max 1 \t $__headscale_comp_results[1]
+  ^
+  in command substitution
+  	called on line 189 of file -
+  in function '__headscale_prepare_completions'
+  in command substitution
+  
+  (Type 'help string' for related documentation)
+LINE: headscale nodes list --columns id,
+  id,expiry
+  id,hostname
+  id,id
+  id,ip
+  id,last-seen
+  id,name
+  id,online
+  id,owner
+  id,version
+LINE: headscale nodes list --sort la
+  last-seen
+LINE: headscale nodes list --sort -la
+  -last-seen
+LINE: headscale nodes list --filter=ow
+  string split: --filter=owner: unknown option
+  
+  - (line 1): 
+  string split --max 1 \t $__headscale_comp_results[1]
+  ^
+  in command substitution
+  	called on line 189 of file -
+  in function '__headscale_prepare_completions'
+  in command substitution
+  
+  (Type 'help string' for related documentation)
+LINE: headscale policy set 
+  other.json
+  policy.hujson
+LINE: headscale check config 
+  other.json
+  policy.hujson
+LINE: headscale nodes list 
+LINE: headscale nodes delete 
+LINE: headscale completion 
+  bash
+  fish
+  powershell
+  zsh
+LINE: headscale nodes rm --f
+  --force	Do not ask
+LINE: headscale -o 
+  json
+LINE: headscale nodes list -o=
+  -o=json
+LINE: headscale auth keys create alice --tags tag:p
+  tag:prod
+LINE: headscale auth keys create alice --tags tag:ci,tag:p
+  tag:ci,tag:prod
+  tag:ci,tag:prod.
+LINE: headscale -c 
+  other.json
+  policy.hujson
+LINE: headscale nodes list --config 
+  other.json
+  policy.hujson
+LINE: headscale nodes list --config=
+  --config=other.json
+  --config=policy.hujson
+LINE: headscale nodes set 12 --name 
+LINE: headscale nodes routes 
+  set	Replace the enabled routes of a node
+LINE: headscale nodes list --s
+  --sort	Column to sort by
+LINE: headscale nodes list -
+  --columns	Columns to show
+  --config	Config file to use
+  --filter	Rows to keep
+  --help	Show help
+  --list-columns	List the columns
+  --output	Output format: json
+  --sort	Column to sort by
+LINE: headscale nodes list -c
+  -c	Config file to use
+LINE: headscale nodez 
+  api	Manage API access
+  auth	Manage auth keys
+  check	Check files
+  completion	Print a shell completion script
+  nodes	Manage nodes
+  policy	Manage the policy
+  serve	Run the control server
+  users	Manage users
+  version	Print the version
+LINE: headscale nodes list --bogus --l
+  --list-columns	List the columns
+LINE: headscale policy set --bogus 
+  other.json
+  policy.hujson
+LINE: headscale nodes list --sort id --s
+LINE: headscale nodes list --filter id --f
+  --filter	Rows to keep
+LINE: headscale -c -o 
+  api	Manage API access
+  auth	Manage auth keys
+  check	Check files
+  completion	Print a shell completion script
+  nodes	Manage nodes
+  policy	Manage the policy
+  serve	Run the control server
+  users	Manage users
+  version	Print the version
+LINE: headscale nodes delete o 
+LINE: headscale nodes routes set 12 -- --
+LINE: headscale nodes list --filter -ow
+LINE: headscale nodes list --columns id,-ho
+  id,-hostname
+  id,-hostname.
