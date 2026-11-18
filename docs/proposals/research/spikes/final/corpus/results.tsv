@@ -1,0 +1,486 @@
+id	kind	topic	adapter	verdict	got	want	ours
+cobracmd-001	run	tree	final	ours	unknown-command [] "one"	run  ["one" "two"]	unknown-command [] "one"
+cobracmd-002	run	tree	final	up	run nodes routes set ["one" "two"]	run nodes routes set ["one" "two"]	
+cobracmd-003	run	tree	final	ours	help	run  []	help
+cobracmd-004	run	unknown-cmd	final	up	unknown-command [] "unknown"	unknown-command [] "unknown"	
+cobracmd-005	run	tree	final	up	run serve []	run serve []	
+cobracmd-006	run	alias	final	up	run nodes routes set ["one" "two"]	run nodes routes set ["one" "two"]	
+cobracmd-007	run	abbrev	final	ours	unknown-command [] "serv"	run serve []	unknown-command [] "serv"
+cobracmd-008	run	abbrev	final	ours	unknown-command [nodes routes] "appr"	run nodes routes set ["12" "r"]	unknown-command [nodes routes] "appr"
+cobracmd-009	run	tree	final	up	run grp grp ["one"]	run grp grp ["one"]	
+cobracmd-010	run	tree	final	up	run grp grp ["grp"]	run grp grp ["grp"]	
+cobracmd-011	run	dash-dash	final	up	run run ["one" "two"] string=["abc"]	run run ["one" "two"] string=["abc"]	
+cobracmd-012	run	short-attached	final	ours	unknown-flag [run] "sabc"	run run ["one" "two"] file=["7"] string=["abc"]	unknown-flag [run] "sabc"
+cobracmd-013	run	short-attached	final	ours	unknown-flag [auth keys create] "e24h"	run auth keys create ["alice"] expiry=["24h"]	unknown-flag [auth keys create] "e24h"
+cobracmd-014	run	unknown-flag	final	up	unknown-flag [nodes list] "version"	unknown-flag [nodes list] "version"	
+cobracmd-015	run	global	final	ours	unknown-flag [] "expiry"	run api keys create [] expiry=["24h"]	unknown-flag [] "expiry"
+cobracmd-016	run	global	final	ours	unknown-flag [] "expiry"	run api keys create [] expiry=["24h"]	unknown-flag [] "expiry"
+cobracmd-017	run	verbatim	final	up	run nodes list [] config=["nodes"]	run nodes list [] config=["nodes"]	
+cobracmd-018	run	global	final	up	run nodes list [] config=["/x"]	run nodes list [] config=["/x"]	
+cobracmd-019	run	global	final	up	run nodes list [] config=["/x"]	run nodes list [] config=["/x"]	
+cobracmd-020	run	empty-value	final	neither	bad-value [nodes routes set] "routes"	run nodes routes set ["" ""] output=["json"]	
+cobracmd-021	run	global	final	up	run nodes routes set ["12" "r"] config=["/x"] output=["json"]	run nodes routes set ["12" "r"] config=["/x"] output=["json"]	
+cobracmd-022	run	global	final	ours	unknown-command [] "one"	run  ["one" "two"] config=["/x"]	unknown-command [] "one"
+cobracmd-023	run	help	final	ours	unknown-command [] "help"	help	unknown-command [] "help"
+cobracmd-024	run	help	final	ours	unknown-command [] "help"	help nodes	unknown-command [] "help"
+cobracmd-025	run	help	final	up	help	help	
+cobracmd-026	run	help	final	up	help nodes list	help nodes list	
+cobracmd-027	run	help	final	up	help nodes	help nodes	
+cobracmd-028	run	help	final	ours	unknown-command [] "arg1"	version	unknown-command [] "arg1"
+cobracmd-029	run	help	final	ours	unknown-flag [nodes list] "version"	version	unknown-flag [nodes list] "version"
+cobracmd-030	run	unknown-flag	final	up	unknown-flag [nodes list] "version"	unknown-flag [nodes list] "version"	
+cobracmd-031	run	short	final	ours	unknown-flag [] "v"	version	unknown-flag [] "v"
+cobracmd-032	run	tree	final	up	unknown-command [] "NODES"	unknown-command [] "NODES"	
+cobracmd-033	run	alias	final	up	unknown-command [nodes] "LS"	unknown-command [nodes] "LS"	
+cobracmd-034	run	global	final	up	run nodes list [] config=["ok"] list-columns=["true"] output=["json"]	run nodes list [] config=["ok"] list-columns=["true"] output=["json"]	
+cobracmd-035	run	tree	final	up	run check config []	run check config []	
+cobracmd-036	run	global	final	up	unknown-flag [] "expiry"	unknown-flag [] "expiry"	
+cobracmd-037	run	unknown-flag	final	up	unknown-flag [nodes list] "version"	unknown-flag [nodes list] "version"	
+cobracmd-038	run	tree	final	up	run auth keys create ["a"]	run auth keys create ["a"]	
+cobracmd-039	run	alias	final	up	run nodes delete ["12"]	run nodes delete ["12"]	
+cobracmd-040	run	abbrev	final	up	unknown-command [nodes routes] "appr"	unknown-command [nodes routes] "appr"	
+cobracmd-041	run	tree	final	up	run users delete ["users"]	run users delete ["users"]	
+cobracmd-042	run	global	final	up	run nodes list [] config=["nodes"]	run nodes list [] config=["nodes"]	
+cobracmd-043	run	global	final	up	run nodes list [] config=["nodes"]	run nodes list [] config=["nodes"]	
+cobracmd-044	run	missing-value	final	up	missing-value [nodes list] "config"	missing-value [nodes list] "config"	
+cobracmd-045	run	dash-value	final	up	run nodes list [] config=["-o"]	run nodes list [] config=["-o"]	
+cobracmd-046	run	global	final	up	run nodes list [] config=["nodes"] output=["json"]	run nodes list [] config=["nodes"] output=["json"]	
+cobracmd-047	run	missing-value	final	up	missing-value [nodes list] "output"	missing-value [nodes list] "output"	
+cobracmd-048	run	short-eq	final	up	run nodes list [] config=["nodes"] output=["json"]	run nodes list [] config=["nodes"] output=["json"]	
+cobracmd-049	run	global	final	up	run nodes list [] config=["nodes"] output=["json"]	run nodes list [] config=["nodes"] output=["json"]	
+cobracmd-050	run	unknown-flag	final	up	unknown-flag [] "bogus"	unknown-flag [] "bogus"	
+cobracmd-051	run	unknown-flag	final	up	unknown-flag [nodes list] "bogus"	unknown-flag [nodes list] "bogus"	
+cobracmd-052	run	unknown-flag	final	up	unknown-flag [nodes list] "bogus"	unknown-flag [nodes list] "bogus"	
+cobracmd-053	run	unknown-flag	final	up	unknown-flag [] "bogus"	unknown-flag [] "bogus"	
+cobracmd-054	run	unknown-flag	final	up	unknown-flag [] "bogus"	unknown-flag [] "bogus"	
+cobracmd-055	run	unknown-flag	final	up	unknown-flag [nodes list] "bogus"	unknown-flag [nodes list] "bogus"	
+cobracmd-056	run	unknown-flag	final	up	unknown-flag [nodes list] "bogus"	unknown-flag [nodes list] "bogus"	
+cobracmd-057	run	unknown-flag	final	up	unknown-flag [] "bogus"	unknown-flag [] "bogus"	
+cobracmd-058	run	unknown-flag	final	up	unknown-flag [] "bogus"	unknown-flag [] "bogus"	
+cobracmd-059	run	unknown-flag	final	up	unknown-flag [nodes list] "bogus"	unknown-flag [nodes list] "bogus"	
+cobracmd-060	run	unknown-flag	final	up	unknown-flag [nodes list] "bogus"	unknown-flag [nodes list] "bogus"	
+cobracmd-061	run	unknown-flag	final	up	unknown-flag [] "bogus"	unknown-flag [] "bogus"	
+cobracmd-062	run	help	final	up	help	help	
+cobracmd-063	run	help	final	up	help	help	
+cobracmd-064	run	unknown-cmd	final	up	unknown-command [] "illegal"	unknown-command [] "illegal"	
+cobracmd-065	run	unknown-cmd	final	ours	arg-count [nodes list]	unknown-command [nodes list] "illegal"	arg-count [nodes list]
+cobracmd-066	run	tree	final	up	run nodes routes set ["legal" "args"]	run nodes routes set ["legal" "args"]	
+cobracmd-067	run	tree	final	ours	unknown-command [] "legal"	run  ["legal" "args"]	unknown-command [] "legal"
+cobracmd-068	run	tree	final	ours	unknown-command [] "somearg"	run  ["somearg"]	unknown-command [] "somearg"
+cobracmd-069	run	tree	final	ours	unknown-command [nodes] "somearg"	run nodes ["somearg"]	unknown-command [nodes] "somearg"
+cobracomp-001	complete	complete-cmd	final	ours	[api auth check completion nodes policy serve users version] files=false nospace=false	exact [api auth check completion nodes policy serve users version help]; files=false	exact [api auth check completion nodes policy serve users version]; files=false
+cobracomp-002	complete	complete-cmd	final	up	[serve] files=false nospace=false	exact [serve]; files=false	
+cobracomp-003	complete	complete-alias	final	ours	[rm] files=false nospace=false	exact []; files=false	exact [rm]; files=false
+cobracomp-004	complete	complete-cmd	final	neither	[delete list routes set] files=false nospace=false	exact []	
+cobracomp-005	complete	global	final	up	[delete list routes set] files=false nospace=false	exact [delete list routes set]; files=false	
+cobracomp-006	complete	global	final	up	[delete list routes set] files=false nospace=false	exact [delete list routes set]; files=false	
+cobracomp-007	complete	global	final	up	[api auth check completion nodes policy serve users version] files=false nospace=false	has nodes users completion; files=false	
+cobracomp-008	complete	global	final	up	[delete list routes set] files=false nospace=false	exact [delete list routes set]; files=false	
+cobracomp-009	complete	complete-value	final	up	[bash fish powershell zsh] files=false nospace=false	exact [bash zsh fish powershell]; files=false	
+cobracomp-010	complete	complete-value	final	up	[fish] files=false nospace=false	exact [fish]; files=false	
+cobracomp-011	complete	complete-value	final	ours	[] files=false nospace=false	exact []; files=true	exact []; files=false
+cobracomp-012	complete	complete-value	final	up	[] files=false nospace=false	exact []; files=false	
+cobracomp-013	complete	complete-value	final	up	[one two] files=false nospace=false	exact [one two]	
+cobracomp-014	complete	complete-value	final	up	[two] files=false nospace=false	exact [two]	
+cobracomp-015	complete	complete-value	final	up	[] files=false nospace=false	exact []; files=false	
+cobracomp-016	complete	complete-alias	final	up	[one two] files=false nospace=false	exact [one two]	
+cobracomp-017	complete	complete-alias	final	up	[two] files=false nospace=false	exact [two]	
+cobracomp-018	complete	complete-alias	final	up	[] files=false nospace=false	exact []; files=false	
+cobracomp-019	complete	complete-flag	final	up	[] files=false nospace=false	exact []; files=false	
+cobracomp-020	complete	complete-flag	final	ours	[--config --help --output --version] files=false nospace=false	exact [--help -h --version --output -o --config -c]; files=false	exact [--help --version --output --config]; files=false
+cobracomp-021	complete	complete-flag	final	up	[--config] files=false nospace=false	exact [--config]; files=false	
+cobracomp-022	complete	complete-flag	final	ours	[--columns --config --filter --help --list-columns --output --sort] files=false nospace=false	exact [--columns --sort --filter --list-columns --output -o --config -c --help -h]; files=false	exact [--columns --sort --filter --list-columns --output --config --help]; files=false
+cobracomp-023	complete	complete-flag	final	up	[--columns --config --filter --help --list-columns --output] files=false nospace=false	exact [--columns --filter --list-columns --output --config --help]; files=false	
+cobracomp-024	complete	complete-flag	final	up	[--columns --config --filter --help --output] files=false nospace=false	exact [--columns --filter --output --config --help]; files=false	
+cobracomp-025	complete	complete-flag	final	up	[--columns --config --filter --help --list-columns --output --sort] files=false nospace=false	exact [--columns --sort --filter --list-columns --output --config --help]; files=false	
+cobracomp-026	complete	complete-flag	final	up	[--config --help --name --output] files=false nospace=false	has --name; not --expiry -e	
+cobracomp-027	complete	complete-flag	final	up	[] files=false nospace=false	exact []; files=false	
+cobracomp-028	complete	complete-value	final	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false	exact [id name owner ip version online last-seen expiry hostname]; files=false	
+cobracomp-029	complete	complete-value	final	up	[json] files=false nospace=false	exact [json]; files=false	
+cobracomp-030	complete	complete-value	final	up	[json] files=false nospace=false	exact [json]; files=false	
+cobracomp-031	complete	complete-value	final	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false	exact [id name owner ip version online last-seen expiry hostname]; files=false	
+cobracomp-032	complete	complete-value	final	up	[id ip] files=false nospace=false	exact [id ip]; files=false	
+cobracomp-033	complete	complete-flag	final	up	[--help] files=false nospace=false	exact [--help]; files=false	
+cobracomp-034	complete	complete-dashdash	final	up	[] files=false nospace=false	exact []	
+cobracomp-035	complete	complete-dashdash	final	up	[] files=true nospace=false	exact []; files=true	
+cobracomp-036	complete	complete-dashdash	final	up	[bash fish powershell zsh] files=false nospace=false	exact [bash zsh fish powershell]; files=false	
+cobracomp-037	complete	complete-dashdash	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	
+cobracomp-038	complete	complete-dashdash	final	up	[bash] files=false nospace=false	exact [bash]; files=false	
+cobracomp-039	complete	complete-dashdash	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	
+cobracomp-040	complete	complete-dashdash	final	up	[] files=false nospace=false	exact []; files=false	
+cobracomp-041	complete	complete-value	final	up	[json] files=false nospace=false	exact [json]; files=false	
+cobracomp-042	complete	complete-alias	final	up	[set] files=false nospace=false	exact [set]; files=false	
+cobracomp-043	complete	complete-alias	final	up	[list] files=false nospace=false	exact [list]; files=false	
+cobracomp-044	complete	complete-alias	final	up	[approve] files=false nospace=false	exact [approve]; files=false	
+cobracomp-045	complete	help	final	up	[api auth check completion nodes policy serve users version] files=false nospace=false	has nodes users completion	exact []; files=false
+cobracomp-046	complete	help	final	up	[delete list routes set] files=false nospace=false	exact [delete list routes set]	exact []; files=false
+cobracomp-047	complete	complete-value	final	up	[] files=false nospace=false	exact []; files=false	
+cobracomp-048	complete	short	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	
+cobracomp-049	complete	short-group	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	exact []; files=false
+cobracomp-050	complete	short-group	final	neither	[1-123 11-123 service] files=false nospace=false	exact [works]; files=false	exact []; files=false
+cobracomp-051	complete	short-group	final	ours	[] files=false nospace=false	exact [works]; files=false	exact []; files=false
+cobracomp-052	complete	short-group	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	exact []; files=false
+cobracomp-053	complete	complete-flag	final	ours	[--config --help --output --version] files=false nospace=false	has --help -h --version	has --help --version; not -h
+cobracomp-054	complete	help	final	ours	[api auth check completion nodes policy serve users version] files=false nospace=false	exact []; files=false	has nodes; files=false
+cobracomp-055	complete	help	final	ours	[api auth check completion nodes policy serve users version] files=false nospace=false	exact []; files=false	has nodes; files=false
+cobracomp-056	complete	help	final	ours	[api auth check completion nodes policy serve users version] files=false nospace=false	exact []; files=false	has nodes; files=false
+cobracomp-057	complete	help	final	ours	[bash fish powershell zsh] files=false nospace=false	exact []; files=false	exact [bash zsh fish powershell]; files=false
+cobracomp-058	complete	help	final	ours	[bash fish powershell zsh] files=false nospace=false	exact []; files=false	exact [bash zsh fish powershell]; files=false
+cobracomp-059	complete	help	final	up	[] files=false nospace=false	exact []; files=false	exact [--help]; files=false
+cobracomp-060	complete	dash-value	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	
+cobracomp-061	complete	dash-value	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	
+cobracomp-062	complete	dash-value	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	
+cobracomp-063	complete	dash-value	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	
+cobracomp-064	complete	dash-value	final	up	[1-123 11-123 service] files=false nospace=false	exact [service 1-123 11-123]; files=false	
+cobracomp-065	complete	complete-directive	final	neither	[] files=true nospace=false	exact []; files=false	
+cobracomp-066	complete	complete-directive	final	neither	[] files=true nospace=false	exact []; files=false	
+cobracomp-067	complete	complete-directive	final	ours	[] files=false nospace=false	exact []; files=true	exact []; files=false
+goflag-001	run	long	final	ours	unknown-flag [run] "string"	run run [] string=["hello"]	unknown-flag [run] "string"
+goflag-002	run	space	final	up	run run [] string=["22"]	run run [] string=["22"]	
+goflag-003	run	interspersed	final	up	run run ["extra"] bool=["true"]	run run ["extra"] bool=["true"]	
+goflag-004	run	repeat	final	up	run run [] filter=["1" "2" "3"]	run run [] filter=["1" "2" "3"]	
+goflag-005	run	interspersed	final	ours	run run ["barg"] bool=["true"] verbose=["true"]	run run ["barg" "-v"] bool=["true"]	run run ["barg"] bool=["true"] verbose=["true"]
+goflag-006	run	help	final	ours	unknown-flag [run] "help"	help run	unknown-flag [run] "help"
+goflag-007	run	unknown-flag	final	up	unknown-flag [run] "undefined"	unknown-flag [run] "undefined"	
+goflag-008	run	unknown-flag	final	up	unknown-flag [run] "bool"	unknown-flag [run] "bool"	
+goflag-009	run	unknown-flag	final	up	unknown-flag [run] ""	unknown-flag [run] ""	
+goflag-010	run	dash-value	final	up	run run ["-"]	run run ["-"]	
+goflag-011	run	dash-dash	final	up	run run ["x"]	run run ["x"]	
+goflag-012	run	long	final	ours	unknown-flag [auth keys create] "description"	run auth keys create ["alice"] description=["foo"]	unknown-flag [auth keys create] "description"
+issues-001	run	short-eq	final	up	run nodes set ["n1"] expiry=[""]	run nodes set ["n1"] expiry=[""]	
+issues-002	run	empty-value	final	up	run nodes set ["n1"] name=[""]	run nodes set ["n1"] name=[""]	
+issues-003	run	empty-value	final	up	run nodes set ["n1"] expiry=["1h"] name=[""]	run nodes set ["n1"] expiry=["1h"] name=[""]	
+issues-004	run	short	final	up	unknown-flag [nodes list] "output"	unknown-flag [nodes list] "output"	
+issues-005	run	short	final	ours	unknown-flag [nodes list] "columns"	run nodes list [] columns=["id"]	unknown-flag [nodes list] "columns"
+issues-006	run	dash-value	final	neither	unknown-flag [nodes delete] " h"	run nodes delete ["- h"]	
+issues-007	run	verbatim	final	ours	run auth keys create ["u1"] description=["--reusable"]	missing-value [auth keys create] "description"	run auth keys create ["u1"] description=["--reusable"]
+issues-008	run	verbatim	final	ours	arg-count [api keys create]	missing-value [api keys create] "user"	arg-count [api keys create]
+issues-009	run	bool	final	ours	arg-count [nodes delete]	run nodes delete ["n1"] force=["false"]	arg-count [nodes delete]
+issues-010	run	abbrev	final	ours	unknown-flag [nodes set] "exp"	run nodes set ["n1"] expiry=["1h"]	unknown-flag [nodes set] "exp"
+issues-011	run	dash-value	final	ours	unknown-flag [nodes delete] "1"	run nodes delete ["-1"]	unknown-flag [nodes delete] "1"
+issues-012	run	dash-dash	final	up	run nodes delete ["-1"]	run nodes delete ["-1"]	
+issues-013	run	verbatim	final	up	run auth keys create ["u1"] description=["line1\nline2"]	run auth keys create ["u1"] description=["line1\nline2"]	
+issues-014	run	bool	final	ours	run nodes delete ["n1"] force=["true"]	bad-value [nodes delete] "force"	run nodes delete ["n1"] force=["true"]
+issues-015	run	unknown-flag	final	up	unknown-flag [nodes list] "bogus"	unknown-flag [nodes list] "bogus"	
+issues-016	run	bool	final	up	run run ["/"] bool=["true"]	run run ["/"] bool=["true"]	
+issues-017	run	repeat	final	up	flag-repeated [nodes set] "name"	flag-repeated [nodes set] "name"	
+issues-018	run	repeat	final	ours	unknown-flag [nodes list] "output"	flag-repeated [nodes list] "output"	unknown-flag [nodes list] "output"
+issues-019	run	short-eq	final	up	run run [] bool=["false"]	run run [] bool=["false"]	
+issues-020	run	short-eq	final	up	run nodes set ["n1"] expiry=["1h"]	run nodes set ["n1"] expiry=["1h"]	
+issues-021	run	short-eq	final	up	run nodes set ["n1"] expiry=["-1h"]	run nodes set ["n1"] expiry=["-1h"]	
+issues-022	run	dash-dash	final	up	run nodes routes set ["n1" "--force"] output=["json"]	run nodes routes set ["n1" "--force"] output=["json"]	
+issues-023	run	dash-dash	final	neither	unknown-command [] "--"	unknown-command [] "nodes"	
+issues-024	run	dash-value	final	up	run policy set ["-"]	run policy set ["-"]	
+issues-025	run	dash-value	final	up	unknown-command [nodes] "-"	unknown-command [nodes] "-"	
+issues-026	run	dash-value	final	up	run nodes routes set ["-" "10.0.0.0/8"]	run nodes routes set ["-" "10.0.0.0/8"]	
+issues-027	run	unknown-flag	final	up	unknown-flag [] "bogus"	unknown-flag [] "bogus"	
+issues-028	run	unknown-cmd	final	up	unknown-command [nodes] "lst"	unknown-command [nodes] "lst"	
+issues-029	run	global	final	up	run nodes list [] output=["json"]	run nodes list [] output=["json"]	
+issues-030	run	global	final	up	unknown-flag [] "name"	unknown-flag [] "name"	
+issues-031	run	global	final	ours	unknown-flag [] "list-columns"	run nodes list [] list-columns=["true"]	unknown-flag [] "list-columns"
+issues-032	complete	complete-dashdash	final	up	[] files=false nospace=false	not --force	
+issues-033	complete	complete-dashdash	final	neither	[api auth check completion nodes policy serve users version] files=false nospace=false	not nodes users	
+issues-034	complete	complete-flag	final	up	[--name] files=false nospace=false	has --name	
+issues-035	complete	complete-value	final	up	[] files=false nospace=false	exact []	
+issues-036	run	verbatim	final	up	run auth keys create ["u1"] description=["- watsupohello"]	run auth keys create ["u1"] description=["- watsupohello"]	
+issues-037	run	global	final	up	run nodes list [] config=["nodes"] output=["json"]	run nodes list [] config=["nodes"] output=["json"]	
+issues-038	run	global	final	up	run nodes list [] config=["nodes"]	run nodes list [] config=["nodes"]	
+issues-039	complete	complete-cmd	final	up	[api auth check completion nodes policy serve users version] files=false nospace=false	has nodes users	
+issues-040	run	verbatim	final	up	run nodes set ["n1"] name=["abc def"]	run nodes set ["n1"] name=["abc def"]	
+issues-041	run	dash-value	final	neither	run check config ["—-help"]	unknown-flag [check config] "—-help"	
+issues-042	run	bool	final	up	help nodes list	help nodes list	
+issues-043	run	help	final	up	help	help	
+issues-044	complete	complete-value	final	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false	has id name; not --sort=--sort=	
+issues-045	run	eq	final	up	run auth keys create ["u1"] description=["myApp --startup-args=a, b, c"]	run auth keys create ["u1"] description=["myApp --startup-args=a, b, c"]	
+issues-046	run	abbrev	final	up	unknown-command [nodes] "li"	unknown-command [nodes] "li"	
+issues-047	run	abbrev	final	ours	unknown-command [nodes] "lis"	run nodes list []	unknown-command [nodes] "lis"
+issues-048	run	unknown-cmd	final	up	unknown-command [] "NODES"	unknown-command [] "NODES"	
+issues-049	complete	complete-alias	final	up	[approve] files=false nospace=false	has approve	
+issues-050	complete	complete-alias	final	up	[list] files=false nospace=false	exact [list]	
+issues-051	complete	complete-flag	final	up	[--config --help --output --version] files=false nospace=false	has --help --version	
+issues-052	complete	complete-list	final	up	[id,expiry id,hostname id,id id,ip id,last-seen id,name id,online id,owner id,version] files=false nospace=true	has id,name; nospace=true	
+issues-053	complete	short-attached	final	ours	[] files=false nospace=false	has -ojson	exact []
+issues-054	complete	short-group	final	ours	[] files=false nospace=false	has alpha beta	exact []
+issues-055	run	short-group	final	ours	unknown-flag [run] "bs"	run run [] bool=["true"] string=["foo"]	unknown-flag [run] "bs"
+issues-056	run	missing-value	final	up	missing-value [nodes set] "name"	missing-value [nodes set] "name"	
+issues-057	run	dash-value	final	up	run nodes list [] sort=["-last-seen"]	run nodes list [] sort=["-last-seen"]	
+issues-058	run	negation	final	ours	unknown-flag [nodes delete] "no-force"	run nodes delete ["n1"] force=["false"]	unknown-flag [nodes delete] "no-force"
+issues-059	run	strings	final	ours	arg-count [nodes list]	run nodes list [] columns=["id" "name"]	arg-count [nodes list]
+issues-060	run	empty-value	final	neither	bad-value [nodes routes set] "routes"	run nodes routes set ["n1" ""]	
+issues-061	run	empty-value	final	up	run nodes routes set ["" "10.0.0.0/8"] output=["json"]	run nodes routes set ["" "10.0.0.0/8"] output=["json"]	
+issues-062	run	global	final	up	unknown-flag [nodes list] "version"	unknown-flag [nodes list] "version"	
+issues-063	run	interspersed	final	up	run nodes delete ["n1"] force=["true"] output=["json"]	run nodes delete ["n1"] force=["true"] output=["json"]	
+issues-064	complete	complete-flag	final	up	[--sort] files=false nospace=false	exact [--sort]	
+issues-065	complete	complete-flag	final	up	[--columns --config --filter --help --list-columns --output --sort] files=false nospace=false	has --columns --sort --filter --list-columns --output --config --help	
+issues-066	run	global	final	up	run nodes list [] config=["/etc/h.yaml"]	run nodes list [] config=["/etc/h.yaml"]	
+others-001	run	tree	final	up	run nodes routes set ["10" "r"]	run nodes routes set ["10" "r"]	
+others-002	run	interspersed	final	up	run run ["1" "2" "3"] bool=["true"]	run run ["1" "2" "3"] bool=["true"]	
+others-003	run	global	final	up	run nodes routes set ["n" "r"] config=["moo"]	run nodes routes set ["n" "r"] config=["moo"]	
+others-004	run	bool	final	up	run nodes delete ["n"] force=["true"]	run nodes delete ["n"] force=["true"]	
+others-005	run	bool	final	up	run nodes delete ["n"] force=["false"]	run nodes delete ["n"] force=["false"]	
+others-006	run	negation	final	ours	unknown-flag [nodes delete] "no-force"	run nodes delete ["n"] force=["false"]	unknown-flag [nodes delete] "no-force"
+others-007	run	negation	final	ours	unknown-flag [nodes delete] "no-force"	run nodes delete ["n"] force=["true"]	unknown-flag [nodes delete] "no-force"
+others-008	run	short-attached	final	ours	unknown-flag [run] "shello"	run run [] bool=["true"] string=["hello"]	unknown-flag [run] "shello"
+others-009	run	short	final	up	run api keys create [] user=["hello"]	run api keys create [] user=["hello"]	
+others-010	run	repeat	final	ours	flag-repeated [nodes list] "sort"	run nodes list [] sort=["name"]	flag-repeated [nodes list] "sort"
+others-011	run	strings	final	up	run nodes list [] filter=["id,name" "ip,owner"]	run nodes list [] filter=["id,name" "ip,owner"]	
+others-012	run	global	final	up	run nodes list [] config=["p"]	run nodes list [] config=["p"]	
+others-013	run	dash-value	final	up	run check config ["-"]	run check config ["-"]	
+others-014	run	dash-value	final	up	run nodes set ["n"] name=["-"]	run nodes set ["n"] name=["-"]	
+others-015	run	space	final	up	run nodes set ["n"] name=["wtf"]	run nodes set ["n"] name=["wtf"]	
+others-016	run	eq	final	up	run nodes set ["n"] name=["value"]	run nodes set ["n"] name=["value"]	
+others-017	run	empty-value	final	up	run nodes set ["n"] name=[""]	run nodes set ["n"] name=[""]	
+others-018	run	empty-value	final	up	run nodes set ["n"] name=[""]	run nodes set ["n"] name=[""]	
+others-019	run	dash-value	final	up	run run [] file=["-foo"]	run run [] file=["-foo"]	
+others-020	run	dash-value	final	up	run run [] file=["-foo"]	run run [] file=["-foo"]	
+others-021	run	dash-value	final	up	run run [] file=["-oo"]	run run [] file=["-oo"]	
+others-022	run	dash-value	final	ours	run nodes set ["n"] name=["-foo"]	missing-value [nodes set] "name"	run nodes set ["n"] name=["-foo"]
+others-023	run	dash-value	final	up	run nodes list [] filter=["-id" "-name"]	run nodes list [] filter=["-id" "-name"]	
+others-024	run	dash-dash	final	ours	run run ["x"] file=["--"]	missing-value [run] "file"	run run ["x"] file=["--"]
+others-025	run	short-eq	final	ours	run run [] string=["xxx"]	run run [] string=["=xxx"]	run run [] string=["xxx"]
+others-026	run	dash-dash	final	up	run run ["ls" "-lart"]	run run ["ls" "-lart"]	
+others-027	run	unknown-flag	final	up	unknown-flag [nodes list] "break"	unknown-flag [nodes list] "break"	
+others-028	run	short	final	up	run test [] aflag=["true"]	run test [] aflag=["true"]	
+others-029	run	short	final	up	run test ["arg1" "arg2"] kflag=["true"]	run test ["arg1" "arg2"] kflag=["true"]	
+others-030	run	short	final	up	run test [] gflag=["true"]	run test [] gflag=["true"]	
+others-031	run	short-group	final	ours	unknown-flag [test] "ak"	run test [] aflag=["true"] gflag=["true"] kflag=["true"]	unknown-flag [test] "ak"
+others-032	run	short-group	final	ours	unknown-flag [test] "ag"	run test [] aflag=["true"] gflag=["true"]	unknown-flag [test] "ag"
+others-033	run	short-group	final	ours	unknown-flag [test] "kg"	run test [] gflag=["true"] kflag=["true"]	unknown-flag [test] "kg"
+others-034	run	short-group	final	ours	unknown-flag [test] "akg"	run test [] aflag=["true"] gflag=["true"] kflag=["true"]	unknown-flag [test] "akg"
+others-035	run	unknown-flag	final	up	unknown-flag [test] "akg"	unknown-flag [test] "akg"	
+others-036	run	unknown-flag	final	up	unknown-flag [test] "invalid"	unknown-flag [test] "invalid"	
+others-037	run	short-group	final	ours	unknown-flag [test] "akg"	unknown-flag [test] "invalid"	unknown-flag [test] "akg"
+others-038	run	unknown-flag	final	up	unknown-flag [test] "invalid"	unknown-flag [test] "invalid"	
+others-039	run	short-group	final	ours	unknown-flag [test] "akg"	unknown-flag [test] "invalid"	unknown-flag [test] "akg"
+others-040	run	short-group	final	ours	unknown-flag [test] "akgi"	unknown-flag [test] "invalid"	unknown-flag [test] "akgi"
+others-041	run	short	final	up	run test [] ijk=["ivalue"]	run test [] ijk=["ivalue"]	
+others-042	run	interspersed	final	up	run test ["arg1"] ijk=["ivalue"]	run test ["arg1"] ijk=["ivalue"]	
+others-043	run	missing-value	final	up	missing-value [test] "ijk"	missing-value [test] "ijk"	
+others-044	run	short-attached	final	ours	unknown-flag [test] "ia"	missing-value [test] "ijk"	unknown-flag [test] "ia"
+others-045	run	short-attached	final	ours	unknown-flag [test] "ia"	missing-value [test] "ijk"	unknown-flag [test] "ia"
+others-046	run	short-group	final	ours	unknown-flag [test] "aik"	missing-value [test] "ijk"	unknown-flag [test] "aik"
+others-047	run	short-group	final	ours	unknown-flag [test] "ai"	run test [] aflag=["true"] ijk=["ivalue"]	unknown-flag [test] "ai"
+others-048	run	dash-dash	final	up	run run ["a" "--notaflag"] file=["x"]	run run ["a" "--notaflag"] file=["x"]	
+others-049	run	dash-value	final	up	run run ["a" "-"]	run run ["a" "-"]	
+others-050	run	dash-value	final	up	run run ["-" "foo" "bar"]	run run ["-" "foo" "bar"]	
+others-051	run	dash-value	final	up	run run ["-" "foo"] file=["x"]	run run ["-" "foo"] file=["x"]	
+others-052	run	dash-dash	final	up	run run ["-" "--file" "leftover"]	run run ["-" "--file" "leftover"]	
+others-053	run	verbatim	final	up	run run [" - " "foo"]	run run [" - " "foo"]	
+others-054	run	unknown-flag	final	up	unknown-flag [run] "undefined"	unknown-flag [run] "undefined"	
+others-055	run	verbatim	final	up	run run ["  padded  " "\ttabbed\t"]	run run ["  padded  " "\ttabbed\t"]	
+others-056	run	verbatim	final	up	run run ["operand"] file=[" hello "]	run run ["operand"] file=[" hello "]	
+others-057	run	verbatim	final	up	run run ["operand"] file=["\t"]	run run ["operand"] file=["\t"]	
+others-058	run	verbatim	final	up	run run ["operand"] file=["line\n"]	run run ["operand"] file=["line\n"]	
+others-059	run	verbatim	final	up	run run ["operand"] file=["space\u00a0"]	run run ["operand"] file=["space\u00a0"]	
+others-060	run	eq	final	up	run run ["operand"] file=["a=b "]	run run ["operand"] file=["a=b "]	
+others-061	run	short	final	up	run run ["operand"] file=[" hello "]	run run ["operand"] file=[" hello "]	
+others-062	run	short-eq	final	up	run run ["operand"] file=[" hello "]	run run ["operand"] file=[" hello "]	
+others-063	run	verbatim	final	ours	run run ["\t --file" " hello " "operand"]	run run ["operand"] file=[" hello "]	run run ["\t --file" " hello " "operand"]
+others-064	run	bool	final	up	run nodes delete ["n"] force=["true"]	run nodes delete ["n"] force=["true"]	
+others-065	run	bool	final	up	bad-value [nodes delete] "force"	bad-value [nodes delete] "force"	
+others-066	run	bool	final	up	bad-value [nodes delete] "force"	bad-value [nodes delete] "force"	
+others-067	run	dash-dash	final	up	run run ["a" "b"]	run run ["a" "b"]	
+others-068	run	short-group	final	ours	unknown-flag [test] "as"	run test [] aflag=["true"] str=["expectedName"]	unknown-flag [test] "as"
+others-069	run	short	final	up	run test [] aflag=["true"] bflag=["true"]	run test [] aflag=["true"] bflag=["true"]	
+others-070	run	short-group	final	ours	unknown-flag [test] "ab"	run test [] aflag=["true"] bflag=["true"]	unknown-flag [test] "ab"
+others-071	run	short-group	final	ours	unknown-flag [test] "ba"	run test [] aflag=["true"] bflag=["true"]	unknown-flag [test] "ba"
+others-072	run	missing-value	final	up	missing-value [nodes set] "expiry"	missing-value [nodes set] "expiry"	
+others-073	run	unknown-flag	final	up	unknown-flag [nodes list] "version"	unknown-flag [nodes list] "version"	
+others-074	run	short-group	final	ours	unknown-flag [test] "as"	run test [] aflag=["true"] str=["expectedName"] xxx=["foo"]	unknown-flag [test] "as"
+others-075	run	short-group	final	ours	unknown-flag [test] "abs"	run test ["/path/to/root"] aflag=["true"] bflag=["true"] str=["hello"]	unknown-flag [test] "abs"
+others-076	run	long	final	ours	unknown-flag [nodes list] "filter"	run nodes list [] filter=["id" "name"]	unknown-flag [nodes list] "filter"
+others-077	run	unknown-cmd	final	up	unknown-command [] "foo"	unknown-command [] "foo"	
+others-078	run	help	final	ours	unknown-flag [] "undefined"	help	unknown-flag [] "undefined"
+others-079	run	help	final	ours	unknown-flag [] "undefined"	help	unknown-flag [] "undefined"
+others-080	run	help	final	ours	unknown-flag [nodes list] "undefined"	help nodes list	unknown-flag [nodes list] "undefined"
+others-081	run	unknown-flag	final	up	unknown-flag [nodes list] "undefined"	unknown-flag [nodes list] "undefined"	
+others-082	run	strings	final	up	run nodes list [] filter=["id" "name" "ip"]	run nodes list [] filter=["id" "name" "ip"]	
+others-083	run	global	final	up	run nodes list [] config=["hello"] output=["json"]	run nodes list [] config=["hello"] output=["json"]	
+others-084	run	repeat	final	ours	flag-repeated [nodes list] "config"	run nodes list [] config=["bar"]	flag-repeated [nodes list] "config"
+others-085	run	strings	final	up	run nodes list [] filter=["id" "name"] sort=["id"]	run nodes list [] filter=["id" "name"] sort=["id"]	
+others-086	run	repeat	final	up	flag-repeated [nodes set] "name"	flag-repeated [nodes set] "name"	
+others-087	run	repeat	final	up	flag-repeated [auth keys create] "tags"	flag-repeated [auth keys create] "tags"	
+others-088	run	repeat	final	up	flag-repeated [nodes delete] "force"	flag-repeated [nodes delete] "force"	
+others-089	run	abbrev	final	ours	unknown-command [nodes] "li"	run nodes list []	unknown-command [nodes] "li"
+others-090	run	alias	final	up	run nodes list []	run nodes list []	
+others-091	run	long	final	ours	unknown-flag [nodes set] "name"	run nodes set ["n"] name=["-"]	unknown-flag [nodes set] "name"
+others-092	run	dash-dash	final	up	run run ["a1" "a2" "a3"] file=["x"]	run run ["a1" "a2" "a3"] file=["x"]	
+others-093	run	dash-dash	final	up	run run ["x"] file=["--"]	run run ["x"] file=["--"]	
+others-094	run	dash-dash	final	up	run run [] file=["x"]	run run [] file=["x"]	
+others-095	run	dash-dash	final	up	run run ["x" "--file=value"]	run run ["x" "--file=value"]	
+others-096	run	interspersed	final	up	run run ["x"] file=["value"]	run run ["x"] file=["value"]	
+others-097	run	dash-dash	final	up	run run ["x"] bool=["true"]	run run ["x"] bool=["true"]	
+others-098	run	dash-dash	final	up	run run ["x"] bool=["false"]	run run ["x"] bool=["false"]	
+others-099	run	dash-dash	final	up	run run ["x" "--bool=true"]	run run ["x" "--bool=true"]	
+others-100	run	bool	final	up	run run ["x"] bool=["true"]	run run ["x"] bool=["true"]	
+others-101	run	strings	final	up	run auth keys create ["o"] tags=["tag:ci,tag:prod"]	run auth keys create ["o"] tags=["tag:ci,tag:prod"]	
+others-102	run	strings	final	up	run auth keys create ["o"] tags=["tag:ci"]	run auth keys create ["o"] tags=["tag:ci"]	
+others-103	run	empty-value	final	up	run run ["hello" "" "world"]	run run ["hello" "" "world"]	
+others-104	run	empty-value	final	up	run run ["" "hello"]	run run ["" "hello"]	
+others-105	run	verbatim	final	up	run run ["hello" "  " "world"]	run run ["hello" "  " "world"]	
+others-106	run	empty-value	final	up	run run ["" "arg2" "arg3"] file=["something"]	run run ["" "arg2" "arg3"] file=["something"]	
+others-107	run	empty-value	final	up	run run ["" "arg2"] file=["something"]	run run ["" "arg2"] file=["something"]	
+others-108	run	empty-value	final	up	run run ["positional"] file=[""]	run run ["positional"] file=[""]	
+others-109	run	verbatim	final	up	run run ["file"] file=["flagvalue"]	run run ["file"] file=["flagvalue"]	
+others-110	run	bool	final	ours	bad-value [nodes delete] "force"	run nodes delete ["n"] force=["true"]	bad-value [nodes delete] "force"
+others-111	run	dash-value	final	ours	unknown-flag [run] "10"	run run ["-10" "--bool"]	unknown-flag [run] "10"
+others-112	run	interspersed	final	up	run run ["arg1" "arg2"] bool=["true"] file=["value"]	run run ["arg1" "arg2"] bool=["true"] file=["value"]	
+others-113	run	negation	final	ours	unknown-flag [nodes delete] "no-force"	flag-repeated [nodes delete] "force"	unknown-flag [nodes delete] "no-force"
+others-114	run	short-group	final	ours	unknown-flag [test] "ab"	bad-value [test] "bflag"	unknown-flag [test] "ab"
+others-115	run	strings	final	up	run nodes list [] filter=["id,name,ip" "owner" "online"]	run nodes list [] filter=["id,name,ip" "owner" "online"]	
+others-116	complete	complete-cmd	final	up	[delete list routes set] files=false nospace=false	has list delete set routes	
+others-117	complete	complete-flag	final	up	[--config --expiry --help --name --output] files=false nospace=false	has --name --expiry; not -e	
+others-118	complete	complete-flag	final	up	[--columns --config --filter --help --list-columns --output --sort] files=false nospace=false	has --columns --help	
+others-119	complete	complete-flag	final	up	[] files=false nospace=false	not --columns --help -o	
+others-120	complete	complete-dashdash	final	up	[] files=false nospace=false	not --name --expiry	
+others-121	complete	complete-flag	final	up	[--list-columns] files=false nospace=false	exact [--list-columns]	
+others-122	complete	complete-flag	final	up	[--help] files=false nospace=false	exact [--help]	
+others-123	complete	complete-dashdash	final	neither	[api auth check completion nodes policy serve users version] files=false nospace=false	exact []	
+others-124	complete	complete-dashdash	final	up	[] files=false nospace=false	exact []	
+others-125	complete	complete-flag	final	up	[--version] files=false nospace=false	exact [--version]	
+others-126	complete	complete-flag	final	up	[--config] files=false nospace=false	exact [--config]	
+others-127	complete	complete-flag	final	up	[--config] files=false nospace=false	exact [--config]	
+others-128	complete	complete-dashdash	final	up	[] files=false nospace=false	exact []	
+others-129	run	bool	final	up	run nodes delete ["n"] force=["true"]	run nodes delete ["n"] force=["true"]	
+others-130	run	bool	final	ours	run run ["true"] bool=["true"]	run run [] bool=["true"]	run run ["true"] bool=["true"]
+others-131	run	short-eq	final	ours	run run [] bool=["true"]	unknown-flag [run] ""	run run [] bool=["true"]
+others-132	run	short	final	up	run run [] bool=["true"]	run run [] bool=["true"]	
+others-133	run	bool	final	up	run run ["false"] bool=["true"]	run run ["false"] bool=["true"]	
+others-134	run	bool	final	ours	run run ["false"] bool=["true"]	run run [] bool=["false"]	run run ["false"] bool=["true"]
+others-135	run	help	final	up	help run	help run	
+others-136	run	help	final	up	help run	help run	
+others-137	run	long	final	ours	unknown-flag [nodes delete] "force"	run nodes delete ["n"] force=["true"]	unknown-flag [nodes delete] "force"
+others-138	run	long	final	ours	unknown-flag [nodes delete] "force"	run nodes delete ["n"] force=["true"]	unknown-flag [nodes delete] "force"
+others-139	run	eq	final	up	run test [] bflag=["true"] str=["foo"]	run test [] bflag=["true"] str=["foo"]	
+others-140	run	short-eq	final	ours	run test [] str=["xxx"]	run test [] str=["=xxx"]	run test [] str=["xxx"]
+others-141	run	short-attached	final	ours	unknown-flag [test] "str"	run test [] str=["tr=xxx"]	unknown-flag [test] "str"
+others-142	run	dash-value	final	up	run test [] str=["-b"]	run test [] str=["-b"]	
+others-143	run	short	final	up	run test [] aflag=["true"] bflag=["true"] kflag=["true"]	run test [] aflag=["true"] bflag=["true"] kflag=["true"]	
+others-144	run	short-group	final	ours	unknown-flag [test] "ab"	run test [] aflag=["true"] bflag=["true"] kflag=["true"]	unknown-flag [test] "ab"
+others-145	run	short-group	final	ours	unknown-flag [test] "ab"	flag-repeated [test] "bflag"	unknown-flag [test] "ab"
+others-146	run	short-group	final	ours	unknown-flag [test] "absfoo"	run test [] aflag=["true"] bflag=["true"] kflag=["true"] str=["foo"]	unknown-flag [test] "absfoo"
+others-147	run	short-group	final	ours	unknown-flag [test] "aks"	run test [] aflag=["true"] bflag=["true"] kflag=["true"] str=["foo"]	unknown-flag [test] "aks"
+others-148	run	interspersed	final	ours	run test ["true" "false" "true"] aflag=["true"] bflag=["true"] kflag=["true"]	run test ["true" "-b" "false" "-k" "true"] aflag=["true"]	run test ["true" "false" "true"] aflag=["true"] bflag=["true"] kflag=["true"]
+others-149	run	help	final	up	help test	help test	
+others-150	run	bool	final	ours	run test ["true" "true"] aflag=["true"] kflag=["true"]	run test [] aflag=["true"] kflag=["true"]	run test ["true" "true"] aflag=["true"] kflag=["true"]
+others-151	run	bool	final	up	run test [] aflag=["true"] bflag=["false"]	run test [] aflag=["true"] bflag=["false"]	
+others-152	run	bool	final	up	run test ["false"] aflag=["true"]	run test ["false"] aflag=["true"]	
+others-153	run	bool	final	ours	run test ["true" "true"] aflag=["true"] bflag=["true"]	run test [] aflag=["true"] bflag=["true"]	run test ["true" "true"] aflag=["true"] bflag=["true"]
+others-154	run	short-eq	final	up	run test [] aflag=["true"] bflag=["false"]	run test [] aflag=["true"] bflag=["false"]	
+others-155	run	global	final	up	run nodes delete ["hello world"] config=["x"] force=["true"]	run nodes delete ["hello world"] config=["x"] force=["true"]	
+others-156	run	empty-value	final	ours	run run ["x"] file=[""]	run run [] file=["x"]	run run ["x"] file=[""]
+others-157	run	dash-value	final	ours	run run ["-" "x"]	run run ["x"]	run run ["-" "x"]
+others-158	complete	complete-cmd	final	up	[users] files=false nospace=false	exact [users]	
+others-159	complete	complete-flag	final	up	[--config --help --output --version] files=false nospace=false	has --version --config	
+others-160	complete	complete-flag	final	up	[--config --help --output --version] files=false nospace=false	has --version --config	
+others-161	complete	complete-flag	final	ours	[] files=false nospace=false	has -version	exact []
+others-162	complete	complete-flag	final	up	[--version] files=false nospace=false	exact [--version]	
+others-163	complete	complete-flag	final	up	[--config --filter --help --list-columns --output --sort] files=false nospace=false	has --sort; not --columns	
+others-164	complete	complete-dashdash	final	up	[] files=false nospace=false	not --sort	
+others-165	complete	complete-dashdash	final	up	[--sort] files=false nospace=false	has --sort	
+others-166	complete	complete-dashdash	final	up	[] files=false nospace=false	not --sort	
+others-167	complete	complete-value	final	neither	[] files=false nospace=false	exact [true false]	
+others-168	complete	complete-value	final	neither	[] files=false nospace=false	exact [true]	
+others-169	complete	complete-value	final	neither	[] files=false nospace=false	exact [TRUE]	
+others-170	complete	complete-value	final	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false	exact [id name owner ip version online last-seen expiry hostname]; files=false	
+others-171	complete	complete-value	final	up	[online owner] files=false nospace=false	exact [online owner]; files=false	
+others-172	complete	complete-value	final	neither	[] files=false nospace=false	files=true	
+others-173	complete	complete-value	final	up	[hostname] files=false nospace=false	exact [hostname]; files=false	
+others-174	complete	complete-value	final	up	[bash fish powershell zsh] files=false nospace=false	exact [bash zsh fish powershell]; files=false	
+others-175	complete	complete-value	final	up	[fish] files=false nospace=false	exact [fish]; files=false	
+others-176	run	tree	final	up	run nodes delete ["hello"]	run nodes delete ["hello"]	
+others-177	run	alias	final	up	run nodes delete ["hello"]	run nodes delete ["hello"]	
+others-178	run	unknown-flag	final	up	unknown-flag [nodes delete] "unknown"	unknown-flag [nodes delete] "unknown"	
+others-179	run	global	final	up	run nodes delete ["hello"] config=["x"]	run nodes delete ["hello"] config=["x"]	
+others-180	run	eq	final	up	run nodes delete ["hello"] config=["x"]	run nodes delete ["hello"] config=["x"]	
+others-181	run	verbatim	final	up	run nodes delete ["hello"] config=["conv: "]	run nodes delete ["hello"] config=["conv: "]	
+others-182	run	global	final	up	run nodes delete ["hello"] config=["conv: "] force=["true"]	run nodes delete ["hello"] config=["conv: "] force=["true"]	
+others-183	run	unknown-cmd	final	up	unknown-command [nodes] "nodes"	unknown-command [nodes] "nodes"	
+others-184	run	dash-dash	final	up	run run ["--bool" "--verbose"]	run run ["--bool" "--verbose"]	
+others-185	run	help	final	up	help	help	
+others-186	run	help	final	up	help	help	
+others-187	run	empty-value	final	neither	bad-value [nodes list] "filter"	run nodes list [] filter=[""]	
+others-188	complete	complete-cmd	final	up	[api auth check completion nodes policy serve users version] files=false nospace=false	exact [serve version check completion nodes users auth api policy]; files=false	
+others-189	complete	complete-cmd	final	ours	[nodes] files=false nospace=false	exact [serve version check completion nodes users auth api policy]	exact [nodes]
+others-190	complete	complete-cmd	final	up	[nodes] files=false nospace=false	exact [nodes]	
+others-191	complete	complete-flag	final	up	[--config --dry-run --force --help --output] files=false nospace=false	has --dry-run	
+others-192	complete	complete-flag	final	up	[--config --expiry --help --output --tags] files=false nospace=false	has --tags --expiry; not --reusable --description	
+others-193	complete	complete-flag	final	up	[--config --help --output --reusable --tags] files=false nospace=false	has --tags; not --description --expiry	
+others-194	complete	complete-flag	final	up	[--config --help --output] files=false nospace=false	has --config; not --version	
+others-195	complete	complete-value	final	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false	exact [id name owner ip version online last-seen expiry hostname]	
+others-196	complete	complete-value	final	ours	[] files=false nospace=false	has id name	exact []
+others-197	complete	complete-value	final	neither	[] files=false nospace=false	has id name	
+others-198	complete	complete-list	final	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=true	has id hostname	
+others-199	complete	complete-list	final	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=true	has id hostname	
+others-200	complete	complete-file	final	up	[] files=true nospace=false	files=true	
+others-201	run	missing-value	final	up	missing-value [run] "file"	missing-value [run] "file"	
+others-202	run	missing-value	final	up	missing-value [run] "file"	missing-value [run] "file"	
+others-203	run	unknown-flag	final	up	unknown-flag [run] "+"	unknown-flag [run] "+"	
+others-204	run	short-group	final	ours	unknown-flag [run] "b;"	unknown-flag [run] ";"	unknown-flag [run] "b;"
+others-205	run	abbrev	final	ours	unknown-flag [run] "bo"	run run [] bool=["true"]	unknown-flag [run] "bo"
+others-206	run	abbrev	final	up	unknown-flag [nodes list] "co"	unknown-flag [nodes list] "co"	
+others-207	run	short-group	final	ours	unknown-flag [run] "bv"	run run [] bool=["true"] file=["x"] verbose=["true"]	unknown-flag [run] "bv"
+others-208	run	unknown-flag	final	up	unknown-flag [run] "d"	unknown-flag [run] "d"	
+others-209	run	long	final	up	run run [] bool=["true"] file=["x"] verbose=["true"]	run run [] bool=["true"] file=["x"] verbose=["true"]	
+others-210	run	unknown-flag	final	up	unknown-flag [run] "dingo"	unknown-flag [run] "dingo"	
+others-211	run	bool	final	up	bad-value [run] "verbose"	bad-value [run] "verbose"	
+others-212	run	bool	final	ours	run run [] verbose=["true"]	bad-value [run] "verbose"	run run [] verbose=["true"]
+others-213	run	missing-value	final	up	missing-value [run] "file"	missing-value [run] "file"	
+others-214	run	interspersed	final	up	run run ["foo" "bar"] bool=["true"] file=["1"] string=["3"] verbose=["true"]	run run ["foo" "bar"] bool=["true"] file=["1"] string=["3"] verbose=["true"]	
+others-215	run	dash-value	final	up	run run ["ARG0" "ARG1" "ARG2"] bool=["true"] string=["-ISREQUIRED"]	run run ["ARG0" "ARG1" "ARG2"] bool=["true"] string=["-ISREQUIRED"]	
+others-216	run	abbrev	final	ours	unknown-flag [run] "fi"	run run ["EXTRA1"] bool=["true"] file=["ABBRARG"] string=["ARG"] verbose=["true"]	unknown-flag [run] "fi"
+others-217	run	unknown-flag	final	up	unknown-flag [run] "x"	unknown-flag [run] "x"	
+others-218	run	interspersed	final	ours	run run ["foo"] bool=["true"] verbose=["true"]	run run ["foo" "--verbose"] bool=["true"]	run run ["foo"] bool=["true"] verbose=["true"]
+others-219	run	interspersed	final	up	run run ["y" "w"] file=["z"] string=["x"]	run run ["y" "w"] file=["z"] string=["x"]	
+others-220	run	long	final	up	unknown-flag [nodes set] "name"	unknown-flag [nodes set] "name"	
+others-221	run	short-group	final	ours	unknown-flag [run] "bvs"	run run [] bool=["true"] string=["alpha"] verbose=["true"]	unknown-flag [run] "bvs"
+others-222	run	short-attached	final	ours	unknown-flag [run] "salpha"	run run [] string=["alpha"]	unknown-flag [run] "salpha"
+others-223	run	interspersed	final	ours	run run ["a"] bool=["true"]	run run ["a" "-b"]	run run ["a"] bool=["true"]
+others-224	run	dash-dash	final	up	run run ["x"] file=["--"]	run run ["x"] file=["--"]	
+others-225	run	dash-dash	final	up	run run ["-b" "x"]	run run ["-b" "x"]	
+others-226	run	repeat	final	ours	flag-repeated [run] "file"	run run [] file=["a" "b"]	flag-repeated [run] "file"
+pflag-001	run	bool	final	up	run run [] bool=["true"]	run run [] bool=["true"]	
+pflag-002	run	bool	final	up	run run [] bool=["true"]	run run [] bool=["true"]	
+pflag-003	run	bool	final	up	run run [] bool=["false"]	run run [] bool=["false"]	
+pflag-004	run	space	final	up	run run [] string=["24"]	run run [] string=["24"]	
+pflag-005	run	eq	final	up	run run [] string=["hello"]	run run [] string=["hello"]	
+pflag-006	run	dash-value	final	up	run run [] string=["-8"]	run run [] string=["-8"]	
+pflag-007	run	interspersed	final	up	run run ["one-extra-argument"] bool=["true"]	run run ["one-extra-argument"] bool=["true"]	
+pflag-008	run	unknown-flag	final	up	unknown-flag [run] "unknown"	unknown-flag [run] "unknown"	
+pflag-009	run	bool	final	up	bad-value [run] "bool"	bad-value [run] "bool"	
+pflag-010	run	missing-value	final	up	missing-value [run] "string"	missing-value [run] "string"	
+pflag-011	run	short-group	final	ours	unknown-flag [run] "bv"	run run [] bool=["true"] verbose=["true"]	unknown-flag [run] "bv"
+pflag-012	run	short-group	final	ours	unknown-flag [run] "bs"	run run [] bool=["true"] string=["xx"]	unknown-flag [run] "bs"
+pflag-013	run	short-eq	final	up	run run [] bool=["true"]	run run [] bool=["true"]	
+pflag-014	run	short	final	up	run run [] string=["ee"]	run run [] string=["ee"]	
+pflag-015	run	short-eq	final	up	run run [] bool=["false"]	run run [] bool=["false"]	
+pflag-016	run	short-group	final	ours	unknown-flag [run] "bv"	run run ["extra" "--i-look-like-a-flag"] bool=["true"] file=["something"] string=["hello"] verbose=["true"]	unknown-flag [run] "bv"
+pflag-017	run	interspersed	final	up	run run ["extra"] bool=["true"] string=["hello"]	run run ["extra"] bool=["true"] string=["hello"]	
+pflag-018	run	short-group	final	ours	unknown-flag [run] "bs"	run run [] bool=["true"] string=["hello"]	unknown-flag [run] "bs"
+pflag-019	run	short-eq	final	up	run run [] file=["something"]	run run [] file=["something"]	
+pflag-020	run	dash-dash	final	up	run run ["--i-look-like-a-flag"] bool=["true"]	run run ["--i-look-like-a-flag"] bool=["true"]	
+pflag-021	run	unknown-flag	final	ours	unknown-flag [run] "ukn"	unknown-flag [run] "u"	unknown-flag [run] "ukn"
+pflag-022	run	missing-value	final	ours	unknown-flag [run] "bs"	missing-value [run] "string"	unknown-flag [run] "bs"
+pflag-023	run	bool	final	up	run run [] bool=["true"] verbose=["false"]	run run [] bool=["true"] verbose=["false"]	
+pflag-024	run	repeat	final	up	run run [] filter=["1" "2" "3"]	run run [] filter=["1" "2" "3"]	
+pflag-025	run	short-attached	final	ours	unknown-flag [run] "s2"	run run [] string=["2"]	unknown-flag [run] "s2"
+pflag-026	run	global	final	up	run nodes delete ["12"] config=["/x"] force=["true"]	run nodes delete ["12"] config=["/x"] force=["true"]	
+pflag-027	run	help	final	up	help run	help run	
+pflag-028	run	interspersed	final	ours	run run ["break"] bool=["true"] verbose=["true"]	run run ["break" "--verbose"] bool=["true"]	run run ["break"] bool=["true"] verbose=["true"]
+pflag-029	run	dash-dash	final	up	run run ["ls" "-b"]	run run ["ls" "-b"]	
+pflag-030	run	tree	final	up	run run []	run run []	
+pflag-031	run	bool	final	up	run run [] bool=["true"]	run run [] bool=["true"]	
+pflag-032	run	bool	final	up	run run [] bool=["true"]	run run [] bool=["true"]	
+pflag-033	run	bool	final	up	run run [] bool=["true"]	run run [] bool=["true"]	
+pflag-034	run	bool	final	up	run run ["maybe"] bool=["true"]	run run ["maybe"] bool=["true"]	
+pflag-035	run	bool	final	up	run run [] bool=["false"]	run run [] bool=["false"]	
+pflag-036	run	bool	final	up	run run ["x"]	run run ["x"]	
+pflag-037	run	bool	final	up	bad-value [run] "bool"	bad-value [run] "bool"	
+pflag-038	run	bool	final	up	run run ["true"] bool=["true"]	run run ["true"] bool=["true"]	
+pflag-039	run	verbatim	final	up	run run [] list=["one,two,4,3"]	run run [] list=["one,two,4,3"]	
+pflag-040	run	repeat	final	ours	flag-repeated [run] "list"	run run [] list=["one,two" "three"]	flag-repeated [run] "list"
+pflag-041	run	empty-value	final	neither	bad-value [run] "list"	run run [] list=[""]	
+pflag-042	run	empty-value	final	neither	bad-value [run] "filter"	run run [] filter=[]	run run [] filter=[""]
+pflag-043	run	repeat	final	up	run run [] filter=["one" "two"]	run run [] filter=["one" "two"]	
+pflag-044	run	verbatim	final	up	run run [] filter=["one,two" "\"three\"" "\"four,five\",six" "seven eight"]	run run [] filter=["one,two" "\"three\"" "\"four,five\",six" "seven eight"]	
+pflag-045	run	verbatim	final	up	run run [] filter=["][]-[" "[a-z]" "[a-z]+"]	run run [] filter=["][]-[" "[a-z]" "[a-z]+"]	

@@ -1,0 +1,82 @@
+LINE: headscale no
+  [nodes ]
+LINE: headscale nodes 
+  [delete  (Delete a node)] [list    (List the nodes)] [routes  (Manage the routes of a node)] [set     (Change the name or expiry of a node)]
+LINE: headscale nodes routes ap
+  [approve ]
+LINE: headscale -c x no
+  [nodes ]
+LINE: headscale nodes list --
+  [--columns       (Columns to show)] [--config        (Config file to use)] [--filter        (Rows to keep)] [--help          (Show help)] [--list-columns  (List the columns)] [--output        (Output format: json)] [--sort          (Column to sort by)]
+LINE: headscale nodes list -o 
+  [json ]
+LINE: headscale nodes list --columns 
+  [expiry   ] [hostname ] [id       ] [ip       ] [last-seen] [name     ] [online   ] [owner    ] [version  ]
+LINE: headscale nodes list --columns id,na
+  [id`,name]
+LINE: headscale nodes list --columns=id,na
+  [--columns=id`,name]
+LINE: headscale nodes list --columns id,
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes list --sort la
+  [last-seen ]
+LINE: headscale nodes list --sort -la
+  [-last-seen ]
+LINE: headscale nodes list --filter=ow
+  [--filter=owner]
+LINE: headscale policy set 
+  [./other.json] [./policy.hujson]
+LINE: headscale check config 
+  [./other.json] [./policy.hujson]
+LINE: headscale nodes list 
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes delete 
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale completion 
+  [bash      ] [fish      ] [powershell] [zsh       ]
+LINE: headscale nodes rm --f
+  [--force ]
+LINE: headscale -o 
+  [json ]
+LINE: headscale nodes list -o=
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale auth keys create alice --tags tag:p
+  [tag:prod ]
+LINE: headscale auth keys create alice --tags tag:ci,tag:p
+  [tag:ci`,tag:prod]
+LINE: headscale -c 
+  [./other.json] [./policy.hujson]
+LINE: headscale nodes list --config 
+  [./other.json] [./policy.hujson]
+LINE: headscale nodes list --config=
+  
+LINE: headscale nodes set 12 --name 
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes routes 
+  [set ]
+LINE: headscale nodes list --s
+  [--sort ]
+LINE: headscale nodes list -
+  [--columns       (Columns to show)] [--config        (Config file to use)] [--filter        (Rows to keep)] [--help          (Show help)] [--list-columns  (List the columns)] [--output        (Output format: json)] [--sort          (Column to sort by)]
+LINE: headscale nodes list -c
+  [-c ]
+LINE: headscale nodez 
+  [api         (Manage API access)] [auth        (Manage auth keys)] [check       (Check files)] [completion  (Print a shell completion script)] [nodes       (Manage nodes)] [policy      (Manage the policy)] [serve       (Run the control server)] [users       (Manage users)] [version     (Print the version)]
+LINE: headscale nodes list --bogus --l
+  [--list-columns ]
+LINE: headscale policy set --bogus 
+  [./other.json] [./policy.hujson]
+LINE: headscale nodes list --sort id --s
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes list --filter id --f
+  [--filter ]
+LINE: headscale -c -o 
+  [api         (Manage API access)] [auth        (Manage auth keys)] [check       (Check files)] [completion  (Print a shell completion script)] [nodes       (Manage nodes)] [policy      (Manage the policy)] [serve       (Run the control server)] [users       (Manage users)] [version     (Print the version)]
+LINE: headscale nodes delete o 
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes routes set 12 -- --
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes list --filter -ow
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes list --columns id,-ho
+  [id`,-hostname]

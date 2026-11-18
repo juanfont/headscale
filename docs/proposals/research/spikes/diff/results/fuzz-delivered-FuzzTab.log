@@ -1,0 +1,13 @@
+warning: the test binary was not built with coverage instrumentation, so fuzzing will run without coverage guidance and may be inefficient
+fuzz: elapsed: 0s, testing seed corpus: 0/300 completed
+fuzz: elapsed: 0s, testing seed corpus: 300/300 completed, now fuzzing with 6 workers
+fuzz: minimizing 40-byte failing input file
+fuzz: elapsed: 1s, minimizing
+--- FAIL: FuzzTab (1.37s)
+    --- FAIL: FuzzTab (0.00s)
+        fuzz_test.go:268: Tab offered "json" after ["-c" "o"]; Run refuses it: unknown-command [] "json"
+    
+    Failing input written to testdata/fuzz/FuzzTab/a3330ede7ff2bca1
+    To re-run:
+    go test -run=FuzzTab/a3330ede7ff2bca1
+FAIL

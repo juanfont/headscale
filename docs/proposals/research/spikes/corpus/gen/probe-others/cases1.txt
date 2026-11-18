@@ -1,0 +1,38 @@
+run --string -foo
+run --string=-foo
+run -s -b
+run -s=xxx
+run -sxxx
+run --file EMPTY x
+run --file= x
+run --file=
+run --file -- x
+run a -- -b
+run -- -b x
+run a --bool b
+run -10 11
+run - x
+run --file -
+run --bool=maybe
+run --bool true x
+run --bool=false
+run -bv
+run -string x
+run --no-bool
+run --boo
+nope
+grp nope
+grp s x
+r x
+-c x run a
+run a -c x
+run --config x a
+grp --config x sub
+run --file a --file b
+run --list a,b --list c
+run --unknown --bool
+run --bool -h
+run -h --unknown
+run x --unknown -h
+run EMPTY a
+run a _SP_-_SP_ b

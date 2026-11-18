@@ -1,0 +1,208 @@
+headscale no
+headscale nodes 
+headscale nodes routes ap
+headscale -c x no
+headscale nodes list --
+headscale nodes list -o 
+headscale nodes list --columns 
+headscale nodes list --columns id,na
+headscale nodes list --columns=id,na
+headscale nodes list --columns id,
+headscale nodes list --sort la
+headscale nodes list --sort -la
+headscale nodes list --filter=ow
+headscale policy set 
+headscale check config 
+headscale nodes list 
+headscale nodes delete 
+headscale completion 
+headscale nodes rm --f
+headscale -o 
+headscale nodes list -o=
+headscale auth keys create alice --tags tag:p
+headscale auth keys create alice --tags tag:ci,tag:p
+headscale nodes routes set 12 10.0.0.0/8
+headscale nodes routes approve 12 10.0.0.0/8
+headscale nodes rm 12
+headscale nodes ls
+headscale users rm alice
+headscale auth keys approve x
+headscale auth keys create alice
+headscale api keys create
+headscale check config
+headscale check config /etc/hs.yaml
+headscale serve
+headscale 
+headscale nodes
+headscale nodes routes
+headscale check
+headscale -h
+headscale --help
+headscale nodes -h
+headscale nodes routes --help
+headscale nodes routes set -h
+headscale nodes delete --help
+headscale nodes delete 12 -h
+headscale nodes rm --help
+headscale nodes routes approve -h
+headscale auth keys create alice --tags tag:a -h
+headscale help
+headscale help nodes
+headscale nodes help
+headscale nodes list --bogus -h
+headscale nodes list -h --bogus
+headscale nodes --help list
+headscale -h nodes list
+headscale --version
+headscale version
+headscale version -o json
+headscale nodes list --version
+headscale auth keys create alice --expiry 24h
+headscale auth keys create alice --expiry=24h
+headscale nodes list -o json
+headscale nodes list -o=json
+headscale nodes list -ojson
+headscale auth keys create alice -e 24h
+headscale nodes delete --force 12
+headscale nodes delete 12 --force
+headscale nodes routes set 12 -o json 10.0.0.0/8
+headscale auth keys create --reusable alice -e 1h --tags tag:ci
+headscale nodes set 12 --name ''
+headscale nodes set 12 --name=
+headscale nodes set 12 -e 1d
+headscale nodes list --sort -last-seen
+headscale nodes list --sort=-last-seen
+headscale nodes list --columns -ip
+headscale nodes list --columns -ip,+hostname
+headscale nodes list --filter=owner=tag:ci
+headscale nodes list --filter name:web,online=true --filter last-seen>30d --filter=expiry<7d
+headscale policy set -
+headscale nodes delete hskey-auth-ab12cd-***
+headscale nodes routes set 12 ''
+headscale users delete -- --with-nodes
+headscale users delete --force -- -alice
+headscale api keys create -u alice --expiry 90d
+headscale nodes set 12 --name -e
+headscale nodes list --sort --filter x
+headscale nodes list -ho json
+headscale nodes delete 12 --force=true
+headscale nodes delete 12 --force=false
+headscale nodes delete 12 --no-force
+headscale nodes delete 12 --force=maybe
+headscale nodes delete 12 --force --force
+headscale -c /etc/hs.yaml nodes list
+headscale nodes list -c /etc/hs.yaml
+headscale -o json nodes list
+headscale --config=/x nodes routes set 12 10.0.0.0/8
+headscale nodes delete 12 -c /x
+headscale -o json -c /x version
+headscale check config -o json
+headscale -o json check config
+headscale completion bash -c /x
+headscale serve -o json
+headscale -c /a nodes list -c /b
+headscale auth keys create alice --tags tag:a,tag:b
+headscale auth keys create alice --tags tag:a --tags tag:b
+headscale nodes list -o json -o json
+headscale nodez
+headscale nodes lst
+headscale nodes routes aprove 12 10.0.0.0/8
+headscale auth keyz create alice
+headscale -c /x nodez
+headscale preauthkeys list
+headscale node ls
+headscale nodes authorize 12
+headscale nodes list --bogus
+headscale nodes list --force
+headscale auth keys create alice -r
+headscale auth keys create alice --exp 1h
+headscale nodes list --sort
+headscale auth keys create alice -e
+headscale nodes list -o
+headscale nodes delete 12 13
+headscale nodes delete
+headscale nodes routes set 12
+headscale check config a b
+headscale nodes list extra
+headscale --bogus nodes list
+headscale nodes delete 12 -- --force
+headscale nodes routes set 12 -- -o
+headscale nodes routes set 12 -- -h
+headscale -c /x nodes routes set 12 -- --config
+headscale nodes routes set 12 -- --
+headscale nodes routes set 12 10.0.0.0/8 --
+headscale nodes list -- extra
+headscale auth keys create alice -- --tags x
+headscale nodes delete 12 13 --force 14
+headscale nodes routes set 12 10.0.0.0/8 -o json extra
+headscale check config a -c /x b
+headscale nodes delete list
+headscale users delete nodes
+headscale nodes list -o json -o yaml
+headscale -o json nodes list -o yaml
+headscale nodes list -o json --output yaml
+headscale nodes delete 12 --force=true --force
+headscale nodes set 12 --name a --name ''
+headscale --config=/a -c /b version
+headscale -c nodes nodes list
+headscale -o=json nodes list
+headscale -c=/x nodes list
+headscale -c '' nodes list
+headscale auth keys create alice -e24h
+headscale nodes list -output json
+headscale nodes list --o json
+headscale nodes set 12 --name -h
+headscale nodes set 12 --name --
+headscale nodes -c /x list
+headscale nodes --force delete 12
+headscale nodes list --help=false
+headscale ''
+headscale no
+headscale nodes ''
+headscale nodes routes ''
+headscale nodes routes ap
+headscale auth keys c
+headscale -c /x nodes l
+headscale nodes list --
+headscale users delete alice --
+headscale auth keys create alice --
+headscale nodes list -o ''
+headscale nodes list --columns ''
+headscale nodes list --sort la
+headscale nodes list --filter ow
+headscale completion ''
+headscale policy set ''
+headscale check config ''
+headscale nodes list --columns id,na
+headscale nodes list --columns +ho
+headscale nodes list --sort -la
+headscale nodes ''
+headscale nodes l
+headscale nodes r
+headscale users ''
+headscale nodes routes ''
+headscale -c /x nodes l
+headscale nodes rm 12 --f
+headscale nodes delete ''
+headscale nodes list ''
+headscale completion ''
+headscale nodes delete 12 ''
+headscale check config -c /x ''
+headscale -c /x check config ''
+headscale policy set --dry-run ''
+headscale check config --
+headscale completion --
+headscale serve --
+headscale -o ''
+headscale auth keys create alice --tags tag:p
+headscale auth keys create alice --tags tag:ci,tag:p
+headscale nodes routes set 12 -- --
+headscale nodes delete o 
+headscale nodes list --sort o
+headscale nodes set 12 --name 
+headscale -c /x -o 
+headscale nodes list --filter ow
+headscale nodes list --columns +ho
+headscale nodes list --columns -ip,+ho
+headscale completion f
+headscale -c x nodes routes set 12 -- -

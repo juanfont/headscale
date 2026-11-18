@@ -1,0 +1,164 @@
+LINE: headscale no
+LISTED: headscale nodes 
+FINAL: [headscale nodes]
+
+LINE: headscale nodes 
+LISTED: headscale nodes <BEL> / delete  -- Delete a node / list    -- List the nodes / routes  -- Manage the routes of a node / set     -- Change the name or expiry of a node / $ headscale nodes 
+FINAL: [headscale nodes ]
+
+LINE: headscale nodes routes ap
+LISTED: headscale nodes routes approve 
+FINAL: [headscale nodes routes approve]
+
+LINE: headscale -c x no
+LISTED: headscale -c x nodes 
+FINAL: [headscale -c x nodes]
+
+LINE: headscale nodes list --
+LISTED: headscale nodes list --<BEL> / --columns       -- Columns to show / --config        -- Config file to use / --filter        -- Rows to keep / --help          -- Show help / --list-columns  -- List the columns / --output        -- Output format: json / --sort          -- Column to sort by / $ headscale nodes list --
+FINAL: [headscale nodes list --]
+
+LINE: headscale nodes list -o 
+LISTED: headscale nodes list -o json 
+FINAL: [headscale nodes list -o json]
+
+LINE: headscale nodes list --columns 
+LISTED: headscale nodes list --columns <BEL> / expiry     hostname   id         ip         last-seen  name       online     owner      version   / $ headscale nodes list --columns 
+FINAL: [headscale nodes list --columns ]
+
+LINE: headscale nodes list --columns id,na
+LISTED: headscale nodes list --columns id,name
+FINAL: [headscale nodes list --columns id,name]
+
+LINE: headscale nodes list --columns=id,na
+LISTED: headscale nodes list --columns=id,name
+FINAL: [headscale nodes list --columns=id,name]
+
+LINE: headscale nodes list --columns id,
+LISTED: headscale nodes list --columns id,<BEL> / id,expiry     id,hostname   id,id         id,ip         id,last-seen  id,name       id,online     id,owner      id,version   / $ headscale nodes list --columns id,
+FINAL: [headscale nodes list --columns id,]
+
+LINE: headscale nodes list --sort la
+LISTED: headscale nodes list --sort last-seen 
+FINAL: [headscale nodes list --sort last-seen]
+
+LINE: headscale nodes list --sort -la
+LISTED: headscale nodes list --sort -last-seen 
+FINAL: [headscale nodes list --sort -last-seen]
+
+LINE: headscale nodes list --filter=ow
+LISTED: headscale nodes list --filter=owner
+FINAL: [headscale nodes list --filter=owner]
+
+LINE: headscale policy set 
+LISTED: headscale policy set <BEL> / other.json     policy.hujson / $ headscale policy set 
+FINAL: [headscale policy set ]
+
+LINE: headscale check config 
+LISTED: headscale check config <BEL> / other.json     policy.hujson / $ headscale check config 
+FINAL: [headscale check config ]
+
+LINE: headscale nodes list 
+LISTED: headscale nodes list <BEL>
+FINAL: [headscale nodes list ]
+
+LINE: headscale nodes delete 
+LISTED: headscale nodes delete <BEL>
+FINAL: [headscale nodes delete ]
+
+LINE: headscale completion 
+LISTED: headscale completion <BEL> / bash        fish        powershell  zsh        / $ headscale completion 
+FINAL: [headscale completion ]
+
+LINE: headscale nodes rm --f
+LISTED: headscale nodes rm --force 
+FINAL: [headscale nodes rm --force]
+
+LINE: headscale -o 
+LISTED: headscale -o json 
+FINAL: [headscale -o json]
+
+LINE: headscale nodes list -o=
+LISTED: headscale nodes list -o=json 
+FINAL: [headscale nodes list -o=json]
+
+LINE: headscale auth keys create alice --tags tag:p
+LISTED: headscale auth keys create alice --tags tag:prod 
+FINAL: [headscale auth keys create alice --tags tag:prod]
+
+LINE: headscale auth keys create alice --tags tag:ci,tag:p
+LISTED: headscale auth keys create alice --tags tag:ci,tag:prod
+FINAL: [headscale auth keys create alice --tags tag:ci,tag:prod]
+
+LINE: headscale -c 
+LISTED: headscale -c <BEL> / other.json     policy.hujson / $ headscale -c 
+FINAL: [headscale -c ]
+
+LINE: headscale nodes list --config 
+LISTED: headscale nodes list --config <BEL> / other.json     policy.hujson / $ headscale nodes list --config 
+FINAL: [headscale nodes list --config ]
+
+LINE: headscale nodes list --config=
+LISTED: headscale nodes list --config=<BEL> / other.json     policy.hujson / $ headscale nodes list --config=
+FINAL: [headscale nodes list --config=]
+
+LINE: headscale nodes set 12 --name 
+LISTED: headscale nodes set 12 --name <BEL>
+FINAL: [headscale nodes set 12 --name ]
+
+LINE: headscale nodes routes 
+LISTED: headscale nodes routes set 
+FINAL: [headscale nodes routes set]
+
+LINE: headscale nodes list --s
+LISTED: headscale nodes list --sort 
+FINAL: [headscale nodes list --sort]
+
+LINE: headscale nodes list -
+LISTED: headscale nodes list --
+FINAL: [headscale nodes list --]
+
+LINE: headscale nodes list -c
+LISTED: headscale nodes list -c 
+FINAL: [headscale nodes list -c]
+
+LINE: headscale nodez 
+LISTED: headscale nodez <BEL> / api         -- Manage API access / auth        -- Manage auth keys / check       -- Check files / completion  -- Print a shell completion script / nodes       -- Manage nodes / policy      -- Manage the policy / serve       -- Run the control server / users       -- Manage users / version     -- Print the version / $ headscale nodez 
+FINAL: [headscale nodez ]
+
+LINE: headscale nodes list --bogus --l
+LISTED: headscale nodes list --bogus --list-columns 
+FINAL: [headscale nodes list --bogus --list-columns]
+
+LINE: headscale policy set --bogus 
+LISTED: headscale policy set --bogus <BEL> / other.json     policy.hujson / $ headscale policy set --bogus 
+FINAL: [headscale policy set --bogus ]
+
+LINE: headscale nodes list --sort id --s
+LISTED: headscale nodes list --sort id --s<BEL>
+FINAL: [headscale nodes list --sort id --s]
+
+LINE: headscale nodes list --filter id --f
+LISTED: headscale nodes list --filter id --filter 
+FINAL: [headscale nodes list --filter id --filter]
+
+LINE: headscale -c -o 
+LISTED: headscale -c -o <BEL> / api         -- Manage API access / auth        -- Manage auth keys / check       -- Check files / completion  -- Print a shell completion script / nodes       -- Manage nodes / policy      -- Manage the policy / serve       -- Run the control server / users       -- Manage users / version     -- Print the version / $ headscale -c -o 
+FINAL: [headscale -c -o ]
+
+LINE: headscale nodes delete o 
+LISTED: headscale nodes delete o <BEL>
+FINAL: [headscale nodes delete o ]
+
+LINE: headscale nodes routes set 12 -- --
+LISTED: headscale nodes routes set 12 -- --<BEL>
+FINAL: [headscale nodes routes set 12 -- --]
+
+LINE: headscale nodes list --filter -ow
+LISTED: headscale nodes list --filter -ow<BEL>
+FINAL: [headscale nodes list --filter -ow]
+
+LINE: headscale nodes list --columns id,-ho
+LISTED: headscale nodes list --columns id,-hostname
+FINAL: [headscale nodes list --columns id,-hostname]
+

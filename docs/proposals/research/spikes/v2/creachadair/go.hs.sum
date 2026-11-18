@@ -1,0 +1,10 @@
+github.com/creachadair/command v0.2.12 h1:xY+Y9G8WU1bh4D0J3oMXpQvyPX1BakFPypEW5LAcJGc=
+github.com/creachadair/command v0.2.12/go.mod h1:NngN5vztfAlswH/7YjwU3IBEgKXby/LyaLGhBJyk360=
+github.com/creachadair/command v0.2.13 h1:AfPgZCQebSDxaH9ouAW5kefyHel4OAO17yxffM6cuYA=
+github.com/creachadair/command v0.2.13/go.mod h1:NngN5vztfAlswH/7YjwU3IBEgKXby/LyaLGhBJyk360=
+github.com/creachadair/mds v0.31.0 h1:h4SXXgallvZfD8CFQnQNAOtBkUGpZjPwNBRQpHpHM/g=
+github.com/creachadair/mds v0.31.0/go.mod h1:IZ3oLffgVNZ4O5WXTPxx7EX5ilSl1ypdv5FekYyynyI=
+github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
+tailscale.com v1.105.0-pre.0.20261028221719-f7c1b8e52600 h1:I8WM7JhgkRILWgyMBz/mKY59OEWDdOSEO46wLocdkkk=
+tailscale.com v1.105.0-pre.0.20261028221719-f7c1b8e52600/go.mod h1:Ys2QFPf8iisgfJqktXGbBAGou0wpU4/dtmmNKg3yRCk=

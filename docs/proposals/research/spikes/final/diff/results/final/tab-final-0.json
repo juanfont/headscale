@@ -1,0 +1,2144 @@
+{
+ "buckets": [
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided D30: a refused word earlier on the line (unknown flag or command): cobra offers files (its parse error returns the Default directive) or skips the word; own completes from the last good command",
+   "Class": "",
+   "Shrunk": 1772,
+   "Est": 35440,
+   "Classes": {
+    "report": 1772
+   },
+   "Example": [
+    "-",
+    ""
+   ],
+   "Outcomes": [
+    "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+    "[]"
+   ],
+   "Samples": [
+    [
+     "headscale - \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[]"
+    ],
+    [
+     "headscale --versio x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale auth - \"\"",
+     "[\"keys\"]",
+     "[]"
+    ],
+    [
+     "headscale -last-se x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale policy - \"\"",
+     "[\"set\"]",
+     "[]"
+    ],
+    [
+     "headscale - check \"\"",
+     "[\"config\"]",
+     "[]"
+    ],
+    [
+     "headscale --expiry \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[] +files"
+    ],
+    [
+     "headscale - auth \"\"",
+     "[\"keys\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided D27: a free-text flag value (`--name \u003cTab\u003e`, `-d=\u003cTab\u003e`): cobra offers files, own nothing (--config now offers files)",
+   "Class": "",
+   "Shrunk": 196,
+   "Est": 3920,
+   "Classes": {
+    "report": 196
+   },
+   "Example": [
+    "-d="
+   ],
+   "Outcomes": [
+    "[]",
+    "[] +files"
+   ],
+   "Samples": [
+    [
+     "headscale --sort=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --sort=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --version=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --columns=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --help=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -h=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --version=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -u=",
+     "[]",
+     "[] +files"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided D29: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+   "Class": "",
+   "Shrunk": 128,
+   "Est": 2560,
+   "Classes": {
+    "report": 128
+   },
+   "Example": [
+    "api",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--help\"]",
+    "[\"--help\" \"-h\"]"
+   ],
+   "Samples": [
+    [
+     "headscale nodes -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale users -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale check -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale api -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale users -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale nodes -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale users -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale policy set -",
+     "[\"--config\" \"--dry-run\" \"--force\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--dry-run\" \"--force\" \"--help\" \"--output\" \"-c\" \"-h\" \"-o\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided D11: attached value or grouped shorts earlier on the line (D11): pflag reads them, own refuses, so the two complete from different places",
+   "Class": "",
+   "Shrunk": 126,
+   "Est": 2520,
+   "Classes": {
+    "report": 126
+   },
+   "Example": [
+    "-hc",
+    ""
+   ],
+   "Outcomes": [
+    "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+    "[] +files"
+   ],
+   "Samples": [
+    [
+     "headscale -o10.0.0 nodes se",
+     "[\"set\"]",
+     "[] +files"
+    ],
+    [
+     "headscale check -calice \"\"",
+     "[\"config\"]",
+     "[] +files"
+    ],
+    [
+     "headscale -o12 po",
+     "[\"policy\"]",
+     "[] +files"
+    ],
+    [
+     "headscale -output x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -out \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[] +files"
+    ],
+    [
+     "headscale -output x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -oapi x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -oj check \"\"",
+     "[\"config\"]",
+     "[] +files"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+   "Class": "",
+   "Shrunk": 111,
+   "Est": 2220,
+   "Classes": {
+    "report": 111
+   },
+   "Example": [
+    "--"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+    "[\"--help\" \"--version\"]"
+   ],
+   "Samples": [
+    [
+     "headscale -c",
+     "[\"-c\"]",
+     "[]"
+    ],
+    [
+     "headscale --out",
+     "[\"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale --output x --",
+     "[\"--config\" \"--help\" \"--version\"]",
+     "[\"--help\" \"--version\"]"
+    ],
+    [
+     "headscale --out",
+     "[\"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale --",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\"]"
+    ],
+    [
+     "headscale --ou",
+     "[\"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale -c",
+     "[\"-c\"]",
+     "[]"
+    ],
+    [
+     "headscale --conf",
+     "[\"--config\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided D29: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only + harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+   "Class": "",
+   "Shrunk": 83,
+   "Est": 1660,
+   "Classes": {
+    "report": 83
+   },
+   "Example": [
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+    "[\"--help\" \"--version\" \"-h\"]"
+   ],
+   "Samples": [
+    [
+     "headscale --output - -",
+     "[\"--config\" \"--help\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "implied: a flag typed a second time: the final prototype offers no value for it (T7, D15: the line would be refused); cobra completes it",
+   "Class": "",
+   "Shrunk": 48,
+   "Est": 960,
+   "Classes": {
+    "report": 48
+   },
+   "Example": [
+    "-c",
+    "-c",
+    "x"
+   ],
+   "Outcomes": [
+    "[]",
+    "[] +files"
+   ],
+   "Samples": [
+    [
+     "headscale -c -c x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --config - --config -",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -c --config x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --config --config x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -o x --output \"\"",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale -c -c -last-se",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --output= --output \"\"",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale api keys create -e -e -ho",
+     "[]",
+     "[] +files"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "unwanted: malformed flag under the cursor (`--=`, `-=`): cobra completes as if it were empty",
+   "Class": "",
+   "Shrunk": 26,
+   "Est": 520,
+   "Classes": {
+    "report": 26
+   },
+   "Example": [
+    "-="
+   ],
+   "Outcomes": [
+    "[]",
+    "[] +files"
+   ],
+   "Samples": [
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -h --=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --with-n --=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "unwanted: cobra's Tab path reads a flag-like value of a value flag as flags (`-o -last-se api \u003cTab\u003e`: 'api does not support flag e'); its Run reads it as the value (D20), so Tab and Run disagree (#2243 family)",
+   "Class": "",
+   "Shrunk": 17,
+   "Est": 340,
+   "Classes": {
+    "report": 17
+   },
+   "Example": [
+    "-c",
+    "-o",
+    ""
+   ],
+   "Outcomes": [
+    "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+    "[] +files"
+   ],
+   "Samples": [
+    [
+     "headscale nodes --config --config \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[] +files"
+    ],
+    [
+     "headscale --config --config api \"\"",
+     "[\"keys\"]",
+     "[] +files"
+    ],
+    [
+     "headscale api keys create --expiry --o x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -c -o x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -o -o \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[] +files"
+    ],
+    [
+     "headscale nodes set -e -e -o",
+     "[\"-o\"]",
+     "[] +files"
+    ],
+    [
+     "headscale -c --output x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -c --output x",
+     "[]",
+     "[] +files"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "unwanted: pflag's `-x=` quirk earlier on the line (`-h=`, `-o=`)",
+   "Class": "",
+   "Shrunk": 17,
+   "Est": 340,
+   "Classes": {
+    "report": 17
+   },
+   "Example": [
+    "-c=",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--help\" \"--output\" \"--version\"]",
+    "[\"--help\" \"--version\" \"-h\"]"
+   ],
+   "Samples": [
+    [
+     "headscale -c= -",
+     "[\"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale nodes set -h= -",
+     "[\"--config\" \"--expiry\" \"--name\" \"--output\"]",
+     "[] +files"
+    ],
+    [
+     "headscale nodes routes approve -h= -",
+     "[\"--config\" \"--output\"]",
+     "[] +files"
+    ],
+    [
+     "headscale policy -c= set -",
+     "[\"--dry-run\" \"--force\" \"--help\" \"--output\"]",
+     "[\"--dry-run\" \"--force\" \"--help\" \"--output\" \"-h\" \"-o\"]"
+    ],
+    [
+     "headscale -o= nodes delete -",
+     "[\"--config\" \"--force\" \"--help\"]",
+     "[\"--config\" \"--force\" \"--help\" \"-c\" \"-h\"]"
+    ],
+    [
+     "headscale -o= version --versio -",
+     "[\"--config\" \"--help\"]",
+     "[] +files"
+    ],
+    [
+     "headscale -c= -",
+     "[\"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale users --output x -- delete -h= -",
+     "[\"--config\" \"--force\" \"--with-nodes\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "harness: cobra adapter completes a positional's value list as a comma list (`completion id,\u003cTab\u003e` → `id,bash`)",
+   "Class": "",
+   "Shrunk": 3,
+   "Est": 60,
+   "Classes": {
+    "report": 3
+   },
+   "Example": [
+    "--output",
+    ","
+   ],
+   "Outcomes": [
+    "[]",
+    "[\",json\"]"
+   ],
+   "Samples": [
+    [
+     "headscale --output ,",
+     "[]",
+     "[\",json\"]"
+    ],
+    [
+     "headscale completion a,",
+     "[]",
+     "[\"a,bash\" \"a,fish\" \"a,powershell\" \"a,zsh\"]"
+    ],
+    [
+     "headscale --output ,",
+     "[]",
+     "[\",json\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "harness: cobra adapter: -o is a hidden persistent flag on the root, so `serve --output=\u003cTab\u003e` completes json for a command without -o; own gives nothing",
+   "Class": "",
+   "Shrunk": 2,
+   "Est": 40,
+   "Classes": {
+    "report": 2
+   },
+   "Example": [
+    "-o=a,"
+   ],
+   "Outcomes": [
+    "[]",
+    "[\"a,json\"]"
+   ],
+   "Samples": [
+    [
+     "headscale --output=,",
+     "[]",
+     "[\",json\"]"
+    ],
+    [
+     "headscale -o=a,",
+     "[]",
+     "[\"a,json\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided call: a + or - before a value is completed only on --columns and --sort; own gives nothing after `--filter -`",
+   "Class": "",
+   "Shrunk": 1,
+   "Est": 20,
+   "Classes": {
+    "report": 1
+   },
+   "Example": [
+    "nodes",
+    "list",
+    "--filter",
+    "-"
+   ],
+   "Outcomes": [
+    "[]",
+    "[\"-expiry\" \"-hostname\" \"-id\" \"-ip\" \"-last-seen\" \"-name\" \"-online\" \"-owner\" \"-version\"]"
+   ],
+   "Samples": [
+    [
+     "headscale nodes list --filter -",
+     "[]",
+     "[\"-expiry\" \"-hostname\" \"-id\" \"-ip\" \"-last-seen\" \"-name\" \"-online\" \"-owner\" \"-version\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "bug: own's Tab reads the previous word as a flag without parsing: a flag-like value (`-c -o \u003cTab\u003e`, D20), a word after `--`, or an empty word (`nodes ls '' \u003cTab\u003e`) make it offer flag values",
+   "Class": "",
+   "Shrunk": 26511,
+   "Est": 26511,
+   "Classes": {
+    "report": 26511
+   },
+   "Example": [
+    "-",
+    ""
+   ],
+   "Outcomes": [
+    "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+    "[]"
+   ],
+   "Samples": [
+    [
+     "headscale x \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[]"
+    ],
+    [
+     "headscale x v",
+     "[\"version\"]",
+     "[]"
+    ],
+    [
+     "headscale nodes x \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[]"
+    ],
+    [
+     "headscale --config x",
+     "[] +files",
+     "[]"
+    ],
+    [
+     "headscale - --h",
+     "[\"--help\"]",
+     "[]"
+    ],
+    [
+     "headscale --version - -",
+     "[\"--config\" \"--help\" \"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale x \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[]"
+    ],
+    [
+     "headscale nodes x \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once)",
+   "Class": "",
+   "Shrunk": 1588,
+   "Est": 1588,
+   "Classes": {
+    "report": 1588
+   },
+   "Example": [
+    "-h",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--output\" \"--version\"]",
+    "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+   ],
+   "Samples": [
+    [
+     "headscale -h -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale -h -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale --output - -",
+     "[\"--config\" \"--help\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale auth --config x keys create -",
+     "[\"--description\" \"--expiry\" \"--help\" \"--output\" \"--reusable\" \"--tags\"]",
+     "[\"--config\" \"--description\" \"--expiry\" \"--help\" \"--output\" \"--reusable\" \"--tags\"]"
+    ],
+    [
+     "headscale --help -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale --help -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale -h -c x -",
+     "[\"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale --config x -",
+     "[\"--help\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "decided D30: a refused word earlier on the line (unknown flag or command): cobra offers files (its parse error returns the Default directive) or skips the word; own completes from the last good command",
+   "Class": "",
+   "Shrunk": 438,
+   "Est": 438,
+   "Classes": {
+    "report": 438
+   },
+   "Example": [
+    "--help=",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--output\" \"--version\"]",
+    "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+   ],
+   "Samples": [
+    [
+     "headscale --help= -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale --help= -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale api --output= keys create -",
+     "[\"--config\" \"--expiry\" \"--help\" \"--user\"]",
+     "[\"--config\" \"--expiry\" \"--help\" \"--output\" \"--user\"]"
+    ],
+    [
+     "headscale --help= -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale --output= -",
+     "[\"--config\" \"--help\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale --help= -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale --help= -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale users rm --with-nodes= -",
+     "[\"--config\" \"--force\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--force\" \"--help\" \"--output\" \"--with-nodes\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "unwanted: pflag's `-x=` quirk earlier on the line (`-h=`, `-o=`)",
+   "Class": "",
+   "Shrunk": 436,
+   "Est": 436,
+   "Classes": {
+    "report": 436
+   },
+   "Example": [
+    "-c=",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--help\" \"--output\" \"--version\"]",
+    "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+   ],
+   "Samples": [
+    [
+     "headscale -c= --version -",
+     "[\"--help\" \"--output\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale nodes set --name - -h= --config x -",
+     "[\"--expiry\" \"--output\"]",
+     "[\"--config\" \"--expiry\" \"--help\" \"--name\" \"--output\"]"
+    ],
+    [
+     "headscale -h= -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale -h= -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale auth -o= keys create -",
+     "[\"--config\" \"--description\" \"--expiry\" \"--help\" \"--reusable\" \"--tags\"]",
+     "[\"--config\" \"--description\" \"--expiry\" \"--help\" \"--output\" \"--reusable\" \"--tags\"]"
+    ],
+    [
+     "headscale -o= -",
+     "[\"--config\" \"--help\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale -h= -",
+     "[\"--config\" \"--output\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ],
+    [
+     "headscale -c= --output= -",
+     "[\"--help\" \"--version\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "implied: a flag typed a second time: the final prototype offers no value for it (T7, D15: the line would be refused); cobra completes it",
+   "Class": "",
+   "Shrunk": 188,
+   "Est": 188,
+   "Classes": {
+    "report": 188
+   },
+   "Example": [
+    "-o",
+    "-o",
+    "j"
+   ],
+   "Outcomes": [
+    "[]",
+    "[\"json\"]"
+   ],
+   "Samples": [
+    [
+     "headscale -o x --output \"\"",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale --output x -o \"\"",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale users -c x --name --config \"\"",
+     "[]",
+     "[\"delete\"]"
+    ],
+    [
+     "headscale --output x -o \"\"",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale -o x -o \"\"",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale -o x -o \"\"",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale --output - --output \"\"",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale policy -c - -ctag:ci -c \"\"",
+     "[]",
+     "[\"set\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "harness: cobra adapter: -o is a hidden persistent flag on the root, so `serve --output=\u003cTab\u003e` completes json for a command without -o; own gives nothing",
+   "Class": "",
+   "Shrunk": 17,
+   "Est": 17,
+   "Classes": {
+    "report": 17
+   },
+   "Example": [
+    "-o=,"
+   ],
+   "Outcomes": [
+    "[]",
+    "[\",json\"]"
+   ],
+   "Samples": [
+    [
+     "headscale -o=tag:ci,",
+     "[]",
+     "[\"tag:ci,json\"]"
+    ],
+    [
+     "headscale -o=tag:ci,",
+     "[]",
+     "[\"tag:ci,json\"]"
+    ],
+    [
+     "headscale --output=id,",
+     "[]",
+     "[\"id,json\"]"
+    ],
+    [
+     "headscale auth keys create -- -o=",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale -o=12,",
+     "[]",
+     "[\"12,json\"]"
+    ],
+    [
+     "headscale --output=,",
+     "[]",
+     "[\",json\"]"
+    ],
+    [
+     "headscale nodes list - --output=id,nam",
+     "[]",
+     "[\"--output=id,name\"]"
+    ],
+    [
+     "headscale --output=-",
+     "[]",
+     "[\"-json\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "decided call: cobra gives nothing once -h/--help/--version is on the line; own completes as usual",
+   "Class": "",
+   "Shrunk": 12,
+   "Est": 12,
+   "Classes": {
+    "report": 12
+   },
+   "Example": [
+    "--help",
+    "-o",
+    "--",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--version\"]",
+    "[]"
+   ],
+   "Samples": [
+    [
+     "headscale --version -c= x -",
+     "[\"--help\" \"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale --help -o -- -",
+     "[\"--config\" \"--version\"]",
+     "[]"
+    ],
+    [
+     "headscale --version -o x x -",
+     "[\"--config\" \"--help\"]",
+     "[]"
+    ],
+    [
+     "headscale --config x --version --help= - -",
+     "[\"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale --version --config x x -",
+     "[\"--help\" \"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale --config= --version --help - -",
+     "[\"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale -c x --version x -",
+     "[\"--help\" \"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale --help --version x -",
+     "[\"--config\" \"--output\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "decided D11: attached value or grouped shorts earlier on the line (D11): pflag reads them, own refuses, so the two complete from different places",
+   "Class": "",
+   "Shrunk": 5,
+   "Est": 5,
+   "Classes": {
+    "report": 5
+   },
+   "Example": [
+    "check",
+    "-hc",
+    "-c",
+    ""
+   ],
+   "Outcomes": [
+    "[] +files",
+    "[\"config\"]"
+   ],
+   "Samples": [
+    [
+     "headscale nodes set --expiry -output -",
+     "[\"--config\" \"--help\" \"--name\" \"--output\"]",
+     "[\"--config\" \"--expiry\" \"--help\" \"--name\" \"--output\"]"
+    ],
+    [
+     "headscale -output completion --outpu",
+     "[]",
+     "[\"--output\"]"
+    ],
+    [
+     "headscale check -hc -c \"\"",
+     "[] +files",
+     "[\"config\"]"
+    ],
+    [
+     "headscale check -otag:ci --config \"\"",
+     "[] +files",
+     "[\"config\"]"
+    ],
+    [
+     "headscale check -hc --config \"\"",
+     "[] +files",
+     "[\"config\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "decided call: a + or - before a value is completed only on --columns and --sort; own gives nothing after `--filter -`",
+   "Class": "",
+   "Shrunk": 4,
+   "Est": 4,
+   "Classes": {
+    "report": 4
+   },
+   "Example": [
+    "nodes",
+    "ls",
+    "--filter",
+    "-"
+   ],
+   "Outcomes": [
+    "[]",
+    "[\"-expiry\" \"-hostname\" \"-id\" \"-ip\" \"-last-seen\" \"-name\" \"-online\" \"-owner\" \"-version\"]"
+   ],
+   "Samples": [
+    [
+     "headscale nodes ls --filter -",
+     "[]",
+     "[\"-expiry\" \"-hostname\" \"-id\" \"-ip\" \"-last-seen\" \"-name\" \"-online\" \"-owner\" \"-version\"]"
+    ],
+    [
+     "headscale nodes list --filter -",
+     "[]",
+     "[\"-expiry\" \"-hostname\" \"-id\" \"-ip\" \"-last-seen\" \"-name\" \"-online\" \"-owner\" \"-version\"]"
+    ],
+    [
+     "headscale nodes ls --filter -o",
+     "[]",
+     "[\"-online\" \"-owner\"]"
+    ],
+    [
+     "headscale nodes list --filter -",
+     "[]",
+     "[\"-expiry\" \"-hostname\" \"-id\" \"-ip\" \"-last-seen\" \"-name\" \"-online\" \"-owner\" \"-version\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "unwanted: malformed flag under the cursor (`--=`, `-=`): cobra completes as if it were empty",
+   "Class": "",
+   "Shrunk": 2,
+   "Est": 2,
+   "Classes": {
+    "report": 2
+   },
+   "Example": [
+    "nodes",
+    "list",
+    "-="
+   ],
+   "Outcomes": [
+    "[]",
+    "[\"expiry\" \"hostname\" \"id\" \"ip\" \"last-seen\" \"name\" \"online\" \"owner\" \"version\"]"
+   ],
+   "Samples": [
+    [
+     "headscale nodes list -=",
+     "[]",
+     "[\"expiry\" \"hostname\" \"id\" \"ip\" \"last-seen\" \"name\" \"online\" \"owner\" \"version\"]"
+    ],
+    [
+     "headscale check config -- --=",
+     "[] +files",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided D30: a refused word earlier on the line (unknown flag or command): cobra offers files (its parse error returns the Default directive) or skips the word; own completes from the last good command",
+   "Class": "",
+   "Shrunk": 886,
+   "Est": 17720,
+   "Classes": {
+    "report": 886
+   },
+   "Example": [
+    "-=",
+    ""
+   ],
+   "Outcomes": [
+    "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+    "[]"
+   ],
+   "Samples": [
+    [
+     "headscale nodes --list-c x \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[]"
+    ],
+    [
+     "headscale nodes routes approve --h -",
+     "[\"--config\" \"--help\" \"--output\"]",
+     "[] +files"
+    ],
+    [
+     "headscale --help= auth \"\"",
+     "[\"keys\"]",
+     "[]"
+    ],
+    [
+     "headscale --force x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --= x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale nodes -X - \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[]"
+    ],
+    [
+     "headscale check --versio \"\"",
+     "[\"config\"]",
+     "[] +files"
+    ],
+    [
+     "headscale --filter= \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "bug: own's Tab reads the previous word as a flag without parsing: a flag-like value (`-c -o \u003cTab\u003e`, D20), a word after `--`, or an empty word (`nodes ls '' \u003cTab\u003e`) make it offer flag values",
+   "Class": "",
+   "Shrunk": 417,
+   "Est": 8340,
+   "Classes": {
+    "report": 417
+   },
+   "Example": [
+    "-",
+    "-"
+   ],
+   "Outcomes": [
+    "[]",
+    "[\"--help\" \"--version\" \"-h\"]"
+   ],
+   "Samples": [
+    [
+     "headscale -c x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale x --help",
+     "[]",
+     "[\"--help\"]"
+    ],
+    [
+     "headscale --config x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale nodes -hc -c x list --version= \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[] +files"
+    ],
+    [
+     "headscale -c=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale x -",
+     "[]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -c x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale x --help",
+     "[]",
+     "[\"--help\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided D27: a free-text flag value (`--name \u003cTab\u003e`, `-d=\u003cTab\u003e`): cobra offers files, own nothing (--config now offers files)",
+   "Class": "",
+   "Shrunk": 209,
+   "Est": 4180,
+   "Classes": {
+    "report": 209
+   },
+   "Example": [
+    "-\u0000="
+   ],
+   "Outcomes": [
+    "[]",
+    "[] +files"
+   ],
+   "Samples": [
+    [
+     "headscale --list-columns=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -h=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -h=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale \"- :=\"",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale --version=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -:=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -h=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -h=",
+     "[]",
+     "[] +files"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided D11: attached value or grouped shorts earlier on the line (D11): pflag reads them, own refuses, so the two complete from different places",
+   "Class": "",
+   "Shrunk": 194,
+   "Est": 3880,
+   "Classes": {
+    "report": 194
+   },
+   "Example": [
+    "-hc",
+    ""
+   ],
+   "Outcomes": [
+    "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+    "[] +files"
+   ],
+   "Samples": [
+    [
+     "headscale -ho \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale nodes -c10.0.0 \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[] +files"
+    ],
+    [
+     "headscale -output x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -help x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale nodes delete -oh --",
+     "[\"--config\" \"--force\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--force\" \"--help\"]"
+    ],
+    [
+     "headscale -ctag:ci - \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[]"
+    ],
+    [
+     "headscale -help x",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -help x \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided call: cobra gives nothing once -h/--help/--version is on the line; own completes as usual",
+   "Class": "",
+   "Shrunk": 130,
+   "Est": 2600,
+   "Classes": {
+    "report": 130
+   },
+   "Example": [
+    "-h",
+    ""
+   ],
+   "Outcomes": [
+    "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+    "[]"
+   ],
+   "Samples": [
+    [
+     "headscale -h policy",
+     "[\"policy\"]",
+     "[]"
+    ],
+    [
+     "headscale --help nodes \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[]"
+    ],
+    [
+     "headscale --help \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[]"
+    ],
+    [
+     "headscale policy --help -",
+     "[\"--help\"]",
+     "[]"
+    ],
+    [
+     "headscale -h \"\"",
+     "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+     "[]"
+    ],
+    [
+     "headscale -h se",
+     "[\"serve\"]",
+     "[]"
+    ],
+    [
+     "headscale users -h \"\"",
+     "[\"delete\"]",
+     "[]"
+    ],
+    [
+     "headscale auth -h keys \"\"",
+     "[\"create\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+   "Class": "",
+   "Shrunk": 90,
+   "Est": 1800,
+   "Classes": {
+    "report": 90
+   },
+   "Example": [
+    "--"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+    "[\"--help\" \"--version\"]"
+   ],
+   "Samples": [
+    [
+     "headscale --outp",
+     "[\"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale --output",
+     "[\"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale --c",
+     "[\"--config\"]",
+     "[]"
+    ],
+    [
+     "headscale --conf",
+     "[\"--config\"]",
+     "[]"
+    ],
+    [
+     "headscale --",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\"]"
+    ],
+    [
+     "headscale --outpu",
+     "[\"--output\"]",
+     "[]"
+    ],
+    [
+     "headscale --co",
+     "[\"--config\"]",
+     "[]"
+    ],
+    [
+     "headscale -o",
+     "[\"-o\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided D29: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+   "Class": "",
+   "Shrunk": 87,
+   "Est": 1740,
+   "Classes": {
+    "report": 87
+   },
+   "Example": [
+    "api",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--help\"]",
+    "[\"--help\" \"-h\"]"
+   ],
+   "Samples": [
+    [
+     "headscale nodes delete -",
+     "[\"--config\" \"--force\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--force\" \"--help\" \"--output\" \"-c\" \"-h\" \"-o\"]"
+    ],
+    [
+     "headscale check -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale users -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale auth keys create -",
+     "[\"--config\" \"--description\" \"--expiry\" \"--help\" \"--output\" \"--reusable\" \"--tags\"]",
+     "[\"--config\" \"--description\" \"--expiry\" \"--help\" \"--output\" \"--reusable\" \"--tags\" \"-c\" \"-d\" \"-e\" \"-h\" \"-o\"]"
+    ],
+    [
+     "headscale check config -",
+     "[\"--config\" \"--help\"]",
+     "[\"--config\" \"--help\" \"-c\" \"-h\"]"
+    ],
+    [
+     "headscale completion -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale nodes rm -",
+     "[\"--config\" \"--force\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--force\" \"--help\" \"--output\" \"-c\" \"-h\" \"-o\"]"
+    ],
+    [
+     "headscale check -",
+     "[\"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided D29: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only + harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+   "Class": "",
+   "Shrunk": 66,
+   "Est": 1320,
+   "Classes": {
+    "report": 66
+   },
+   "Example": [
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+    "[\"--help\" \"--version\" \"-h\"]"
+   ],
+   "Samples": [
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ],
+    [
+     "headscale -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"--version\" \"-h\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "unwanted: pflag's `-x=` quirk earlier on the line (`-h=`, `-o=`)",
+   "Class": "",
+   "Shrunk": 33,
+   "Est": 660,
+   "Classes": {
+    "report": 33
+   },
+   "Example": [
+    "- =",
+    ""
+   ],
+   "Outcomes": [
+    "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+    "[]"
+   ],
+   "Samples": [
+    [
+     "headscale nodes -h= \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[]"
+    ],
+    [
+     "headscale auth -h= \"\"",
+     "[\"keys\"]",
+     "[]"
+    ],
+    [
+     "headscale api -h= \"\"",
+     "[\"keys\"]",
+     "[]"
+    ],
+    [
+     "headscale check -h= c",
+     "[\"config\"]",
+     "[]"
+    ],
+    [
+     "headscale api -h= \"\"",
+     "[\"keys\"]",
+     "[]"
+    ],
+    [
+     "headscale api -h= \"\"",
+     "[\"keys\"]",
+     "[]"
+    ],
+    [
+     "headscale api keys -h= \"\"",
+     "[\"create\"]",
+     "[]"
+    ],
+    [
+     "headscale nodes -h= \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "unwanted: malformed flag under the cursor (`--=`, `-=`): cobra completes as if it were empty",
+   "Class": "",
+   "Shrunk": 31,
+   "Est": 620,
+   "Classes": {
+    "report": 31
+   },
+   "Example": [
+    "-="
+   ],
+   "Outcomes": [
+    "[]",
+    "[] +files"
+   ],
+   "Samples": [
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -ho --=",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ],
+    [
+     "headscale -=",
+     "[]",
+     "[] +files"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once)",
+   "Class": "",
+   "Shrunk": 12,
+   "Est": 240,
+   "Classes": {
+    "report": 12
+   },
+   "Example": [
+    "version",
+    "-o",
+    "-",
+    "--"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--help\" \"--output\"]",
+    "[\"--config\" \"--help\"]"
+   ],
+   "Samples": [
+    [
+     "headscale nodes set --name x --",
+     "[\"--config\" \"--expiry\" \"--help\" \"--name\" \"--output\"]",
+     "[\"--config\" \"--expiry\" \"--help\" \"--output\"]"
+    ],
+    [
+     "headscale api keys --config= create --",
+     "[\"--config\" \"--expiry\" \"--help\" \"--output\" \"--user\"]",
+     "[\"--expiry\" \"--help\" \"--output\" \"--user\"]"
+    ],
+    [
+     "headscale nodes list --list-columns --",
+     "[\"--columns\" \"--config\" \"--filter\" \"--help\" \"--list-columns\" \"--output\" \"--sort\"]",
+     "[\"--columns\" \"--config\" \"--filter\" \"--help\" \"--output\" \"--sort\"]"
+    ],
+    [
+     "headscale version -o - --",
+     "[\"--config\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--help\"]"
+    ],
+    [
+     "headscale nodes --output x set --",
+     "[\"--config\" \"--expiry\" \"--help\" \"--name\" \"--output\"]",
+     "[\"--config\" \"--expiry\" \"--help\" \"--name\"]"
+    ],
+    [
+     "headscale auth keys create -c - --",
+     "[\"--config\" \"--description\" \"--expiry\" \"--help\" \"--output\" \"--reusable\" \"--tags\"]",
+     "[\"--description\" \"--expiry\" \"--help\" \"--output\" \"--reusable\" \"--tags\"]"
+    ],
+    [
+     "headscale --config x check config --",
+     "[\"--config\" \"--help\"]",
+     "[\"--help\"]"
+    ],
+    [
+     "headscale nodes --config x set --",
+     "[\"--config\" \"--expiry\" \"--help\" \"--name\" \"--output\"]",
+     "[\"--expiry\" \"--help\" \"--name\" \"--output\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + decided D29: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+   "Class": "",
+   "Shrunk": 12,
+   "Est": 240,
+   "Classes": {
+    "report": 12
+   },
+   "Example": [
+    "serve",
+    "-c",
+    "-",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--help\"]",
+    "[\"--help\" \"-h\"]"
+   ],
+   "Samples": [
+    [
+     "headscale serve -c - -",
+     "[\"--config\" \"--help\"]",
+     "[\"--help\" \"-h\"]"
+    ],
+    [
+     "headscale nodes routes approve -h -",
+     "[\"--config\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--output\" \"-c\" \"-o\"]"
+    ],
+    [
+     "headscale serve --help -",
+     "[\"--config\" \"--help\"]",
+     "[\"--config\" \"-c\"]"
+    ],
+    [
+     "headscale nodes rm --help -",
+     "[\"--config\" \"--force\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--force\" \"--output\" \"-c\" \"-o\"]"
+    ],
+    [
+     "headscale api keys create --expiry x -",
+     "[\"--config\" \"--expiry\" \"--help\" \"--output\" \"--user\"]",
+     "[\"--config\" \"--help\" \"--output\" \"--user\" \"-c\" \"-h\" \"-o\" \"-u\"]"
+    ],
+    [
+     "headscale api -c x keys create -",
+     "[\"--config\" \"--expiry\" \"--help\" \"--output\" \"--user\"]",
+     "[\"--expiry\" \"--help\" \"--output\" \"--user\" \"-e\" \"-h\" \"-o\" \"-u\"]"
+    ],
+    [
+     "headscale policy -h set -",
+     "[\"--config\" \"--dry-run\" \"--force\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--dry-run\" \"--force\" \"--output\" \"-c\" \"-o\"]"
+    ],
+    [
+     "headscale nodes delete -h -",
+     "[\"--config\" \"--force\" \"--help\" \"--output\"]",
+     "[\"--config\" \"--force\" \"--output\" \"-c\" \"-o\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "unwanted: cobra's Tab path reads a flag-like value of a value flag as flags (`-o -last-se api \u003cTab\u003e`: 'api does not support flag e'); its Run reads it as the value (D20), so Tab and Run disagree (#2243 family)",
+   "Class": "",
+   "Shrunk": 9,
+   "Est": 180,
+   "Classes": {
+    "report": 9
+   },
+   "Example": [
+    "policy",
+    "-o",
+    "-o",
+    ""
+   ],
+   "Outcomes": [
+    "[\"set\"]",
+    "[] +files"
+   ],
+   "Samples": [
+    [
+     "headscale nodes routes --config -c \"\"",
+     "[\"set\"]",
+     "[] +files"
+    ],
+    [
+     "headscale --config --config nodes ls",
+     "[\"ls\"]",
+     "[] +files"
+    ],
+    [
+     "headscale -o --versio api \"\"",
+     "[\"keys\"]",
+     "[] +files"
+    ],
+    [
+     "headscale nodes --output --o \"\"",
+     "[\"delete\" \"list\" \"routes\" \"set\"]",
+     "[] +files"
+    ],
+    [
+     "headscale auth --config --config \"\"",
+     "[\"keys\"]",
+     "[] +files"
+    ],
+    [
+     "headscale -c --output check conf",
+     "[\"config\"]",
+     "[] +files"
+    ],
+    [
+     "headscale --config -o check \"\"",
+     "[\"config\"]",
+     "[] +files"
+    ],
+    [
+     "headscale policy -o -o \"\"",
+     "[\"set\"]",
+     "[] +files"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+   "Class": "",
+   "Shrunk": 4,
+   "Est": 80,
+   "Classes": {
+    "report": 4
+   },
+   "Example": [
+    "-h",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+    "[\"--version\"]"
+   ],
+   "Samples": [
+    [
+     "headscale -h -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--version\"]"
+    ],
+    [
+     "headscale -h -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--version\"]"
+    ],
+    [
+     "headscale --help -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--version\"]"
+    ],
+    [
+     "headscale --help -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--version\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "harness: cobra adapter: -o is a hidden persistent flag on the root, so `serve --output=\u003cTab\u003e` completes json for a command without -o; own gives nothing",
+   "Class": "",
+   "Shrunk": 3,
+   "Est": 60,
+   "Classes": {
+    "report": 3
+   },
+   "Example": [
+    "x",
+    "--output="
+   ],
+   "Outcomes": [
+    "[]",
+    "[\"json\"]"
+   ],
+   "Samples": [
+    [
+     "headscale x --output=-",
+     "[]",
+     "[\"-json\"]"
+    ],
+    [
+     "headscale x --output=",
+     "[]",
+     "[\"json\"]"
+    ],
+    [
+     "headscale x --output=",
+     "[]",
+     "[\"json\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + decided D29: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only + harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+   "Class": "",
+   "Shrunk": 1,
+   "Est": 20,
+   "Classes": {
+    "report": 1
+   },
+   "Example": [
+    "--version",
+    "-"
+   ],
+   "Outcomes": [
+    "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+    "[\"--help\" \"-h\"]"
+   ],
+   "Samples": [
+    [
+     "headscale --version -",
+     "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+     "[\"--help\" \"-h\"]"
+    ]
+   ]
+  }
+ ],
+ "compared": {
+  "grammar~cobra": 125000,
+  "grammar~pflag": 125000,
+  "pflag~cobra": 125000
+ },
+ "differ": {
+  "grammar~cobra": 49280,
+  "grammar~pflag": 29201,
+  "pflag~cobra": 43633
+ },
+ "patterns": {
+  "all agree": 67897,
+  "all three differ": 7908,
+  "cobra alone differs": 27902,
+  "grammar alone differs": 13470,
+  "own-pflag alone differs": 7823
+ },
+ "severity": {
+  "grammar~cobra|report": 49280,
+  "grammar~pflag|report": 29201,
+  "pflag~cobra|report": 43633
+ },
+ "shrunk": {
+  "grammar~cobra": 2530,
+  "grammar~pflag": 29201,
+  "pflag~cobra": 2184
+ }
+}

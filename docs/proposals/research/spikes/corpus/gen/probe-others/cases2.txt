@@ -1,0 +1,22 @@
+nope
+grp nope
+grp s x
+r x
+-c x run a
+run a -c x
+run --config x a
+grp --config x sub
+run --file a --file b
+run --list a,b --list c
+run --unknown --bool
+run --bool -h
+run -h --unknown
+run x --unknown -h
+run EMPTY a
+run a _SP_-_SP_ b
+run --string -- x
+run --bool=true x
+run -b=true
+run --bool --bool
+run --list=
+run a -b c -v

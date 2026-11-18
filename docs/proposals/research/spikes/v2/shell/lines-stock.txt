@@ -1,0 +1,7 @@
+headscale nodes list --columns id,na
+headscale nodes list --columns=id,na
+headscale nodes list --sort -la
+headscale nodes list --sort=-la
+headscale nodes list --tags tag:p
+headscale nodes list --tags tag:ci,tag:p
+headscale nodes list --columns id,

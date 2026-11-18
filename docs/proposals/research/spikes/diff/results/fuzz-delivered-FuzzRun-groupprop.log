@@ -1,0 +1,10 @@
+warning: the test binary was not built with coverage instrumentation, so fuzzing will run without coverage guidance and may be inefficient
+fuzz: elapsed: 0s, testing seed corpus: 0/309 completed
+failure while testing seed corpus entry: FuzzRun/seed#9
+fuzz: elapsed: 0s, testing seed corpus: 19/309 completed
+--- FAIL: FuzzRun (0.01s)
+    --- FAIL: FuzzRun (0.00s)
+        fuzz_test.go:149: flag place at a group: ["-c" "24h" "--version" "users" "--help"] -> users [] help=["true"]
+              moved ["users" "-c" "24h" "--version" "--help"] -> users [] config=["24h"] help=["true"] version=["true"]
+    
+FAIL

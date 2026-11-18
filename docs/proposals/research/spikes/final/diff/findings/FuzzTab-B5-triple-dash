@@ -1,0 +1,2 @@
+go test fuzz v1
+string("auth\x00keys\x00create\x00---tags=")

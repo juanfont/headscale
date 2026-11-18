@@ -1,0 +1,123 @@
+=== RUN   TestProbe
+    main_test.go:134: PARSE ["items" "list" "--sort" "-name"] => Path=["items" "list"] Flags=[{sort -name 2}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "--sort=-name"] => Path=["items" "list"] Flags=[{sort -name 2}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "-o" "json"] => Path=["items" "list"] Flags=[{output json 2}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "-o=json"] => Path=["items" "list"] Flags=[{output json 2}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "--output=json"] => Path=["items" "list"] Flags=[{output json 2}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "-ojson"] => Path=["items" "list"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["items" "list"] Word="-ojson" At=2 text="unknown flag -ojson for \"items list\""
+    main_test.go:134: PARSE ["items" "list" "--o" "json"] => Path=["items" "list"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["items" "list"] Word="--o" At=2 text="unknown flag --o for \"items list\""
+    main_test.go:134: PARSE ["items" "list" "-output" "json"] => Path=["items" "list"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["items" "list"] Word="-output" At=2 text="unknown flag -output for \"items list\""
+    main_test.go:134: PARSE ["items" "list" "--sor" "id"] => Path=["items" "list"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["items" "list"] Word="--sor" At=2 text="unknown flag --sor for \"items list\""
+    main_test.go:134: PARSE ["items" "list" "---sort" "id"] => Path=["items" "list"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["items" "list"] Word="---sort" At=2 text="unknown flag ---sort for \"items list\""
+    main_test.go:134: PARSE ["items" "delete" "12" "--force"] => Path=["items" "delete"] Flags=[{force true 3}] Args=["12"] ArgAt=[2]
+    main_test.go:134: PARSE ["items" "delete" "--force" "maybe"] => Path=["items" "delete"] Flags=[{force true 2}] Args=["maybe"] ArgAt=[3]
+    main_test.go:134: PARSE ["items" "delete" "12" "--force=maybe"] => Path=["items" "delete"] Flags=[{force maybe 3}] Args=["12"] ArgAt=[2]
+    main_test.go:134: PARSE ["items" "delete" "12" "--force=false"] => Path=["items" "delete"] Flags=[{force false 3}] Args=["12"] ArgAt=[2]
+    main_test.go:134: PARSE ["items" "delete" "12" "--no-force"] => Path=["items" "delete"] Flags=[] Args=["12"] ArgAt=[2] ERR Kind=2 Path=["items" "delete"] Word="--no-force" At=3 text="unknown flag --no-force for \"items delete\""
+    main_test.go:134: PARSE ["items" "delete" "12" "-"] => Path=["items" "delete"] Flags=[] Args=["12" "-"] ArgAt=[2 3]
+    main_test.go:134: PARSE ["items" "delete" "12" ""] => Path=["items" "delete"] Flags=[] Args=["12" ""] ArgAt=[2 3]
+    main_test.go:134: PARSE ["items" "delete" "--" "--force" "-h"] => Path=["items" "delete"] Flags=[] Args=["--force" "-h"] ArgAt=[3 4]
+    main_test.go:134: PARSE ["items" "delete" "12" "--"] => Path=["items" "delete"] Flags=[] Args=["12"] ArgAt=[2]
+    main_test.go:134: PARSE ["items" "delete" "-5"] => Path=["items" "delete"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["items" "delete"] Word="-5" At=2 text="unknown flag -5 for \"items delete\""
+    main_test.go:134: PARSE ["items" "delete" "-h"] => Path=["items" "delete"] Flags=[{help true 2}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "-o" "a" "-o" "b"] => Path=["items" "list"] Flags=[{output a 2} {output b 4}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "--filter" "id=1" "--filter" "name=x"] => Path=["items" "list"] Flags=[{filter id=1 2} {filter name=x 4}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["-c" "x.yaml" "items" "list"] => Path=["items" "list"] Flags=[{config x.yaml 0}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "-c" "x.yaml" "list"] => Path=["items" "list"] Flags=[{config x.yaml 1}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "-c" "x.yaml"] => Path=["items" "list"] Flags=[{config x.yaml 2}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["-c" "x.yaml" "check" "a.yaml"] => Path=["check"] Flags=[{config x.yaml 0}] Args=["a.yaml"] ArgAt=[3]
+    main_test.go:134: PARSE ["-o" "json" "check" "a.yaml"] => Path=["check"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["check"] Word="-o" At=0 text="unknown flag -o for \"check\""
+    main_test.go:134: PARSE ["items" "--sort" "id" "list"] => Path=["items"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["items"] Word="--sort" At=1 text="unknown flag --sort for \"items\""
+    main_test.go:134: PARSE ["--force" "items" "delete" "12"] => Path=[] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=[] Word="--force" At=0 text="unknown flag --force"
+    main_test.go:134: PARSE ["items"] => Path=["items"] Flags=[] Args=[] ArgAt=[]
+    main_test.go:134: PARSE [""] => Path=[] Flags=[] Args=[] ArgAt=[] ERR Kind=1 Path=[] Word="" At=0 text="unknown command \"\""
+    main_test.go:134: PARSE [] => Path=[] Flags=[] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["-h" "items"] => Path=["items"] Flags=[{help true 0}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["-h" "items" "list"] => Path=["items" "list"] Flags=[{help true 0}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "lst"] => Path=["items"] Flags=[] Args=[] ArgAt=[] ERR Kind=1 Path=["items"] Word="lst" At=1 text="unknown command \"lst\" for \"items\""
+    main_test.go:134: PARSE ["items" "help"] => Path=["items"] Flags=[] Args=[] ArgAt=[] ERR Kind=1 Path=["items"] Word="help" At=1 text="unknown command \"help\" for \"items\""
+    main_test.go:134: PARSE ["help"] => Path=[] Flags=[] Args=[] ArgAt=[] ERR Kind=1 Path=[] Word="help" At=0 text="unknown command \"help\""
+    main_test.go:134: PARSE ["Items"] => Path=[] Flags=[] Args=[] ArgAt=[] ERR Kind=1 Path=[] Word="Items" At=0 text="unknown command \"Items\""
+    main_test.go:134: PARSE ["--" "items"] => Path=[] Flags=[] Args=[] ArgAt=[] ERR Kind=1 Path=[] Word="--" At=0 text="unknown command \"--\""
+    main_test.go:134: PARSE ["items" "--" "list"] => Path=["items"] Flags=[] Args=[] ArgAt=[] ERR Kind=1 Path=["items"] Word="--" At=1 text="unknown command \"--\" for \"items\""
+    main_test.go:134: PARSE ["prog" "items"] => Path=[] Flags=[] Args=[] ArgAt=[] ERR Kind=1 Path=[] Word="prog" At=0 text="unknown command \"prog\""
+    main_test.go:134: PARSE ["items" "delete" "list"] => Path=["items" "delete"] Flags=[] Args=["list"] ArgAt=[2]
+    main_test.go:134: PARSE ["items" "list" "--sort"] => Path=["items" "list"] Flags=[] Args=[] ArgAt=[] ERR Kind=3 Path=["items" "list"] Word="--sort" At=2 text="flag --sort needs a value"
+    main_test.go:134: PARSE ["-o"] => Path=[] Flags=[] Args=[] ArgAt=[] ERR Kind=3 Path=[] Word="-o" At=0 text="flag -o needs a value"
+    main_test.go:134: PARSE ["items" "-c"] => Path=["items"] Flags=[] Args=[] ArgAt=[] ERR Kind=3 Path=["items"] Word="-c" At=1 text="flag -c needs a value"
+    main_test.go:134: PARSE ["items" "list" "--bogus" "-h"] => Path=["items" "list"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["items" "list"] Word="--bogus" At=2 text="unknown flag --bogus for \"items list\""
+    main_test.go:134: PARSE ["items" "list" "-h" "--bogus"] => Path=["items" "list"] Flags=[{help true 2}] Args=[] ArgAt=[] ERR Kind=2 Path=["items" "list"] Word="--bogus" At=3 text="unknown flag --bogus for \"items list\""
+    main_test.go:134: PARSE ["-o" "a" "items" "-o" "b" "lst"] => Path=["items"] Flags=[{output a 0} {output b 3}] Args=[] ArgAt=[] ERR Kind=1 Path=["items"] Word="lst" At=5 text="unknown command \"lst\" for \"items\""
+    main_test.go:134: PARSE ["items" "list" "-o" "a" "-o" "b" "--sort"] => Path=["items" "list"] Flags=[{output a 2} {output b 4}] Args=[] ArgAt=[] ERR Kind=3 Path=["items" "list"] Word="--sort" At=6 text="flag --sort needs a value"
+    main_test.go:134: PARSE ["-c" "a" "-o" "j" "-c" "b" "check"] => Path=["check"] Flags=[{config a 0}] Args=[] ArgAt=[] ERR Kind=2 Path=["check"] Word="-o" At=2 text="unknown flag -o for \"check\""
+    main_test.go:134: PARSE ["items" "delete" "-o=x" "12" "--bogus" "13"] => Path=["items" "delete"] Flags=[{output x 2}] Args=["12"] ArgAt=[3] ERR Kind=2 Path=["items" "delete"] Word="--bogus" At=4 text="unknown flag --bogus for \"items delete\""
+    main_test.go:134: PARSE ["-c" "nodes" "items" "list"] => Path=["items" "list"] Flags=[{config nodes 0}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "--sort" "--filter" "x"] => Path=["items" "list"] Flags=[{sort --filter 2}] Args=["x"] ArgAt=[4]
+    main_test.go:134: PARSE ["items" "list" "--sort=a=b" "--filter="] => Path=["items" "list"] Flags=[{sort a=b 2} {filter  3}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["items" "list" "-o="] => Path=["items" "list"] Flags=[{output  2}] Args=[] ArgAt=[]
+    main_test.go:134: PARSE ["-"] => Path=[] Flags=[] Args=[] ArgAt=[] ERR Kind=1 Path=[] Word="-" At=0 text="unknown command \"-\""
+    main_test.go:134: PARSE ["items" "delete" "-\xff"] => Path=["items" "delete"] Flags=[] Args=[] ArgAt=[] ERR Kind=2 Path=["items" "delete"] Word="-\xff" At=2 text="unknown flag -\xff for \"items delete\""
+    main_test.go:188: TAB "" => "items\tManage items\ncheck\tCheck a file\ncompletion\tWrite a completion script\n:4\n"
+    main_test.go:188: TAB "it" => "items\tManage items\n:4\n"
+    main_test.go:188: TAB "items " => "list\tList items\ndelete\tDelete an item\n:4\n"
+    main_test.go:188: TAB "items l" => "list\tList items\n:4\n"
+    main_test.go:188: TAB "items r" => "rm\tDelete an item\n:4\n"
+    main_test.go:188: TAB "items rm" => "rm\tDelete an item\n:4\n"
+    main_test.go:188: TAB "items list -" => "--help\tShow help\n--output\tOutput format\n--config\tConfig file\n--sort\tSort by\n--filter\tKeep matching rows\n:4\n"
+    main_test.go:188: TAB "items list --" => "--help\tShow help\n--output\tOutput format\n--config\tConfig file\n--sort\tSort by\n--filter\tKeep matching rows\n:4\n"
+    main_test.go:188: TAB "items list -o" => "-o\tOutput format\n:4\n"
+    main_test.go:188: TAB "items list -s" => ":4\n"
+    main_test.go:188: TAB "items list -o " => "json\nyaml\n:4\n"
+    main_test.go:188: TAB "items list --output=j" => "json\n:4\n"
+    main_test.go:188: TAB "items list --sort " => "id\nname\n:4\n"
+    main_test.go:188: TAB "items list --sort -" => ":4\n"
+    main_test.go:188: TAB "items list --sort -o " => ":4\n"
+    main_test.go:188: TAB "items list --sort id --" => "--help\tShow help\n--output\tOutput format\n--config\tConfig file\n--filter\tKeep matching rows\n:4\n"
+    main_test.go:188: TAB "items list --filter id --f" => "--filter\tKeep matching rows\n:4\n"
+    main_test.go:188: TAB "items list --filter id --filter " => "id\nname\n:4\n"
+    main_test.go:188: TAB "items list -o json -o " => ":4\n"
+    main_test.go:188: TAB "items list -o= --output=" => ":4\n"
+    main_test.go:188: TAB "items list --config=" => ":0\n"
+    main_test.go:188: TAB "items list --force=" => ":4\n"
+    main_test.go:188: TAB "items delete --force=" => ":4\n"
+    main_test.go:188: TAB "items list --bogus=x" => ":4\n"
+    main_test.go:188: TAB "items delete " => "12\n13\n:4\n"
+    main_test.go:188: TAB "items delete 12 " => ":4\n"
+    main_test.go:188: TAB "items delete -- " => "12\n13\n:4\n"
+    main_test.go:188: TAB "items delete -- --" => ":4\n"
+    main_test.go:188: TAB "items delete 12 -- --" => ":4\n"
+    main_test.go:188: TAB "items list --sort -- --" => "--help\tShow help\n--output\tOutput format\n--config\tConfig file\n--filter\tKeep matching rows\n:4\n"
+    main_test.go:188: TAB "items list --sort -- -" => "--help\tShow help\n--output\tOutput format\n--config\tConfig file\n--filter\tKeep matching rows\n:4\n"
+    main_test.go:188: TAB "-c other.yaml items rm " => "21\n22\n:4\n"
+    main_test.go:188: TAB "-c " => ":0\n"
+    main_test.go:188: TAB "check " => ":0\n"
+    main_test.go:188: TAB "check a.yaml " => ":4\n"
+    main_test.go:188: TAB "itemz " => "items\tManage items\ncheck\tCheck a file\ncompletion\tWrite a completion script\n:4\n"
+    main_test.go:188: TAB "items lst " => "list\tList items\ndelete\tDelete an item\n:4\n"
+    main_test.go:188: TAB "-- items " => "list\tList items\ndelete\tDelete an item\n:4\n"
+    main_test.go:188: TAB "items list --bogus --s" => "--sort\tSort by\n:4\n"
+    main_test.go:188: TAB "items list --bogus " => ":4\n"
+    main_test.go:188: TAB "items list -h --" => "--output\tOutput format\n--config\tConfig file\n--sort\tSort by\n--filter\tKeep matching rows\n:4\n"
+    main_test.go:188: TAB "-h it" => "items\tManage items\n:4\n"
+    main_test.go:188: TAB "items --" => "--help\tShow help\n:4\n"
+    main_test.go:188: TAB "--" => "--help\tShow help\n--output\tOutput format\n--config\tConfig file\n:4\n"
+    main_test.go:188: TAB "I" => ":4\n"
+    main_test.go:188: TAB "completion " => "bash\nzsh\nfish\npowershell\n:4\n"
+    main_test.go:188: TAB "items delete o " => ":4\n"
+    main_test.go:188: TAB "items list --sort=\"" => ":4\n"
+    main_test.go:192: NODESC => "list\ndelete\n:4\n"
+    main_test.go:195: BARE => "items\tManage items\ncheck\tCheck a file\ncompletion\tWrite a completion script\n:4\n"
+    main_test.go:196: SERVE other => false
+    main_test.go:218: CHECK dup child => prog items: "ls" names two commands
+    main_test.go:218: CHECK group args => prog items: a group takes no positionals
+    main_test.go:218: CHECK dash name => prog: "-x" cannot be typed as a command word
+    main_test.go:218: CHECK space name => prog: "check it" cannot be typed as a command word
+    main_test.go:218: CHECK flag = => prog: flag name "a=b" cannot be typed
+    main_test.go:218: CHECK short ø => prog: --x: short 'ø' is not one printable ASCII letter
+    main_test.go:218: CHECK flag twice => prog: flag --help declared twice
+    main_test.go:218: CHECK two shorts => prog items list: --output and --output: one spelling, two flags
+    main_test.go:218: CHECK bool here value there => prog items list: --output and --output: one spelling, two flags
+    main_test.go:218: CHECK one short two flags => prog items delete: --config and --count: one spelling, two flags
+--- PASS: TestProbe (0.00s)
+PASS
+ok  	prog	0.005s

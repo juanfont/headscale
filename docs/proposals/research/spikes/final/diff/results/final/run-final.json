@@ -1,0 +1,2589 @@
+{
+ "buckets": [
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided D19: `-h` with a mistake: the error wins; cobra shows help",
+   "Class": "",
+   "Shrunk": 4569,
+   "Est": 91380,
+   "Classes": {
+    "acceptance": 4569
+   },
+   "Example": [
+    "-",
+    "-h"
+   ],
+   "Outcomes": [
+    "unknown-command [] \"-\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale policy --version= -h",
+     "unknown-flag [policy] \"version\"",
+     "help policy"
+    ],
+    [
+     "headscale x --help",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale x -h",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale auth --version= --help",
+     "unknown-flag [auth] \"version\"",
+     "help auth"
+    ],
+    [
+     "headscale --forc --help",
+     "unknown-flag [] \"forc\"",
+     "help"
+    ],
+    [
+     "headscale check --help --version=",
+     "unknown-flag [check] \"version\"",
+     "help check"
+    ],
+    [
+     "headscale -= -h",
+     "unknown-flag [] \"\"",
+     "help"
+    ],
+    [
+     "headscale x --help",
+     "unknown-command [] \"x\"",
+     "help"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided D11: attached value or grouped shorts (`-ojson`, `-hc`, `-c-`, `-output`): own refuses, pflag reads a value or a group",
+   "Class": "",
+   "Shrunk": 4140,
+   "Est": 82800,
+   "Classes": {
+    "acceptance": 2042,
+    "report": 2098
+   },
+   "Example": [
+    "-c\u0000"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"c\\x00\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale -ocreate version",
+     "unknown-flag [] \"ocreate\"",
+     "run version [] output=[\"create\"]"
+    ],
+    [
+     "headscale -o12",
+     "unknown-flag [] \"o12\"",
+     "help"
+    ],
+    [
+     "headscale -ho -",
+     "unknown-flag [] \"ho\"",
+     "help"
+    ],
+    [
+     "headscale -cjson",
+     "unknown-flag [] \"cjson\"",
+     "help"
+    ],
+    [
+     "headscale -ojson x",
+     "unknown-flag [] \"ojson\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -c: x",
+     "unknown-flag [] \"c:\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -oj x",
+     "unknown-flag [] \"oj\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale users -oj rm x",
+     "unknown-flag [users] \"oj\"",
+     "run users delete [\"x\"] output=[\"j\"]"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "harness: cobra adapter: pflag's InvalidSyntaxError (`--=`, `---x`) is not mapped to a usage error",
+   "Class": "",
+   "Shrunk": 2372,
+   "Est": 47440,
+   "Classes": {
+    "report": 2372
+   },
+   "Example": [
+    "---"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"\"",
+    "error: bad flag syntax: ---"
+   ],
+   "Samples": [
+    [
+     "headscale ---",
+     "unknown-flag [] \"\"",
+     "error: bad flag syntax: ---"
+    ],
+    [
+     "headscale --=",
+     "unknown-flag [] \"\"",
+     "error: bad flag syntax: --="
+    ],
+    [
+     "headscale --=",
+     "unknown-flag [] \"\"",
+     "error: bad flag syntax: --="
+    ],
+    [
+     "headscale ---force",
+     "unknown-flag [] \"force\"",
+     "error: bad flag syntax: ---force"
+    ],
+    [
+     "headscale ---",
+     "unknown-flag [] \"\"",
+     "error: bad flag syntax: ---"
+    ],
+    [
+     "headscale --=",
+     "unknown-flag [] \"\"",
+     "error: bad flag syntax: --="
+    ],
+    [
+     "headscale x --=",
+     "unknown-command [] \"x\"",
+     "error: bad flag syntax: --="
+    ],
+    [
+     "headscale ---force",
+     "unknown-flag [] \"force\"",
+     "error: bad flag syntax: ---force"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "report: two mistakes on the line, each side names a different one first",
+   "Class": "",
+   "Shrunk": 2150,
+   "Est": 43000,
+   "Classes": {
+    "report": 2150
+   },
+   "Example": [
+    "",
+    "-,"
+   ],
+   "Outcomes": [
+    "unknown-command [] \"\"",
+    "unknown-flag [] \",\""
+   ],
+   "Samples": [
+    [
+     "headscale --output x --version --output -",
+     "not-alone [] \"version\"",
+     "flag-repeated [] \"output\""
+    ],
+    [
+     "headscale version --help= --versio",
+     "bad-value [version] \"help\"",
+     "unknown-flag [version] \"versio\""
+    ],
+    [
+     "headscale --version nodes rm",
+     "unknown-flag [nodes delete] \"version\"",
+     "unknown-flag [nodes] \"version\""
+    ],
+    [
+     "headscale -X -o",
+     "unknown-flag [] \"X\"",
+     "missing-value [] \"output\""
+    ],
+    [
+     "headscale --help= -c",
+     "bad-value [] \"help\"",
+     "missing-value [] \"config\""
+    ],
+    [
+     "headscale serve --output= --help -h=false",
+     "unknown-flag [serve] \"output\"",
+     "flag-repeated [serve] \"help\""
+    ],
+    [
+     "headscale --help=true --help=f x",
+     "flag-repeated [] \"help\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -o - --output= x",
+     "flag-repeated [] \"output\"",
+     "unknown-command [] \"x\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided D15: a repeated or empty global flag before a group (`-o a -o b nodes`, `-o '' nodes`) is a mistake (D15, call 2 on empty -o, D35); kit v2's layer let globals at a group be",
+   "Class": "",
+   "Shrunk": 2106,
+   "Est": 42120,
+   "Classes": {
+    "acceptance": 2106
+   },
+   "Example": [
+    "-h="
+   ],
+   "Outcomes": [
+    "bad-value [] \"help\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale -h -h",
+     "flag-repeated [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale -h=",
+     "bad-value [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale --help= --help",
+     "bad-value [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale -h --help",
+     "flag-repeated [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale -h=",
+     "bad-value [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale -h=",
+     "bad-value [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale -h=",
+     "bad-value [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale -h --help",
+     "flag-repeated [] \"help\"",
+     "help"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "harness: cobra adapter: unknown flags at a group go to its args (for D5), so the unknown command is named instead of the flag",
+   "Class": "",
+   "Shrunk": 1936,
+   "Est": 38720,
+   "Classes": {
+    "report": 1936
+   },
+   "Example": [
+    "-\u0000",
+    "x"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"\\x00\"",
+    "unknown-command [] \"x\""
+   ],
+   "Samples": [
+    [
+     "headscale --bogus x",
+     "unknown-flag [] \"bogus\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --versio x",
+     "unknown-flag [] \"versio\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --forc x",
+     "unknown-flag [] \"forc\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --bogus x",
+     "unknown-flag [] \"bogus\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --Force x",
+     "unknown-flag [] \"Force\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --columns= x",
+     "unknown-flag [] \"columns\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -ñ x",
+     "unknown-flag [] \"ñ\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --with-nodes= x",
+     "unknown-flag [] \"with-nodes\"",
+     "unknown-command [] \"x\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided call: `--` before the command is complete: own says unknown command `--`; cobra drops it and reads on (`nodes --` is help, `-- nodes list` unknown command `nodes`)",
+   "Class": "",
+   "Shrunk": 1479,
+   "Est": 29580,
+   "Classes": {
+    "acceptance": 233,
+    "report": 1246
+   },
+   "Example": [
+    "--"
+   ],
+   "Outcomes": [
+    "unknown-command [] \"--\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale -- x",
+     "unknown-command [] \"--\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --",
+     "unknown-command [] \"--\"",
+     "help"
+    ],
+    [
+     "headscale -- --",
+     "unknown-command [] \"--\"",
+     "unknown-flag [] \"\""
+    ],
+    [
+     "headscale -- --",
+     "unknown-command [] \"--\"",
+     "unknown-flag [] \"\""
+    ],
+    [
+     "headscale --",
+     "unknown-command [] \"--\"",
+     "help"
+    ],
+    [
+     "headscale -- --",
+     "unknown-command [] \"--\"",
+     "unknown-flag [] \"\""
+    ],
+    [
+     "headscale -- x",
+     "unknown-command [] \"--\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -- x",
+     "unknown-command [] \"--\"",
+     "unknown-command [] \"x\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "unwanted: pflag reads `-o=` as `-o` with the value `=`, and `-h=` as `-h` then an unknown shorthand `=`",
+   "Class": "",
+   "Shrunk": 1090,
+   "Est": 21800,
+   "Classes": {
+    "acceptance": 450,
+    "report": 637,
+    "semantic": 3
+   },
+   "Example": [
+    "",
+    "-X="
+   ],
+   "Outcomes": [
+    "unknown-command [] \"\"",
+    "unknown-flag [] \"X\""
+   ],
+   "Samples": [
+    [
+     "headscale x -h=",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale --list-columns= -h=",
+     "unknown-flag [] \"list-columns\"",
+     "help"
+    ],
+    [
+     "headscale x -h=",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale -e= x",
+     "unknown-flag [] \"expiry\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale x -h=",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale serve -o= --version=",
+     "unknown-flag [serve] \"output\"",
+     "unknown-flag [serve] \"version\""
+    ],
+    [
+     "headscale -c= -c= x",
+     "flag-repeated [] \"config\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale check config -o= --help=true --help=f",
+     "unknown-flag [check config] \"output\"",
+     "flag-repeated [check config] \"help\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "unwanted: cobra's command search skips `-`, `` and flag-like words (`- nodes` → unknown `-` under nodes; `nodes - list` runs list with `-`)",
+   "Class": "",
+   "Shrunk": 1088,
+   "Est": 21760,
+   "Classes": {
+    "acceptance": 10,
+    "report": 1078
+   },
+   "Example": [
+    "",
+    "api"
+   ],
+   "Outcomes": [
+    "unknown-command [] \"\"",
+    "unknown-command [api] \"\""
+   ],
+   "Samples": [
+    [
+     "headscale nodes - list --version=",
+     "unknown-command [nodes] \"-\"",
+     "unknown-flag [nodes list] \"version\""
+    ],
+    [
+     "headscale nodes -= ls",
+     "unknown-flag [nodes] \"\"",
+     "unknown-flag [nodes list] \"\""
+    ],
+    [
+     "headscale \"\" check",
+     "unknown-command [] \"\"",
+     "unknown-command [check] \"\""
+    ],
+    [
+     "headscale api keys -= create",
+     "unknown-flag [api keys] \"\"",
+     "unknown-flag [api keys create] \"\""
+    ],
+    [
+     "headscale --forc x completion",
+     "unknown-flag [] \"forc\"",
+     "unknown-flag [completion] \"forc\""
+    ],
+    [
+     "headscale nodes -ñ delete",
+     "unknown-flag [nodes] \"ñ\"",
+     "unknown-flag [nodes delete] \"Ã\""
+    ],
+    [
+     "headscale nodes --descri - delete",
+     "unknown-flag [nodes] \"descri\"",
+     "unknown-flag [nodes delete] \"descri\""
+    ],
+    [
+     "headscale --user x api keys create -X",
+     "unknown-flag [] \"user\"",
+     "unknown-flag [api keys create] \"X\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "report: same wrong word, spelled differently: pflag names one letter of a short group (`-12` → `-1`) or decodes a byte as a rune (`-\\xc3` → `Ã`)",
+   "Class": "",
+   "Shrunk": 1021,
+   "Est": 20420,
+   "Classes": {
+    "report": 1021
+   },
+   "Example": [
+    "serve",
+    "-�"
+   ],
+   "Outcomes": [
+    "unknown-flag [serve] \"\\xff\"",
+    "unknown-flag [serve] \"ÿ\""
+   ],
+   "Samples": [
+    [
+     "headscale users rm -last-se",
+     "unknown-flag [users delete] \"last-se\"",
+     "unknown-flag [users delete] \"l\""
+    ],
+    [
+     "headscale policy set -last-se",
+     "unknown-flag [policy set] \"last-se\"",
+     "unknown-flag [policy set] \"l\""
+    ],
+    [
+     "headscale nodes set -last-se",
+     "unknown-flag [nodes set] \"last-se\"",
+     "unknown-flag [nodes set] \"l\""
+    ],
+    [
+     "headscale completion -last-se",
+     "unknown-flag [completion] \"last-se\"",
+     "unknown-flag [completion] \"l\""
+    ],
+    [
+     "headscale check config -last-se",
+     "unknown-flag [check config] \"last-se\"",
+     "unknown-flag [check config] \"l\""
+    ],
+    [
+     "headscale auth keys create -last-se",
+     "unknown-flag [auth keys create] \"last-se\"",
+     "unknown-flag [auth keys create] \"l\""
+    ],
+    [
+     "headscale nodes delete -last-se",
+     "unknown-flag [nodes delete] \"last-se\"",
+     "unknown-flag [nodes delete] \"l\""
+    ],
+    [
+     "headscale nodes rm -last-se",
+     "unknown-flag [nodes delete] \"last-se\"",
+     "unknown-flag [nodes delete] \"l\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "harness: cobra adapter: `--help=` / `--help=x` make cobra print \"flag declared as non-bool\" to stdout (cobra reads help back through Value.String)",
+   "Class": "",
+   "Shrunk": 587,
+   "Est": 11740,
+   "Classes": {
+    "report": 587
+   },
+   "Example": [
+    "-h=x"
+   ],
+   "Outcomes": [
+    "bad-value [] \"help\"",
+    "error: strconv.ParseBool: parsing \"x\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+   ],
+   "Samples": [
+    [
+     "headscale x --help=",
+     "unknown-command [] \"x\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale --help --help=",
+     "flag-repeated [] \"help\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale x -h=x",
+     "unknown-command [] \"x\"",
+     "error: strconv.ParseBool: parsing \"x\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale x -h=x",
+     "unknown-command [] \"x\"",
+     "error: strconv.ParseBool: parsing \"x\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale --help=",
+     "bad-value [] \"help\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale --help --help=",
+     "flag-repeated [] \"help\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale nodes list --columns x --columns - --help=",
+     "flag-repeated [nodes list] \"columns\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale x -h=x",
+     "unknown-command [] \"x\"",
+     "error: strconv.ParseBool: parsing \"x\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~cobra",
+   "Cause": "decided D3: cobra takes a leaf's own flags before or between the command words (only -c/-o may come there)",
+   "Class": "",
+   "Shrunk": 106,
+   "Est": 2120,
+   "Classes": {
+    "acceptance": 31,
+    "report": 75
+   },
+   "Example": [
+    "nodes",
+    "--sort=",
+    "ls"
+   ],
+   "Outcomes": [
+    "unknown-flag [nodes] \"sort\"",
+    "run nodes list [] sort=[\"\"]"
+   ],
+   "Samples": [
+    [
+     "headscale --filter x nodes ls",
+     "unknown-flag [] \"filter\"",
+     "run nodes list [] filter=[\"x\"]"
+    ],
+    [
+     "headscale nodes --name= set",
+     "unknown-flag [nodes] \"name\"",
+     "arg-count [nodes set] \"needs 1 argument, got 0\""
+    ],
+    [
+     "headscale api --user x keys create x",
+     "unknown-flag [api] \"user\"",
+     "arg-count [api keys create] \"takes no arguments, got 1\""
+    ],
+    [
+     "headscale nodes --sort x ls --sort -",
+     "unknown-flag [nodes] \"sort\"",
+     "flag-repeated [nodes list] \"sort\""
+    ],
+    [
+     "headscale users --force= delete",
+     "unknown-flag [users] \"force\"",
+     "bad-value [users delete] \"force\""
+    ],
+    [
+     "headscale --dry-run=true policy set --dry-run",
+     "unknown-flag [] \"dry-run\"",
+     "flag-repeated [policy set] \"dry-run\""
+    ],
+    [
+     "headscale nodes -o x --columns x list -o -",
+     "unknown-flag [nodes] \"columns\"",
+     "flag-repeated [nodes list] \"output\""
+    ],
+    [
+     "headscale nodes --filter x list x",
+     "unknown-flag [nodes] \"filter\"",
+     "arg-count [nodes list] \"takes no arguments, got 1\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "report: two mistakes on the line, each side names a different one first",
+   "Class": "",
+   "Shrunk": 60298,
+   "Est": 60298,
+   "Classes": {
+    "report": 60298
+   },
+   "Example": [
+    "-o",
+    "",
+    "-"
+   ],
+   "Outcomes": [
+    "bad-value [] \"output\"",
+    "unknown-command [] \"-\""
+   ],
+   "Samples": [
+    [
+     "headscale check --version --Force",
+     "unknown-flag [check] \"version\"",
+     "unknown-flag [check] \"Force\""
+    ],
+    [
+     "headscale --version --version \"--\\xff\"",
+     "flag-repeated [] \"version\"",
+     "unknown-flag [] \"\\xff\""
+    ],
+    [
+     "headscale --version --output=x x",
+     "not-alone [] \"version\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale nodes --version x",
+     "unknown-flag [nodes] \"version\"",
+     "unknown-command [nodes] \"x\""
+    ],
+    [
+     "headscale -h -h x",
+     "flag-repeated [] \"help\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale users --version x",
+     "unknown-flag [users] \"version\"",
+     "unknown-command [users] \"x\""
+    ],
+    [
+     "headscale nodes --version --no-for",
+     "unknown-flag [nodes] \"version\"",
+     "unknown-flag [nodes] \"no-for\""
+    ],
+    [
+     "headscale --output \"\" x",
+     "bad-value [] \"output\"",
+     "unknown-command [] \"x\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "decided D11: attached value or grouped shorts (`-ojson`, `-hc`, `-c-`, `-output`): own refuses, pflag reads a value or a group",
+   "Class": "",
+   "Shrunk": 22286,
+   "Est": 22286,
+   "Classes": {
+    "report": 22286
+   },
+   "Example": [
+    "-d-="
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"d-\"",
+    "unknown-flag [] \"description\""
+   ],
+   "Samples": [
+    [
+     "headscale -x -help",
+     "unknown-flag [] \"x\"",
+     "unknown-flag [] \"help\""
+    ],
+    [
+     "headscale --version --version -oh",
+     "flag-repeated [] \"version\"",
+     "unknown-flag [] \"oh\""
+    ],
+    [
+     "headscale --ñ -hc",
+     "unknown-flag [] \"ñ\"",
+     "unknown-flag [] \"hc\""
+    ],
+    [
+     "headscale -h=true --help= -help",
+     "flag-repeated [] \"help\"",
+     "unknown-flag [] \"help\""
+    ],
+    [
+     "headscale --o -hc",
+     "unknown-flag [] \"output\"",
+     "unknown-flag [] \"hc\""
+    ],
+    [
+     "headscale nodes --version= -e-last-",
+     "unknown-flag [nodes] \"version\"",
+     "unknown-flag [nodes] \"e-last-\""
+    ],
+    [
+     "headscale completion --output= -oaaaaaa",
+     "unknown-flag [completion] \"output\"",
+     "unknown-flag [completion] \"oaaaaaa\""
+    ],
+    [
+     "headscale --Force -cfalse",
+     "unknown-flag [] \"Force\"",
+     "unknown-flag [] \"cfalse\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "unwanted: pflag reads `-o=` as `-o` with the value `=`, and `-h=` as `-h` then an unknown shorthand `=`",
+   "Class": "",
+   "Shrunk": 14304,
+   "Est": 14304,
+   "Classes": {
+    "acceptance": 18,
+    "report": 14252,
+    "semantic": 34
+   },
+   "Example": [
+    "-h="
+   ],
+   "Outcomes": [
+    "bad-value [] \"help\"",
+    "unknown-flag [] \"\""
+   ],
+   "Samples": [
+    [
+     "headscale --help -h=",
+     "flag-repeated [] \"help\"",
+     "unknown-flag [] \"\""
+    ],
+    [
+     "headscale --output=x -o= -last-se",
+     "flag-repeated [] \"output\"",
+     "unknown-flag [] \"last-se\""
+    ],
+    [
+     "headscale check -o= config -last-se",
+     "unknown-flag [check config] \"output\"",
+     "unknown-flag [check config] \"last-se\""
+    ],
+    [
+     "headscale -h=true -h=",
+     "flag-repeated [] \"help\"",
+     "unknown-flag [] \"\""
+    ],
+    [
+     "headscale -h=true -h=",
+     "flag-repeated [] \"help\"",
+     "unknown-flag [] \"\""
+    ],
+    [
+     "headscale -c= -c= x",
+     "flag-repeated [] \"config\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --output x -o= -output",
+     "flag-repeated [] \"output\"",
+     "unknown-flag [] \"output\""
+    ],
+    [
+     "headscale -c= -c= x",
+     "flag-repeated [] \"config\"",
+     "unknown-command [] \"x\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "harness: own-pflag adapter: its pre-scan refuses a later single-dash word (`-last-se`) before pflag reaches an earlier mistake",
+   "Class": "",
+   "Shrunk": 13887,
+   "Est": 13887,
+   "Classes": {
+    "report": 13887
+   },
+   "Example": [
+    "- ",
+    "-12"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \" \"",
+    "unknown-flag [] \"12\""
+   ],
+   "Samples": [
+    [
+     "headscale --force= -,-:",
+     "unknown-flag [] \"force\"",
+     "unknown-flag [] \",-:\""
+    ],
+    [
+     "headscale --versio -ñ",
+     "unknown-flag [] \"versio\"",
+     "unknown-flag [] \"ñ\""
+    ],
+    [
+     "headscale -c -last-se completion",
+     "unknown-flag [completion] \"config\"",
+     "unknown-flag [completion] \"last-se\""
+    ],
+    [
+     "headscale --o -last-se",
+     "unknown-flag [] \"output\"",
+     "unknown-flag [] \"last-se\""
+    ],
+    [
+     "headscale --versio -last-se",
+     "unknown-flag [] \"versio\"",
+     "unknown-flag [] \"last-se\""
+    ],
+    [
+     "headscale --column -last-se",
+     "unknown-flag [] \"column\"",
+     "unknown-flag [] \"last-se\""
+    ],
+    [
+     "headscale ---force -last-se",
+     "unknown-flag [] \"force\"",
+     "unknown-flag [] \"last-se\""
+    ],
+    [
+     "headscale --expiry= -last-se",
+     "unknown-flag [] \"expiry\"",
+     "unknown-flag [] \"last-se\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "decided D15: a repeated or empty global flag before a group (`-o a -o b nodes`, `-o '' nodes`) is a mistake (D15, call 2 on empty -o, D35); kit v2's layer let globals at a group be",
+   "Class": "",
+   "Shrunk": 3182,
+   "Est": 3182,
+   "Classes": {
+    "acceptance": 3182
+   },
+   "Example": [
+    "-o="
+   ],
+   "Outcomes": [
+    "bad-value [] \"output\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale api --output - keys -o -",
+     "flag-repeated [api keys] \"output\"",
+     "help api keys"
+    ],
+    [
+     "headscale --output=x auth --output=x",
+     "flag-repeated [auth] \"output\"",
+     "help auth"
+    ],
+    [
+     "headscale -h=true check -h=true",
+     "flag-repeated [check] \"help\"",
+     "help check"
+    ],
+    [
+     "headscale api --help= keys",
+     "bad-value [api keys] \"help\"",
+     "help api keys"
+    ],
+    [
+     "headscale --config= --config= api",
+     "flag-repeated [api] \"config\"",
+     "help api"
+    ],
+    [
+     "headscale --config= --config= nodes",
+     "flag-repeated [nodes] \"config\"",
+     "help nodes"
+    ],
+    [
+     "headscale api --help keys --help",
+     "flag-repeated [api keys] \"help\"",
+     "help api keys"
+    ],
+    [
+     "headscale --output - -o= api",
+     "flag-repeated [api] \"output\"",
+     "help api"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "report: same wrong word, spelled differently: pflag names one letter of a short group (`-12` → `-1`) or decodes a byte as a rune (`-\\xc3` → `Ã`)",
+   "Class": "",
+   "Shrunk": 2488,
+   "Est": 2488,
+   "Classes": {
+    "report": 2488
+   },
+   "Example": [
+    "-�"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"\\xc3\"",
+    "unknown-flag [] \"Ã\""
+   ],
+   "Samples": [
+    [
+     "headscale \"-\\xff\"",
+     "unknown-flag [] \"\\xff\"",
+     "unknown-flag [] \"ÿ\""
+    ],
+    [
+     "headscale \"-\\xff\"",
+     "unknown-flag [] \"\\xff\"",
+     "unknown-flag [] \"ÿ\""
+    ],
+    [
+     "headscale \"-\\xff\"",
+     "unknown-flag [] \"\\xff\"",
+     "unknown-flag [] \"ÿ\""
+    ],
+    [
+     "headscale \"-\\xff\"",
+     "unknown-flag [] \"\\xff\"",
+     "unknown-flag [] \"ÿ\""
+    ],
+    [
+     "headscale \"-\\xff\"",
+     "unknown-flag [] \"\\xff\"",
+     "unknown-flag [] \"ÿ\""
+    ],
+    [
+     "headscale -last-seen=",
+     "unknown-flag [] \"last-seen\"",
+     "unknown-flag [] \"l\""
+    ],
+    [
+     "headscale \"-\\xff\"",
+     "unknown-flag [] \"\\xff\"",
+     "unknown-flag [] \"ÿ\""
+    ],
+    [
+     "headscale \"-\\xff\"",
+     "unknown-flag [] \"\\xff\"",
+     "unknown-flag [] \"ÿ\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "harness: own-pflag pre-scan skips words with `=`: `-oname=` reaches pflag and is read as `-o` with value `name=`",
+   "Class": "",
+   "Shrunk": 1980,
+   "Est": 1980,
+   "Classes": {
+    "acceptance": 571,
+    "report": 1409
+   },
+   "Example": [
+    "-c,="
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"c,\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale -oname= x",
+     "unknown-flag [] \"oname\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --output=x --output x api keys -oname= create",
+     "flag-repeated [api keys] \"output\"",
+     "flag-repeated [api keys create] \"output\""
+    ],
+    [
+     "headscale --config= -c/etc/hs.yaml=",
+     "unknown-flag [] \"c/etc/hs.yaml\"",
+     "flag-repeated [] \"config\""
+    ],
+    [
+     "headscale -cname= x",
+     "unknown-flag [] \"cname\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -oh= --output x",
+     "unknown-flag [] \"oh\"",
+     "flag-repeated [] \"output\""
+    ],
+    [
+     "headscale -oname= nodes set x",
+     "unknown-flag [] \"oname\"",
+     "run nodes set [\"x\"] output=[\"name=\"]"
+    ],
+    [
+     "headscale -cname= x",
+     "unknown-flag [] \"cname\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -oname=",
+     "unknown-flag [] \"oname\"",
+     "help"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~pflag",
+   "Cause": "bug: own drops flags read before a group word when the line ends at a group (`--version nodes` is help, cobra: unknown flag)",
+   "Class": "",
+   "Shrunk": 1778,
+   "Est": 1778,
+   "Classes": {
+    "acceptance": 1778
+   },
+   "Example": [
+    "--version",
+    "api"
+   ],
+   "Outcomes": [
+    "unknown-flag [api] \"version\"",
+    "help api"
+   ],
+   "Samples": [
+    [
+     "headscale api --version= keys",
+     "unknown-flag [api keys] \"version\"",
+     "help api keys"
+    ],
+    [
+     "headscale --version auth",
+     "unknown-flag [auth] \"version\"",
+     "help auth"
+    ],
+    [
+     "headscale --version= users",
+     "unknown-flag [users] \"version\"",
+     "help users"
+    ],
+    [
+     "headscale --version nodes",
+     "unknown-flag [nodes] \"version\"",
+     "help nodes"
+    ],
+    [
+     "headscale api --version keys",
+     "unknown-flag [api keys] \"version\"",
+     "help api keys"
+    ],
+    [
+     "headscale --version api",
+     "unknown-flag [api] \"version\"",
+     "help api"
+    ],
+    [
+     "headscale --version api",
+     "unknown-flag [api] \"version\"",
+     "help api"
+    ],
+    [
+     "headscale --version policy",
+     "unknown-flag [policy] \"version\"",
+     "help policy"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~plainpflag",
+   "Cause": "decided D11: attached value or grouped shorts (`-ojson`, `-hc`, `-c-`, `-output`): own refuses, pflag reads a value or a group",
+   "Class": "",
+   "Shrunk": 16964,
+   "Est": 16964,
+   "Classes": {
+    "acceptance": 3348,
+    "report": 13616
+   },
+   "Example": [
+    "serve",
+    "-c*"
+   ],
+   "Outcomes": [
+    "unknown-flag [serve] \"c*\"",
+    "run serve [] config=[\"*\"]"
+   ],
+   "Samples": [
+    [
+     "headscale version -output -1",
+     "unknown-flag [version] \"output\"",
+     "unknown-flag [version] \"1\""
+    ],
+    [
+     "headscale nodes set -oj --reusable=",
+     "unknown-flag [nodes set] \"oj\"",
+     "unknown-flag [nodes set] \"reusable\""
+    ],
+    [
+     "headscale check config -ofalse",
+     "unknown-flag [check config] \"ofalse\"",
+     "unknown-flag [check config] \"output\""
+    ],
+    [
+     "headscale nodes delete -hc x --help",
+     "unknown-flag [nodes delete] \"hc\"",
+     "flag-repeated [nodes delete] \"help\""
+    ],
+    [
+     "headscale nodes set -output --versio",
+     "unknown-flag [nodes set] \"output\"",
+     "unknown-flag [nodes set] \"versio\""
+    ],
+    [
+     "headscale nodes set -okeys --output -",
+     "unknown-flag [nodes set] \"okeys\"",
+     "flag-repeated [nodes set] \"output\""
+    ],
+    [
+     "headscale nodes set -ho x --help=",
+     "unknown-flag [nodes set] \"ho\"",
+     "flag-repeated [nodes set] \"help\""
+    ],
+    [
+     "headscale nodes set -c10.0.0 --with-nodes=",
+     "unknown-flag [nodes set] \"c10.0.0\"",
+     "unknown-flag [nodes set] \"with-nodes\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~plainpflag",
+   "Cause": "report: same wrong word, spelled differently: pflag names one letter of a short group (`-12` → `-1`) or decodes a byte as a rune (`-\\xc3` → `Ã`)",
+   "Class": "",
+   "Shrunk": 13484,
+   "Est": 13484,
+   "Classes": {
+    "report": 13484
+   },
+   "Example": [
+    "serve",
+    "-�"
+   ],
+   "Outcomes": [
+    "unknown-flag [serve] \"\\xff\"",
+    "unknown-flag [serve] \"ÿ\""
+   ],
+   "Samples": [
+    [
+     "headscale nodes set -last-se",
+     "unknown-flag [nodes set] \"last-se\"",
+     "unknown-flag [nodes set] \"l\""
+    ],
+    [
+     "headscale version -last-se",
+     "unknown-flag [version] \"last-se\"",
+     "unknown-flag [version] \"l\""
+    ],
+    [
+     "headscale nodes delete -last-se",
+     "unknown-flag [nodes delete] \"last-se\"",
+     "unknown-flag [nodes delete] \"l\""
+    ],
+    [
+     "headscale version -last-se",
+     "unknown-flag [version] \"last-se\"",
+     "unknown-flag [version] \"l\""
+    ],
+    [
+     "headscale auth keys create -last-se",
+     "unknown-flag [auth keys create] \"last-se\"",
+     "unknown-flag [auth keys create] \"l\""
+    ],
+    [
+     "headscale serve -ñ",
+     "unknown-flag [serve] \"ñ\"",
+     "unknown-flag [serve] \"Ã\""
+    ],
+    [
+     "headscale users delete -last-se",
+     "unknown-flag [users delete] \"last-se\"",
+     "unknown-flag [users delete] \"l\""
+    ],
+    [
+     "headscale nodes delete -last-se",
+     "unknown-flag [nodes delete] \"last-se\"",
+     "unknown-flag [nodes delete] \"l\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~plainpflag",
+   "Cause": "report: two mistakes on the line, each side names a different one first",
+   "Class": "",
+   "Shrunk": 8335,
+   "Est": 8335,
+   "Classes": {
+    "report": 8335
+   },
+   "Example": [
+    "serve",
+    "-h=x",
+    "-c"
+   ],
+   "Outcomes": [
+    "bad-value [serve] \"help\"",
+    "missing-value [serve] \"config\""
+   ],
+   "Samples": [
+    [
+     "headscale completion --help= \"--\\xff\"",
+     "bad-value [completion] \"help\"",
+     "unknown-flag [completion] \"\\xff\""
+    ],
+    [
+     "headscale serve --help= --filter",
+     "bad-value [serve] \"help\"",
+     "unknown-flag [serve] \"filter\""
+    ],
+    [
+     "headscale completion -h -h --versio",
+     "flag-repeated [completion] \"help\"",
+     "unknown-flag [completion] \"versio\""
+    ],
+    [
+     "headscale serve -h --help= --config x --config x",
+     "flag-repeated [serve] \"help\"",
+     "flag-repeated [serve] \"config\""
+    ],
+    [
+     "headscale policy set --help --help --versio",
+     "flag-repeated [policy set] \"help\"",
+     "unknown-flag [policy set] \"versio\""
+    ],
+    [
+     "headscale completion -h -h --config=",
+     "flag-repeated [completion] \"help\"",
+     "unknown-flag [completion] \"config\""
+    ],
+    [
+     "headscale serve --help --help --version=",
+     "flag-repeated [serve] \"help\"",
+     "unknown-flag [serve] \"version\""
+    ],
+    [
+     "headscale check config --help --help --output=",
+     "flag-repeated [check config] \"help\"",
+     "unknown-flag [check config] \"output\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~plainpflag",
+   "Cause": "unwanted: pflag reads `-o=` as `-o` with the value `=`, and `-h=` as `-h` then an unknown shorthand `=`",
+   "Class": "",
+   "Shrunk": 3852,
+   "Est": 3852,
+   "Classes": {
+    "acceptance": 10,
+    "report": 3825,
+    "semantic": 17
+   },
+   "Example": [
+    "serve",
+    "-c="
+   ],
+   "Outcomes": [
+    "run serve [] config=[\"\"]",
+    "run serve [] config=[\"=\"]"
+   ],
+   "Samples": [
+    [
+     "headscale check config --help -h=",
+     "flag-repeated [check config] \"help\"",
+     "unknown-flag [check config] \"\""
+    ],
+    [
+     "headscale auth keys create -e= -e= --version=",
+     "flag-repeated [auth keys create] \"expiry\"",
+     "unknown-flag [auth keys create] \"version\""
+    ],
+    [
+     "headscale policy set -h -h=",
+     "flag-repeated [policy set] \"help\"",
+     "unknown-flag [policy set] \"\""
+    ],
+    [
+     "headscale api keys create -h=",
+     "bad-value [api keys create] \"help\"",
+     "unknown-flag [api keys create] \"\""
+    ],
+    [
+     "headscale nodes list --sort - --sort x -h=",
+     "flag-repeated [nodes list] \"sort\"",
+     "unknown-flag [nodes list] \"\""
+    ],
+    [
+     "headscale nodes delete -h=",
+     "bad-value [nodes delete] \"help\"",
+     "unknown-flag [nodes delete] \"\""
+    ],
+    [
+     "headscale check config --help= -c= -c=",
+     "bad-value [check config] \"help\"",
+     "flag-repeated [check config] \"config\""
+    ],
+    [
+     "headscale api keys create --help -h=",
+     "flag-repeated [api keys create] \"help\"",
+     "unknown-flag [api keys create] \"\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~stdflag",
+   "Cause": "report: two mistakes on the line, each side names a different one first",
+   "Class": "",
+   "Shrunk": 2831,
+   "Est": 2831,
+   "Classes": {
+    "report": 2831
+   },
+   "Example": [
+    "serve",
+    "-h",
+    "-h",
+    "-="
+   ],
+   "Outcomes": [
+    "flag-repeated [serve] \"help\"",
+    "unknown-flag [serve] \"\""
+   ],
+   "Samples": [
+    [
+     "headscale completion --help= \"--\\xff\"",
+     "bad-value [completion] \"help\"",
+     "unknown-flag [completion] \"\\xff\""
+    ],
+    [
+     "headscale serve --help= --filter",
+     "bad-value [serve] \"help\"",
+     "unknown-flag [serve] \"filter\""
+    ],
+    [
+     "headscale policy set --help --help --versio",
+     "flag-repeated [policy set] \"help\"",
+     "unknown-flag [policy set] \"versio\""
+    ],
+    [
+     "headscale serve --help --help --version=",
+     "flag-repeated [serve] \"help\"",
+     "unknown-flag [serve] \"version\""
+    ],
+    [
+     "headscale version --help= --versio",
+     "bad-value [version] \"help\"",
+     "unknown-flag [version] \"versio\""
+    ],
+    [
+     "headscale version -h=true --help= ---force",
+     "flag-repeated [version] \"help\"",
+     "unknown-flag [version] \"force\""
+    ],
+    [
+     "headscale version --config x --help -h --config x",
+     "flag-repeated [version] \"help\"",
+     "flag-repeated [version] \"config\""
+    ],
+    [
+     "headscale auth keys create --expiry= --expiry= \"--\\xff\"",
+     "flag-repeated [auth keys create] \"expiry\"",
+     "unknown-flag [auth keys create] \"\\xff\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~stdflag",
+   "Cause": "undecided: Go's flag package: `--h` is `-h` and `-help` is `--help` (no long/short split; referee open question 4)",
+   "Class": "",
+   "Shrunk": 2531,
+   "Est": 2531,
+   "Classes": {
+    "acceptance": 803,
+    "report": 1728
+   },
+   "Example": [
+    "serve",
+    "--c"
+   ],
+   "Outcomes": [
+    "unknown-flag [serve] \"config\"",
+    "missing-value [serve] \"config\""
+   ],
+   "Samples": [
+    [
+     "headscale version -output - -1",
+     "unknown-flag [version] \"output\"",
+     "unknown-flag [version] \"1\""
+    ],
+    [
+     "headscale api keys create --o - -last-se",
+     "unknown-flag [api keys create] \"output\"",
+     "unknown-flag [api keys create] \"last-se\""
+    ],
+    [
+     "headscale api keys create --o",
+     "unknown-flag [api keys create] \"output\"",
+     "missing-value [api keys create] \"output\""
+    ],
+    [
+     "headscale serve --h",
+     "unknown-flag [serve] \"help\"",
+     "help serve"
+    ],
+    [
+     "headscale policy set -output x",
+     "unknown-flag [policy set] \"output\"",
+     "arg-count [policy set] \"needs 1 argument, got 0\""
+    ],
+    [
+     "headscale serve -help --o",
+     "unknown-flag [serve] \"help\"",
+     "unknown-flag [serve] \"output\""
+    ],
+    [
+     "headscale api keys create --h",
+     "unknown-flag [api keys create] \"help\"",
+     "help api keys create"
+    ],
+    [
+     "headscale version --h",
+     "unknown-flag [version] \"help\"",
+     "help version"
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~stdflag",
+   "Cause": "unwanted: pflag reads `-o=` as `-o` with the value `=`, and `-h=` as `-h` then an unknown shorthand `=`",
+   "Class": "",
+   "Shrunk": 1427,
+   "Est": 1427,
+   "Classes": {
+    "report": 1427
+   },
+   "Example": [
+    "serve",
+    "-h=",
+    "-="
+   ],
+   "Outcomes": [
+    "bad-value [serve] \"help\"",
+    "unknown-flag [serve] \"\""
+   ],
+   "Samples": [
+    [
+     "headscale auth keys create -h= -dname=",
+     "bad-value [auth keys create] \"help\"",
+     "unknown-flag [auth keys create] \"dname\""
+    ],
+    [
+     "headscale auth keys create -e= -e= --version=",
+     "flag-repeated [auth keys create] \"expiry\"",
+     "unknown-flag [auth keys create] \"version\""
+    ],
+    [
+     "headscale policy set -h -h= --=",
+     "flag-repeated [policy set] \"help\"",
+     "unknown-flag [policy set] \"\""
+    ],
+    [
+     "headscale api keys create -h= --version=",
+     "bad-value [api keys create] \"help\"",
+     "unknown-flag [api keys create] \"version\""
+    ],
+    [
+     "headscale nodes list --sort - --sort x -h=",
+     "flag-repeated [nodes list] \"sort\"",
+     "bad-value [nodes list] \"help\""
+    ],
+    [
+     "headscale check config --help= -c= -c=",
+     "bad-value [check config] \"help\"",
+     "flag-repeated [check config] \"config\""
+    ],
+    [
+     "headscale policy set -h= -last-se",
+     "bad-value [policy set] \"help\"",
+     "unknown-flag [policy set] \"last-se\""
+    ],
+    [
+     "headscale serve -h -h= -c24h",
+     "flag-repeated [serve] \"help\"",
+     "unknown-flag [serve] \"c24h\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~stdflag",
+   "Cause": "decided D11: attached value or grouped shorts (`-ojson`, `-hc`, `-c-`, `-output`): own refuses, pflag reads a value or a group",
+   "Class": "",
+   "Shrunk": 422,
+   "Est": 422,
+   "Classes": {
+    "report": 422
+   },
+   "Example": [
+    "serve",
+    "-h",
+    "-h",
+    "-h,"
+   ],
+   "Outcomes": [
+    "flag-repeated [serve] \"help\"",
+    "unknown-flag [serve] \"h,\""
+   ],
+   "Samples": [
+    [
+     "headscale version --help= -dapprov",
+     "bad-value [version] \"help\"",
+     "unknown-flag [version] \"dapprov\""
+    ],
+    [
+     "headscale nodes list --columns x --columns - -oj",
+     "flag-repeated [nodes list] \"columns\"",
+     "unknown-flag [nodes list] \"oj\""
+    ],
+    [
+     "headscale nodes set -o - -o - -e-last-",
+     "flag-repeated [nodes set] \"output\"",
+     "unknown-flag [nodes set] \"e-last-\""
+    ],
+    [
+     "headscale nodes set --config= --config= -oj",
+     "flag-repeated [nodes set] \"config\"",
+     "unknown-flag [nodes set] \"oj\""
+    ],
+    [
+     "headscale serve --help --help -ocreate",
+     "flag-repeated [serve] \"help\"",
+     "unknown-flag [serve] \"ocreate\""
+    ],
+    [
+     "headscale api keys create -h=true -h -oh",
+     "flag-repeated [api keys create] \"help\"",
+     "unknown-flag [api keys create] \"oh\""
+    ],
+    [
+     "headscale nodes set --config x --config x -c-h",
+     "flag-repeated [nodes set] \"config\"",
+     "unknown-flag [nodes set] \"c-h\""
+    ],
+    [
+     "headscale policy set --help= -oaaaaaa",
+     "bad-value [policy set] \"help\"",
+     "unknown-flag [policy set] \"oaaaaaa\""
+    ]
+   ]
+  },
+  {
+   "Pair": "grammar~stdflag",
+   "Cause": "report: same wrong word, spelled differently: pflag names one letter of a short group (`-12` → `-1`) or decodes a byte as a rune (`-\\xc3` → `Ã`)",
+   "Class": "",
+   "Shrunk": 1,
+   "Est": 1,
+   "Classes": {
+    "report": 1
+   },
+   "Example": [
+    "nodes",
+    "list",
+    "--list-columns=true",
+    "--list-columns",
+    "--columns",
+    "x",
+    "--columns",
+    "x"
+   ],
+   "Outcomes": [
+    "flag-repeated [nodes list] \"list-columns\"",
+    "flag-repeated [nodes list] \"columns\""
+   ],
+   "Samples": [
+    [
+     "headscale nodes list --list-columns=true --list-columns --columns x --columns x",
+     "flag-repeated [nodes list] \"list-columns\"",
+     "flag-repeated [nodes list] \"columns\""
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided D19: `-h` with a mistake: the error wins; cobra shows help",
+   "Class": "",
+   "Shrunk": 5126,
+   "Est": 102520,
+   "Classes": {
+    "acceptance": 5126
+   },
+   "Example": [
+    "-",
+    "-h"
+   ],
+   "Outcomes": [
+    "unknown-command [] \"-\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale x -h",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale x --help",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale serve --help --output=",
+     "unknown-flag [serve] \"output\"",
+     "help serve"
+    ],
+    [
+     "headscale -h x",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale x -h",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale -h x",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale --help x",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale - --help",
+     "unknown-command [] \"-\"",
+     "help"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided D11: attached value or grouped shorts (`-ojson`, `-hc`, `-c-`, `-output`): own refuses, pflag reads a value or a group",
+   "Class": "",
+   "Shrunk": 4746,
+   "Est": 94920,
+   "Classes": {
+    "acceptance": 2180,
+    "report": 2566
+   },
+   "Example": [
+    "-c\u0000"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"c\\x00\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale -oj --expiry",
+     "unknown-flag [] \"oj\"",
+     "unknown-flag [] \"expiry\""
+    ],
+    [
+     "headscale -u \"-c\\t\"",
+     "unknown-flag [] \"c\\t\"",
+     "unknown-flag [] \"user\""
+    ],
+    [
+     "headscale -c: x",
+     "unknown-flag [] \"c:\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -help",
+     "unknown-flag [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale --versio -c/etc/h",
+     "unknown-flag [] \"c/etc/h\"",
+     "unknown-flag [] \"versio\""
+    ],
+    [
+     "headscale --o -oaaaaaa",
+     "unknown-flag [] \"oaaaaaa\"",
+     "unknown-flag [] \"output\""
+    ],
+    [
+     "headscale users -oj rm x",
+     "unknown-flag [users] \"oj\"",
+     "run users delete [\"x\"] output=[\"j\"]"
+    ],
+    [
+     "headscale x -he",
+     "unknown-command [] \"x\"",
+     "help"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "harness: cobra adapter: pflag's InvalidSyntaxError (`--=`, `---x`) is not mapped to a usage error",
+   "Class": "",
+   "Shrunk": 2355,
+   "Est": 47100,
+   "Classes": {
+    "report": 2355
+   },
+   "Example": [
+    "---"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"\"",
+    "error: bad flag syntax: ---"
+   ],
+   "Samples": [
+    [
+     "headscale --=",
+     "unknown-flag [] \"\"",
+     "error: bad flag syntax: --="
+    ],
+    [
+     "headscale ---force",
+     "unknown-flag [] \"force\"",
+     "error: bad flag syntax: ---force"
+    ],
+    [
+     "headscale x ---force",
+     "unknown-command [] \"x\"",
+     "error: bad flag syntax: ---force"
+    ],
+    [
+     "headscale ---force",
+     "unknown-flag [] \"force\"",
+     "error: bad flag syntax: ---force"
+    ],
+    [
+     "headscale --=",
+     "unknown-flag [] \"\"",
+     "error: bad flag syntax: --="
+    ],
+    [
+     "headscale x --=",
+     "unknown-command [] \"x\"",
+     "error: bad flag syntax: --="
+    ],
+    [
+     "headscale --=",
+     "unknown-flag [] \"\"",
+     "error: bad flag syntax: --="
+    ],
+    [
+     "headscale x --=",
+     "unknown-command [] \"x\"",
+     "error: bad flag syntax: --="
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided call: `--` before the command is complete: own says unknown command `--`; cobra drops it and reads on (`nodes --` is help, `-- nodes list` unknown command `nodes`)",
+   "Class": "",
+   "Shrunk": 1667,
+   "Est": 33340,
+   "Classes": {
+    "acceptance": 295,
+    "report": 1372
+   },
+   "Example": [
+    "--"
+   ],
+   "Outcomes": [
+    "unknown-command [] \"--\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale -- --",
+     "unknown-command [] \"--\"",
+     "unknown-flag [] \"\""
+    ],
+    [
+     "headscale -- x",
+     "unknown-command [] \"--\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --",
+     "unknown-command [] \"--\"",
+     "help"
+    ],
+    [
+     "headscale -- x",
+     "unknown-command [] \"--\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -- --",
+     "unknown-command [] \"--\"",
+     "unknown-flag [] \"\""
+    ],
+    [
+     "headscale -- x",
+     "unknown-command [] \"--\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -- --",
+     "unknown-command [] \"--\"",
+     "unknown-flag [] \"\""
+    ],
+    [
+     "headscale -- x",
+     "unknown-command [] \"--\"",
+     "unknown-command [] \"x\""
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "harness: cobra adapter: unknown flags at a group go to its args (for D5), so the unknown command is named instead of the flag",
+   "Class": "",
+   "Shrunk": 1544,
+   "Est": 30880,
+   "Classes": {
+    "report": 1544
+   },
+   "Example": [
+    "-1",
+    "x"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"1\"",
+    "unknown-command [] \"x\""
+   ],
+   "Samples": [
+    [
+     "headscale --filter= x",
+     "unknown-flag [] \"filter\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -e x",
+     "unknown-flag [] \"expiry\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --h x",
+     "unknown-flag [] \"help\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --bogus x",
+     "unknown-flag [] \"bogus\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale --name x",
+     "unknown-flag [] \"name\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -e x",
+     "unknown-flag [] \"expiry\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -x x",
+     "unknown-flag [] \"x\"",
+     "unknown-command [] \"x\""
+    ],
+    [
+     "headscale -X x",
+     "unknown-flag [] \"X\"",
+     "unknown-command [] \"x\""
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "report: same wrong word, spelled differently: pflag names one letter of a short group (`-12` → `-1`) or decodes a byte as a rune (`-\\xc3` → `Ã`)",
+   "Class": "",
+   "Shrunk": 1425,
+   "Est": 28500,
+   "Classes": {
+    "report": 1425
+   },
+   "Example": [
+    "-�"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"ÿ\"",
+    "unknown-flag [] \"\\xff\""
+   ],
+   "Samples": [
+    [
+     "headscale check config -last-se",
+     "unknown-flag [check config] \"last-se\"",
+     "unknown-flag [check config] \"l\""
+    ],
+    [
+     "headscale check config -last-se",
+     "unknown-flag [check config] \"last-se\"",
+     "unknown-flag [check config] \"l\""
+    ],
+    [
+     "headscale api keys create -last-se",
+     "unknown-flag [api keys create] \"last-se\"",
+     "unknown-flag [api keys create] \"l\""
+    ],
+    [
+     "headscale policy set -last-se",
+     "unknown-flag [policy set] \"last-se\"",
+     "unknown-flag [policy set] \"l\""
+    ],
+    [
+     "headscale auth keys create -last-se",
+     "unknown-flag [auth keys create] \"last-se\"",
+     "unknown-flag [auth keys create] \"l\""
+    ],
+    [
+     "headscale users delete -last-se",
+     "unknown-flag [users delete] \"last-se\"",
+     "unknown-flag [users delete] \"l\""
+    ],
+    [
+     "headscale users delete -last-se",
+     "unknown-flag [users delete] \"last-se\"",
+     "unknown-flag [users delete] \"l\""
+    ],
+    [
+     "headscale nodes rm -last-se",
+     "unknown-flag [nodes delete] \"last-se\"",
+     "unknown-flag [nodes delete] \"l\""
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided D15: a repeated or empty global flag before a group (`-o a -o b nodes`, `-o '' nodes`) is a mistake (D15, call 2 on empty -o, D35); kit v2's layer let globals at a group be",
+   "Class": "",
+   "Shrunk": 1393,
+   "Est": 27860,
+   "Classes": {
+    "acceptance": 1393
+   },
+   "Example": [
+    "-h=1"
+   ],
+   "Outcomes": [
+    "bad-value [] \"help\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale -h -h",
+     "flag-repeated [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale -h=true --help=true",
+     "flag-repeated [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale --output - --output x -h=true",
+     "flag-repeated [] \"output\"",
+     "help"
+    ],
+    [
+     "headscale -h=t",
+     "bad-value [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale --output - --output - --help",
+     "flag-repeated [] \"output\"",
+     "help"
+    ],
+    [
+     "headscale -h -h",
+     "flag-repeated [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale -h -h",
+     "flag-repeated [] \"help\"",
+     "help"
+    ],
+    [
+     "headscale --help --help",
+     "flag-repeated [] \"help\"",
+     "help"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "report: two mistakes on the line, each side names a different one first",
+   "Class": "",
+   "Shrunk": 1131,
+   "Est": 22620,
+   "Classes": {
+    "report": 1131
+   },
+   "Example": [
+    "",
+    "-="
+   ],
+   "Outcomes": [
+    "unknown-command [] \"\"",
+    "unknown-flag [] \"\""
+   ],
+   "Samples": [
+    [
+     "headscale serve --output x -=",
+     "unknown-flag [serve] \"output\"",
+     "unknown-flag [serve] \"\""
+    ],
+    [
+     "headscale api keys --version create",
+     "unknown-flag [api keys create] \"version\"",
+     "unknown-flag [api keys] \"version\""
+    ],
+    [
+     "headscale check config --output= \"--\\x00\"",
+     "unknown-flag [check config] \"output\"",
+     "unknown-flag [check config] \"\\x00\""
+    ],
+    [
+     "headscale serve --output - --h",
+     "unknown-flag [serve] \"output\"",
+     "unknown-flag [serve] \"help\""
+    ],
+    [
+     "headscale serve -o - --version=",
+     "unknown-flag [serve] \"output\"",
+     "unknown-flag [serve] \"version\""
+    ],
+    [
+     "headscale --tags -last-se",
+     "unknown-flag [] \"last-se\"",
+     "unknown-flag [] \"tags\""
+    ],
+    [
+     "headscale completion -c",
+     "unknown-flag [completion] \"config\"",
+     "missing-value [completion] \"config\""
+    ],
+    [
+     "headscale completion -o x --versio",
+     "unknown-flag [completion] \"output\"",
+     "unknown-flag [completion] \"versio\""
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "unwanted: cobra's command search skips `-`, `` and flag-like words (`- nodes` → unknown `-` under nodes; `nodes - list` runs list with `-`)",
+   "Class": "",
+   "Shrunk": 1126,
+   "Est": 22520,
+   "Classes": {
+    "acceptance": 13,
+    "report": 1113
+   },
+   "Example": [
+    "",
+    "api"
+   ],
+   "Outcomes": [
+    "unknown-command [] \"\"",
+    "unknown-command [api] \"\""
+   ],
+   "Samples": [
+    [
+     "headscale nodes -= ls",
+     "unknown-flag [nodes] \"\"",
+     "unknown-flag [nodes list] \"\""
+    ],
+    [
+     "headscale api keys -= create",
+     "unknown-flag [api keys] \"\"",
+     "unknown-flag [api keys create] \"\""
+    ],
+    [
+     "headscale nodes --sort - delete",
+     "unknown-flag [nodes] \"sort\"",
+     "unknown-flag [nodes delete] \"sort\""
+    ],
+    [
+     "headscale api --version= --= keys create",
+     "unknown-flag [api] \"\"",
+     "unknown-flag [api keys create] \"version\""
+    ],
+    [
+     "headscale -x x completion",
+     "unknown-flag [] \"x\"",
+     "unknown-flag [completion] \"x\""
+    ],
+    [
+     "headscale --sort x completion",
+     "unknown-flag [] \"sort\"",
+     "unknown-flag [completion] \"sort\""
+    ],
+    [
+     "headscale - users",
+     "unknown-command [] \"-\"",
+     "unknown-command [users] \"-\""
+    ],
+    [
+     "headscale nodes --name - rm",
+     "unknown-flag [nodes] \"name\"",
+     "unknown-flag [nodes delete] \"name\""
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "unwanted: pflag reads `-o=` as `-o` with the value `=`, and `-h=` as `-h` then an unknown shorthand `=`",
+   "Class": "",
+   "Shrunk": 843,
+   "Est": 16860,
+   "Classes": {
+    "acceptance": 587,
+    "report": 256
+   },
+   "Example": [
+    "-h="
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"\"",
+    "help"
+   ],
+   "Samples": [
+    [
+     "headscale -h=",
+     "unknown-flag [] \"\"",
+     "help"
+    ],
+    [
+     "headscale -h=",
+     "unknown-flag [] \"\"",
+     "help"
+    ],
+    [
+     "headscale -h=",
+     "unknown-flag [] \"\"",
+     "help"
+    ],
+    [
+     "headscale x -h=",
+     "unknown-command [] \"x\"",
+     "help"
+    ],
+    [
+     "headscale api keys -u= create x",
+     "unknown-flag [api keys] \"user\"",
+     "arg-count [api keys create] \"takes no arguments, got 1\""
+    ],
+    [
+     "headscale -h=",
+     "unknown-flag [] \"\"",
+     "help"
+    ],
+    [
+     "headscale -u= \"-c\\u200b\"",
+     "unknown-flag [] \"c\\u200b\"",
+     "unknown-flag [] \"user\""
+    ],
+    [
+     "headscale x -h=",
+     "unknown-command [] \"x\"",
+     "help"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "harness: cobra adapter: `--help=` / `--help=x` make cobra print \"flag declared as non-bool\" to stdout (cobra reads help back through Value.String)",
+   "Class": "",
+   "Shrunk": 598,
+   "Est": 11960,
+   "Classes": {
+    "acceptance": 9,
+    "report": 589
+   },
+   "Example": [
+    "-h=x"
+   ],
+   "Outcomes": [
+    "bad-value [] \"help\"",
+    "error: strconv.ParseBool: parsing \"x\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+   ],
+   "Samples": [
+    [
+     "headscale --help= -",
+     "unknown-command [] \"-\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale -h=x",
+     "bad-value [] \"help\"",
+     "error: strconv.ParseBool: parsing \"x\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale --help=",
+     "bad-value [] \"help\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale --help=",
+     "bad-value [] \"help\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale x --help=",
+     "unknown-command [] \"x\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale -d= -h=x",
+     "unknown-flag [] \"description\"",
+     "error: strconv.ParseBool: parsing \"x\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale --help= --versio",
+     "unknown-flag [] \"versio\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ],
+    [
+     "headscale serve --output x --help=",
+     "unknown-flag [serve] \"output\"",
+     "error: strconv.ParseBool: parsing \"\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "decided D3: cobra takes a leaf's own flags before or between the command words (only -c/-o may come there)",
+   "Class": "",
+   "Shrunk": 130,
+   "Est": 2600,
+   "Classes": {
+    "acceptance": 43,
+    "report": 87
+   },
+   "Example": [
+    "-e",
+    "x",
+    "nodes",
+    "set",
+    "x"
+   ],
+   "Outcomes": [
+    "unknown-flag [] \"expiry\"",
+    "run nodes set [\"x\"] expiry=[\"x\"]"
+   ],
+   "Samples": [
+    [
+     "headscale api -u - keys create x",
+     "unknown-flag [api] \"user\"",
+     "arg-count [api keys create] \"takes no arguments, got 1\""
+    ],
+    [
+     "headscale nodes --list-columns= list",
+     "unknown-flag [nodes] \"list-columns\"",
+     "bad-value [nodes list] \"list-columns\""
+    ],
+    [
+     "headscale auth --tags x keys create x",
+     "unknown-flag [auth] \"tags\"",
+     "run auth keys create [\"x\"] tags=[\"x\"]"
+    ],
+    [
+     "headscale auth keys --tags=x create x",
+     "unknown-flag [auth keys] \"tags\"",
+     "run auth keys create [\"x\"] tags=[\"x\"]"
+    ],
+    [
+     "headscale auth keys --tags=x create",
+     "unknown-flag [auth keys] \"tags\"",
+     "arg-count [auth keys create] \"needs 1 argument, got 0\""
+    ],
+    [
+     "headscale api --expiry x keys create",
+     "unknown-flag [api] \"expiry\"",
+     "run api keys create [] expiry=[\"x\"]"
+    ],
+    [
+     "headscale nodes --list-columns=true ls",
+     "unknown-flag [nodes] \"list-columns\"",
+     "run nodes list [] list-columns=[\"true\"]"
+    ],
+    [
+     "headscale --dry-run x policy set --dry-run",
+     "unknown-flag [] \"dry-run\"",
+     "flag-repeated [policy set] \"dry-run\""
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "bug: own drops flags read before a group word when the line ends at a group (`--version nodes` is help, cobra: unknown flag)",
+   "Class": "",
+   "Shrunk": 111,
+   "Est": 2220,
+   "Classes": {
+    "acceptance": 111
+   },
+   "Example": [
+    "--help=0",
+    "api"
+   ],
+   "Outcomes": [
+    "help api",
+    "bad-value [api] \"help\""
+   ],
+   "Samples": [
+    [
+     "headscale --output=x -o x api",
+     "help api",
+     "flag-repeated [api] \"output\""
+    ],
+    [
+     "headscale --version auth",
+     "help auth",
+     "unknown-flag [auth] \"version\""
+    ],
+    [
+     "headscale --version check",
+     "help check",
+     "unknown-flag [check] \"version\""
+    ],
+    [
+     "headscale --version= check",
+     "help check",
+     "unknown-flag [check] \"version\""
+    ],
+    [
+     "headscale --version auth",
+     "help auth",
+     "unknown-flag [auth] \"version\""
+    ],
+    [
+     "headscale --version auth",
+     "help auth",
+     "unknown-flag [auth] \"version\""
+    ],
+    [
+     "headscale auth --version keys",
+     "help auth keys",
+     "unknown-flag [auth] \"version\""
+    ],
+    [
+     "headscale --version check",
+     "help check",
+     "unknown-flag [check] \"version\""
+    ]
+   ]
+  },
+  {
+   "Pair": "pflag~cobra",
+   "Cause": "unwanted: cobra's command search takes the word after an unknown flag as its value (`nodes --version routes -h` is help for nodes)",
+   "Class": "",
+   "Shrunk": 3,
+   "Est": 60,
+   "Classes": {
+    "semantic": 3
+   },
+   "Example": [
+    "api",
+    "--version",
+    "keys",
+    "-h"
+   ],
+   "Outcomes": [
+    "help api keys",
+    "help api"
+   ],
+   "Samples": [
+    [
+     "headscale auth --version keys --help",
+     "help auth keys",
+     "help auth"
+    ],
+    [
+     "headscale auth -h --version keys",
+     "help auth keys",
+     "help auth"
+    ],
+    [
+     "headscale api --version keys -h",
+     "help api keys",
+     "help api"
+    ]
+   ]
+  }
+ ],
+ "compared": {
+  "grammar~cobra": 1000000,
+  "grammar~pflag": 1000000,
+  "grammar~plainpflag": 272272,
+  "grammar~stdflag": 162848,
+  "pflag~cobra": 1000000
+ },
+ "differ": {
+  "grammar~cobra": 457186,
+  "grammar~pflag": 120203,
+  "grammar~plainpflag": 42635,
+  "grammar~stdflag": 7212,
+  "pflag~cobra": 444826
+ },
+ "patterns": {
+  "all agree": 519955,
+  "all three differ": 62125,
+  "cobra alone differs": 359842,
+  "grammar alone differs": 35219,
+  "own-pflag alone differs": 22859
+ },
+ "severity": {
+  "grammar~cobra|acceptance": 192259,
+  "grammar~cobra|report": 264893,
+  "grammar~cobra|semantic": 34,
+  "grammar~pflag|acceptance": 5549,
+  "grammar~pflag|report": 114620,
+  "grammar~pflag|semantic": 34,
+  "grammar~plainpflag|acceptance": 3358,
+  "grammar~plainpflag|report": 39260,
+  "grammar~plainpflag|semantic": 17,
+  "grammar~stdflag|acceptance": 803,
+  "grammar~stdflag|report": 6409,
+  "pflag~cobra|acceptance": 192756,
+  "pflag~cobra|report": 251963,
+  "pflag~cobra|semantic": 107
+ },
+ "shrunk": {
+  "grammar~cobra": 22644,
+  "grammar~pflag": 120203,
+  "grammar~plainpflag": 42635,
+  "grammar~stdflag": 7212,
+  "pflag~cobra": 22198
+ }
+}
