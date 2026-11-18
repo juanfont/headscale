@@ -27,9 +27,15 @@ repos:
       - id: check-yaml
       - id: detect-private-key
       - id: end-of-file-fixer
+        # Recorded test input and output: a trailing space is data there.
+        exclude: ^docs/proposals/research/spikes/
       - id: fix-byte-order-marker
       - id: mixed-line-ending
+        # Recorded test input and output: a trailing space is data there.
+        exclude: ^docs/proposals/research/spikes/
       - id: trailing-whitespace
+        # Recorded test input and output: a trailing space is data there.
+        exclude: ^docs/proposals/research/spikes/
 
   # Local hooks for project-specific tooling
   - repo: local
