@@ -42,17 +42,18 @@ The maintainer confirmed two more cuts on 2026-11-19: `users delete` is its own 
 
 Decisions of 2026-11-19, before the first builder. Each one is also in the proposal that it changes.
 
-| Point                                                    | Decision                                                                                                          |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| the branches of the stack                                | in `juanfont/headscale`, named `kradalby/cli-v0-NN-<name>`; each pull request has the branch below it as its base |
-| #3707 and #3708                                          | the stack carries their work and does not wait for them                                                           |
-| the name of the library                                  | `cmdline`                                                                                                         |
-| the string reader                                        | the public package `cmdline/reader`, not `internal/reader`                                                        |
-| the reserved names of `GET /me`                          | as 002 has them                                                                                                   |
-| `GET /health`                                            | the reason `database_unreachable`; the node checks of today as warnings, one for each check                       |
-| the packages of the new CLI                              | `cmd/headscale/newcli`, with `command` and `table` under it; the swap renames it to `cli`                         |
-| `command.Owner`, the `--version` sentence, `NeedsServer` | as 001 has them                                                                                                   |
-| the `api whoami` sheet                                   | one line for each part of `GET /me`; the OAuth client has its own `Client` line                                   |
+| Point                                                    | Decision                                                                                                                                                                   |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the branches of the stack                                | in `juanfont/headscale`, named `kradalby/cli-v0-NN-<name>`; each pull request has the branch below it as its base                                                          |
+| #3707 and #3708                                          | the stack carries their work and does not wait for them                                                                                                                    |
+| the name of the library                                  | `cmdline`                                                                                                                                                                  |
+| the string reader                                        | the public package `cmdline/reader`, not `internal/reader`                                                                                                                 |
+| the reserved names of `GET /me`                          | as 002 has them                                                                                                                                                            |
+| `GET /health`                                            | the reason `database_unreachable`; the node checks of today as warnings, one for each check, with `details.count`; which nodes fail is a field on the node, from part 5 on |
+| a guard test for imports of `cmdline/reader`             | none; no new rule                                                                                                                                                          |
+| the packages of the new CLI                              | `cmd/headscale/newcli`, with `command` and `table` under it; the swap renames it to `cli`                                                                                  |
+| `command.Owner`, the `--version` sentence, `NeedsServer` | as 001 has them                                                                                                                                                            |
+| the `api whoami` sheet                                   | one line for each part of `GET /me`; the OAuth client has its own `Client` line                                                                                            |
 
 ## The stack
 
@@ -121,7 +122,8 @@ How the two CLIs live in one tree until the swap is in "How the old CLI leaves" 
 - **Server work:** the `revision` of a node and its check inside the update of the NodeStore; the column for the creator of a node and of a credential, with its migration; the name that resets; name and expiry changed together or not at all; the reason a node refused an update; the list of tags from the policy; `lastSeen` and `connectedToControl`; `updateAvailable` with the config key `auto_update.check_versions`; the stored expiry time next to the switch for "key expiry disabled".
 - **First of its kind:** paging on one snapshot of the NodeStore; `If-Match`.
 - **Done when:** every node write is tested with an old `revision`, as "Tests" in 002 says.
-- **Ask first:** two earlier calls in 002 that the maintainer has not confirmed: there is no `createdByUserId` field, and no call changes the owner of a node.
+- **Also here, from the health decision:** a list field on the node with the checks that it fails (`hscontrol/state/node_health.go`), empty for a good node, with its column and its filter in `nodes list`; `debug health` then names that command as its hint. One test with a node whose stored expiry is out of range: the list and the get answer, and `PATCH` can repair it. The comments in `node_health.go` say that such a node cannot be put into a netmap, and a time outside the years 0 to 9999 does not marshal as RFC 3339 either.
+- **Ask first:** two earlier calls in 002 that the maintainer has not confirmed: there is no `createdByUserId` field, and no call changes the owner of a node. The name of the new list field and its values. What `expiry` shows for a node whose stored time is out of range (a gap in 002).
 
 ### 6. Auth keys
 
@@ -230,7 +232,7 @@ These come on top of `AGENTS.md` and the maintainer's own instructions.
 
 The root keeps this section true. It holds the tasks of the part that is active, because the root has no TODO tool.
 
-| Part | Branch                        | State                                                                                        |
-| ---- | ----------------------------- | -------------------------------------------------------------------------------------------- |
-| 1    | `kradalby/cli-v0-01-cmdline`  | a builder works on it; brief in `~/.cache/handover/headscale-kradalby-cli-v0-01-cmdline.md`  |
-| 2    | `kradalby/cli-v0-02-api-base` | a builder works on it; brief in `~/.cache/handover/headscale-kradalby-cli-v0-02-api-base.md` |
+| Part | Branch                        | State                                                                                                                                                                   |
+| ---- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `kradalby/cli-v0-01-cmdline`  | built; the root's tests and the first review are done, and the findings are back with the builder; brief in `~/.cache/handover/headscale-kradalby-cli-v0-01-cmdline.md` |
+| 2    | `kradalby/cli-v0-02-api-base` | a builder works on it; brief in `~/.cache/handover/headscale-kradalby-cli-v0-02-api-base.md`                                                                            |

@@ -1314,10 +1314,10 @@ One tree can serve tests that run in parallel (M7). What a user sees in a shell 
 
 ### The API
 
-`go doc -all` of the prototype:
+`go doc -all` of the package:
 
 ```text
-package cmdline // import "spike/cmdline"
+package cmdline // import "github.com/juanfont/headscale/cmdline"
 
 Package cmdline reads a command line into the typed input struct of a command,
 and answers shell completion for the tree of commands.
@@ -1621,7 +1621,7 @@ func (e *UsageError) Unwrap() error
     Unwrap returns Err, so errors.Is and errors.As find what the reader said.
 
 
-package script // import "spike/cmdline/script"
+package script // import "github.com/juanfont/headscale/cmdline/script"
 
 Package script writes the completion scripts that call a program's hidden
 __complete entry point (cmdline.Tree.Serve). The scripts are cobra's (D23):
