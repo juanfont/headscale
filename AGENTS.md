@@ -66,7 +66,7 @@ similar lines of code is better than a premature abstraction.
 ## Quick Start
 
 ```bash
-# Enter the nix dev shell (Go 1.27.3, buf, golangci-lint, prek)
+# Enter the nix dev shell (Go 1.27.3, golangci-lint, prek)
 nix develop
 
 # Full development workflow: fmt + lint + test + build
@@ -74,14 +74,15 @@ make dev
 
 # Individual targets
 make build           # build the headscale binary
-make test            # go test ./...
-make fmt             # format Go, docs, proto
-make lint            # lint Go, proto
-make generate        # regenerate protobuf code (after changes to proto/)
+make test            # CGO_ENABLED=1 go test -race ./...
+make fmt             # format Go, docs, Nix and config files
+make lint            # lint Go
+make generate        # go generate ./... + API clients (oapi-codegen)
 make clean           # remove build artefacts
 
 # Direct go test invocations
 go test ./...
+go test ./hscontrol/state -run 'TestName$'
 CGO_ENABLED=1 go test -race ./...
 
 # CI race check
@@ -136,15 +137,14 @@ headscale/
 │   └── hi/           # Integration test runner (see cmd/hi/README.md)
 ├── hscontrol/        # Core control plane
 ├── integration/      # End-to-end Docker-based tests (see integration/README.md)
-├── proto/            # Protocol buffer definitions
-├── gen/              # Generated code (buf output — do not edit)
+├── gen/              # Generated API clients (oapi-codegen — do not edit)
 ├── docs/             # User and ACL reference documentation
 └── packaging/        # Distribution packaging
 ```
 
 ### `hscontrol/` packages
 
-- `app.go`, `handlers.go`, `grpcv1.go`, `noise.go`, `auth.go`, `oidc.go`,
+- `app.go`, `handlers.go`, `noise.go`, `auth.go`, `oidc.go`,
   `poll.go`, `metrics.go`, `debug.go`, `tailsql.go`, `platform_config.go`
   — top-level server files
 - `state/` — central coordinator (`state.go`) and the copy-on-write
@@ -229,8 +229,9 @@ both. This is a load-bearing architectural rule.
   `TaggedDevices` user (`hscontrol/types/users.go`, ID `2147455555`).
 - `SetTags` validation is enforced by `validateNodeOwnership()` in
   `hscontrol/state/tags.go`.
-- Examples and edge cases live in `hscontrol/types/node_tags_test.go`
-  and `hscontrol/grpcv1_test.go` (`TestSetTags_*`).
+- Examples and edge cases live in `hscontrol/types/node_tags_test.go`,
+  `hscontrol/apiv1_nodes_test.go` (`TestAPIV1NodeSetTags`) and
+  `hscontrol/apiv2_devices_test.go` (`TestAPIv2Device_SetTags`).
 
 **Don't do this**:
 
@@ -335,9 +336,6 @@ a broken one.
 
   Not Conventional Commits. No `feat:`/`chore:`/`docs:` prefixes.
 
-- **Protobuf regeneration**: changes under `proto/` require
-  `make generate` (which runs `buf generate`) and should land in a
-  **separate commit** from the callers that use the regenerated types.
 - **Formatting** is enforced by the `golangci-lint` formatters in
   `.golangci.yaml` (`gofumpt`, `gci`, `goimports`). No line-length limit is
   enforced. Run `make fmt` or rely on the pre-commit hook.
@@ -360,12 +358,8 @@ a broken one.
   only surface on one backend.
 - **NodeStore writes** rebuild a full snapshot. Measure before changing
   hot-path code.
-- **`.claude/agents/` is deprecated.** Do not create new agent files
-  there. Put behavioural guidance in this file and procedural guidance
-  in the nearest README.
-- **Do not edit `gen/`** — it is regenerated from `proto/` by
-  `make generate`.
-- **Proto changes + code changes should be two commits**, not one.
+- **Do not edit `gen/`** — `make client` (part of `make generate`)
+  regenerates it from the OpenAPI spec.
 - **`services.headscale.settings` options come only from
   `nix/options.generated.nix`**, generated from `hscontrol/types/config.go`
   by `go generate ./hscontrol/types/`. Never declare one in `nix/module.nix`:
