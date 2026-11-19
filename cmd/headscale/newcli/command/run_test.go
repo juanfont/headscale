@@ -163,7 +163,12 @@ func fakeServer(t *testing.T) string {
 }
 
 func listItems(c Ctx) ([]item, error) {
-	return walk[item](c.API, "items", func(cl *clientv0.Client, token string) (*http.Response, error) {
+	return walk[item](c.API, "items", func(cl *clientv0.Client, p page) (*http.Response, error) {
+		token := ""
+		if p.token != nil {
+			token = *p.token
+		}
+
 		req, err := http.NewRequestWithContext(c, http.MethodGet, cl.Server+"items?pageToken="+token, nil)
 		if err != nil {
 			return nil, err

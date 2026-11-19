@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -250,4 +251,111 @@ func TestFirstWrite(t *testing.T) {
 	seen, err = run(t, "0.29.0", http.MethodPost)
 	require.ErrorContains(t, err, "this headscale is 0.30.1, the server is 0.29.0.")
 	require.Equal(t, []string{"GET /api/headscale/v0/version"}, seen)
+}
+
+// TestWalk: a walk asks for its page size, reads every page, and starts
+// again once when the server refuses a token, as after a restart.
+func TestWalk(t *testing.T) {
+	t.Parallel()
+
+	users := func(ids ...string) string {
+		rows := make([]string, 0, len(ids))
+		for _, id := range ids {
+			rows = append(rows, `{"id": "`+id+`", "name": "u`+id+`"}`)
+		}
+
+		return `"users": [` + strings.Join(rows, ", ") + `]`
+	}
+
+	walkOf := func(t *testing.T, refuse int) ([]clientv0.User, []string, error) {
+		t.Helper()
+
+		var (
+			mu      sync.Mutex
+			asked   []string
+			refused int
+		)
+
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			q := r.URL.Query()
+			asked = append(asked, q.Get("pageSize")+" "+q.Get("pageToken"))
+
+			switch q.Get("pageToken") {
+			case "":
+				_, _ = w.Write([]byte(`{` + users("1", "2") + `, "nextPageToken": "t2"}`))
+			case "t2":
+				if refused < refuse {
+					refused++
+
+					w.WriteHeader(http.StatusUnprocessableEntity)
+					_, _ = w.Write([]byte(`{"code": "invalid_page_token", "status": 422, "title": "The page token is not valid"}`))
+
+					return
+				}
+
+				_, _ = w.Write([]byte(`{` + users("3") + `}`))
+			}
+		}))
+		t.Cleanup(s.Close)
+
+		c, err := clientv0.NewClient(s.URL)
+		require.NoError(t, err)
+
+		got, err := (&API{c: c, target: "x", pageSize: 2}).ListUsers(t.Context())
+
+		return got, asked, err
+	}
+
+	ids := func(us []clientv0.User) []string {
+		out := make([]string, 0, len(us))
+		for _, u := range us {
+			out = append(out, u.Id)
+		}
+
+		return out
+	}
+
+	got, asked, err := walkOf(t, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"1", "2", "3"}, ids(got))
+	require.Equal(t, []string{"2 ", "2 t2"}, asked)
+
+	got, asked, err = walkOf(t, 1)
+	require.NoError(t, err)
+	require.Equal(t, []string{"1", "2", "3"}, ids(got), "the restart keeps no row twice")
+	require.Equal(t, []string{"2 ", "2 t2", "2 ", "2 t2"}, asked)
+
+	_, _, err = walkOf(t, 2)
+	require.EqualError(t, err, "the server restarted while the list was read. Run the command again.")
+}
+
+// TestWalkEnds: a token that leads nowhere new is a fault of the server,
+// said at once, not a walk that asks until the time is up.
+func TestWalkEnds(t *testing.T) {
+	t.Parallel()
+
+	for next, want := range map[string]string{
+		`"same"`: "the server at x sent a page token it had sent before, so the list would never end. This is a fault of the server.",
+		`""`:     "the server at x sent an empty page token. This is a fault of the server.",
+		`null`:   "the server at x sent an empty page token. This is a fault of the server.",
+	} {
+		var asked atomic.Int32
+
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			asked.Add(1)
+
+			_, _ = w.Write([]byte(`{"users": [{"id": "1"}], "nextPageToken": ` + next + `}`))
+		}))
+		t.Cleanup(s.Close)
+
+		c, err := clientv0.NewClient(s.URL)
+		require.NoError(t, err)
+
+		_, err = (&API{c: c, target: "x", pageSize: 2}).ListUsers(t.Context())
+		require.EqualError(t, err, want, next)
+		require.LessOrEqual(t, asked.Load(), int32(2), next)
+	}
 }

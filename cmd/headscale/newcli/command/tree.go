@@ -126,7 +126,7 @@ func New[In, Out any](s Spec[In, Out]) Node {
 
 			out, err := s.Run(c, in)
 			if err != nil {
-				return err
+				return flagsOf[In](err)
 			}
 
 			return printOne(c, out, s.Columns, func() string {

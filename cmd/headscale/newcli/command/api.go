@@ -45,6 +45,8 @@ type API struct {
 	answered func(req *http.Request, body []byte)
 	// socket is the unix socket; nil for a remote server.
 	socket *socket
+	// pageSize is the rows of one page of a walk.
+	pageSize int64
 
 	mu      sync.Mutex
 	answers map[answerKey]json.RawMessage
@@ -110,6 +112,25 @@ func (a *API) Health(ctx context.Context) (clientv0.Health, error) {
 	return call[clientv0.Health](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetHealth(ctx) })
 }
 
+// ListUsers is every page of GET /users.
+func (a *API) ListUsers(ctx context.Context) ([]clientv0.User, error) {
+	return walk[clientv0.User](a, "users", func(c *clientv0.Client, p page) (*http.Response, error) {
+		return c.ListUsers(ctx, &clientv0.ListUsersParams{PageSize: &p.size, PageToken: p.token})
+	})
+}
+
+// CreateUser is POST /users.
+func (a *API) CreateUser(ctx context.Context, body clientv0.CreateUserBody) (clientv0.User, error) {
+	return call[clientv0.User](a, func(c *clientv0.Client) (*http.Response, error) { return c.CreateUser(ctx, body) })
+}
+
+// UpdateUser is PATCH /users/{id}, as a merge patch.
+func (a *API) UpdateUser(ctx context.Context, id string, body clientv0.UpdateUserBody) (clientv0.User, error) {
+	return call[clientv0.User](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.UpdateUserWithApplicationMergePatchPlusJSONBody(ctx, id, body)
+	})
+}
+
 // call makes one request and reads its answer: a 2xx body as T, kept for
 // -o json; no body (a 204) as the zero T; any other status as a problem.
 func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, error) {
@@ -130,32 +151,62 @@ func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, 
 	return out, nil
 }
 
+// page is the request of one page of a walk: its size, and the token of
+// the page before; nil for the first.
+type page struct {
+	size  int64
+	token *string
+}
+
+// errRestarted is a walk whose token the server refused twice.
+var errRestarted = errors.New("the server restarted while the list was read. Run the command again.") //nolint:staticcheck // a sentence of the CLI
+
 // walk reads every page of a list, from the first to the one with no
 // nextPageToken; items is the key of the rows in a page. Each row keeps
 // its own body, so -o json prints the rows as they came, in the order
-// that Run returns them.
-func walk[Row any](a *API, items string, page func(c *clientv0.Client, token string) (*http.Response, error)) ([]Row, error) {
-	var (
-		rows  []Row
-		token string
-	)
+// that Run returns them. A server that refuses a token, as after a
+// restart, is walked again from the first page, once.
+func walk[Row any](a *API, items string, get func(c *clientv0.Client, p page) (*http.Response, error)) ([]Row, error) {
+	refused := func(err error) bool {
+		p, ok := errors.AsType[*ProblemError](err)
+
+		return ok && p.Problem.Code == clientv0.InvalidPageToken
+	}
+
+	rows, err := pages[Row](a, items, get)
+	if refused(err) {
+		rows, err = pages[Row](a, items, get)
+	}
+
+	if refused(err) {
+		return nil, errRestarted
+	}
+
+	return rows, err
+}
+
+func pages[Row any](a *API, items string, get func(c *clientv0.Client, p page) (*http.Response, error)) ([]Row, error) {
+	var rows []Row
+
+	p := page{size: a.pageSize}
+	seen := map[string]bool{}
 
 	for {
-		body, err := a.do(func(c *clientv0.Client) (*http.Response, error) { return page(c, token) })
+		body, err := a.do(func(c *clientv0.Client) (*http.Response, error) { return get(c, p) })
 		if err != nil {
 			return nil, err
 		}
 
-		var p map[string]json.RawMessage
+		var list map[string]json.RawMessage
 
-		err = json.Unmarshal(body, &p)
+		err = json.Unmarshal(body, &list)
 		if err != nil {
 			return nil, a.unreadable(err)
 		}
 
 		var raws []json.RawMessage
 
-		err = json.Unmarshal(p[items], &raws)
+		err = json.Unmarshal(list[items], &raws)
 		if err != nil {
 			return nil, a.unreadable(err)
 		}
@@ -172,15 +223,28 @@ func walk[Row any](a *API, items string, page func(c *clientv0.Client, token str
 			rows = append(rows, r)
 		}
 
-		next, ok := p["nextPageToken"]
+		next, ok := list["nextPageToken"]
 		if !ok {
 			return rows, nil
 		}
 
+		var token string
+
 		err = json.Unmarshal(next, &token)
-		if err != nil {
+
+		// A walk ends only on a page with no token, so a token that leads
+		// nowhere new would ask for ever.
+		switch {
+		case err != nil:
 			return nil, a.unreadable(err)
+		case token == "":
+			return nil, fmt.Errorf("the server at %s sent an empty page token. This is a fault of the server.", a.target) //nolint:err113,staticcheck // a sentence of the CLI
+		case seen[token]:
+			return nil, fmt.Errorf("the server at %s sent a page token it had sent before, so the list would never end. This is a fault of the server.", a.target) //nolint:err113,staticcheck // a sentence of the CLI
 		}
+
+		seen[token] = true
+		p.token = &token
 	}
 }
 
@@ -275,6 +339,10 @@ func causeOf(err error) string {
 
 func (e *connectError) Unwrap() error { return e.err }
 
+// maxPage is the most rows v0 gives on one page; a walk asks for it, so a
+// list of up to 1000 rows is one call.
+const maxPage = 1000
+
 var errNoAPIKey = errors.New("a remote server needs an API key: set HEADSCALE_CLI_API_KEY, or cli.api_key in the config")
 
 // connect makes the client for the socket of cfg, or for cli.address with
@@ -339,7 +407,12 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 		return nil, err
 	}
 
-	return &API{c: c, target: target, answered: env.Answered, socket: sock}, nil
+	size := int64(env.PageSize)
+	if size == 0 {
+		size = maxPage
+	}
+
+	return &API{c: c, target: target, answered: env.Answered, socket: sock, pageSize: size}, nil
 }
 
 var errNoSocket = errors.New("unix_socket is empty")

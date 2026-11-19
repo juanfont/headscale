@@ -148,6 +148,9 @@ type Env struct {
 	Environ []string
 	// Terminal reports whether stdin is a terminal, which a prompt needs.
 	Terminal bool
+	// PageSize is the rows of one page of a list walk; 0 is 1000, the most
+	// v0 takes. A test sets it small, to walk many pages.
+	PageSize int
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 	// Answered, when set, is told every answer of the server as it came, so
