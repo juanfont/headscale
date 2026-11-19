@@ -267,6 +267,10 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// [Remote control](https://headscale.net/stable/ref/api/#remote-control).
 	CLI CLIConfig `koanf:"cli"`
 
+	// API covers the HTTP APIs the server answers. See
+	// [API](https://headscale.net/stable/ref/api/).
+	API APIConfig `koanf:"api"`
+
 	// Tuning holds performance settings that rarely need changing.
 	Tuning Tuning `koanf:"tuning"`
 
@@ -895,6 +899,21 @@ type CLIConfig struct {
 	Insecure bool `koanf:"insecure"`
 }
 
+// APIConfig covers the HTTP APIs.
+type APIConfig struct {
+	// CORS is which web pages in a browser may call the API.
+	CORS CORSConfig `koanf:"cors"`
+}
+
+// CORSConfig lets a web UI on another origin call the API from a browser.
+type CORSConfig struct {
+	// AllowedOrigins are the origins, `scheme://host[:port]`, whose pages
+	// may call `/api/headscale/v0` and `/api/v2` from a browser. Empty sends
+	// no CORS headers. `*` is not accepted: this is an admin API.
+	// `/api/v1` never sends CORS headers.
+	AllowedOrigins []string `example:"[\"https://admin.example.com\"]" koanf:"allowed_origins"`
+}
+
 // PolicyConfig is where the access control policy (ACLs and grants) is
 // stored.
 type PolicyConfig struct {
@@ -1009,7 +1028,7 @@ func (c *Config) AbsPath(p string) string {
 // values.
 var URLKeys = []string{
 	"server_url", "cli.address", "dns.nameservers.global", "dns.nameservers.split",
-	"tls.acme.url", "oidc.issuer", "derp.urls",
+	"tls.acme.url", "oidc.issuer", "derp.urls", "api.cors.allowed_origins",
 }
 
 // RedactedURLs returns c with the userinfo of the URLs that URLKeys hold
