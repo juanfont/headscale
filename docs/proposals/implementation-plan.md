@@ -229,7 +229,7 @@ These come on top of `AGENTS.md` and the maintainer's own instructions.
 
 The root keeps this section true. It holds the tasks of the part that is active, because the root has no TODO tool.
 
-| Part | Branch                        | State       |
-| ---- | ----------------------------- | ----------- |
-| 1    | `kradalby/cli-v0-01-cmdline`  | not started |
-| 2    | `kradalby/cli-v0-02-api-base` | not started |
+| Part | Branch                        | State                                                                                        |
+| ---- | ----------------------------- | -------------------------------------------------------------------------------------------- |
+| 1    | `kradalby/cli-v0-01-cmdline`  | a builder works on it; brief in `~/.cache/handover/headscale-kradalby-cli-v0-01-cmdline.md`  |
+| 2    | `kradalby/cli-v0-02-api-base` | a builder works on it; brief in `~/.cache/handover/headscale-kradalby-cli-v0-02-api-base.md` |
