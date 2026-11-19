@@ -32,6 +32,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/metrics"
+	apiv0 "github.com/juanfont/headscale/hscontrol/api/headscale/v0"
 	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 	"github.com/juanfont/headscale/hscontrol/capver"
@@ -46,6 +47,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/mholt/acmez/v3/acme"
 	"github.com/pkg/profile"
 	"github.com/rs/zerolog/log"
@@ -93,6 +95,10 @@ type Headscale struct {
 	state           *state.State
 	noisePrivateKey *key.MachinePrivate
 	ephemeralGC     *db.EphemeralGarbageCollector
+
+	// apis are built once and shared by the TCP router and the unix socket.
+	apisOnce            sync.Once
+	apiV1, apiV2, apiV0 http.Handler
 
 	DERPServer *derpServer.DERPServer
 
@@ -511,7 +517,7 @@ func serveHumaMux(mux http.Handler) http.HandlerFunc {
 	}
 }
 
-func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
+func (h *Headscale) createRouter(apiV1Mux, apiV2Mux, apiV0Mux http.Handler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(metrics.Collector(metrics.CollectorOpts{
 		Host:  false,
@@ -520,7 +526,7 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 			return r.Method == http.MethodOptions
 		},
 	}))
-	r.Use(middleware.RequestID)
+	r.Use(requestID)
 
 	if h.realIPMiddleware != nil {
 		r.Use(h.realIPMiddleware)
@@ -565,11 +571,19 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 
 	// Auth is enforced inside each Huma mux per-operation, so the whole API
 	// mounts as one handler per version: operations need an API key while the
-	// OpenAPI document and docs UI stay public. v1 is the headscale-native admin
-	// API; v2 is Headscale's v2 API, which ports some endpoints from Tailscale.
+	// OpenAPI document and docs UI stay public. v1 is the legacy API, frozen
+	// and without CORS; v2 is the Tailscale API; headscale/v0 is Headscale's
+	// own.
+	corsMW := cors(h.cfg.API.CORS.AllowedOrigins)
+
 	r.Route("/api", func(r chi.Router) {
 		r.Handle("/v1/*", serveHumaMux(apiV1Mux))
-		r.Handle("/v2/*", serveHumaMux(apiV2Mux))
+		r.With(corsMW).Handle("/v2/*", serveHumaMux(apiV2Mux))
+		// The bare path is v0's too, so it answers a v0 problem. The version
+		// headers go first: a preflight carries them.
+		v0 := r.With(apiv0.VersionHeaders, corsMW)
+		v0.Handle("/headscale/v0", serveHumaMux(apiV0Mux))
+		v0.Handle("/headscale/v0/*", serveHumaMux(apiV0Mux))
 	})
 	// Ping response endpoint: receives HEAD from clients responding
 	// to a [tailcfg.PingRequest]. The unguessable ping ID serves as authentication.
@@ -723,36 +737,12 @@ func (h *Headscale) Serve(ctx context.Context) error {
 		return fmt.Errorf("changing socket permission: %w", err)
 	}
 
-	// The Huma v1 API mux matches full /api/v1/... paths and is shared by
-	// the local unix socket (served without authentication, local trust)
-	// and the remote TCP router (served behind the API-key middleware).
-	humaMux, _ := apiv1.Handler(apiv1.Backend{
-		State:  h.state,
-		Change: h.Change,
-		Cfg:    h.cfg,
-	})
-
-	// The Headscale v2 API. Served behind Basic/Bearer auth on the remote
-	// listener, and over the local unix socket (local trust) so the CLI can
-	// manage OAuth clients through the same v2 keys handler the Tailscale
-	// ecosystem uses.
-	humaV2Mux, _ := apiv2.Handler(apiv2.Backend{
-		State:     h.state,
-		Change:    h.Change,
-		Cfg:       h.cfg,
-		Connected: h.isConnected,
-	})
-
-	// Serve both Huma APIs over the unix socket without TLS or auth: socket
-	// access implies trust. WithLocalTrust marks these requests so each API's
-	// security middleware skips the credential check. v2 paths route to the v2
-	// mux; everything else (the v1 paths) to v1.
-	socketHandler := http.NewServeMux()
-	socketHandler.Handle("/api/v2/", apiv2.WithLocalTrust(humaV2Mux))
-	socketHandler.Handle("/", apiv1.WithLocalTrust(humaMux))
+	// One instance of each API serves both the unix socket and the remote
+	// router.
+	humaMux, humaV2Mux, humaV0Mux := h.apiHandlers() //nolint:contextcheck // builds handlers; each request brings its context
 
 	socketServer := &http.Server{
-		Handler:     socketHandler,
+		Handler:     socketHandler(humaMux, humaV2Mux, humaV0Mux),
 		ReadTimeout: types.HTTPTimeout,
 	}
 
@@ -776,7 +766,7 @@ func (h *Headscale) Serve(ctx context.Context) error {
 	//
 	// This is the regular router that we expose
 	// over our main Addr
-	router := h.createRouter(humaMux, humaV2Mux)
+	router := h.createRouter(humaMux, humaV2Mux, humaV0Mux)
 
 	httpServer := &http.Server{
 		Addr:        string(h.cfg.Addr),
@@ -1402,20 +1392,56 @@ func (h *Headscale) Change(cs ...change.Change) {
 // The handler serves the Tailscale control protocol including the /key
 // endpoint and /ts2021 Noise upgrade path.
 func (h *Headscale) HTTPHandler() http.Handler {
-	humaMux, _ := apiv1.Handler(apiv1.Backend{
-		State:  h.state,
-		Change: h.Change,
-		Cfg:    h.cfg,
+	return h.createRouter(h.apiHandlers())
+}
+
+// SocketHandler returns the [http.Handler] of the unix socket: the three
+// APIs, with no TLS and no credential.
+func (h *Headscale) SocketHandler() http.Handler {
+	return socketHandler(h.apiHandlers())
+}
+
+// apiHandlers builds the legacy API, the Tailscale API and API v0, once per
+// server, so the router and the socket serve the same set. Each Huma mux
+// matches its full /api/... paths.
+func (h *Headscale) apiHandlers() (http.Handler, http.Handler, http.Handler) {
+	h.apisOnce.Do(func() {
+		h.apiV1, _ = apiv1.Handler(apiv1.Backend{
+			State:  h.state,
+			Change: h.Change,
+			Cfg:    h.cfg,
+		})
+
+		h.apiV2, _ = apiv2.Handler(apiv2.Backend{
+			State:     h.state,
+			Change:    h.Change,
+			Cfg:       h.cfg,
+			Connected: h.isConnected,
+		})
+
+		h.apiV0 = apiv0.Handler(apiv0.Backend{
+			State: h.state,
+			Cfg:   h.cfg,
+		})
 	})
 
-	humaV2Mux, _ := apiv2.Handler(apiv2.Backend{
-		State:     h.state,
-		Change:    h.Change,
-		Cfg:       h.cfg,
-		Connected: h.isConnected,
-	})
+	return h.apiV1, h.apiV2, h.apiV0
+}
 
-	return h.createRouter(humaMux, humaV2Mux)
+// socketHandler serves the APIs over the unix socket: access to the socket
+// is the credential, so WithLocalTrust tells each API to skip its check.
+// Everything that is not v2 or v0 goes to the legacy API. v0 gets request
+// IDs for its problems and logs; the socket has no router to give them.
+func socketHandler(v1, v2, v0 http.Handler) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/api/v2/", apiv2.WithLocalTrust(v2))
+	// The bare path too: the catch-all would hand it to the legacy API.
+	local := requestID(apiv0.WithLocalTrust(v0))
+	mux.Handle(apiv0.Prefix, local)
+	mux.Handle(apiv0.Prefix+"/", local)
+	mux.Handle("/", apiv1.WithLocalTrust(v1))
+
+	return mux
 }
 
 // NoisePublicKey returns the server's Noise protocol public key.
@@ -1475,6 +1501,17 @@ func (h *Headscale) StartEphemeralGCForTest(tb testing.TB) {
 	tb.Cleanup(func() { h.ephemeralGC.Close() })
 }
 
+// requestID gives each request an ID the server makes, so the ID in a
+// problem names one line of the request log. It is random and short, holds
+// no host name, and X-Request-Id from a client is ignored: a client must not
+// choose what goes into the log or point at another request's lines.
+func requestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := rand.Text()[:12]
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), middleware.RequestIDKey, id)))
+	})
+}
+
 // [zerologRequestLogger] implements chi's [middleware.LogFormatter]
 // to route HTTP request logs through zerolog.
 type zerologRequestLogger struct{}
@@ -1483,18 +1520,20 @@ func (z *zerologRequestLogger) NewLogEntry(
 	r *http.Request,
 ) middleware.LogEntry {
 	return &zerologLogEntry{
-		method: clipForLog(r.Method),
-		path:   clipForLog(r.URL.Path),
-		proto:  r.Proto,
-		remote: r.RemoteAddr,
+		method:    clipForLog(r.Method),
+		path:      clipForLog(r.URL.Path),
+		proto:     r.Proto,
+		remote:    r.RemoteAddr,
+		requestID: middleware.GetReqID(r.Context()),
 	}
 }
 
 type zerologLogEntry struct {
-	method string
-	path   string
-	proto  string
-	remote string
+	method    string
+	path      string
+	proto     string
+	remote    string
+	requestID string
 }
 
 func (e *zerologLogEntry) Write(
@@ -1508,6 +1547,7 @@ func (e *zerologLogEntry) Write(
 		Str("path", e.path).
 		Str("proto", e.proto).
 		Str("remote", e.remote).
+		Str(zf.RequestID, e.requestID).
 		Int("status", status).
 		Int("bytes", bytes).
 		Dur("elapsed", elapsed).
