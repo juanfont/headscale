@@ -468,7 +468,7 @@ func (t *Tree) unknownCommand(path []string, word string) error {
 		}
 	}
 
-	if best := closest(word, names); best != "" {
+	if best := table.Closest(word, names); best != "" {
 		return usagef(cmdline.UnknownCommand, path, word, "unknown command %q. Did you mean %q?\nRun `%s --help`.",
 			typed, strings.Join(append(slices.Clone(path), best), " "), t.line(path))
 	}
@@ -516,44 +516,4 @@ func countError(line *cmdline.Line) error {
 	}
 
 	return usagef(cmdline.ArgCount, line.Command.Path, fmt.Sprintf("%s, got %d", what, n), "`%s` %s, got %d.\n\n  %s", strings.Join(line.Command.Path, " "), what, n, line.Command.Usage)
-}
-
-// closest is the name nearest to word, within two edits, for "Did you
-// mean"; "" when none is that near.
-func closest(word string, names []string) string {
-	best, dist := "", 3
-
-	for _, n := range names {
-		if d := distance(word, n); d < dist {
-			best, dist = n, d
-		}
-	}
-
-	return best
-}
-
-// distance is the Levenshtein distance of a and b.
-func distance(a, b string) int {
-	prev := make([]int, len(b)+1)
-	for j := range prev {
-		prev[j] = j
-	}
-
-	for i := range len(a) {
-		cur := make([]int, len(b)+1)
-		cur[0] = i + 1
-
-		for j := range len(b) {
-			cost := 1
-			if a[i] == b[j] {
-				cost = 0
-			}
-
-			cur[j+1] = min(prev[j+1]+1, cur[j]+1, prev[j]+cost)
-		}
-
-		prev = cur
-	}
-
-	return prev[len(b)]
 }

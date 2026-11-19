@@ -171,7 +171,7 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 				return err
 			}
 
-			return printList(c, rows, s.Columns)
+			return printList(c, rows, s.Columns.Pick(nil))
 		}}
 	}
 

@@ -33,7 +33,15 @@ type row struct {
 	Inner  *struct {
 		Hint string `json:"hint"`
 	} `json:"inner"`
+	Version  string `json:"clientVersion"`
+	AuthKey  string `json:"authKeyId"`
+	Nodes    []ref  `json:"nodes"`
 	Untagged string
+}
+
+type ref struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 var now = time.Date(2026, 11, 10, 9, 14, 0, 0, time.UTC)
@@ -45,7 +53,7 @@ var cols = Columns[row]{
 	{Name: "ip", Field: "addresses", Default: true},
 	{Name: "online", Field: "online", Default: true},
 	{Name: "last-seen", Field: "lastSeen", Default: true},
-	{Name: "expiry", Field: "expiry", Default: true},
+	{Name: "expiry", Field: "expiry", Default: true, Ahead: true},
 	{Name: "count", Field: "count"},
 	{Name: "hint", Field: "inner.hint"},
 }
@@ -82,6 +90,9 @@ func TestCheck(t *testing.T) {
 		{"no name", Column[row]{Field: "name"}, `field "name": a column with no name`},
 		{"a kind the field cannot have", Column[row]{Name: "x", Field: "online", Kind: Time}, `column "x": kind time cannot show bool`},
 		{"a kind of no field", Column[row]{Name: "x", Field: "inner", Kind: Text}, `column "x": kind text cannot show struct { Hint string "json:\"hint\"" }`},
+		{"ahead on no time", Column[row]{Name: "x", Field: "name", Ahead: true}, `column "x" is no time, so it cannot look ahead`},
+		{"a version with no kind", Column[row]{Name: "x", Field: "clientVersion"}, `column "x": field "clientVersion" is named like an ID or a version: say its Kind, which may be text`},
+		{"an ID with no kind", Column[row]{Name: "x", Field: "authKeyId"}, `column "x": field "authKeyId" is named like an ID or a version: say its Kind, which may be text`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -122,7 +133,7 @@ func TestRender(t *testing.T) {
 	t.Parallel()
 
 	var b bytes.Buffer
-	require.NoError(t, Render(&b, rows(), cols, now))
+	require.NoError(t, Render(&b, rows(), cols.Pick(nil), now))
 
 	want := `ID  NAME     OWNER              IP                   ONLINE  LAST SEEN  EXPIRY
 12  mynode   alice              100.64.0.1, fd7a::1  yes     now        in 89d
@@ -131,6 +142,24 @@ func TestRender(t *testing.T) {
 	if diff := cmp.Diff(want, b.String()); diff != "" {
 		t.Errorf("table (-want +got):\n%s", diff)
 	}
+}
+
+// TestAligned: a column is as wide as its widest cell on the screen, a
+// wide character taking two; only padding is left out at the end of a
+// line, never what a cell holds.
+func TestAligned(t *testing.T) {
+	t.Parallel()
+
+	var b bytes.Buffer
+	require.NoError(t, aligned(&b, [][]string{
+		{"NAME", "OWNER", "NOTE"},
+		{"🚀web", "alice", ""},
+		{"\u65e5\u672c", "", "x  "},
+		{"é", "bob", ""},
+	}))
+	require.Equal(t, "NAME   OWNER  NOTE\n🚀web  alice\n\u65e5\u672c          x  \né      bob\n", b.String())
+	require.Equal(t, 5, width("🚀web"))
+	require.Equal(t, 1, width("e\u0301"))
 }
 
 func TestSheet(t *testing.T) {

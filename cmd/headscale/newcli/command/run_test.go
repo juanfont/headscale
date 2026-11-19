@@ -133,17 +133,6 @@ Examples:
 	}
 }
 
-func TestClosest(t *testing.T) {
-	t.Parallel()
-
-	names := []string{"nodes", "users", "version"}
-	require.Equal(t, "nodes", closest("nodse", names))
-	require.Equal(t, "users", closest("user", names))
-	require.Empty(t, closest("policy", names))
-	require.Equal(t, 0, distance("", ""))
-	require.Equal(t, 3, distance("abc", ""))
-}
-
 // fakeServer answers like v0, with a field this build does not know in
 // every object: /health changes with each call, /items has two pages, and
 // DELETE /thing has no body.
