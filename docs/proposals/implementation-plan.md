@@ -51,6 +51,13 @@ Decisions of 2026-11-19, before the first builder. Each one is also in the propo
 | the reserved names of `GET /me`                          | as 002 has them                                                                                                                                                            |
 | `GET /health`                                            | the reason `database_unreachable`; the node checks of today as warnings, one for each check, with `details.count`; which nodes fail is a field on the node, from part 5 on |
 | a guard test for imports of `cmdline/reader`             | none; no new rule                                                                                                                                                          |
+| the tests of `cmdline`                                   | as the prototype has them: two files, plain `t.Errorf`, no testify; an exception to the maintainer's Go conventions                                                        |
+| `forbidden`                                              | `details.scopes` lists every scope that is lacking; `details.rule` names a token rule. The rule names are asked in parts 6 and 7                                           |
+| the statuses `406` and `408`                             | the codes `not_acceptable` and `request_timeout`                                                                                                                           |
+| the changelog                                            | all of it in part 13, as planned                                                                                                                                           |
+| a credential that the database cannot check              | `503` `unhealthy` with `database_unreachable`, on every v0 path                                                                                                            |
+| the request ID                                           | the server alone makes it: random, no host name, no header of a client                                                                                                     |
+| the key checks that find the prefix anywhere in the text | their own pull request beside the stack                                                                                                                                    |
 | the packages of the new CLI                              | `cmd/headscale/newcli`, with `command` and `table` under it; the swap renames it to `cli`                                                                                  |
 | `command.Owner`, the `--version` sentence, `NeedsServer` | as 001 has them                                                                                                                                                            |
 | the `api whoami` sheet                                   | one line for each part of `GET /me`; the OAuth client has its own `Client` line                                                                                            |
@@ -96,7 +103,7 @@ How the two CLIs live in one tree until the swap is in "How the old CLI leaves" 
 ### 2. The empty API
 
 - **Read:** in 002: "Conventions", "Errors", "Authentication" with "Who am I" and "CORS", "Server", "Server operations", and all of "Implementation notes".
-- **Build:** the package `hscontrol/api/headscale/v0`; the wiring in four places in `hscontrol/app.go`; the problem type and the transformer for Huma's own errors; the auth middleware with its one caller value, and the token rules; the three operations; the `Headscale-Version` header; the config key `api.cors.allowed_origins`; the OpenAPI document in the tree, with a check that fails when it is stale; the generated client in `gen/client/headscale/v0`; the guard tests; a unix socket in `hscontrol/servertest`, which has none today.
+- **Build:** the package `hscontrol/api/headscale/v0`; the wiring in four places in `hscontrol/app.go`; the problem type and the transformer for Huma's own errors; the auth middleware with its one caller value; the three operations; the `Headscale-Version` header; the config key `api.cors.allowed_origins`; the OpenAPI document in the tree, with a check that fails when it is stale; the generated client in `gen/client/headscale/v0`; the guard tests; a unix socket in `hscontrol/servertest`, which has none today; the page of problem codes, `docs/ref/api/problems.md`, generated from the codes with a stale check; the CORS header of `GET /key`. The token rules are not here: no operation of this part needs one, and each arrives with the operation that it guards (parts 5, 6 and 7).
 - **Done when:** `GET /me` answers for an API key, for a token and for the socket in `hscontrol/servertest`, and the guard tests fail for an operation without a scope, without error codes or without an operation ID.
 - **Asked:** the names in `GET /me` hold as 002 has them, and the OpenAPI enums list the reserved values. `GET /health` has the reason `database_unreachable` and the warnings `node_name_invalid` and `node_expiry_invalid`; `policy_file_invalid` arrives with part 10.
 
@@ -129,11 +136,14 @@ How the two CLIs live in one tree until the swap is in "How the old CLI leaves" 
 
 - **Read:** in 002: "Secrets", "How a credential ends", "Auth keys", "Auth key operations". In 001: `auth`.
 - **Server work:** the list with revoked keys and their state; a delete that always revokes; the check of the tags against the policy.
+- **Also here:** the first token rules, with `details.rule` in `forbidden`. One test that `authorization.tags` of `GET /me` and the tag check agree: for a token, every tag in the list makes an auth key, and a tag outside it is refused.
+- **Ask first:** the names of the token rules (the words in `details.rule`).
 
 ### 7. API keys and OAuth clients
 
 - **Read:** in 002: "API keys", "OAuth clients", and their operations. In 001: `api`.
 - **Server work:** the owner of an API key at create; the soft delete for both kinds, with the hourly job for all three; the tokens of a revoked client are refused at once; the time an API key was last used; the check of a client's tags against the policy; the config key `credentials.revoked_retention`, which takes the place of `preauth_keys.revoked_retention`.
+- **Ask first:** the names of the token rules of this part.
 
 ### 8. User delete
 
@@ -168,6 +178,7 @@ How the two CLIs live in one tree until the swap is in "How the old CLI leaves" 
 
 - **Read:** in 001: "How the old CLI leaves", "What else the implementation touches", "Changelog", "Commit rules for this work". In 002: "The end of the legacy API".
 - **Build:** remove the tag, `cmd/headscale/cli`, pterm, and cobra as the command framework; run `go run ./cmd/vendorhash update` after `go.mod` changes. Change what must match the default binary: the NixOS test kit with its BREAKING entry, the GitHub automation, the commands that the server prints, the docs, the packaging. On `/api/v1`: `deprecated` on every operation, the `Deprecation`, `Sunset` and `Link` headers, the warning in the log, the migration guide. The changelog: the edits that 001 lists, and the removal of `/api/v1` in 0.33. The removal of `nodes backfillips` is its own commit.
+- **Before the release fixes them:** read every schema name, every code and every key of `details` in the OpenAPI document once, as a whole. Until 0.30 a name changes for free; after it, each change is a breaking change. The schema of a warning and a reason has the weak name `Message` since part 2; it is named when the node field of part 5 is decided, because it may be the same type.
 
 ## Beside the stack
 
@@ -176,6 +187,7 @@ These are their own pull requests. They are not parts of the stack, but the stac
 - **The Tailscale API of Headscale.** "In the Tailscale API of Headscale" in 002 lists ten differences to remove and five to keep with a test. Pull request #3707 holds that work. Three of its rows touch the same code as the stack: expire and key expiry (part 5), the tag checks (parts 6 and 7) and the soft revoke of an OAuth client (part 7). The maintainer decided that those parts carry the work: each takes the commits of its rows from the branch of #3707, and never edits that branch.
 - **The legacy API before it is frozen.** "In the legacy API, before it is frozen" in 002 lists three places where `/api/v1` differs from 0.29. One small pull request, before the swap.
 - **Pull request #3708** makes a write that a unique index refuses a `409`. It changes `hscontrol/db` and the errors of `/api/v1`. Part 4, which creates users, carries its commits. When one of the two pull requests merges first, a rebase drops the same commits from the stack.
+- **The key checks find their prefix anywhere in the text.** `validateAPIKey` (`hscontrol/db/api_key.go`), `AuthenticateAccessToken` (`hscontrol/db/oauth.go`) and the auth key check (`hscontrol/db/preauth_keys.go`) use `strings.Cut`, so `Bearer x<key>` passes in all three APIs. It gives an attacker nothing, because the lookup is bound to the kind of credential, and it is older than the stack. The maintainer wants one small pull request: a key starts with its prefix. Its builder first finds out why the cut is there.
 
 ## What every pull request passes
 
@@ -232,7 +244,7 @@ These come on top of `AGENTS.md` and the maintainer's own instructions.
 
 The root keeps this section true. It holds the tasks of the part that is active, because the root has no TODO tool.
 
-| Part | Branch                        | State                                                                                                                                                                   |
-| ---- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `kradalby/cli-v0-01-cmdline`  | built; the root's tests and the first review are done, and the findings are back with the builder; brief in `~/.cache/handover/headscale-kradalby-cli-v0-01-cmdline.md` |
-| 2    | `kradalby/cli-v0-02-api-base` | a builder works on it; brief in `~/.cache/handover/headscale-kradalby-cli-v0-02-api-base.md`                                                                            |
+| Part | Branch                        | State                                                                                                                                                                            |
+| ---- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `kradalby/cli-v0-01-cmdline`  | built and reviewed; the root's gate is green on `113b4571c` (hooks, lint, the Go test check, the race check, both fuzz targets); it waits for the maintainer's word to be pushed |
+| 2    | `kradalby/cli-v0-02-api-base` | built; two reviews are done (002, and the security of auth and CORS); the builder works on the findings in `~/.cache/handover/headscale-kradalby-cli-v0-02-api-base-review-1.md` |
