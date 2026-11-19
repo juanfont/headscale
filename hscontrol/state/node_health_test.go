@@ -95,6 +95,9 @@ func TestScanNodeHealthReportsInvalidNameWithoutMutating(t *testing.T) {
 	nv, ok := s.GetNodeByID(bad.ID)
 	require.True(t, ok)
 	require.Empty(t, nv.GivenName(), "boot scan must not mutate the stored name")
+
+	require.Equal(t, []NodeHealthProblem{{Code: "node_name_invalid", Nodes: []types.NodeID{bad.ID}}},
+		s.NodeHealthProblems(), "one problem per failing check, naming its nodes")
 }
 
 // TestBatchSetNodeHealthUnchangedSkipsWrite ensures asking for the health
