@@ -35,7 +35,10 @@ func Run(t *Tree, argv []string, env Env) int {
 		env.Version = types.GetVersionInfo()
 	}
 
-	if t.parser.Serve(env.Stdout, argv) {
+	var tab strings.Builder
+	if t.parser.Serve(&tab, argv) {
+		_, _ = io.WriteString(env.Stdout, t.columnNames(argv, tab.String()))
+
 		return 0
 	}
 
@@ -82,6 +85,10 @@ func (t *Tree) run(argv []string, env Env) error {
 		_, err := fmt.Fprintln(env.Stdout, versionLine(env.Version))
 
 		return err
+	case stepColumns:
+		output, _ := cmdline.Get[outputFlags](line)
+
+		return listColumns(env.Stdout, t.leaves[strings.Join(line.Command.Path, " ")].info, output.Output != "")
 	case stepRun:
 	}
 
@@ -98,6 +105,8 @@ func (t *Tree) run(argv []string, env Env) error {
 		stderr:     env.Stderr,
 		Environ:    env.Environ,
 		terminal:   env.Terminal,
+		screen:     env.StdoutTerminal,
+		line:       line,
 		json:       output.Output != "" || own.Output != "",
 		now:        env.Now,
 		build:      env.Version,
@@ -156,6 +165,8 @@ const (
 	stepRun step = iota
 	stepHelp
 	stepVersion
+	// stepColumns prints the columns of a list: --list-columns.
+	stepColumns
 )
 
 // check reads a line and decides its step. A mistake on the line, the
@@ -176,12 +187,15 @@ func (t *Tree) check(argv []string) (*cmdline.Line, step, error) {
 
 	help, _ := cmdline.Get[helpFlags](line)
 	version, _ := cmdline.Get[versionFlags](line)
+	l := t.leaves[strings.Join(line.Command.Path, " ")]
 
 	switch {
 	case help.Help, len(line.Command.Commands) > 0 && !version.Version:
 		return line, stepHelp, nil
 	case version.Version:
 		return line, stepVersion, nil
+	case l != nil && l.list && slices.ContainsFunc(line.Flags, func(g cmdline.Given) bool { return g.Name == "list-columns" && g.Value == "true" }):
+		return line, stepColumns, nil
 	case ue != nil:
 		return line, stepRun, countError(line)
 	}
@@ -282,8 +296,9 @@ func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], done func() stri
 }
 
 // printList prints the rows of a ListSpec: the array of their bodies as
-// they came, in the order of rows, or a table.
-func printList[Row any](c Ctx, rows []Row, cols table.Columns[Row]) error {
+// they came, in the order of rows, or a table. A table with no rows is the
+// list's sentence on a terminal, and the header alone in a pipe.
+func printList[Row any](c Ctx, rows []Row, cols table.Columns[Row], noRows string) error {
 	raws := make([][]byte, 0, len(rows))
 
 	for _, r := range rows {
@@ -295,7 +310,10 @@ func printList[Row any](c Ctx, rows []Row, cols table.Columns[Row]) error {
 		raws = append(raws, raw)
 	}
 
-	if !c.json {
+	switch {
+	case !c.json && len(rows) == 0 && c.screen:
+		return writeText(c.stdout, noRows)
+	case !c.json:
 		return table.Render(c.stdout, rows, cols, c.Now())
 	}
 
@@ -389,6 +407,13 @@ func (t *Tree) mistake(line *cmdline.Line, ue *cmdline.UsageError) error {
 			version = g.At
 		} else if g.Name != "version" {
 			others++
+		}
+	}
+
+	if l := t.leaves[strings.Join(line.Command.Path, " ")]; l != nil && l.list {
+		pos, err := l.checkList(line, t.line(line.Command.Path))
+		if err != nil {
+			found(err, pos, false)
 		}
 	}
 

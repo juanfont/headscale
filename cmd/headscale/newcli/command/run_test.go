@@ -33,7 +33,7 @@ func testTree(t *testing.T) *Tree {
 		Group{Name: "items", Short: "Manage items", OldNames: []string{"item"}, Commands: []Node{
 			NewList(ListSpec[NoInput, item]{
 				Name: "list", Short: "List items", Long: "List items.", Example: []string{"prog items list"}, Aliases: []string{"ls"},
-				Local: true, Columns: itemColumns,
+				Local: true, Columns: itemColumns, NoRows: "No items.",
 				Run: func(Ctx, NoInput) ([]item, error) { return []item{{"1", "apple"}, {"2", ""}}, nil },
 			}),
 			New(Spec[getIn, item]{
@@ -134,8 +134,8 @@ Examples:
 }
 
 // fakeServer answers like v0, with a field this build does not know in
-// every object: /health changes with each call, /items has two pages, and
-// DELETE /thing has no body.
+// every object: /health changes with each call, /items has two pages,
+// /broken fails on its second page, and DELETE /thing has no body.
 func fakeServer(t *testing.T) string {
 	t.Helper()
 
@@ -152,6 +152,11 @@ func fakeServer(t *testing.T) string {
 			_, _ = w.Write([]byte(`{"items": [{"id": "1", "name": "a", "x": 1}], "nextPageToken": "p2"}`))
 		case r.URL.Path == "/items":
 			_, _ = w.Write([]byte(`{"items": [{"id": "2", "name": "b", "x": 2}]}`))
+		case r.URL.Path == "/broken" && r.URL.Query().Get("pageToken") == "":
+			_, _ = w.Write([]byte(`{"broken": [{"id": "1", "name": "a"}], "nextPageToken": "p2"}`))
+		case r.URL.Path == "/broken":
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"code": "internal", "status": 500, "title": "Internal", "requestId": "r1"}`))
 		default:
 			n := calls.Add(1)
 			_, _ = fmt.Fprintf(w, `{"healthy": true, "databaseConnectivity": %t, "warnings": [], "call": %d}`, n == 1, n)
@@ -162,14 +167,16 @@ func fakeServer(t *testing.T) string {
 	return s.URL
 }
 
-func listItems(c Ctx) ([]item, error) {
-	return walk[item](c.API, "items", func(cl *clientv0.Client, p page) (*http.Response, error) {
+func listItems(c Ctx) ([]item, error) { return listOfPath(c, "items") }
+
+func listOfPath(c Ctx, path string) ([]item, error) {
+	return walk[item](c.API, path, func(cl *clientv0.Client, p page) (*http.Response, error) {
 		token := ""
 		if p.token != nil {
 			token = *p.token
 		}
 
-		req, err := http.NewRequestWithContext(c, http.MethodGet, cl.Server+"items?pageToken="+token, nil)
+		req, err := http.NewRequestWithContext(c, http.MethodGet, cl.Server+path+"?pageToken="+token, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -214,13 +221,17 @@ func TestJSONIsTheAnswer(t *testing.T) {
 			Done: func(NoInput, clientv0.Health, time.Time) string { return "done" },
 		}),
 		NewList(ListSpec[NoInput, item]{
-			Name: "items", Short: "S", Long: "S.", Example: []string{"prog items"}, Columns: itemColumns,
+			Name: "items", Short: "S", Long: "S.", Example: []string{"prog items"}, Columns: itemColumns, NoRows: "No items.",
 			Run: func(c Ctx, _ NoInput) ([]item, error) {
 				rows, err := listItems(c)
 				slices.Reverse(rows)
 
 				return rows, err
 			},
+		}),
+		NewList(ListSpec[NoInput, item]{
+			Name: "broken", Short: "S", Long: "S.", Example: []string{"prog broken"}, Columns: itemColumns, NoRows: "No items.",
+			Run: func(c Ctx, _ NoInput) ([]item, error) { return listOfPath(c, "broken") },
 		}),
 		New(Spec[NoInput, item]{
 			Name: "item", Short: "S", Long: "S.", Example: []string{"prog item"}, Columns: itemColumns,
@@ -271,6 +282,9 @@ func TestJSONIsTheAnswer(t *testing.T) {
 		{line: "items -o json", stdout: "[\n  {\n    \"id\": \"2\",\n    \"name\": \"b\",\n    \"x\": 2\n  },\n  {\n    \"id\": \"1\",\n    \"name\": \"a\",\n    \"x\": 1\n  }\n]\n"},
 		{line: "items", stdout: "ID  NAME\n2   b\n1   a\n"},
 		{line: "item -o json", stdout: "{\n  \"id\": \"2\",\n  \"name\": \"b\",\n  \"x\": 2\n}\n"},
+		// A page that fails in the middle prints no part of the list.
+		{line: "broken", stderr: "Error: the server had an internal error. Its log has the request r1.\n", code: 1},
+		{line: "broken -o json", stderr: "Error: the server had an internal error. Its log has the request r1.\n", code: 1},
 		{line: "remove", stdout: "removed\n"},
 		{line: "remove -o json"},
 	} {

@@ -80,14 +80,19 @@ func TestBuildChecks(t *testing.T) {
 			"a list with no default column",
 			[]Node{NewList(ListSpec[NoInput, item]{
 				Name: "list", Short: "List", Long: "List.", Example: []string{"prog list"}, Local: true,
-				Columns: table.Columns[item]{{Name: "id", Field: "id"}}, Run: noop[NoInput, []item],
+				Columns: table.Columns[item]{{Name: "id", Field: "id"}}, NoRows: "No items.", Run: noop[NoInput, []item],
 			})},
 			"list: a list with no Default column",
 		},
 		{
 			"a list with no columns",
-			[]Node{NewList(ListSpec[NoInput, item]{Name: "list", Short: "List", Long: "List.", Example: []string{"prog list"}, Local: true, Run: noop[NoInput, []item]})},
+			[]Node{NewList(ListSpec[NoInput, item]{Name: "list", Short: "List", Long: "List.", Example: []string{"prog list"}, Local: true, NoRows: "No items.", Run: noop[NoInput, []item]})},
 			"list: a list with no columns",
+		},
+		{
+			"a list with no sentence for no rows",
+			[]Node{NewList(ListSpec[NoInput, item]{Name: "list", Short: "List", Long: "List.", Example: []string{"prog list"}, Local: true, Columns: itemColumns, Run: noop[NoInput, []item]})},
+			"list: a list with no NoRows sentence",
 		},
 		{"a group with no short", []Node{Group{Name: "items", Commands: []Node{New(spec())}}}, "items: no Short"},
 		{

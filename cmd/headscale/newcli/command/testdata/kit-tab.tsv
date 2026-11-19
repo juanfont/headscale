@@ -123,7 +123,7 @@ model	Q03	pass
 model	Q04	pass
 model	Q05	pass
 model	Q06	pass
-model	Q07	fails	"--columns\tColumns to show\n--sort\tColumn to sort by\n--filter\tRows to keep\n--list-columns\tList the columns\n--output\tOutput format: json (the API object)\n--config\tConfig file\n--help\tShow this help\n:4\n"
+model	Q07	fails	"--columns\tColumns to show: a list, or +name and -name to change the default\n--list-columns\tList the columns, the API field behind each, and exit\n--filter\tKeep the rows that match; may be repeated\n--sort\tColumn to sort by; -name sorts in reverse\n--output\tOutput format: json (the API object)\n--config\tConfig file\n--help\tShow this help\n:4\n"
 model	Q08	fails	"-o\tOutput format: json (the API object)\n:4\n"
 model	Q09	pass
 model	Q10	pass

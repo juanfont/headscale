@@ -49,8 +49,12 @@ Examples:
 
 Flags:
 
-  -o, --output string   Output format: json (the API object)
-  -h, --help            Show this help
+      --columns string   Columns to show: a list, or +name and -name to change the default
+      --list-columns     List the columns, the API field behind each, and exit
+      --filter string    Keep the rows that match; may be repeated
+      --sort string      Column to sort by; -name sorts in reverse
+  -o, --output string    Output format: json (the API object)
+  -h, --help             Show this help
 `},
 	} {
 		var stdout bytes.Buffer

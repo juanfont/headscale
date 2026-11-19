@@ -72,7 +72,9 @@ type ListSpec[In, Row any] struct {
 
 	// Columns are required: a list without columns cannot be written.
 	Columns table.Columns[Row]
-	Run     func(c Ctx, in In) ([]Row, error)
+	// NoRows is what a terminal shows when no row is left: "No users.".
+	NoRows string
+	Run    func(c Ctx, in In) ([]Row, error)
 }
 
 // NoInput is the input of a command that takes nothing.
@@ -108,6 +110,10 @@ type Ctx struct {
 	stdout   io.Writer
 	stderr   io.Writer
 	terminal bool
+	// screen is a stdout that is a terminal.
+	screen bool
+	// line is the command line, for the flags the builder adds.
+	line *cmdline.Line
 
 	json     bool
 	now      func() time.Time
@@ -148,6 +154,9 @@ type Env struct {
 	Environ []string
 	// Terminal reports whether stdin is a terminal, which a prompt needs.
 	Terminal bool
+	// StdoutTerminal reports whether stdout is a terminal: an empty list
+	// then says so in words.
+	StdoutTerminal bool
 	// PageSize is the rows of one page of a list walk; 0 is 1000, the most
 	// v0 takes. A test sets it small, to walk many pages.
 	PageSize int
@@ -166,13 +175,18 @@ type Env struct {
 
 // OSEnv is the Env of the process.
 func OSEnv() Env {
-	st, err := os.Stdin.Stat()
+	terminal := func(f *os.File) bool {
+		st, err := f.Stat()
+
+		return err == nil && st.Mode()&os.ModeCharDevice != 0
+	}
 
 	return Env{
-		Stdin:    os.Stdin,
-		Stdout:   os.Stdout,
-		Stderr:   os.Stderr,
-		Environ:  os.Environ(),
-		Terminal: err == nil && st.Mode()&os.ModeCharDevice != 0,
+		Stdin:          os.Stdin,
+		Stdout:         os.Stdout,
+		Stderr:         os.Stderr,
+		Environ:        os.Environ(),
+		Terminal:       terminal(os.Stdin),
+		StdoutTerminal: terminal(os.Stdout),
 	}
 }
