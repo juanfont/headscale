@@ -1,15 +1,18 @@
 package hscontrol
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	apiv0 "github.com/juanfont/headscale/hscontrol/api/headscale/v0"
+	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/types/key"
 )
 
 func TestCORS(t *testing.T) {
@@ -22,9 +25,11 @@ func TestCORS(t *testing.T) {
 	})
 
 	newRouter := func(origins ...string) http.Handler {
+		noise := key.NewMachine()
 		app := &Headscale{
-			cfg:          &types.Config{API: types.APIConfig{CORS: types.CORSConfig{AllowedOrigins: origins}}},
-			authProvider: NewAuthProviderWeb(""),
+			cfg:             &types.Config{API: types.APIConfig{CORS: types.CORSConfig{AllowedOrigins: origins}}},
+			authProvider:    NewAuthProviderWeb(""),
+			noisePrivateKey: &noise,
 		}
 
 		return app.createRouter(notFound, notFound, notFound)
@@ -74,6 +79,20 @@ func TestCORS(t *testing.T) {
 
 	t.Run("the legacy API gets no CORS", func(t *testing.T) {
 		rec := do(router, http.MethodGet, "/api/v1/node", allowed, false)
+		require.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
+	})
+
+	t.Run("only /key is open to every origin, with no setting", func(t *testing.T) {
+		router := newRouter()
+
+		rec := do(router, http.MethodGet, fmt.Sprintf("/key?v=%d", capver.MinSupportedCapabilityVersion), "https://other.example.com", false)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, "*", rec.Header().Get("Access-Control-Allow-Origin"))
+
+		rec = do(router, http.MethodGet, "/key?v=1", "https://other.example.com", false)
+		require.Equal(t, "*", rec.Header().Get("Access-Control-Allow-Origin"), "a refusal is readable too")
+
+		rec = do(router, http.MethodGet, "/version", "https://other.example.com", false)
 		require.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
 	})
 
