@@ -809,6 +809,90 @@ func TestFullMapResponseSurvivesPeerWithInvalidData(t *testing.T) {
 	}
 }
 
+// TestPeerCarriesOwnCapabilityVersion proves each peer's [tailcfg.Node.Cap]
+// is that peer's own capability version, not the viewer's. Clients gate
+// per-peer protocol features on it: a new client enables hybrid WireGuard
+// handshakes for any peer with Cap >= 152, so stamping the viewer's version
+// on an older peer makes the new client use a handshake the peer never
+// answers.
+func TestPeerCarriesOwnCapabilityVersion(t *testing.T) {
+	tmp := t.TempDir()
+	p4 := netip.MustParsePrefix("100.64.0.0/10")
+	p6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   types.DatabaseSqlite,
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+		},
+		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
+		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
+		Policy:    types.PolicyConfig{Mode: types.PolicyModeDB},
+		DERP: types.DERPConfig{
+			DERPMap: &tailcfg.DERPMap{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
+			},
+		},
+		Tuning: types.Tuning{
+			NodeStoreBatchSize:    state.TestBatchSize,
+			NodeStoreBatchTimeout: state.TestBatchTimeout,
+		},
+	}
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("u1")
+	oldNode := database.CreateRegisteredNodeForTest(user, "old")
+	newNode := database.CreateRegisteredNodeForTest(user, "new")
+	silent := database.CreateRegisteredNodeForTest(user, "silent")
+	require.NoError(t, database.Close())
+
+	s, err := state.NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err = s.SetPolicy([]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
+	require.NoError(t, err)
+
+	const (
+		oldVer tailcfg.CapabilityVersion = 120
+		newVer tailcfg.CapabilityVersion = 160
+	)
+
+	_, err = s.UpdateNodeFromMapRequest(oldNode.ID, tailcfg.MapRequest{Version: oldVer, NodeKey: oldNode.NodeKey})
+	require.NoError(t, err)
+
+	c, err := s.UpdateNodeFromMapRequest(newNode.ID, tailcfg.MapRequest{Version: newVer, NodeKey: newNode.NodeKey})
+	require.NoError(t, err)
+	assert.Equal(t, change.NodeAdded(newNode.ID), c, "a new capability version must reach peers")
+
+	m := &mapper{state: s, cfg: cfg}
+
+	peerCaps := func(viewer types.NodeID, viewerVer tailcfg.CapabilityVersion) map[tailcfg.NodeID]tailcfg.CapabilityVersion {
+		t.Helper()
+
+		resp, err := m.fullMapResponse(viewer, viewerVer)
+		require.NoError(t, err)
+		require.NotNil(t, resp.Node)
+
+		caps := map[tailcfg.NodeID]tailcfg.CapabilityVersion{}
+		for _, p := range resp.Peers {
+			caps[p.ID] = p.Cap
+		}
+
+		return caps
+	}
+
+	assert.Equal(t, map[tailcfg.NodeID]tailcfg.CapabilityVersion{
+		oldNode.ID.NodeID(): oldVer,
+		silent.ID.NodeID():  0,
+	}, peerCaps(newNode.ID, newVer))
+	assert.Equal(t, map[tailcfg.NodeID]tailcfg.CapabilityVersion{
+		newNode.ID.NodeID(): newVer,
+		silent.ID.NodeID():  0,
+	}, peerCaps(oldNode.ID, oldVer))
+}
+
 // TestGenerateDNSConfigNilHostinfoNoPanic proves generateDNSConfig does not
 // panic when a node's Hostinfo is nil (e.g. a legacy DB row with a NULL
 // host_info column). addNextDNSMetadata dereferenced node.Hostinfo().OS()
@@ -1745,7 +1829,7 @@ func (b *MapResponseBuilder) buildTailPeersCapMapsReference(peers views.Slice[ty
 		// in the viewer's netmap. The CapMap merge into tn.CapMap is
 		// overwritten by the PeerCapMap call below; only the address
 		// filtering side-effect inside TailNode survives.
-		tn, err := peer.TailNode(b.capVer, func(_ types.NodeID) []netip.Prefix {
+		tn, err := peer.TailNode(peer.CapVer(), func(_ types.NodeID) []netip.Prefix {
 			return b.mapper.state.RoutesForPeer(node, peer, matchers)
 		}, b.mapper.cfg, allCapMaps[peer.ID()])
 		if err != nil {

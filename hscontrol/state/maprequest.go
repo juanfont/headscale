@@ -37,6 +37,11 @@ type mapRequestDelta struct {
 	// changed (see [peerHostinfoEqual]). Only that forces a whole-node resend.
 	peerHostinfoChanged bool
 
+	// capVerChanged reports whether the client's capability version
+	// changed. Peers read it as [tailcfg.Node.Cap], so it forces a
+	// whole-node resend.
+	capVerChanged bool
+
 	// dnsMetadataChanged reports whether a Hostinfo field feeding the
 	// node's NextDNS device metadata (Hostname, OS) changed.
 	dnsMetadataChanged bool
@@ -72,6 +77,7 @@ type mapRequestDelta struct {
 func (d mapRequestDelta) MarshalZerologObject(e *zerolog.Event) {
 	e.Bool("hostinfo.changed", d.hostinfoChanged).
 		Bool("hostinfo.peer_changed", d.peerHostinfoChanged).
+		Bool("capver.changed", d.capVerChanged).
 		Bool("routes.changed", d.routesChanged).
 		Bool("derp.changed", d.derpChanged).
 		Int("derp.old", int(d.oldDERP)).

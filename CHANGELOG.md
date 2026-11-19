@@ -191,6 +191,7 @@ is not connected, or refuses is "not found". See [the client docs](https://heads
 
 - A SIGHUP now reloads the certificate from `tls.cert_path` and `tls.key_path` without a restart; a certificate that cannot be loaded or is not valid now is logged as an error and the previous one keeps serving [#3027](https://github.com/juanfont/headscale/issues/3027)
 - The NixOS module's `headscale` service now supports `systemctl reload`
+- Peers now carry their own capability version, not the version of the node that receives the map. Newer clients use it to pick per-peer features such as hybrid WireGuard handshakes; with the wrong version, a newer client could not connect to an older one
 - DERP map refreshes keep the node order. Clients keep their home relay. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - A `derp.urls` or `derp.paths` source that fails to load (unreachable, an HTTP status other than 200, or an invalid map) is logged as a warning and skipped instead of stopping headscale from starting. Headscale still refuses to start when no DERP region remains; a refresh with a failing source keeps the previous map [#3142](https://github.com/juanfont/headscale/issues/3142)
 - Fix the embedded STUN server returning IPv4 addresses as IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`), and change it to use Tailscale's STUN server implementation [#3573](https://github.com/juanfont/headscale/issues/3573)
