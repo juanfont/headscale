@@ -54,6 +54,8 @@ These close gaps from `requirements.md` (G-numbers). They are requirements now.
 | D48 | typed 7          | Flags that a layer above adds to a command, outside its input struct (Headscale: `--output`, `--config`, `--help`, `--force`, the list flags), are structs of flags listed in `Flags []any` and read with `cmdline.Get[T](line)`. Not chosen: typed handles (`cmdline.Flags[T]()`, `[]cmdline.FlagSet`).                                                                                                                      |
 | D49 | typed 8          | Headscale's `Format` type for `--output` is strict: it takes only `json`. So `nodes list -o a -o b` reports the wrong value `a` (the first mistake on the line, D35), not "given twice". The example lines of 001 and the kit rows that used `a` and `b` as values use `json`. Not chosen: a lenient type and a later check in the builder.                                                                                   |
 | D50 | 001 open point   | A command names the library's field types through aliases in Headscale's `command` package: `command.Opt[T]` and `command.Path`. A command imports only `command`; one package of Headscale imports the parser. Not chosen: every command imports the library and writes `cmdline.Opt[T]`.                                                                                                                                    |
+| D51 | 003 open point   | The name of the library is `cmdline`. Not chosen: a short, distinct name such as `argv`.                                                                                                                                                                                                                                                                                                                                      |
+| D52 | 003 call         | The string reader is the public package `cmdline/reader`, because the maintainer's conventions allow no `internal/` folder. **Against the recommendation.** Not chosen: `cmdline/internal/reader`, as in the prototype.                                                                                                                                                                                                       |
 
 Facts fixed without a question (they follow from 001 as written):
 
@@ -75,7 +77,7 @@ Calls made by the assistant, not asked (small; each can be reversed):
 - `--version` together with other words (`--version nodes list`) is a usage error; `--` where a command word is expected is an unknown command.
 - Tab keeps completing after `-h`; no Tab values for bools (`--force=<Tab>`); grouped short flags (`-vv`) stay refused.
 - Corpus upkeep: one look per year at new upstream tests and bug reports.
-- The library's name is the maintainer's to choose at implementation time (working name `cmdline`).
+- The library's name is the maintainer's to choose at implementation time (working name `cmdline`). Decided as D51.
 
 Second set of calls by the assistant (2026-11-17, from the open questions of the 001 draft and of `rules.md`; none confirmed by the maintainer):
 

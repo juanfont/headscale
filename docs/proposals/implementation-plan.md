@@ -38,7 +38,21 @@ The proposals are the specification, and they will be wrong in places. The CLI i
 | one root session, and builders one after the other                   | builders side by side                       | every slice changes the OpenAPI file, the generated client, `hscontrol/app.go` and the command builder         |
 | all of it is in 0.30, and 0.30 is not released before the swap       | the API in one release, the CLI in the next | 002 removes `/api/v1` three releases after v0; while the stack merges, `main` serves a v0 that is not complete |
 
-The assistant made two more cuts that the maintainer has not confirmed: `users delete` is its own part (part 8), and what was "the rest" is three parts (9, 10, 11).
+The maintainer confirmed two more cuts on 2026-11-19: `users delete` is its own part (part 8), and what was "the rest" is three parts (9, 10, 11).
+
+Decisions of 2026-11-19, before the first builder. Each one is also in the proposal that it changes.
+
+| Point                                                    | Decision                                                                                                          |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| the branches of the stack                                | in `juanfont/headscale`, named `kradalby/cli-v0-NN-<name>`; each pull request has the branch below it as its base |
+| #3707 and #3708                                          | the stack carries their work and does not wait for them                                                           |
+| the name of the library                                  | `cmdline`                                                                                                         |
+| the string reader                                        | the public package `cmdline/reader`, not `internal/reader`                                                        |
+| the reserved names of `GET /me`                          | as 002 has them                                                                                                   |
+| `GET /health`                                            | the reason `database_unreachable`; the node checks of today as warnings, one for each check                       |
+| the packages of the new CLI                              | `cmd/headscale/newcli`, with `command` and `table` under it; the swap renames it to `cli`                         |
+| `command.Owner`, the `--version` sentence, `NeedsServer` | as 001 has them                                                                                                   |
+| the `api whoami` sheet                                   | one line for each part of `GET /me`; the OAuth client has its own `Client` line                                   |
 
 ## The stack
 
@@ -73,17 +87,17 @@ How the two CLIs live in one tree until the swap is in "How the old CLI leaves" 
 ### 1. The library
 
 - **Read:** all of 003. For the work itself: "Tests", "Limits, platforms and compatibility", "Open points".
-- **Build:** the package at the top of the module, next to `cmd` and `hscontrol` (decision D39), with `internal/reader` and `script`. Its own tests and both `FuzzParse` targets come with it.
+- **Build:** the package at the top of the module, next to `cmd` and `hscontrol` (decision D39), with `reader` and `script`. The prototype has the reader in `internal/reader`; it moves to `cmdline/reader`. Its own tests and both `FuzzParse` targets come with it.
 - **Not here:** the corpus, `FuzzRun`, `FuzzLeaf`, `FuzzTab`, the test kit and the real-shell job. They run through Headscale's layer, which arrives in part 3. The differential test against other parsers stays in the research.
 - **Done when:** the tests of the three packages pass with `-race`, and `TestStdlibOnly` holds.
-- **Ask first:** the name. It is the import path, so nothing can be written before it. `cmdline` is the working name.
+- **Asked:** the name is `cmdline`. The reader is public.
 
 ### 2. The empty API
 
 - **Read:** in 002: "Conventions", "Errors", "Authentication" with "Who am I" and "CORS", "Server", "Server operations", and all of "Implementation notes".
-- **Build:** the package `hscontrol/api/headscale/v0`; the wiring in four places in `hscontrol/app.go`; the problem type and the transformer for Huma's own errors; the auth middleware with its one caller value, and the token rules; the three operations; the `Headscale-Version` header; the config key `api.cors.allowed_origins`; the OpenAPI document in the tree, with a check that fails when it is stale; the generated client in `gen/client/headscale/v0`; the guard tests.
+- **Build:** the package `hscontrol/api/headscale/v0`; the wiring in four places in `hscontrol/app.go`; the problem type and the transformer for Huma's own errors; the auth middleware with its one caller value, and the token rules; the three operations; the `Headscale-Version` header; the config key `api.cors.allowed_origins`; the OpenAPI document in the tree, with a check that fails when it is stale; the generated client in `gen/client/headscale/v0`; the guard tests; a unix socket in `hscontrol/servertest`, which has none today.
 - **Done when:** `GET /me` answers for an API key, for a token and for the socket in `hscontrol/servertest`, and the guard tests fail for an operation without a scope, without error codes or without an operation ID.
-- **Ask first:** the names in `GET /me` that the assistant chose: the kinds `human` and `workload`, the value `own`, and `principal.identity`. Which reasons and warnings `GET /health` has (an open point of 001).
+- **Asked:** the names in `GET /me` hold as 002 has them, and the OpenAPI enums list the reserved values. `GET /health` has the reason `database_unreachable` and the warnings `node_name_invalid` and `node_expiry_invalid`; `policy_file_invalid` arrives with part 10.
 
 ### 3. The base of the CLI
 
@@ -91,12 +105,12 @@ How the two CLIs live in one tree until the swap is in "How the old CLI leaves" 
 - **Build:** the builder (`command.Spec[In, Out]`) and the shared building blocks; the four commands; the help; the test helper and the walk that fails when a command has no case; the `newcli` build tag and a CI build with it.
 - **Also here, from the library's research:** the corpus, the three fuzz targets, the test kit, and the job that presses Tab in real shells. That job needs zsh and PowerShell in the nix dev shell, and they are not there today. The rows of the kit that name a command of a later part arrive with that part.
 - **Done when:** `headscale api whoami` works over the socket in a test, and the real-shell job passes in CI.
-- **Ask first:** in which packages the new CLI and the table engine live (an open point of 001). Three calls of the assistant: `command.Owner` is read by a lookup, so a wrong tag list is refused only after the client is made; the sentence `Error: --version takes no other flag.`; `NeedsServer` runs before the lookups and sees their fields empty. The labels of the `api whoami` sheet.
+- **Asked:** the new CLI is in `cmd/headscale/newcli`, with `command` and `table` under it. `command.Owner` is read by a lookup, the sentence is `Error: --version takes no other flag.`, and `NeedsServer` has no guard, all as 001 has them. The `api whoami` sheet has one line for each part of `GET /me`.
 
 ### 4. Users
 
 - **Read:** in 002: "Lists", "Paging", "Update with PATCH", "Users", "User operations". In 001: "Targets and resolvers", and `users` in "Commands by group".
-- **Server work:** the user update for display name, email and picture, with the OIDC check; `loginName`; the checks on a new user.
+- **Server work:** the user update for display name, email and picture, with the OIDC check; `loginName`; the checks on a new user; the `409` for a write that a unique index refuses, from the commits of #3708.
 - **First of its kind:** the paging helper with its signed token, on an SQL list; the walk helper next to the generated client; `Optional[T]` for `PATCH`; a resolver; a table with `--columns`, `--filter` and `--sort`.
 - **Done when:** the list is walked with a page size of 2, and with a token that is forged, for another list and for other filters.
 - This slice proves the base. Expect it to change parts 2 and 3.
@@ -157,9 +171,9 @@ How the two CLIs live in one tree until the swap is in "How the old CLI leaves" 
 
 These are their own pull requests. They are not parts of the stack, but the stack depends on them.
 
-- **The Tailscale API of Headscale.** "In the Tailscale API of Headscale" in 002 lists ten differences to remove and five to keep with a test. Pull request #3707 holds that work. Three of its rows touch the same code as the stack: expire and key expiry (part 5), the tag checks (parts 6 and 7) and the soft revoke of an OAuth client (part 7). It lands before part 5, or those parts carry the work.
+- **The Tailscale API of Headscale.** "In the Tailscale API of Headscale" in 002 lists ten differences to remove and five to keep with a test. Pull request #3707 holds that work. Three of its rows touch the same code as the stack: expire and key expiry (part 5), the tag checks (parts 6 and 7) and the soft revoke of an OAuth client (part 7). The maintainer decided that those parts carry the work: each takes the commits of its rows from the branch of #3707, and never edits that branch.
 - **The legacy API before it is frozen.** "In the legacy API, before it is frozen" in 002 lists three places where `/api/v1` differs from 0.29. One small pull request, before the swap.
-- **Pull request #3708** makes a write that a unique index refuses a `409`. It changes `hscontrol/db` and the errors of `/api/v1`. It lands before part 4, which creates users.
+- **Pull request #3708** makes a write that a unique index refuses a `409`. It changes `hscontrol/db` and the errors of `/api/v1`. Part 4, which creates users, carries its commits. When one of the two pull requests merges first, a rebase drops the same commits from the stack.
 
 ## What every pull request passes
 
@@ -204,9 +218,18 @@ These come on top of `AGENTS.md` and the maintainer's own instructions.
 
 ## To check before the first pull request
 
-- **Where the stack branches live.** The base of pull request N+1 is the branch of pull request N, so the branches likely must be in `juanfont/headscale` and not in a fork. `gh stack` is installed. Neither is verified.
-- **The state of #3707 and #3708**, see [Beside the stack](#beside-the-stack).
-- **The "Ask first" points of parts 1, 2 and 3.** Ask them together, before any builder starts.
+- **Where the stack branches live.** Decided: in `juanfont/headscale`. The maintainer has push access there, and `gh stack` is installed. A stack has not been pushed there yet.
+- **The state of #3707 and #3708.** Checked on 2026-11-19: both are open drafts, pass their checks and can merge. See [Beside the stack](#beside-the-stack).
+- **The "Ask first" points of parts 1, 2 and 3.** Asked; each part has its answers.
 - **The calls that the maintainer has not confirmed.** The two tables "Calls not confirmed by the maintainer" in 003. They do not block a part.
 - **The notes on the code.** "What the code does today" in 001 was checked against `main` only for the files that changed in the last rebase.
-- **Whether `hscontrol/servertest` can serve v0 over a unix socket** for the test helper of part 3. 001 says so; nobody has tried.
+- **Whether `hscontrol/servertest` can serve v0 over a unix socket** for the test helper of part 3. Checked: it serves no socket today. Part 2 adds one.
+
+## State
+
+The root keeps this section true. It holds the tasks of the part that is active, because the root has no TODO tool.
+
+| Part | Branch                        | State       |
+| ---- | ----------------------------- | ----------- |
+| 1    | `kradalby/cli-v0-01-cmdline`  | not started |
+| 2    | `kradalby/cli-v0-02-api-base` | not started |
