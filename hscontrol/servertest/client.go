@@ -251,7 +251,7 @@ func TryNewClient(tb testing.TB, server *TestServer, name string, opts ...Client
 
 	// Route all connections through the server's in-memory network
 	// so that no real TCP sockets are used.
-	dialer.SetSystemDialerForTest(server.MemNet().Dial)
+	dialer.SetSystemDialer(server.MemNet().Dial)
 
 	updateBuffer := 64
 	if cc.noHistory {
