@@ -1,6 +1,6 @@
 # headscale: 76 rows: pass 5 waits 71
 # model: 76 rows: fails 2 pass 74
-headscale	C01	waits	serve, check, nodes, users, auth, policy
+headscale	C01	waits	serve, check, nodes, auth, policy
 headscale	C02	waits	nodes
 headscale	C03	waits	nodes, nodes list, nodes delete, nodes set, nodes routes
 headscale	C04	waits	nodes routes, nodes routes set
@@ -23,7 +23,7 @@ headscale	C20	waits	nodes list
 headscale	N01	waits	nodes, nodes list, nodes delete, nodes set, nodes routes
 headscale	N02	waits	nodes, nodes list
 headscale	N03	waits	nodes, nodes routes
-headscale	N04	waits	users, users delete
+headscale	N04	waits	users delete
 headscale	N05	waits	nodes routes, nodes routes set
 headscale	N06	waits	nodes, nodes list
 headscale	N07	waits	nodes delete

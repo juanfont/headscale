@@ -762,7 +762,7 @@ func TestKitTab(t *testing.T) {
 // beyondKit are the commands of Headscale that the kit's tree does not
 // have. A kit command that Headscale gets under another name would leave
 // its rows waiting for ever; here it is a command of neither list.
-var beyondKit = []string{"api whoami", "debug", "debug health"}
+var beyondKit = []string{"api whoami", "debug", "debug health", "users list", "users get", "users create", "users set"}
 
 func TestKitKnowsHeadscale(t *testing.T) {
 	t.Parallel()
