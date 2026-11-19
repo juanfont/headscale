@@ -242,7 +242,7 @@ var allowedAliases = []string{"ls", "rm", "approve"}
 // Build checks every spec and makes the tree. The error names every
 // command and field that is wrong.
 func Build(name, short string, nodes ...Node) (*Tree, error) {
-	return build(name, short, allowedAliases, nil, nodes...)
+	return build(name, short, allowedAliases, lookups, nodes...)
 }
 
 // build is Build with the aliases a tree may use and the parser's options
@@ -339,6 +339,14 @@ func build(name, short string, aliases []string, opts []cmdline.Option, nodes ..
 	}
 
 	errs = append(errs, t.checkFlags()...)
+
+	for _, c := range candidates {
+		err := c.Check()
+		if err != nil {
+			errs = append(errs, specError("the candidates of a lookup: "+err.Error()))
+		}
+	}
+
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}

@@ -95,6 +95,24 @@ func (cs Columns[R]) Pick(words []string) Columns[R] {
 	return out
 }
 
+// Showing is the default columns, and each other column whose field is
+// word in one of rows.
+func (cs Columns[R]) Showing(rows []R, word string) Columns[R] {
+	var out Columns[R]
+
+	for _, c := range cs {
+		if c.Default || slices.ContainsFunc(rows, func(r R) bool {
+			v, ok := field(reflect.ValueOf(r), c.Field)
+
+			return ok && v.Kind() == reflect.String && v.String() == word
+		}) {
+			out = append(out, c)
+		}
+	}
+
+	return out
+}
+
 func (cs Columns[R]) defaults() Columns[R] {
 	var out Columns[R]
 
