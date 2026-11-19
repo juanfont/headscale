@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"io/fs"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -314,4 +315,30 @@ func a(err error) {
 }`, 0)
 	require.NoError(t, err)
 	require.Len(t, goErrorText(fset, probe), 4, "the scan must see each kind of place")
+}
+
+// TestSpecIsCurrent fails when the document in the tree is stale, and when
+// the served document differs from it in more than info.version.
+func TestSpecIsCurrent(t *testing.T) {
+	want, err := Spec()
+	require.NoError(t, err)
+
+	got, err := os.ReadFile("../../../../docs/ref/api/headscale-v0.yaml")
+	require.NoError(t, err)
+
+	require.Equal(t, string(want), string(got), "run `make client`, or go run ./cmd/gen-openapi -api headscale/v0")
+
+	served, err := NewAPI(chi.NewMux(), Backend{}, "0.30.1").OpenAPI().YAML()
+	require.NoError(t, err)
+	require.Equal(t,
+		strings.Replace(string(want), "\n  version: v0\n", "\n  version: 0.30.1\n", 1),
+		string(served))
+}
+
+// TestProblemsPageIsCurrent fails when docs/ref/api/problems.md is stale.
+func TestProblemsPageIsCurrent(t *testing.T) {
+	got, err := os.ReadFile("../../../../docs/ref/api/problems.md")
+	require.NoError(t, err)
+
+	require.Equal(t, string(ProblemsPage()), string(got), "run `make client`, or go run ./cmd/gen-openapi -api headscale/v0")
 }
