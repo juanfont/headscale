@@ -1,6 +1,6 @@
 module github.com/juanfont/headscale
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/arl/statsviz v0.8.2
@@ -87,7 +87,7 @@ require (
 	// go get modernc.org/libc@v1.55.3 modernc.org/sqlite@v1.33.1
 	modernc.org/sqlite v1.62.0
 	pgregory.net/rapid v1.3.0
-	tailscale.com v1.105.0-pre.0.20261028221719-f7c1b8e52600
+	tailscale.com v1.105.0-pre.0.20261112091541-a2da5fbcaa53
 	tailscale.com/client/tailscale/v2 v2.12.0
 	zombiezen.com/go/postgrestest v1.0.1
 )
@@ -224,7 +224,7 @@ require (
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/setec v0.0.0-20260824224040-f8d7a936837c // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20260917222731-e0ed2d0d0fea // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20261002162406-18e99eba5393 // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20261110220948-9e10ef9af415 // indirect
 	github.com/toqueteos/webbrowser v1.2.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
