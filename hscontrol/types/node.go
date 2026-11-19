@@ -205,6 +205,14 @@ type Node struct {
 	// returned by Connect as a "Connect ran" sentinel for its cleanup,
 	// and Disconnect logs it. Runtime-only.
 	SessionEpoch uint64 `gorm:"-"`
+
+	// CapVer is the capability version from the node's latest MapRequest,
+	// sent to peers as [tailcfg.Node.Cap]. Clients gate peer protocol
+	// features on it (e.g. hybrid WireGuard handshakes), so peers must see
+	// the node's own version, never the viewer's. 0 until the node sends a
+	// MapRequest, which clients read as "nothing new supported".
+	// Runtime-only.
+	CapVer tailcfg.CapabilityVersion `gorm:"-"`
 }
 
 type Nodes []*Node
@@ -1327,29 +1335,6 @@ func (nv NodeView) HasPolicyChange(other NodeView) bool {
 	}
 
 	return false
-}
-
-// TailNodes converts a slice of [NodeView] values into Tailscale [tailcfg.Node] values.
-func TailNodes(
-	nodes views.Slice[NodeView],
-	capVer tailcfg.CapabilityVersion,
-	primaryRouteFunc RouteFunc,
-	cfg *Config,
-) ([]*tailcfg.Node, error) {
-	tNodes := make([]*tailcfg.Node, 0, nodes.Len())
-
-	for _, node := range nodes.All() {
-		// nil selfPolicyCaps: this batch builds peer views; the caller
-		// sets each peer's CapMap from [policyv2.PeerCapMap].
-		tNode, err := node.TailNode(capVer, primaryRouteFunc, cfg, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		tNodes = append(tNodes, tNode)
-	}
-
-	return tNodes, nil
 }
 
 // TailNode converts a [NodeView] into a Tailscale [tailcfg.Node].
