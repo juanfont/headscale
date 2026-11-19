@@ -212,6 +212,8 @@
             ./hscontrol/config/testdata
             ./hscontrol/db/testdata
             ./hscontrol/policy/v2/testdata
+            # The corpus of parser edge cases.
+            ./cmd/headscale/newcli/command/testdata
             # The API v0 document and page of codes, compared with the code.
             ./docs/ref/api/headscale-v0.yaml
             ./docs/ref/api/problems.md
