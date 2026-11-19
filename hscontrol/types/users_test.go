@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUnmarshallOIDCClaims(t *testing.T) {
@@ -617,5 +618,39 @@ func TestFromClaimReplacesEmail(t *testing.T) {
 			assert.Equal(t, tt.want, user.Email)
 			assert.Equal(t, "alice", user.Name)
 		})
+	}
+}
+
+func TestValidateEmail(t *testing.T) {
+	for _, ok := range []string{"", "dave@example.com", "a.b+c@sub.example.org"} {
+		require.NoError(t, ValidateEmail(ok), ok)
+	}
+
+	for _, bad := range []string{"dave", "@example.com", "Dave <dave@example.com>", "dave@example.com (work)", " dave@example.com", "a@b@c"} {
+		assert.ErrorIs(t, ValidateEmail(bad), ErrUserEmailInvalid, bad)
+	}
+}
+
+func TestValidateProfilePicURL(t *testing.T) {
+	for _, ok := range []string{"", "https://example.com/a.png", "http://example.com:8080/a?b=c", "HTTPS://example.com/a.png", "http://192.0.2.1/a.png", "http://[2001:db8::1]/a.png"} {
+		require.NoError(t, ValidateProfilePicURL(ok), ok)
+	}
+
+	for _, bad := range []string{
+		"javascript:alert(1)", "/a.png", "a.png", "//example.com/a.png", "ftp://example.com/a.png",
+		"data:image/png;base64,AAAA", "https://", "https:///a.png", "https://exa\nmple.com/",
+		"https://user:pass@example.com/a.png", "https://user@example.com/a.png", "https://:443/a.png",
+	} {
+		assert.ErrorIs(t, ValidateProfilePicURL(bad), ErrUserProfilePicURLInvalid, bad)
+	}
+}
+
+func TestValidateUserText(t *testing.T) {
+	for _, ok := range []string{"", "Alice A.", "Åse Ødegård", "Ελένη", "Ирина"} {
+		require.NoError(t, ValidateUserText(ok), ok)
+	}
+
+	for _, bad := range []string{"a\x00b", "\x1b]0;pwn\x07", "a\nb", "a\x7fb", "a\u0085b", "evil\u202egnp.exe", "a\u202ab", "a\u2066b", "a\u2069b"} {
+		assert.ErrorIs(t, ValidateUserText(bad), ErrUserTextInvalid, bad)
 	}
 }
