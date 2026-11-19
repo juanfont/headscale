@@ -279,7 +279,15 @@ func (v NodeView) ActiveSessions() int { return v.ж.ActiveSessions }
 // returned by Connect as a "Connect ran" sentinel for its cleanup,
 // and Disconnect logs it. Runtime-only.
 func (v NodeView) SessionEpoch() uint64 { return v.ж.SessionEpoch }
-func (v NodeView) String() string       { return v.ж.String() }
+
+// CapVer is the capability version from the node's latest MapRequest,
+// sent to peers as [tailcfg.Node.Cap]. Clients gate peer protocol
+// features on it (e.g. hybrid WireGuard handshakes), so peers must see
+// the node's own version, never the viewer's. 0 until the node sends a
+// MapRequest, which clients read as "nothing new supported".
+// Runtime-only.
+func (v NodeView) CapVer() tailcfg.CapabilityVersion { return v.ж.CapVer }
+func (v NodeView) String() string                    { return v.ж.String() }
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _NodeViewNeedsRegeneration = Node(struct {
@@ -309,6 +317,7 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	Unhealthy      bool
 	ActiveSessions int
 	SessionEpoch   uint64
+	CapVer         tailcfg.CapabilityVersion
 }{})
 
 // View returns a read-only view of PreAuthKey.
