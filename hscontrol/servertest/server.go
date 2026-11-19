@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -35,11 +37,18 @@ type TestServer struct {
 	App *hscontrol.Headscale
 	URL string
 
+	// SocketPath is a real unix socket that serves the APIs as the socket
+	// of `headscale serve` does: no TLS, no credential.
+	SocketPath string
+
 	memNet     *memnet.Network
 	ln         net.Listener
 	httpServer *http.Server
-	st         *state.State
-	cfg        *types.Config
+	// socketServer serves SocketPath; socketClient reaches it.
+	socketServer *http.Server
+	socketClient *http.Client
+	st           *state.State
+	cfg          *types.Config
 }
 
 // ServerOption configures a [TestServer].
@@ -214,8 +223,9 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 // NewServerFromConfig starts cfg, as loaded, as a test server. Only the
 // server URL, set to the in-memory listener, and the DERP map, set
 // in-process, differ from serving cfg; the DERP map is never fetched.
-// [hscontrol.Headscale.Serve] never runs: no configured listeners, no unix
-// socket and no scheduled tasks, so this is not `headscale serve`.
+// [hscontrol.Headscale.Serve] never runs: no configured listeners, no
+// scheduled tasks, and the unix socket is a temporary one, not
+// cfg.UnixSocket, so this is not `headscale serve`.
 func NewServerFromConfig(tb testing.TB, cfg types.Config) *TestServer {
 	tb.Helper()
 
@@ -293,16 +303,46 @@ func start(tb testing.TB, cfg types.Config, ephemeralTimeout time.Duration, real
 
 	go httpServer.Serve(ln) //nolint:errcheck // will return on Close
 
+	// Not tb.TempDir: a socket path is limited to about 100 bytes, and a test
+	// name can be longer.
+	socketDir, err := os.MkdirTemp("", "hs-sock-") //nolint:usetesting // see above
+	if err != nil {
+		tb.Fatalf("servertest: socket dir: %v", err)
+	}
+
+	tb.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+
+	socketPath := filepath.Join(socketDir, "headscale.sock")
+
+	socketLn, err := new(net.ListenConfig).Listen(context.Background(), "unix", socketPath)
+	if err != nil {
+		tb.Fatalf("servertest: socket: %v", err)
+	}
+
+	socketServer := &http.Server{
+		Handler:           app.SocketHandler(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	go socketServer.Serve(socketLn) //nolint:errcheck // will return on Close
+
 	serverURL := "http://" + ln.Addr().String()
 
 	ts := &TestServer{
-		App:        app,
-		URL:        serverURL,
-		memNet:     &memNetwork,
-		ln:         ln,
-		httpServer: httpServer,
-		st:         app.GetState(),
-		cfg:        &cfg,
+		App:          app,
+		URL:          serverURL,
+		SocketPath:   socketPath,
+		memNet:       &memNetwork,
+		ln:           ln,
+		httpServer:   httpServer,
+		socketServer: socketServer,
+		socketClient: &http.Client{Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return new(net.Dialer).DialContext(ctx, "unix", socketPath)
+			},
+		}},
+		st:  app.GetState(),
+		cfg: &cfg,
 	}
 
 	tb.Cleanup(ts.Close)
@@ -327,6 +367,14 @@ func (s *TestServer) State() *state.State {
 func (s *TestServer) Close() {
 	s.httpServer.Close()
 	s.ln.Close()
+	s.socketServer.Close()
+	s.socketClient.CloseIdleConnections()
+}
+
+// SocketClient is an HTTP client that reaches the server through
+// SocketPath, whatever host a URL names.
+func (s *TestServer) SocketClient() *http.Client {
+	return s.socketClient
 }
 
 // MemNet returns the in-memory network used by this server,
