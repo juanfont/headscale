@@ -219,6 +219,13 @@
             ./docs/ref/api/problems.md
           ];
         };
+        # TestKitScripts checks the completion script of each shell it finds
+        # and skips the others; go test hides a skip, so the log names them.
+        kitShellsNote = ''
+          for s in bash zsh fish pwsh; do
+            command -v "$s" >/dev/null || echo "TestKitScripts: no $s here, its completion script is not checked"
+          done
+        '';
         goChecks = {
           build = fc.goBuild (common // { subPackages = [ "cmd/headscale" ]; });
 
@@ -237,7 +244,7 @@
                 "/hscontrol/servertest"
               ];
               goSkip = [ "TestPostgres" ];
-              testEnv = "export CGO_ENABLED=0";
+              testEnv = "export CGO_ENABLED=0\n" + kitShellsNote;
             }
           );
 
@@ -248,7 +255,7 @@
             // {
               name = "headscale-gorace";
               goRace = true;
-              testEnv = "export CGO_ENABLED=1";
+              testEnv = "export CGO_ENABLED=1\n" + kitShellsNote;
               testFlags = [ "-p=2" ];
               goSkip = [ "TestPostgres" ];
               testPackages = "./hscontrol/... ./cmdline/... ./cmd/headscale/newcli/...";
