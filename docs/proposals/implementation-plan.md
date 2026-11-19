@@ -9,7 +9,7 @@ This file is for the session that drives the implementation of the three proposa
 1. Make the plan of the whole work with the plan tool, from [The stack](#the-stack) and [The team](#the-team). The maintainer approves it there.
 1. When a part of the stack starts, fill the TODO tool with the tasks of that part, from its block in [The parts](#the-parts). Close them before the next part starts.
 
-The plan tool holds the whole. The TODO tool holds one part at a time.
+The plan tool holds the whole. The TODO tool holds one part at a time. A session with no TODO tool keeps the tasks of the active part in [State](#state).
 
 ## Goal
 
@@ -19,24 +19,26 @@ The proposals are the specification, and they will be wrong in places. The CLI i
 
 ## Sources
 
-- The proposals are on the branch `cli-restructure-proposal` (pull request #3375). That branch is never merged. The stack is built on `main`, in other worktrees, so a builder does not have the proposals in its tree. The root gives each builder the path of the proposal worktree.
+- The proposals are on the branch `cli-restructure-proposal` (pull request #3375). That branch is never merged. The stack is built on `main`, in other worktrees, so a builder does not have the proposals in its tree. The driver gives each builder the path of the proposal worktree.
 - The prototype of the library is in [`research/spikes/final-typed/cmdline/`](research/spikes/final-typed/cmdline/).
 - The decisions behind the library are in [`research/DECISIONS.md`](research/DECISIONS.md), [`research/typed-library.md`](research/typed-library.md) and [`research/rules-typed.md`](research/rules-typed.md).
 - The recordings of the Tailscale API are in `hscontrol/testdata/tailscale_api/`, with a `README.md`.
 
 ## Decisions
 
-| Decision                                                             | Rejected                                    | Why                                                                                                            |
-| -------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| slices: one resource in each pull request, from the API to the CLI   | the whole API first                         | a fault in 002 shows in the first slice                                                                        |
-| a stack of pull requests on GitHub                                   | one long branch                             | `main` moves fast, and a small pull request can be reviewed                                                    |
-| every pull request passes all tests on its own                       | a stack that is green only at its top       | each one can be reviewed, and merged, by itself                                                                |
-| no code joins the old CLI and the new one                            | a root that sends the old groups to cobra   | a bridge is thrown away                                                                                        |
-| the new CLI is built beside the old one, and the old one leaves last | delete the old CLI first                    | the integration tests set up every tailnet with the CLI; while they are red, nothing guards the server work    |
-| the build tag `newcli` selects the new CLI                           | no way to run it before the swap            | the integration tests run on the new CLI before the old one is deleted                                         |
-| the library starts as a copy of the prototype                        | write it again from 003                     | the prototype passes every case of the test kit                                                                |
-| one root session, and builders one after the other                   | builders side by side                       | every slice changes the OpenAPI file, the generated client, `hscontrol/app.go` and the command builder         |
-| all of it is in 0.30, and 0.30 is not released before the swap       | the API in one release, the CLI in the next | 002 removes `/api/v1` three releases after v0; while the stack merges, `main` serves a v0 that is not complete |
+| Decision                                                                                          | Rejected                                                                       | Why                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| slices: one resource in each pull request, from the API to the CLI                                | the whole API first                                                            | a fault in 002 shows in the first slice                                                                                                                                         |
+| a stack of pull requests on GitHub                                                                | one long branch                                                                | `main` moves fast, and a small pull request can be reviewed                                                                                                                     |
+| every pull request passes all tests on its own                                                    | a stack that is green only at its top                                          | each one can be reviewed, and merged, by itself                                                                                                                                 |
+| no code joins the old CLI and the new one                                                         | a root that sends the old groups to cobra                                      | a bridge is thrown away                                                                                                                                                         |
+| the new CLI is built beside the old one, and the old one leaves last                              | delete the old CLI first                                                       | the integration tests set up every tailnet with the CLI; while they are red, nothing guards the server work                                                                     |
+| the build tag `newcli` selects the new CLI                                                        | no way to run it before the swap                                               | the integration tests run on the new CLI before the old one is deleted                                                                                                          |
+| the library starts as a copy of the prototype                                                     | write it again from 003                                                        | the prototype passes every case of the test kit                                                                                                                                 |
+| one session drives the work; every Claude agent is a subagent of it; builders one after the other | a root session in a Rex tab with a tab for each builder; builders side by side | the maintainer wants one place that runs builders, reviewers and fixers; every slice changes the OpenAPI file, the generated client, `hscontrol/app.go` and the command builder |
+| the work does not stop between parts; a decision of the maintainer is asked after                 | stop and ask before each part                                                  | the work can run day and night; an answer changes one part, a stop holds all of them                                                                                            |
+| every part is a draft pull request in one stack, and the stack is reviewed when it is complete    | a review, and a wait, after each part                                          | the maintainer reviews it as one, as a chain or as one item                                                                                                                     |
+| all of it is in 0.30, and 0.30 is not released before the swap                                    | the API in one release, the CLI in the next                                    | 002 removes `/api/v1` three releases after v0; while the stack merges, `main` serves a v0 that is not complete                                                                  |
 
 The maintainer confirmed two more cuts on 2026-11-19: `users delete` is its own part (part 8), and what was "the rest" is three parts (9, 10, 11).
 
@@ -197,17 +199,27 @@ These are their own pull requests. They are not parts of the stack, but the stac
 - The hooks (`prek run`), the strict docs build, and the checks for stale generated files.
 - A build with `-tags newcli`, from part 3 on.
 
-The root runs the tests itself before it calls a part done. A report of a builder is not a test.
+The driver runs the tests itself before it calls a part done. A report of a builder is not a test.
 
 ## The team
 
-- **The root session** owns this plan and the proposals. A slice will find things that change the API or the CLI. The root decides each one, or asks the maintainer when it is his to decide, and writes the result into 001, 002 or 003 on the proposal branch. It writes no product code. It keeps its state in the plan, the TODO list and the stack, so that a summary of its context loses nothing.
-- **A builder** (Opus) builds one slice, in a worktree on top of the slice before it. One builder works at a time.
-- **Reviewers** read slice N while slice N+1 is built: Claude reviewers, and Codex in two Rex panes on the right, one above the other, with `gpt-6.1-sol` and `gpt-6-astra`. Codex reviews start on 2026-11-22.
-- A finding goes back to the builder of that slice. The slices above it are rebased.
-- **The session that wrote the proposals** stays open as an adviser. The root is the one writer of the proposals. The two keep in step through Rex and the log `~/.cache/handover/headscale-cli-v0-sync.md`: the root logs every decision of the maintainer and every commit to the proposals, and asks for a read where the design is not plain.
+The maintainer set this on 2026-11-19, after parts 1 and 2 were built in another way.
 
-**What a builder gets from the root:** the goal of the slice in a few sentences; the block of the part from this file; the path of the proposal worktree; the answers to the "Ask first" points; the [risks](#risks) that touch the slice. A builder does not edit the proposals. When the code and a proposal cannot both be right, it stops and tells the root.
+- **One session drives the work: the Claude Code session that wrote the proposals.** It owns this plan, the proposals and the stack. It writes no product code. It keeps its state in [State](#state), so that a summary of its context loses nothing.
+- **Every Claude agent is a subagent of the driver**, started and managed inside Claude Code: the builder of a part, the reviewers of a part, and the fixer that answers a review. The driver fans out where the work allows it, such as several reviewers on one part.
+- **No Claude agent has a Rex tab of its own.** Parts 1 and 2 were built by a root session in a Rex tab, with one more tab for each builder. Those sessions finish what they started and put up their pull requests. Nobody stops them. Then they end, and the driver takes their state from [State](#state) and from the log `~/.cache/handover/headscale-cli-v0-sync.md`.
+- **Rex is for the Codex reviews only.** From 2026-11-22: two panes to the right of the driver, one above the other, with `gpt-6.1-sol` and `gpt-6-astra`. They review every part that is built by then, and each part after it.
+- **A builder** (Opus) builds one part, in a worktree on top of the part before it. One builder works at a time.
+- **Reviewers** read part N while part N+1 is built. A finding goes to a fixer for that part, and the parts above it are rebased.
+
+### The work does not stop
+
+- **The driver goes from part to part without a wait**, to part 13. When a part passes [what every pull request passes](#what-every-pull-request-passes) and its review is answered, its branch is pushed, its draft pull request is opened on the one before it, and the next part starts.
+- **A decision of the maintainer does not stop the work.** The driver takes the option that it would recommend, builds on it, and writes it under "Asked later" in [State](#state): the question, the two options, the one it took, and what changes when he picks the other. It asks him when he is there. An "Ask first" point of a part is handled in the same way.
+- **The driver waits for him only before a step that cannot be undone or that leaves the stack**: a merge, a comment on GitHub, a push to a branch that is not of the stack, a delete of work that is not its own.
+- **The stack is reviewed when it is complete.** Every part is a draft pull request, each on the one before, so the maintainer can read it as a chain or as one item.
+
+**What a builder gets from the driver:** the goal of the slice in a few sentences; the block of the part from this file; the path of the proposal worktree; the answers to the "Ask first" points; the [risks](#risks) that touch the slice. A builder does not edit the proposals. When the code and a proposal cannot both be right, it stops and tells the driver.
 
 **What a reviewer gets:** the diff and the sections of the proposals for the part, not the builder's summary. It compares the code with the proposal, checks the "Done when" of the part, and checks the rules of `AGENTS.md`: the migration rules, the view types, no `AsStruct()` in `hscontrol/api`.
 
@@ -226,8 +238,8 @@ The root runs the tests itself before it calls a part done. A report of a builde
 
 These come on top of `AGENTS.md` and the maintainer's own instructions.
 
-- No push, no pull request and no comment on GitHub without his word. Text for GitHub names no person with `@`.
-- A decision for him goes through the question tool: two options, the recommended one first. The examples and the comparison go in the chat text, with short labels in the dialog.
+- No push, no pull request and no comment on GitHub without his word. Text for GitHub names no person with `@`. He gave his word for the stack on 2026-11-19: a branch of the stack is pushed, and its draft pull request opened, without a new question. A commit to the proposal branch stays local until he says push.
+- A decision for him goes through the question tool: two options, the recommended one first. The examples and the comparison go in the chat text, with short labels in the dialog. The work does not wait for the answer; see [The work does not stop](#the-work-does-not-stop).
 - When an option is not built yet and he asks to see it, build it before the question.
 - A proposal that is wrong is corrected in the same step as the code. The proposals stay true to the code.
 
@@ -242,10 +254,16 @@ These come on top of `AGENTS.md` and the maintainer's own instructions.
 
 ## State
 
-The root keeps this section true. It holds the tasks of the part that is active, because the root has no TODO tool.
+The driver keeps this section true. Until the root session of parts 1 and 2 has ended, that session keeps the table. The section holds the tasks of the part that is active, because the session has no TODO tool.
 
 | Part   | Branch                        | State                                                                                                                                                |
 | ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1      | `kradalby/cli-v0-01-cmdline`  | pushed to `juanfont/headscale` at `9c7524ea9`; draft pull request #3715 on `main`; the root's gate was green on the same tree; CI runs               |
 | 2      | `kradalby/cli-v0-02-api-base` | built; review round 1 is answered point by point in the builder's report; the builder rebases it on part 1; then the root's gate and a second review |
 | beside | `kradalby/key-prefix-anchor`  | built, one commit; the root read the diff; its gate runs; not pushed                                                                                 |
+
+### Asked later
+
+Decisions that the driver took so that the work did not stop. The maintainer confirms or changes each one.
+
+Nothing yet.
