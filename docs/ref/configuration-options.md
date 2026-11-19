@@ -3292,6 +3292,61 @@ Skips TLS certificate verification of [`cli.address`](#cli.address).
     export HEADSCALE_CLI_INSECURE=true
     ```
 
+## `api` { #api data-toc-label="api" }
+
+Covers the HTTP APIs the server answers. See [API](api.md).
+
+??? example "All `api` keys and defaults"
+
+    ```yaml
+    api:
+      cors:
+        allowed_origins: []
+    ```
+
+### `api.cors` { #api.cors data-toc-label="cors" }
+
+Which web pages in a browser may call the API.
+
+??? example "All `api.cors` keys and defaults"
+
+    ```yaml
+    api:
+      cors:
+        allowed_origins: []
+    ```
+
+#### `api.cors.allowed_origins` { #api.cors.allowed_origins data-toc-label="allowed_origins" }
+
+- **Type:** [list of strings](#type-list)
+- **Default:** `[]`
+- **Env:** `HEADSCALE_API_CORS_ALLOWED_ORIGINS` ([space-separated or JSON array](#env))
+
+The origins, `scheme://host[:port]`, whose pages may call `/api/headscale/v0` and `/api/v2` from a browser. Empty sends no CORS headers. `*` is not accepted: this is an admin API. `/api/v1` never sends CORS headers.
+
+=== "YAML"
+
+    ```yaml
+    api:
+      cors:
+        allowed_origins:
+          - https://admin.example.com
+    ```
+
+=== "Environment"
+
+    ```shell
+    export HEADSCALE_API_CORS_ALLOWED_ORIGINS='["https://admin.example.com"]'
+    ```
+
+=== "NixOS"
+
+    ```nix
+    services.headscale.settings.api.cors.allowed_origins = [
+      "https://admin.example.com"
+    ];
+    ```
+
 ## `tuning` { #tuning data-toc-label="tuning" }
 
 Holds performance settings that rarely need changing.
