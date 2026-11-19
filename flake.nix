@@ -3,6 +3,9 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # shortcut: Go 1.27.4 reached the release branch before staging-next
+    # landed it in unstable; drop this input once unstable's go_latest has it.
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
     # Reusable Go flake checks (build/test/lint/format); CI runs them via
     # `nix build .#checks.<system>.<name>` instead of bespoke per-tool steps.
@@ -14,6 +17,7 @@
     {
       self,
       nixpkgs,
+      nixpkgs-stable,
       flake-utils,
       flake-checks,
       ...
@@ -49,12 +53,15 @@
         _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
+          go = nixpkgs-stable.legacyPackages.${prev.stdenv.hostPlatform.system}.go_1_27;
           # Tracks the newest Go in nixpkgs so a Go release bump is a
           # flake.lock update, not a flake.nix edit.
-          buildGo = pkgs.buildGoLatestModule;
+          buildGo = pkgs.buildGoLatestModule.override { inherit go; };
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
         {
+          go_latest = go;
+
           headscale = buildGo {
             pname = "headscale";
             version = headscaleVersion;
@@ -102,7 +109,7 @@
           gotools = prev.gotools.override {
             buildGoModule = buildGo;
             # goimports is wrapped with this go on PATH for module lookups.
-            go = pkgs.go_latest;
+            inherit go;
           };
 
           golangci-lint-langserver = prev.golangci-lint-langserver.override {
