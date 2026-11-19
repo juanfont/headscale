@@ -1,376 +1,104 @@
 # AGENTS.md
 
-Behavioural guidance for AI agents working in this repository. Reference
-material for complex procedures lives next to the code — integration
-testing is documented in [`cmd/hi/README.md`](cmd/hi/README.md) and
-[`integration/README.md`](integration/README.md). Read those files
-before running tests or writing new ones.
+Headscale is an open-source Tailscale control server in Go. This file holds
+what the code cannot tell you. Directories with their own rules carry a nested
+`AGENTS.md`: `hscontrol/db/` (migrations), `integration/`, `tools/bump/`
+(version pins), `.github/` (Actions lock).
 
-Headscale is an open-source implementation of the Tailscale control server
-written in Go. It manages node registration, IP allocation, policy
-enforcement, and DERP routing for self-hosted tailnets.
-
-## Interaction Rules
-
-These rules govern how you work in this repo. They are listed first
-because they shape every other decision.
-
-### Ask with comprehensive multiple-choice options
-
-When you need to clarify intent, scope, or approach, use the
-`AskUserQuestion` tool (or a numbered list fallback) and present the user
-with a comprehensive set of options. Cover the likely branches explicitly
-and include an "other — please describe" escape.
-
-- Bad: _"How should I handle expired nodes?"_
-- Good: _"How should expired nodes be handled? (a) Remain visible to peers
-  but marked expired (current behaviour); (b) Hidden from peers entirely;
-  (c) Hidden from peers but visible in admin API; (d) Other."_
-
-This matters more than you think — open-ended questions waste a round
-trip and often produce a misaligned answer.
-
-### Read the documented procedure before running complex commands
-
-Before invoking any `hi` command, integration test, generator, or
-migration tool, read the referenced README in full —
-`cmd/hi/README.md` for running tests, `integration/README.md` for
-writing them. Never guess flags. If the procedure is not documented
-anywhere, ask the user rather than inventing one.
-
-### Map once, then act
-
-Use `Glob` / `Grep` to understand file structure, then execute. Do not
-re-explore the same area to "double-check" once you have a plan. Do not
-re-read files you edited in this session — the harness tracks state for
-you.
-
-### Fail fast, report up
-
-If a command fails twice with the same error, stop and report the exact
-error to the user with context. Do not loop through variants or
-"try one more thing". A repeated failure means your model of the problem
-is wrong.
-
-### Confirm scope for multi-file changes
-
-Before touching more than three files, show the user which files will
-change and why. Use plan mode (`ExitPlanMode`) for non-trivial work.
-
-### Prefer editing existing files
-
-Do not create new files unless strictly necessary. Do not generate helper
-abstractions, wrapper utilities, or "just in case" configuration. Three
-similar lines of code is better than a premature abstraction.
-
-## Quick Start
+## Commands
 
 ```bash
-# Enter the nix dev shell (Go 1.27.3, golangci-lint, prek)
-nix develop
-
-# Full development workflow: fmt + lint + test + build
-make dev
-
-# Individual targets
-make build           # build the headscale binary
-make test            # CGO_ENABLED=1 go test -race ./...
-make fmt             # format Go, docs, Nix and config files
-make lint            # lint Go
-make generate        # go generate ./... + API clients (oapi-codegen)
-make clean           # remove build artefacts
-
-# Direct go test invocations
-go test ./...
+nix develop                  # pinned toolchain (Go, golangci-lint, prek)
+make dev                     # fmt + lint + test + build
+make test                    # CGO_ENABLED=1 go test -race ./...
+make fmt                     # format Go, docs, Nix and config files
+make lint                    # golangci-lint
+make generate                # go generate ./... + API clients in gen/
 go test ./hscontrol/state -run 'TestName$'
-CGO_ENABLED=1 go test -race ./...
+nix build -L .#checks.x86_64-linux.gorace   # CI race check
 
-# CI race check
-nix build -L .#checks.x86_64-linux.gorace
-
-# Integration tests — read cmd/hi/README.md first
-go run ./cmd/hi doctor
+go run ./cmd/hi doctor       # integration tests: read cmd/hi/README.md first
 go run ./cmd/hi run "TestName"
-
-# Version pins — see "Version Bumps" below
-go run ./tools/bump plan     # what is stale, changes nothing
-go run ./tools/bump verify   # do the pins still agree
 ```
 
-Go 1.27.3 minimum (per `go.mod:3`). `nix develop` pins the exact toolchain
-used in CI.
+The dev shell exports `CGO_ENABLED=0`; `-race` needs cgo.
 
-The dev shell exports `CGO_ENABLED=0`; `-race` needs cgo, and CI runs the
-`gorace` flake check (package selection in `flake.nix`).
+Read `cmd/hi/README.md` in full before any `hi` command. Never guess flags.
 
-## Pre-Commit with prek
+## Pre-commit
 
-`prek` installs git hooks that run the same checks as CI.
+`prek install` once in the dev shell; hooks match CI (treefmt, mdformat,
+`golangci-lint --new-from-rev=HEAD~1`, vendor hash). Never skip them
+(`--no-verify`, `SKIP=`).
 
-```bash
-nix develop
-prek install            # one-time setup
-prek run                # run hooks on staged files
-prek run --all-files    # run hooks on the full tree
-```
+## Rules that are not visible in the code
 
-Hooks cover: file hygiene (trailing whitespace, line endings, BOM),
-syntax validation (JSON/YAML/TOML/XML), merge-conflict markers, private
-key detection, `treefmt` (the same formatter `nix fmt` and the flake's
-formatting check run), `mdformat` for `docs/`, and `golangci-lint` via
-`--new-from-rev=HEAD~1` (see the golangci-lint hook in .pre-commit-config.yaml). A manual
-invocation with an `upstream/main` remote is equivalent:
+- **Tags XOR user ownership.** A node is tagged or user-owned, never both.
+  `node.IsTagged()` (`hscontrol/types/node.go`) is authoritative: a tagged node
+  may still have `UserID` set for "created by" tracking.
 
-```bash
-golangci-lint run --new-from-rev=upstream/main --timeout=5m --fix
-```
+  ```go
+  if node.UserID().Valid() { /* assume user-owned */ }       // WRONG
+  if node.UserID().Valid() && !node.IsTagged() { /* ok */ }  // correct
+  ```
 
-`git commit --no-verify` is acceptable only for WIP commits on feature
-branches — never on `main`.
+  Tagged nodes appear to clients as the `TaggedDevices` user
+  (`hscontrol/types/users.go`). Ownership checks live in
+  `validateNodeOwnership()` (`hscontrol/state/tags.go`).
 
-## Project Layout
+- **Cross-subsystem work goes through `State`** (`hscontrol/state/state.go`),
+  not the database directly. `NodeStore` writes rebuild a full snapshot;
+  measure before changing hot-path code.
 
-```
-headscale/
-├── cmd/
-│   ├── headscale/    # Main headscale server binary
-│   └── hi/           # Integration test runner (see cmd/hi/README.md)
-├── hscontrol/        # Core control plane
-├── integration/      # End-to-end Docker-based tests (see integration/README.md)
-├── gen/              # Generated API clients (oapi-codegen — do not edit)
-├── docs/             # User and ACL reference documentation
-└── packaging/        # Distribution packaging
-```
+- **`hscontrol/policy/v2` is the only policy implementation.**
+  `hscontrol/policy/policy.go` is thin wrappers.
 
-### `hscontrol/` packages
+- **`types`, `derp`, `dns` and `policy` never import `hscontrol/config`.**
 
-- `app.go`, `handlers.go`, `noise.go`, `auth.go`, `oidc.go`,
-  `poll.go`, `metrics.go`, `debug.go`, `tailsql.go`, `platform_config.go`
-  — top-level server files
-- `state/` — central coordinator (`state.go`) and the copy-on-write
-  `NodeStore` (`node_store.go`). All cross-subsystem operations go
-  through `State`.
-- `db/` — GORM layer, migrations, schema. `node.go`, `users.go`,
-  `ip.go`, `policy.go`; credentials (API keys, pre-auth keys, OAuth) share
-  one table: `secret.go` (generate/verify), `api_key.go`,
-  `preauth_keys.go`, `oauth.go`, `migrate_credentials.go`.
-- `mapper/` — streaming batcher that distributes MapResponses to
-  clients: `batcher.go`, `node_conn.go`, `builder.go`, `mapper.go`.
-  Performance-critical.
-- `policy/` — `policy/v2/` is **the** policy implementation. The
-  top-level `policy.go` is thin wrappers. There is no v1 directory.
-- `config/` — config code outside the `types.Config` struct: the loader
-  (`Load`: defaults, file, `HEADSCALE_*` environment; `Default`; `Marshal`;
-  the removed-keys table), `Validate` and `Warnings`, the checks behind
-  `headscale check` (`Files` lists every file a config names, with its
-  validator), `ReadPrivateKey` and the generators (`GenerateExample`,
-  `GenerateNixOptions`, `GenerateReference`). The schema and `ConfigError`
-  stay in `types`. It imports `types`; `types`, `derp`, `dns` and `policy`
-  must never import it.
-- `routes/`, `dns/`, `derp/`, `types/`, `util/`, `templates/`, `capver/`
-  — routing, MagicDNS, relay, core types, helpers, client templates,
-  capability versioning.
-- `servertest/` — in-memory test harness for server-level tests that
-  don't need Docker. Prefer this over `integration/` when possible.
-- `assets/` — embedded UI assets.
+- **Read paths use views.** Response serializers read through
+  `NodeView`/`UserView`/`PreAuthKeyView`/`CredentialView`. `AsStruct()` clones
+  the record; use it only for DB writes and mutable working copies.
+  `grep AsStruct hscontrol/api` must come back empty.
 
-### `cmd/hi/` files
+- **zerolog**: prefer single-line chains. When building an event
+  incrementally, reassign it (`e = e.Str("k", v)`); otherwise the field is
+  silently dropped.
 
-`main.go`, `run.go`, `doctor.go`, `docker.go`, `cleanup.go`, `stats.go`,
-`README.md`. **Read `cmd/hi/README.md` before running any `hi` command.**
+## Generated files — do not edit
 
-## Architecture Essentials
+- `gen/`: `make client` from the OpenAPI spec.
+- `hscontrol/types/config_docs_generated.go`, `nix/options.generated.nix`,
+  `docs/ref/configuration-options.md`, `docs/ref/config-example.yaml`:
+  `go generate ./hscontrol/types/`.
+- `services.headscale.settings` options come only from
+  `nix/options.generated.nix`. Never declare one in `nix/module.nix`; the
+  module only sets values, below `lib.mkDefault`.
 
-- **`hscontrol/state/state.go`** is the central coordinator. Cross-cutting
-  operations (node updates, policy evaluation, IP allocation) go through
-  the `State` type, not directly to the database.
-- **`NodeStore`** in `hscontrol/state/node_store.go` is a copy-on-write
-  in-memory cache backed by `atomic.Pointer[Snapshot]`. Every read is a
-  pointer load; writes rebuild a new snapshot and atomically swap. It is
-  the hot path for `MapRequest` processing and peer visibility.
-- **The map-request sync point** is
-  `State.UpdateNodeFromMapRequest()` in `hscontrol/state/state.go`. This
-  is where Hostinfo changes, endpoint updates, and route advertisements
-  land in the NodeStore.
-- **Mapper subsystem** streams MapResponses via `batcher.go` and
-  `node_conn.go`. Changes here affect all connected clients.
-- **Node registration flow**: noise handshake (`noise.go`) → auth
-  (`auth.go`) → state/DB persistence (`state/`, `db/`) → initial map
-  (`mapper/`).
+## Dependencies
 
-## Database Migration Rules
+- Any `go.mod`/`go.sum` change needs `go run ./cmd/vendorhash update`, or
+  `nix build` breaks.
+- `go.mod`'s `go` directive must not exceed the Go nixpkgs ships; nix builds
+  use `GOTOOLCHAIN=local`. `go get` raises it silently.
+- Full rules: `tools/bump/AGENTS.md`.
 
-These rules are load-bearing — violating them corrupts production
-databases. Migrations start at 0.29.0; `checkMinimumMigration` in
-`hscontrol/db/versioncheck.go` refuses older databases. All new
-migrations must:
+## Testing
 
-1. **Never reorder existing migrations.** Migration order is immutable
-   once committed.
-2. **Only add new migrations to the end** of the migrations array.
-3. **Never disable foreign keys.**
-4. **Use the migration ID format** `YYYYMMDDHHMM-short-description`
-   (timestamp + descriptive suffix). Example: `202607241200-clear-tagged-node-expiry`.
-5. **Never use `AutoMigrate`** in a migration; write explicit DDL.
-6. **Run multi-statement migrations in `tx.Transaction`** so a failure
-   leaves the database retryable.
+- Prefer `hscontrol/servertest/` (in-memory) over `integration/` (Docker).
+- Integration flakes are almost always code. Read `hs-*.stderr.log` before
+  blaming Docker.
+- Some races surface only on SQLite or only on PostgreSQL (`hi run --postgres`).
 
-## Tags-as-Identity
+## Public contract
 
-Headscale enforces **tags XOR user ownership**: every node is either
-tagged (owned by tags) or user-owned (owned by a user namespace), never
-both. This is a load-bearing architectural rule.
+The NixOS test kit is consumed by other projects: the "Contract" in
+`nix/README.md` (`nix/testkit.nix`, `nix/testkit-peer.nix`, the embedded DERP
+region, `HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR`, the CLI commands
+`hs-authkey` calls). Breaking it needs a "NixOS test kit" BREAKING entry in
+`CHANGELOG.md`.
 
-- **Use `node.IsTagged()`** (`hscontrol/types/node.go`) to determine
-  ownership, not `node.UserID().Valid()`. A tagged node may still have
-  `UserID` set for "created by" tracking — `IsTagged()` is authoritative.
-- `IsUserOwned()` returns `!IsTagged()`.
-- Tagged nodes are presented to Tailscale as the special
-  `TaggedDevices` user (`hscontrol/types/users.go`, ID `2147455555`).
-- `SetTags` validation is enforced by `validateNodeOwnership()` in
-  `hscontrol/state/tags.go`.
-- Examples and edge cases live in `hscontrol/types/node_tags_test.go`,
-  `hscontrol/apiv1_nodes_test.go` (`TestAPIV1NodeSetTags`) and
-  `hscontrol/apiv2_devices_test.go` (`TestAPIv2Device_SetTags`).
+## Commits
 
-**Don't do this**:
-
-```go
-if node.UserID().Valid() { /* assume user-owned */ }       // WRONG
-if node.UserID().Valid() && !node.IsTagged() { /* ok */ }  // correct
-```
-
-## Policy Engine
-
-`hscontrol/policy/v2/policy.go` is the policy implementation. The
-top-level `hscontrol/policy/policy.go` contains only wrapper functions
-around v2. There is no v1 directory.
-
-Key concepts an agent will encounter:
-
-- **Autogroups**: `autogroup:self`, `autogroup:member`, `autogroup:internet`
-- **Tag owners**: IP-based authorization for who can claim a tag
-- **Route approvals**: auto-approval of subnet routes by policy
-- **SSH policies**: SSH access control via grants
-- **HuJSON** parsing for policy files
-
-For usage examples, read `hscontrol/policy/v2/policy_test.go`. For ACL
-reference documentation, see `docs/`.
-
-## Integration Testing
-
-**Before running any `hi` command, read `cmd/hi/README.md` in full.**
-Guessing at `hi` flags leads to broken runs and stale containers.
-
-Test-authoring patterns (`EventuallyWithT`, `IntegrationSkip`, helper
-variants, scenario setup) are documented in `integration/README.md`.
-
-Key reminders:
-
-- Integration test functions **must** start with `IntegrationSkip(t)`.
-- External calls (`client.Status`, `headscale.ListNodes`, etc.) belong
-  inside `EventuallyWithT`; state-mutating commands (`tailscale set`)
-  must not.
-- Tests generate ~100 MB of logs per run under `control_logs/{runID}/`.
-  Prune old runs if disk is tight.
-- Flakes are almost always code, not infrastructure. Read `hs-*.stderr.log`
-  before blaming Docker.
-
-## Version Bumps
-
-`tools/bump` keeps the pinned versions current and opens one pull request a
-day. `bump plan` reports what is stale without touching anything; `bump verify`
-exits non-zero when the pins no longer agree.
-
-Four rules it encodes. A hand-written bump has to follow them too:
-
-1. **`modernc.org/libc` moves only to the version `modernc.org/sqlite`
-   requires**, and **`gvisor.dev/gvisor` only to the version `tailscale.com`
-   requires**. Both are read off the owner's own `go.mod` through
-   `proxy.golang.org`, never guessed. If the partner cannot be resolved,
-   neither half moves. The reasoning lives in the NOTE blocks in `go.mod`;
-   `go mod tidy` can detach those comments from the lines they document, so
-   check they are still attached.
-2. **Any `go.mod` or `go.sum` change needs `go run ./cmd/vendorhash update`.**
-   `flake.nix` reads the vendor hash from `flakehashes.json`, so skipping this
-   leaves a tree that cannot `nix build`.
-3. **`go.mod`'s `go` directive must not exceed the Go nixpkgs ships.** `go get`
-   raises it silently when a dependency demands a newer toolchain, and the go
-   command then downloads one, so `go build` succeeds locally. The nix builders
-   set `GOTOOLCHAIN=local` and fail. `bump verify` reports the drift; the tool
-   never edits the directive itself.
-4. **Actions are named by release tag; the commit lives in
-   `.github/workflows/actions.lock`.** After changing any `uses:`, in a workflow
-   or in `.github/actions/`, run `gh-actions-lock` (in the dev shell) and commit
-   the lockfile with it; GitHub runs the locked commit and the
-   `check-generated` workflow fails a stale lockfile. Same-repo actions are
-   written `$/.github/actions/...`, not `./`, so the lockfile covers what they
-   use. Never pass `--accept-moved`: a release tag that moved needs a human.
-
-The tool does not encode one more rule: the DNS providers (`github.com/libdns/*`)
-and `github.com/caddyserver/certmagic` must agree on the `github.com/libdns/libdns`
-major version. One provider instance serves both node certificates and certmagic,
-so they move together; a provider on another libdns major cannot be added until
-certmagic moves.
-
-The servertest Terraform tests run the newest three `tailscale/tailscale`
-provider releases, listed in `terraformProviderVersions`
-(`hscontrol/servertest/apiv2_test.go`). The list is committed, not resolved at
-test time, so a new release arrives as a bump pull request rather than failing
-unrelated ones. A test of a provider feature calls `requireProvider` with the
-first release that has it.
-
-`Dockerfile.tailscale-HEAD` and `Dockerfile.derper` compile a tailscale tree
-cloned from an unpinned branch, so their builder image is a floor, not a
-target: it has to be at least upstream's `go` directive. They set
-`GOTOOLCHAIN=auto` so an upstream bump degrades to a slower build rather than
-a broken one.
-
-## Code Conventions
-
-- **Commit messages** follow Go-style `package: imperative description`.
-  Recent examples from `git log`:
-  - `db: scope DestroyUser to only delete the target user's pre-auth keys`
-  - `state: fix policy change race in UpdateNodeFromMapRequest`
-  - `integration: fix ACL tests for address-family-specific resolve`
-
-  Not Conventional Commits. No `feat:`/`chore:`/`docs:` prefixes.
-
-- **Formatting** is enforced by the `golangci-lint` formatters in
-  `.golangci.yaml` (`gofumpt`, `gci`, `goimports`). No line-length limit is
-  enforced. Run `make fmt` or rely on the pre-commit hook.
-- **Logging** uses `zerolog`. Prefer single-line chains
-  (`log.Info().Str(...).Msg(...)`). For 4+ fields or conditional fields,
-  build incrementally and **reassign** the event variable:
-  `e = e.Str("k", v)`. Forgetting to reassign silently drops the field.
-- **Tests**: prefer `hscontrol/servertest/` for server-level tests that
-  don't need Docker — faster than full integration tests.
-- **View types in read paths**: response serializers must read through
-  `NodeView`/`UserView`/`PreAuthKeyView`/`CredentialView` accessors. `AsStruct()` clones the
-  whole record on every read — it is only for DB-write/merge clones and mutable
-  working copies, never to build an API response. `grep AsStruct hscontrol/api`
-  must come back empty.
-
-## Gotchas
-
-- **Database**: SQLite for local dev, PostgreSQL for integration-heavy
-  tests (`go run ./cmd/hi run "..." --postgres`). Some race conditions
-  only surface on one backend.
-- **NodeStore writes** rebuild a full snapshot. Measure before changing
-  hot-path code.
-- **Do not edit `gen/`** — `make client` (part of `make generate`)
-  regenerates it from the OpenAPI spec.
-- **`services.headscale.settings` options come only from
-  `nix/options.generated.nix`**, generated from `hscontrol/types/config.go`
-  by `go generate ./hscontrol/types/`. Never declare one in `nix/module.nix`:
-  the module only sets values, below `lib.mkDefault`.
-- **Do not edit the generated config files** —
-  `hscontrol/types/config_docs_generated.go`, `nix/options.generated.nix`,
-  `docs/ref/configuration-options.md` and `docs/ref/config-example.yaml`
-  come from `go generate ./hscontrol/types/`.
-- **The NixOS test kit is a public contract** consumed by other projects'
-  NixOS tests: the "Contract" in `nix/README.md`, covering
-  `nix/testkit.nix`, `nix/testkit-peer.nix`, the embedded DERP region
-  and `HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR`, and the CLI commands
-  `hs-authkey` calls. Breaking it needs a "NixOS test kit" BREAKING entry
-  in `CHANGELOG.md`.
+Go style: `package: imperative description`, e.g.
+`state: fix policy change race in UpdateNodeFromMapRequest`. Not Conventional
+Commits.
