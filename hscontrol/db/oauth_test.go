@@ -180,7 +180,7 @@ func TestVerifySecretGivesUpWhenLimiterBusy(t *testing.T) {
 	for range n {
 		select {
 		case got := <-results:
-			require.ErrorIs(t, got.err, errLegacyHashBusy)
+			require.ErrorIs(t, got.err, ErrLegacyHashBusy)
 			assert.False(t, got.needsRehash)
 		case <-deadline:
 			t.Fatal("legacy verification did not give up while the limiter was full")

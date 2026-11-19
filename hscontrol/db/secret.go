@@ -61,8 +61,14 @@ var (
 var (
 	legacyHashLimiter = make(chan struct{}, max(2, runtime.GOMAXPROCS(0)))
 	legacyHashWait    = 5 * time.Second
-	errLegacyHashBusy = errors.New("legacy hash verification is busy")
+	// ErrLegacyHashBusy is a legacy hash that waited too long for a slot: the
+	// credential was not checked, neither refused nor accepted.
+	ErrLegacyHashBusy = errors.New("legacy hash verification is busy")
 )
+
+// ErrCredentialStore wraps a failure of the database while a credential is
+// read: the credential was not checked, neither refused nor accepted.
+var ErrCredentialStore = errors.New("credential store failed")
 
 // generateSecret builds a new credential string prefix+identifier+"-"+secret,
 // returning the full string (shown ONCE to the user), the public identifier
@@ -109,7 +115,7 @@ func authenticateCredential(
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("looking up %s credential: %w", kind, err)
+		return nil, fmt.Errorf("looking up %s credential: %w: %w", kind, ErrCredentialStore, err)
 	}
 
 	needsRehash, err := verifySecret(cred.Hash, secret)
@@ -141,7 +147,7 @@ func authenticateCredential(
 		}
 
 		if err != nil {
-			return nil, fmt.Errorf("reloading %s credential %d: %w", kind, cred.ID, err)
+			return nil, fmt.Errorf("reloading %s credential %d: %w: %w", kind, cred.ID, ErrCredentialStore, err)
 		}
 
 		return &current, nil
@@ -174,7 +180,7 @@ func verifySecret(encoded []byte, secret string) (bool, error) {
 	select {
 	case legacyHashLimiter <- struct{}{}:
 	case <-time.After(legacyHashWait):
-		return false, errLegacyHashBusy
+		return false, ErrLegacyHashBusy
 	}
 
 	defer func() { <-legacyHashLimiter }()
