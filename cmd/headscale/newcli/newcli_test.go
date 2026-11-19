@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -428,6 +430,43 @@ func TestWords(t *testing.T) {
 
 	require.Equal(t, []string{"a", "b c", "", "d'e"}, words(`a "b c" '' "d'e"`))
 	require.Empty(t, words(""))
+}
+
+// TestImports holds what a command may not do by hand: print or exit (fmt,
+// os), make its own client or call the server around the facade (net/http,
+// clientv0.NewClient), or read the parser. A message names an entity
+// through table.Entity, which it cannot do with Sprintf.
+func TestImports(t *testing.T) {
+	t.Parallel()
+
+	banned := map[string]string{
+		`"fmt"`:      "a command returns what it prints; a message names an entity with table.Entity",
+		`"os"`:       "a command returns what it prints, and the builder exits",
+		`"net/http"`: "a command calls the server through command.API",
+		`"github.com/juanfont/headscale/cmdline"`: "only package command reads the parser",
+	}
+
+	files, err := filepath.Glob("*.go")
+	require.NoError(t, err)
+
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		f, err := parser.ParseFile(token.NewFileSet(), name, nil, 0)
+		require.NoError(t, err)
+
+		for _, imp := range f.Imports {
+			if why, ok := banned[imp.Path.Value]; ok {
+				t.Errorf("%s imports %s: %s", name, imp.Path.Value, why)
+			}
+		}
+
+		src, err := os.ReadFile(name)
+		require.NoError(t, err)
+		require.NotRegexp(t, `clientv0\.NewClient`, string(src), "%s makes its own client: it skips the version check", name)
+	}
 }
 
 // TestRootHelp compares the root help with the alignment of its short
