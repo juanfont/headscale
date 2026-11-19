@@ -202,7 +202,7 @@ func validateAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 	}
 
 	// Check for new format: hskey-api-{prefix}-{secret}
-	_, prefixAndSecret, found := strings.Cut(keyStr, apiKeyPrefix)
+	prefixAndSecret, found := strings.CutPrefix(keyStr, apiKeyPrefix)
 
 	if !found {
 		// Legacy format: prefix.secret

@@ -263,7 +263,7 @@ func (hsdb *HSDatabase) AuthenticateAccessToken(tokenStr string) (*types.OAuthAc
 		return nil, ErrAccessTokenFailedToParse
 	}
 
-	_, rest, found := strings.Cut(tokenStr, types.AccessTokenPrefix)
+	rest, found := strings.CutPrefix(tokenStr, types.AccessTokenPrefix)
 	if !found {
 		return nil, ErrAccessTokenFailedToParse
 	}
