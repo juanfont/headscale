@@ -244,7 +244,8 @@ These come on top of `AGENTS.md` and the maintainer's own instructions.
 
 The root keeps this section true. It holds the tasks of the part that is active, because the root has no TODO tool.
 
-| Part | Branch                        | State                                                                                                                                                                            |
-| ---- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `kradalby/cli-v0-01-cmdline`  | built and reviewed; the root's gate is green on `113b4571c` (hooks, lint, the Go test check, the race check, both fuzz targets); it waits for the maintainer's word to be pushed |
-| 2    | `kradalby/cli-v0-02-api-base` | built; two reviews are done (002, and the security of auth and CORS); the builder works on the findings in `~/.cache/handover/headscale-kradalby-cli-v0-02-api-base-review-1.md` |
+| Part   | Branch                        | State                                                                                                                                                |
+| ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1      | `kradalby/cli-v0-01-cmdline`  | pushed to `juanfont/headscale` at `9c7524ea9`; draft pull request #3715 on `main`; the root's gate was green on the same tree; CI runs               |
+| 2      | `kradalby/cli-v0-02-api-base` | built; review round 1 is answered point by point in the builder's report; the builder rebases it on part 1; then the root's gate and a second review |
+| beside | `kradalby/key-prefix-anchor`  | built, one commit; the root read the diff; its gate runs; not pushed                                                                                 |
