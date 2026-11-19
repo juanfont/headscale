@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,10 +15,12 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/go-chi/chi/v5"
+	jsonv2 "github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +38,7 @@ func newBackend(tb testing.TB) Backend {
 	require.NoError(tb, err)
 	tb.Cleanup(func() { _ = st.Close() })
 
-	return Backend{State: st, Cfg: &cfg}
+	return Backend{State: st, Change: func(...change.Change) {}, Cfg: &cfg}
 }
 
 // newTestAPI is v0 on b, through humatest. Every answer is checked for a
@@ -257,4 +260,121 @@ func TestNewAPIConcurrently(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+// tryBody registers an operation whose body is B.
+func tryBody[B any](method string, maxBody int64) func() {
+	return func() {
+		api := NewAPI(chi.NewMux(), Backend{}, "test")
+		op := huma.Operation{OperationID: "x", Method: method, Path: Prefix + "/x/{id}", MaxBodyBytes: maxBody}
+
+		register(api, op, needs(scope.Users), nil, func(context.Context, *struct {
+			ID   string `path:"id"`
+			Body B
+		},
+		) (*struct{}, error) {
+			return nil, nil //nolint:nilnil
+		})
+	}
+}
+
+// TestRegisterRefusesBodies: a body without a limit of its own, and a field
+// that would read null as a zero value, at any depth, fail when the API is
+// built.
+func TestRegisterRefusesBodies(t *testing.T) {
+	type (
+		plain struct {
+			Name string `json:"name"`
+		}
+		omitted struct {
+			Name string `json:"name,omitempty"`
+		}
+		notRequired struct {
+			Name string `json:"name" required:"false"`
+		}
+		pointer struct {
+			Name *string `json:"name"`
+		}
+		nullable struct {
+			Name string `json:"name" nullable:"true"`
+		}
+		optional struct {
+			Name Optional[string] `json:"name,omitzero"`
+		}
+		optionalRequired struct {
+			Name Optional[string] `json:"name"`
+		}
+		nested struct {
+			Nest plain `json:"nest"`
+		}
+		nestedOmitted struct {
+			Nest []omitted `json:"nest"`
+		}
+		optionalNested struct {
+			Nest Optional[notRequired] `json:"nest,omitzero"`
+		}
+		withTime struct {
+			At time.Time `json:"at"`
+		}
+	)
+
+	const prefix = "apiv0: x: body field "
+
+	require.PanicsWithValue(t, "apiv0: x takes a body and sets no MaxBodyBytes between 1 and 1048576", tryBody[plain](http.MethodPost, 0))
+	require.PanicsWithValue(t, "apiv0: x takes a body and sets no MaxBodyBytes between 1 and 1048576", tryBody[plain](http.MethodPost, 1<<40))
+	require.PanicsWithValue(t, prefix+"omitted.Name is not required, so it must be an Optional", tryBody[omitted](http.MethodPost, 1))
+	require.PanicsWithValue(t, prefix+"notRequired.Name is not required, so it must be an Optional", tryBody[notRequired](http.MethodPost, 1))
+	require.PanicsWithValue(t, prefix+"pointer.Name holds a pointer or an interface; use Optional", tryBody[pointer](http.MethodPost, 1))
+	require.PanicsWithValue(t, prefix+"nullable.Name takes null, so it must be an Optional", tryBody[nullable](http.MethodPost, 1))
+	require.PanicsWithValue(t, prefix+"plain.Name must be an Optional tagged omitzero in a PATCH", tryBody[plain](http.MethodPatch, 1))
+	require.PanicsWithValue(t, prefix+"optionalRequired.Name is an Optional without omitzero", tryBody[optionalRequired](http.MethodPatch, 1))
+	require.PanicsWithValue(t, prefix+"omitted.Name is not required, so it must be an Optional", tryBody[nestedOmitted](http.MethodPost, 1))
+	require.PanicsWithValue(t, prefix+"notRequired.Name is not required, so it must be an Optional", tryBody[optionalNested](http.MethodPatch, 1))
+	require.NotPanics(t, tryBody[plain](http.MethodPost, 1))
+	require.NotPanics(t, tryBody[nested](http.MethodPost, 1))
+	require.NotPanics(t, tryBody[withTime](http.MethodPost, 1))
+	require.NotPanics(t, tryBody[optional](http.MethodPatch, 1))
+}
+
+// TestBodyNulls: null is refused inside a struct in a body, and inside the
+// struct of an Optional.
+func TestBodyNulls(t *testing.T) {
+	type (
+		inner struct {
+			Inner Optional[string] `json:"inner,omitzero"`
+		}
+		body struct {
+			Nest inner           `json:"nest"`
+			Opt  Optional[inner] `json:"opt,omitzero"`
+		}
+	)
+
+	api := newTestAPI(t, newBackend(t))
+	register(api, huma.Operation{OperationID: "createNest", Method: http.MethodPost, Path: Prefix + "/nest", MaxBodyBytes: 1024}, public, nil,
+		func(context.Context, *struct{ Body body }) (*struct{}, error) { return &struct{}{}, nil })
+
+	for in, want := range map[string]string{
+		`{"nest": {"inner": null}}`:                       "body.nest.inner",
+		`{"nest": {}, "opt": {"inner": null}}`:            "body.opt.inner",
+		`{"nest": {"inner": "x"}, "opt": {"INNER": "x"}}`: "body.opt.INNER",
+	} {
+		p := decodeProblem(t, api.Post(Prefix+"/nest", "Content-Type: application/json", strings.NewReader(in)), CodeInvalidField)
+		require.Equal(t, []string{want}, locations(p), in)
+	}
+
+	rec := api.Post(Prefix+"/nest", "Content-Type: application/json", strings.NewReader(`{"nest": {}, "opt": {"inner": "x"}}`))
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+}
+
+// TestOptionalResets: a second decode into the same Optional keeps nothing
+// of the first.
+func TestOptionalResets(t *testing.T) {
+	var o Optional[string]
+
+	require.NoError(t, jsonv2.Unmarshal([]byte(`null`), &o))
+	require.NoError(t, jsonv2.Unmarshal([]byte(`"x"`), &o))
+	require.Equal(t, Optional[string]{Set: true, Value: "x"}, o)
+
+	require.NoError(t, jsonv2.Unmarshal([]byte(`null`), &o))
+	require.Equal(t, Optional[string]{Set: true, Null: true}, o)
 }

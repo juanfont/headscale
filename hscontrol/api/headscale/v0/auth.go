@@ -155,6 +155,41 @@ func authMiddleware(b Backend) func(huma.Context, func(huma.Context)) {
 	}
 }
 
+// tokenRule refuses an OAuth access token a call that its scopes allow. An
+// operation states its rules with [access.withTokenRules]; they run after
+// the body is read and before the handler. An API key and the socket may do
+// everything, so no rule holds them.
+type tokenRule struct {
+	// name is stable: details.rule of forbidden, and a heading of the page
+	// of codes.
+	name string
+	// why is the detail of the problem and the text on the page.
+	why string
+	// refuses reports whether the rule refuses the input of the call.
+	refuses func(in any) bool
+}
+
+// tokenRules is every rule. The page of codes lists them, and register
+// refuses a rule that is not here.
+var tokenRules = []*tokenRule{&tokenCannotChangeUserNameOrEmail}
+
+// ruleRefusal is the problem of the first rule of a that refuses in, when
+// the caller is an OAuth access token.
+func ruleRefusal(ctx context.Context, a access, in any) *Problem {
+	c := callerFrom(ctx)
+	if c == nil || c.credential == nil || c.credential.kind != CredentialOAuthToken {
+		return nil
+	}
+
+	for _, r := range a.rules {
+		if r.refuses(in) {
+			return ruleForbidden(r)
+		}
+	}
+
+	return nil
+}
+
 // refused are the errors of a credential that is not valid, which need no
 // log line.
 var refused = []error{

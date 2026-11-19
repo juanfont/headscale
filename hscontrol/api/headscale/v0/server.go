@@ -138,7 +138,7 @@ func registerServer(api huma.API, b Backend) {
 		Path:        Prefix + "/health",
 		Summary:     "The health of the server",
 		Tags:        []string{"Server"},
-	}, anyCredential, []Code{CodeUnhealthy}, func(ctx context.Context, _ *struct{}) (*struct{ Body Health }, error) {
+	}, anyCredential, []answer{{code: CodeUnhealthy}}, func(ctx context.Context, _ *struct{}) (*struct{ Body Health }, error) {
 		err := b.State.PingDB(ctx)
 		if err != nil {
 			log.Error().Err(err).Str(zf.RequestID, middleware.GetReqID(ctx)).Msg("api v0: database ping")
