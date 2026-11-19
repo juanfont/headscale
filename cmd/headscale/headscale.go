@@ -1,3 +1,5 @@
+//go:build !newcli
+
 package main
 
 import (

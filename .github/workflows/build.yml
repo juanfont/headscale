@@ -80,6 +80,26 @@ jobs:
         with:
           name: headscale-linux
           path: result/bin/headscale
+  # The new CLI, selected by the build tag until it replaces the old one.
+  build-newcli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: NixOS/nix-installer-action@v1.0.0
+      - uses: Mic92/hestia@v3.1.0
+
+      - name: Build with the newcli tag
+        env:
+          CGO_ENABLED: 0
+        run: go build -tags newcli -o headscale ./cmd/headscale
+
+      - name: Test with the newcli tag
+        env:
+          CGO_ENABLED: 0
+        run: go test -tags newcli ./cmd/headscale ./cmd/headscale/newcli/...
+
   build-cross:
     runs-on: ubuntu-latest
     strategy:
