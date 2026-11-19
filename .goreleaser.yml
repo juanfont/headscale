@@ -27,6 +27,7 @@ builds:
       - freebsd_amd64
       - linux_amd64
       - linux_arm64
+      - linux_s390x
     flags:
       - -mod=readonly
       # Log callers and panic traces name module paths, not the CI checkout.
