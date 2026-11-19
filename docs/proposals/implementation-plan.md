@@ -191,6 +191,7 @@ The root runs the tests itself before it calls a part done. A report of a builde
 - **A builder** (Opus) builds one slice, in a worktree on top of the slice before it. One builder works at a time.
 - **Reviewers** read slice N while slice N+1 is built: Claude reviewers, and Codex in two Rex panes on the right, one above the other, with `gpt-6.1-sol` and `gpt-6-astra`. Codex reviews start on 2026-11-22.
 - A finding goes back to the builder of that slice. The slices above it are rebased.
+- **The session that wrote the proposals** stays open as an adviser. The root is the one writer of the proposals. The two keep in step through Rex and the log `~/.cache/handover/headscale-cli-v0-sync.md`: the root logs every decision of the maintainer and every commit to the proposals, and asks for a read where the design is not plain.
 
 **What a builder gets from the root:** the goal of the slice in a few sentences; the block of the part from this file; the path of the proposal worktree; the answers to the "Ask first" points; the [risks](#risks) that touch the slice. A builder does not edit the proposals. When the code and a proposal cannot both be right, it stops and tells the root.
 

@@ -1659,17 +1659,17 @@ func Write(w io.Writer, shell, program string) error
 
 **The reader** keeps the tests of the first version, in `reader/reader_test.go`, with the row numbers they had. Its tree has root flags that some commands also take, a group two deep, aliases, bools, a value flag with a Completer, a repeatable flag, a file flag, a non-ASCII short, and arguments with and without a Completer.
 
-| Test            | Rows                | Holds                                                                                                                                                                                              |
-| --------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TestParse`     | P01–P59             | the grammar and the walk; each row also checks that argv is not changed                                                                                                                            |
-| `TestErrorText` | 4                   | the default text of the reader's three kinds (M6)                                                                                                                                                  |
-| `TestComplete`  | T01–T58             | Tab, through `Serve`                                                                                                                                                                               |
-| `TestServe`     | S01–S04             | the protocol                                                                                                                                                                                       |
-| `TestPure`      | 1                   | the tree is not changed (M7)                                                                                                                                                                       |
-| `TestOrder`     | O1–O6, and `Values` | the order and positions of flags, what is read before a refused word                                                                                                                               |
-| `TestCheck`     | K0, K1–K8 (17 rows) | the checks of names and spellings                                                                                                                                                                  |
-| `TestContract`  | W8, C2, C6, S5, S6  | what the reader does with a tree that the check refuses, and with a failing writer. A caller cannot reach the first three: `New` refuses such a tree                                               |
-| `FuzzParse`     | 3 seeds             | no panic; arguments in argv order; flags in order, each at a flag word, before the mistake; a result survives a round trip through its canonical line; `Complete` does not panic on the same words |
+| Test            | Rows                | Holds                                                                                                                                                                                                               |
+| --------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TestParse`     | P01–P59             | the grammar and the walk; each row also checks that argv is not changed                                                                                                                                             |
+| `TestErrorText` | 4                   | the default text of the reader's three kinds (M6)                                                                                                                                                                   |
+| `TestComplete`  | T01–T58             | Tab, through `Serve`                                                                                                                                                                                                |
+| `TestServe`     | S01–S04             | the protocol                                                                                                                                                                                                        |
+| `TestPure`      | 1                   | the tree is not changed (M7)                                                                                                                                                                                        |
+| `TestOrder`     | O1–O6, and `Values` | the order and positions of flags, what is read before a refused word                                                                                                                                                |
+| `TestCheck`     | K0, K1–K8 (17 rows) | the checks of names and spellings                                                                                                                                                                                   |
+| `TestContract`  | W8, C2, C6, S5, S6  | what the reader does with a tree that the check refuses, and with a failing writer. A caller of the typed layer cannot reach the first three: `New` refuses such a tree. A program that imports `reader` itself can |
+| `FuzzParse`     | 3 seeds             | no panic; arguments in argv order; flags in order, each at a flag word, before the mistake; a result survives a round trip through its canonical line; `Complete` does not panic on the same words                  |
 
 `script/script_test.go` has `TestDirectiveBits` (6 bits equal cobra's, S7) and `TestWrite` (four scripts call `__complete`; another shell is an error, S8).
 
@@ -1765,7 +1765,7 @@ The fuzz targets test argv up to 64 words and 16 KiB.
 
 **There is no compatibility promise while the package lives in Headscale's repository.** A change of the API or of a rule is a change of Headscale's code and tests in the same pull request.
 
-**The promise is written when the package moves to its own repository.** It will cover the exported API in [The API](#the-api), the rules L, V, B, R1–R6, R8, W, C, M1–M7, X1–X5, X8, T, S1–S9, K, Y, N, A, U, G and I, and the protocol, which is cobra's.
+**The promise is written when the package moves to its own repository.** It will cover the exported API in [The API](#the-api), the rules L, V, B, R1–R6, R8, W, C, M1–M7, X1–X5, X8, T, S1–S9, K, Y, N, A, U, G and I, and the protocol, which is cobra's. The package `reader` is not part of the promise: it is the layer under `cmdline`, and its exported names can change.
 
 ### Where the package lives
 
