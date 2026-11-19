@@ -43,6 +43,10 @@ secrets are 256 bits of server-generated randomness, never user-chosen, so they
 are stored as a SHA-256 digest: recovering one means searching the whole secret
 space, and password stretching would only add latency to every request.
 
+A credential is accepted only when it starts with its prefix (`hskey-api-`,
+`hskey-auth-`, `hskey-oauthtok-`). Text before the prefix, such as a second
+space after `Bearer`, is now refused.
+
 Keys created by older releases keep working on 0.30. Support for them is
 removed on this schedule:
 

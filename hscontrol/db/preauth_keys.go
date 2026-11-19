@@ -232,7 +232,7 @@ func findAuthKey(tx *gorm.DB, keyStr string) (*types.PreAuthKey, error) {
 	// TODO(kradalby): remove in 0.32 with legacy key formats (announced).
 	identifier, secret := legacyAuthKeyIdentifier(keyStr), keyStr
 
-	_, prefixAndSecret, found := strings.Cut(keyStr, authKeyPrefix)
+	prefixAndSecret, found := strings.CutPrefix(keyStr, authKeyPrefix)
 	if found {
 		var err error
 

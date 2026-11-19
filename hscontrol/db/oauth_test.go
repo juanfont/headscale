@@ -341,6 +341,12 @@ func TestOAuthAccessTokenMintAuthenticateExpire(t *testing.T) {
 	assert.Equal(t, []string{"auth_keys"}, got.Scopes)
 	assert.Equal(t, []string{"tag:ci"}, got.Tags)
 
+	// The prefix must start the token, not merely appear in it.
+	for _, s := range []string{"x" + tokenStr, " " + tokenStr} {
+		_, err = db.AuthenticateAccessToken(s)
+		require.ErrorIs(t, err, ErrAccessTokenFailedToParse, "%q", s)
+	}
+
 	// An expired token is rejected even though the row still exists.
 	past := time.Now().Add(-time.Hour)
 	expiredStr, _, err := db.MintAccessToken(client.ClientID, nil, nil, &past)

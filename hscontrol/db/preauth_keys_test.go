@@ -237,6 +237,21 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 			wantValidateErr: false,
 		},
 		{
+			name: "text_before_prefix_rejected",
+			setupKey: func() string {
+				keyStr, err := db.CreatePreAuthKey(
+					user.TypedID(),
+					true, false, nil, []string{"tag:test"},
+				)
+				require.NoError(t, err)
+
+				// The prefix must start the key, not merely appear in it.
+				return "x" + keyStr.Key
+			},
+			wantFindErr: true,
+			findErrIs:   ErrPreAuthKeyNotFound,
+		},
+		{
 			name: "new_key_sha256",
 			setupKey: func() string {
 				// Create new key via API

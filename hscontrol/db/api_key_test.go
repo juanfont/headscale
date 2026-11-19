@@ -54,6 +54,13 @@ func TestValidateAPIKeyOk(t *testing.T) {
 	valid, err := db.ValidateAPIKey(apiKeyStr)
 	require.NoError(t, err)
 	assert.True(t, valid)
+
+	// The prefix must start the key, not merely appear in it.
+	for _, s := range []string{"x" + apiKeyStr, " " + apiKeyStr} {
+		valid, err := db.ValidateAPIKey(s)
+		require.Error(t, err, "%q", s)
+		assert.False(t, valid, "%q", s)
+	}
 }
 
 func TestValidateAPIKeyNotOk(t *testing.T) {
