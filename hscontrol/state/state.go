@@ -3358,6 +3358,8 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			(currentNode.Hostinfo == nil ||
 				currentNode.Hostinfo.Hostname != newHostinfo.Hostname ||
 				currentNode.Hostinfo.OS != newHostinfo.OS)
+		delta.capVerChanged = currentNode.CapVer != req.Version
+		currentNode.CapVer = req.Version
 
 		// A change carrying only an updated LastSeen is not worth a
 		// full-row database UPDATE plus the O(n) policy rescan
@@ -3635,7 +3637,7 @@ func buildMapRequestChangeResponse(
 	node types.NodeView,
 	delta mapRequestDelta,
 ) change.Change {
-	if delta.peerHostinfoChanged {
+	if delta.peerHostinfoChanged || delta.capVerChanged {
 		return change.NodeAdded(id)
 	}
 
