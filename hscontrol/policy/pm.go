@@ -54,6 +54,10 @@ type PolicyManager interface {
 	// auth keys it mints.
 	TagOwnedByTags(tag string, ownerTags []string) bool
 
+	// TagsOwnedByTags returns every tag TagOwnedByTags allows for ownerTags,
+	// sorted.
+	TagsOwnedByTags(ownerTags []string) []string
+
 	// NodeCanApproveRoute reports whether the given node can approve the given route.
 	NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool
 
