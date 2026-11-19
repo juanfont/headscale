@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"fmt"
 	"maps"
+	"os"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -807,4 +808,50 @@ func TestKitScripts(t *testing.T) {
 			require.NoError(t, err, string(b))
 		})
 	}
+}
+
+// TestShellLines holds ../testdata/shells/lines.txt, the lines of the
+// real-shell Tab job, to the trees: a line that waits names a command of
+// the kit's tree that Headscale's lacks, and fails here once Headscale has
+// it, so that it is made active; an active line reaches only commands
+// Headscale has.
+func TestShellLines(t *testing.T) {
+	t.Parallel()
+
+	b, err := os.ReadFile("../testdata/shells/lines.txt")
+	require.NoError(t, err)
+
+	hs, model := newcli.Tree(), command.KitModel(t)
+	n := 0
+
+	for row := range strings.Lines(string(b)) {
+		row = strings.TrimSuffix(row, "\n")
+		if row == "" || strings.HasPrefix(row, "#") {
+			continue
+		}
+
+		n++
+
+		typed, waits, waiting := strings.Cut(row, "\twaits ")
+		before, ok := strings.CutPrefix(typed, "headscale ")
+		require.True(t, ok && strings.HasSuffix(typed, "|"), "a line is headscale, the words, then |: %q", row)
+
+		if waiting {
+			require.Equal(t, waits, model.Reached(strings.Fields(waits)), "%q waits for %q, which is no command of the kit's tree", typed, waits)
+			require.NotEqual(t, waits, hs.Reached(strings.Fields(waits)), "%q waits for %q, which is in the tree now: drop the waits", typed, waits)
+
+			continue
+		}
+
+		// The words before the one under the cursor.
+		words := strings.Fields(strings.TrimSuffix(before, "|"))
+		if !strings.HasSuffix(before, " |") && len(words) > 0 {
+			words = words[:len(words)-1]
+		}
+
+		p := model.Reached(words)
+		require.Equal(t, p, hs.Reached(strings.Fields(p)), "%q reaches %q, which Headscale lacks: it waits for it", typed, p)
+	}
+
+	require.Positive(t, n)
 }

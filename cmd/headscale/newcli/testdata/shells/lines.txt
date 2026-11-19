@@ -1,0 +1,80 @@
+# One line per row: what is typed before Tab, then "|" where the cursor
+# stands. A line that names a command the tree does not have yet ends in a
+# tab and "waits <command>": run.sh skips it, and the Go test TestShellLines
+# fails once the command is there, so that the line is made active.
+#
+# The commands
+headscale |
+headscale ve|
+headscale api |
+headscale debug h|
+headscale completion |
+headscale completion z|
+headscale completion bash |
+# Flags: long names only on a lone dash, a short typed in full completes
+headscale -|
+headscale version -|
+headscale version --|
+headscale version -c|
+headscale api whoami --|
+# Values, also in the --x= form
+headscale -o |
+headscale -o=|
+headscale --output=j|
+headscale debug health -o |
+headscale version --output=|
+# Files for a path flag
+headscale -c |
+headscale --config=|
+headscale version --config |
+# A flag given once is not offered again
+headscale -o json -c x debug health --|
+headscale version -o json --|
+# The word after a value flag is its value
+headscale -c -o |
+headscale -c x ve|
+# After a mistake Tab goes on from the last command understood, never files
+headscale nodez |
+headscale versoin --|
+headscale version --bogus --|
+headscale completion bash -c|
+# Help and --version are ordinary flags on Tab
+headscale -h ve|
+headscale --version |
+# Lines of the commands to come
+headscale no|	waits nodes
+headscale nodes |	waits nodes
+headscale nodes routes ap|	waits nodes routes set
+headscale -c x no|	waits nodes
+headscale nodes list --|	waits nodes list
+headscale nodes list -o |	waits nodes list
+headscale nodes list --columns |	waits nodes list
+headscale nodes list --columns id,na|	waits nodes list
+headscale nodes list --columns=id,na|	waits nodes list
+headscale nodes list --columns id,|	waits nodes list
+headscale nodes list --sort la|	waits nodes list
+headscale nodes list --sort -la|	waits nodes list
+headscale nodes list --filter=ow|	waits nodes list
+headscale policy set |	waits policy set
+headscale check config |	waits check config
+headscale nodes list |	waits nodes list
+headscale nodes delete |	waits nodes delete
+headscale nodes rm --f|	waits nodes delete
+headscale nodes list -o=|	waits nodes list
+headscale auth keys create alice --tags tag:p|	waits auth keys create
+headscale auth keys create alice --tags tag:ci,tag:p|	waits auth keys create
+headscale nodes list --config |	waits nodes list
+headscale nodes list --config=|	waits nodes list
+headscale nodes set 12 --name |	waits nodes set
+headscale nodes routes |	waits nodes routes set
+headscale nodes list --s|	waits nodes list
+headscale nodes list -|	waits nodes list
+headscale nodes list -c|	waits nodes list
+headscale nodes list --bogus --l|	waits nodes list
+headscale policy set --bogus |	waits policy set
+headscale nodes list --sort id --s|	waits nodes list
+headscale nodes list --filter id --f|	waits nodes list
+headscale nodes delete o |	waits nodes delete
+headscale nodes routes set 12 -- --|	waits nodes routes set
+headscale nodes list --filter -ow|	waits nodes list
+headscale nodes list --columns id,-ho|	waits nodes list

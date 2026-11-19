@@ -212,8 +212,10 @@
             ./hscontrol/config/testdata
             ./hscontrol/db/testdata
             ./hscontrol/policy/v2/testdata
-            # The corpus of parser edge cases and the fuzz seeds.
+            # The corpus of parser edge cases and the fuzz seeds; the lines
+            # of the real-shell Tab job.
             ./cmd/headscale/newcli/command/testdata
+            ./cmd/headscale/newcli/testdata
             # The API v0 document and page of codes, compared with the code.
             ./docs/ref/api/headscale-v0.yaml
             ./docs/ref/api/problems.md
@@ -448,6 +450,32 @@
           shellHook = ''
             export PATH="$PWD/result/bin:$PATH"
             export CGO_ENABLED=0
+          '';
+        };
+
+        # `nix develop .#shells -c cmd/headscale/newcli/testdata/shells/run.sh`:
+        # the real-shell Tab job, in a shell of its own so that the default
+        # one does not carry PowerShell, fish and zsh.
+        devShells.shells = pkgs.mkShell {
+          buildInputs = buildDeps ++ [
+            pkgs.bashInteractive
+            pkgs.bash-completion
+            # zsh -f still reads the global zshenv, which nixpkgs points at
+            # /etc/zshenv or, on NixOS, /etc/set-environment; this one has none.
+            (pkgs.zsh.overrideAttrs (o: {
+              configureFlags = map (
+                f: if pkgs.lib.hasPrefix "--enable-zshenv=" f then "--disable-zshenv" else f
+              ) o.configureFlags;
+            }))
+            pkgs.fish
+            pkgs.powershell
+            pkgs.python3
+          ];
+
+          shellHook = ''
+            export CGO_ENABLED=0
+            # run.sh refuses to run without it.
+            export BASH_COMPLETION_SH=${pkgs.bash-completion}/share/bash-completion/bash_completion
           '';
         };
 
