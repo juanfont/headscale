@@ -269,13 +269,17 @@ func (c Column[R]) text(row R, now time.Time, sheet bool) string {
 func (c Column[R]) invalid(row R) bool { return c.Invalid != nil && c.Invalid(row) }
 
 // entries are the entries of a list as a cell shows them: the entries of a
-// Fold word as that word, after the other entries, when all of them are
-// there, whatever order the server sorts.
-func (c Column[R]) entries(v reflect.Value) []string {
-	out := items(v)
+// Fold word as that word, after the others.
+func (c Column[R]) entries(v reflect.Value) []string { return Folded(items(v), c.Fold) }
 
-	for _, word := range slices.Sorted(maps.Keys(c.Fold)) {
-		all := c.Fold[word]
+// Folded is entries with the entries of a word of fold shown as that word,
+// after the other entries, when all of them are there: a message says
+// "10.0.0.0/8, exit" as a table does, whatever order the server sorts.
+func Folded(entries []string, fold map[string][]string) []string {
+	out := slices.Clone(entries)
+
+	for _, word := range slices.Sorted(maps.Keys(fold)) {
+		all := fold[word]
 		if !slices.ContainsFunc(all, func(e string) bool { return !slices.Contains(out, e) }) {
 			out = append(slices.DeleteFunc(out, func(e string) bool { return slices.Contains(all, e) }), word)
 		}
