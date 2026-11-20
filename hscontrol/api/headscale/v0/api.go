@@ -482,11 +482,14 @@ func pathID[T ~uint64](s string) (T, error) {
 // requestChecks refuses, after the credential is checked, what the request
 // alone shows and huma lets through. A query parameter given twice or with
 // an empty value is invalid_field: either would make a filter fall away and
-// a list return every row. A body not sent as JSON is unsupported_media_type:
-// huma reads a body with no media type, and any +json one, as JSON.
+// a list return every row. A boolean is true or false: huma would also take
+// 1, t or TRUE, which a later version could not refuse. A body not sent as
+// JSON is unsupported_media_type: huma reads a body with no media type, and
+// any +json one, as JSON.
 func requestChecks(ctx huma.Context, next func(huma.Context)) {
 	u := ctx.URL()
 	query := u.Query()
+	op := ctx.Operation()
 	p := newProblem(CodeInvalidField, "A query parameter is not valid.")
 
 	for _, name := range slices.Sorted(maps.Keys(query)) {
@@ -495,6 +498,8 @@ func requestChecks(ctx huma.Context, next func(huma.Context)) {
 			p.Errors = append(p.Errors, FieldError{Location: fieldLocation("query." + name), Message: "is given more than once"})
 		case query[name][0] == "":
 			p.Errors = append(p.Errors, FieldError{Location: fieldLocation("query." + name), Message: "is empty; leave the parameter out"})
+		case booleanQuery(op, name) && query[name][0] != "true" && query[name][0] != "false":
+			p.Errors = append(p.Errors, FieldError{Location: fieldLocation("query." + name), Message: "is not true or false"})
 		}
 	}
 
@@ -504,7 +509,6 @@ func requestChecks(ctx huma.Context, next func(huma.Context)) {
 		return
 	}
 
-	op := ctx.Operation()
 	if op.RequestBody != nil && !jsonMediaType(ctx.Header("Content-Type"), op.Method == http.MethodPatch) {
 		writeHumaProblem(ctx, newProblem(CodeUnsupportedMediaType, "Send the body as application/json, or a PATCH as application/merge-patch+json."))
 
@@ -512,6 +516,14 @@ func requestChecks(ctx huma.Context, next func(huma.Context)) {
 	}
 
 	next(ctx)
+}
+
+// booleanQuery reports whether op takes the query parameter name as a
+// boolean.
+func booleanQuery(op *huma.Operation, name string) bool {
+	return slices.ContainsFunc(op.Parameters, func(p *huma.Param) bool {
+		return p.In == "query" && p.Name == name && p.Schema != nil && p.Schema.Type == huma.TypeBoolean
+	})
 }
 
 // jsonMediaType reports whether a body sent as contentType is v0's JSON:

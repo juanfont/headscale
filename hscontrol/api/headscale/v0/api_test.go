@@ -177,6 +177,31 @@ func TestHandler(t *testing.T) {
 	})
 }
 
+// TestBooleanQuery: a boolean query parameter is true or false; the other
+// spellings huma reads are refused.
+func TestBooleanQuery(t *testing.T) {
+	api := newTestAPI(t, newBackend(t))
+
+	register(api, huma.Operation{OperationID: "getFlag", Method: http.MethodGet, Path: Prefix + "/flag"}, public, nil,
+		func(_ context.Context, in *struct {
+			On bool `query:"on"`
+		},
+		) (*struct{ Body bool }, error) {
+			return &struct{ Body bool }{Body: in.On}, nil
+		})
+
+	for _, v := range []string{"true", "false"} {
+		rec := api.Get(Prefix + "/flag?on=" + v)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		require.Equal(t, v, strings.TrimSpace(rec.Body.String()))
+	}
+
+	for _, v := range []string{"1", "0", "t", "f", "TRUE", "True", "yes"} {
+		p := decodeProblem(t, api.Get(Prefix+"/flag?on="+v), CodeInvalidField)
+		require.Equal(t, []FieldError{{Location: "query.on", Message: "is not true or false"}}, p.Errors, v)
+	}
+}
+
 // TestEarlyAnswersCarryVersion: the CLI reads the version headers before
 // any body, so the answers made before a handler runs carry them too. The
 // CORS preflight is checked where the router adds it, in hscontrol.
