@@ -245,6 +245,11 @@ var authKeysCreateCases = []cliCase{
 		}),
 	},
 	{
+		name: "tags copied from a table, a space after each comma", args: `auth keys create "tag:ci, tag:build"`, want: created,
+		stderr: "Auth key {id} ({prefix}) for tag:build, tag:ci; expires in 1h.\n" + shownOnce,
+	},
+	{name: "a user with space around it", args: `auth keys create " alice "`, want: created, stderr: "Auth key {id} ({prefix}) for User 3 (alice); expires in 1h.\n" + shownOnce},
+	{
 		name: "until a date", args: "auth keys create tag:ci --expiry 2999-08-27", want: created,
 		// Days counted apart from the table engine, which once read this
 		// date as minus millions of minutes.

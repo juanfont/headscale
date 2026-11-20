@@ -187,9 +187,15 @@ func (o Owner) Tags() []string { return o.tags }
 func findOwner(ctx context.Context, word string) (Owner, error) {
 	var tags, users []string
 
-	for w := range strings.SplitSeq(word, ",") {
+	// Space around an item is dropped, as in every list.
+	items := strings.Split(word, ",")
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+
+	for _, w := range items {
 		switch {
-		case w == "" && word == "":
+		case w == "" && len(items) == 1:
 			return Owner{}, emptyWord("owner")
 		case w == "":
 			return Owner{}, &lookupError{text: "the owner list has an empty item."}
@@ -209,7 +215,7 @@ func findOwner(ctx context.Context, word string) (Owner, error) {
 		return Owner{tags: tags}, nil
 	}
 
-	u, err := findUser(ctx, word)
+	u, err := findUser(ctx, items[0])
 
 	return Owner{user: u}, err
 }
