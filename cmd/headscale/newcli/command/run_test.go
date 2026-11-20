@@ -368,6 +368,47 @@ func TestLookupKeepsItsSentence(t *testing.T) {
 	}
 }
 
+// TestTagIsNoUser: a tag where a user is wanted is said to be one, after
+// the users were read, and the command's hint follows it; a word of no
+// other kind gets no hint.
+func TestTagIsNoUser(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		User clientv0.User `arg:"user"`
+	}
+
+	tree, err := Build("prog", "A program", New(Spec[in, NoOutput]{
+		Name: "give", Short: "S", Long: "S.", Example: []string{"prog give alice"},
+		Hint: func(args []string) string { return "a hint for " + args[0] },
+		Run:  noop[in, NoOutput],
+	}))
+	require.NoError(t, err)
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Headscale-Version", "dev")
+		_, _ = w.Write([]byte(`{"users": [{"id": "1", "name": "alice"}]}`))
+	}))
+	t.Cleanup(s.Close)
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	for line, want := range map[string]string{
+		"give alice":  "",
+		"give tag:ci": "Error: a tag is not a user.\na hint for tag:ci\n",
+		"give bob":    "Error: no user matches \"bob\".\n",
+	} {
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, strings.Fields(line), Env{
+			Stdout: &stdout, Stderr: &stderr, Version: &types.VersionInfo{Version: "dev"},
+			Environ: []string{"HEADSCALE_CONFIG=" + file, "HEADSCALE_CLI_ADDRESS=" + s.URL, "HEADSCALE_CLI_API_KEY=key"},
+		})
+		require.Equal(t, want, stderr.String(), line)
+	}
+}
+
 // TestSentence: a command that wraps a problem, as Go code does, still
 // prints the CLI's sentence.
 func TestSentence(t *testing.T) {

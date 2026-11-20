@@ -73,8 +73,9 @@ type Spec[In, Out any] struct {
 	// refuses it. The builder tries again only a refusal of a guard it
 	// stored, never one a command sends itself.
 	Changed clientv0.ProblemCode
-	// Hint is a line of what to do after a wrong argument count or an empty
-	// list argument, from the arguments as typed; "" adds nothing.
+	// Hint is a line of what to do after a wrong argument count, an empty
+	// list argument, or a word of another kind than its lookup takes, such
+	// as a tag for a user, from the arguments as typed; "" adds nothing.
 	Hint func(args []string) string
 	// EmptyList is why an empty list argument is refused, said after "the
 	// tag list is empty.", so the CLI's refusal reads as the server's.

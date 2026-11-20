@@ -205,7 +205,7 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
 	case !ok:
 		return err
 	case ue.Kind == cmdline.Unresolved:
-		return ue.Err
+		return t.hinted(line, ue.Err)
 	}
 
 	return t.usage(ue)
@@ -258,12 +258,21 @@ func (t *Tree) check(argv []string) (*cmdline.Line, step, error) {
 	return line, stepRun, nil
 }
 
-// hinted is err with the command's hint, when err is a wrong argument count
-// or an empty list argument.
+// hinted is err with the command's hint, when err is a wrong argument count,
+// an empty list argument, or a word of another kind than its lookup takes.
 func (t *Tree) hinted(line *cmdline.Line, err error) error {
 	l := t.leaves[strings.Join(line.Command.Path, " ")]
-	ue, ok := errors.AsType[*usageError](err)
 
+	le, ok := errors.AsType[*lookupError](err)
+	if ok && le.hinted && l != nil && l.hint != nil {
+		if h := l.hint(line.Args); h != "" {
+			le.text += "\n" + h
+		}
+
+		return err
+	}
+
+	ue, ok := errors.AsType[*usageError](err)
 	if l == nil || l.hint == nil || !ok || ue.kind != cmdline.ArgCount && !ue.empty {
 		return err
 	}

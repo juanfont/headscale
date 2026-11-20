@@ -373,6 +373,7 @@ var apiKeysCreateCases = []cliCase{
 	},
 	{name: "a time in the past", args: "api keys create --expiry 2024-01-01", stderr: "Error: 2024-01-01 00:00 UTC is in the past.\n", code: 1},
 	{name: "a user nobody is", args: "api keys create --user alcie", stderr: "Error: no user matches \"alcie\".\n", code: 1},
+	{name: "a tag is not a user", args: "api keys create --user tag:ci", stderr: "Error: a tag is not a user.\n", code: 1},
 	{name: "the owner is a flag", args: "api keys create alice", stderr: "Error: `api keys create` takes no arguments, got 1.\n\n  headscale api keys create\n", code: 1},
 	{
 		name: "the user is deleted after the lookup", args: "api keys create --user bob",
