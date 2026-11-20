@@ -249,11 +249,6 @@ func TestNodeAttrsValidate(t *testing.T) {
 			wantErr: ErrNodeAttrsAutogroupNotAllowed,
 		},
 		{
-			name:    "funnel attr rejected as unsupported",
-			extra:   `"nodeAttrs": [{"target": ["*"], "attr": ["funnel"]}]`,
-			wantErr: ErrNodeAttrUnsupported,
-		},
-		{
 			name:    "ipPool set rejected as unsupported",
 			extra:   `"nodeAttrs": [{"target": ["autogroup:member"], "ipPool": ["100.81.0.0/16"]}]`,
 			wantErr: ErrNodeAttrIPPoolUnsupported,

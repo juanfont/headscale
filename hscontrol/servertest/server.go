@@ -59,6 +59,7 @@ type serverConfig struct {
 	dnsResolvers          []string
 	certProvider          hsdns.Provider
 	prefixV4              netip.Prefix
+	funnelRelayTags       []string
 }
 
 func defaultServerConfig() *serverConfig {
@@ -138,6 +139,13 @@ func WithCertificates(provider hsdns.Provider) ServerOption {
 	return func(c *serverConfig) { c.certProvider = provider }
 }
 
+// WithFunnel enables funnel with the given relay tags and the default
+// ports. It needs [WithCertificates] for nodes to receive the funnel
+// attribute.
+func WithFunnel(relayTags ...string) ServerOption {
+	return func(c *serverConfig) { c.funnelRelayTags = relayTags }
+}
+
 // WithDNSResolvers sets the global DNS resolvers, overriding the nodes'
 // local DNS.
 func WithDNSResolvers(addrs ...string) ServerOption {
@@ -201,6 +209,10 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		cfg.DNSConfig.Certificates = types.CertificatesConfig{Enabled: true, Zone: cfg.DNSConfig.BaseDomain}
 		cfg.DNSConfig.Challenge.Provider = sc.certProvider
 		cfg.DNSConfig.Challenge.PropagationTimeout = 0
+	}
+
+	if len(sc.funnelRelayTags) > 0 {
+		cfg.Funnel = types.FunnelConfig{Enabled: true, Ports: []int{443, 8443, 10000}, RelayTags: sc.funnelRelayTags}
 	}
 
 	if len(sc.dnsResolvers) > 0 {

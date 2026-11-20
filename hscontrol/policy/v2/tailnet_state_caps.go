@@ -142,8 +142,8 @@ var unmodelledTailnetStateCaps = []nodecap.Cap{
 // [unmodelledTailnetStateCaps].
 var strippedCapPrefixes = []string{
 	// "https://tailscale.com/cap/funnel-ports?…": parameterized cap
-	// (e.g. "?ports=80,443") issued when funnel is configured.
-	// Funnel is not supported.
+	// (e.g. "?ports=80,443") issued when funnel is configured. headscale
+	// emits it from funnel.ports, which the captures do not model.
 	"https://tailscale.com/cap/funnel-ports?",
 }
 

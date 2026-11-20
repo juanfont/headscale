@@ -77,6 +77,7 @@ func Default() types.Config {
 			PKCE:                       types.PKCEConfig{Method: types.PKCEMethodS256},
 		},
 		Taildrop: types.TaildropConfig{Enabled: true},
+		Funnel:   types.FunnelConfig{Ports: []int{443, 8443, 10000}},
 		CLI:      types.CLIConfig{Timeout: 5 * time.Second},
 		Tuning: types.Tuning{
 			BatchChangeDelay:               800 * time.Millisecond,

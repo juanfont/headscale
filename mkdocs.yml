@@ -191,6 +191,7 @@ nav:
       - Policy: ref/policy.md
       - DNS: ref/dns.md
       - DERP: ref/derp.md
+      - Funnel: ref/funnel.md
       - API: ref/api.md
       - Tags: ref/tags.md
       - Debug: ref/debug.md

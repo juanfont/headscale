@@ -354,6 +354,71 @@ func TestTailNodeBaselineGates(t *testing.T) {
 	}
 }
 
+// TestTailNodeFunnel asserts that the funnel nodeAttr from the policy
+// reaches the node only when cfg.Funnel.Enabled is set and the node has a
+// certificate name, and that it then carries the funnel-ports capability.
+func TestTailNodeFunnel(t *testing.T) {
+	t.Parallel()
+
+	certs := types.DNSConfig{Certificates: types.CertificatesConfig{Enabled: true}}
+	funnel := types.FunnelConfig{Enabled: true, Ports: []int{443, 8443}, RelayTags: []string{"tag:relay"}}
+	policyCaps := tailcfg.NodeCapMap{nodecap.Funnel: nil}
+	portsCap := nodecap.Cap("https://tailscale.com/cap/funnel-ports?ports=443,8443")
+
+	tests := []struct {
+		name       string
+		cfg        *types.Config
+		policyCaps tailcfg.NodeCapMap
+		wantFunnel bool
+	}{
+		{
+			name:       "enabled_with_certificates",
+			cfg:        &types.Config{DNSConfig: certs, Funnel: funnel},
+			policyCaps: policyCaps,
+			wantFunnel: true,
+		},
+		{
+			name:       "disabled",
+			cfg:        &types.Config{DNSConfig: certs},
+			policyCaps: policyCaps,
+		},
+		{
+			name:       "enabled_without_certificates",
+			cfg:        &types.Config{Funnel: funnel},
+			policyCaps: policyCaps,
+		},
+		{
+			name: "enabled_without_policy_attr",
+			cfg:  &types.Config{DNSConfig: certs, Funnel: funnel},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			node := &types.Node{GivenName: "funnel-node", Hostinfo: &tailcfg.Hostinfo{}}
+
+			got, err := node.View().TailNode(
+				0,
+				func(types.NodeID) []netip.Prefix { return nil },
+				tt.cfg,
+				tt.policyCaps,
+			)
+			if err != nil {
+				t.Fatalf("TailNode: %v", err)
+			}
+
+			_, hasFunnel := got.CapMap[nodecap.Funnel]
+			_, hasPorts := got.CapMap[portsCap]
+
+			if hasFunnel != tt.wantFunnel || hasPorts != tt.wantFunnel {
+				t.Errorf("funnel=%v funnel-ports=%v, want both %v; CapMap: %v", hasFunnel, hasPorts, tt.wantFunnel, got.CapMap)
+			}
+		})
+	}
+}
+
 // TestTailNodeDisableIPv4 asserts that a node with the disable-ipv4
 // nodeAttr has its own IPv4 (the CGNAT /32) stripped from Addresses
 // and AllowedIPs, while subnet routes the node advertises -- even

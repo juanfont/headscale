@@ -978,6 +978,41 @@ in
       example = true;
     };
   };
+  funnel = {
+    enabled = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Delivers the `funnel` node attribute from the policy. It requires `dns.certificates.enabled` and `funnel.relay_tags`.
+      '';
+      example = true;
+    };
+    ports = lib.mkOption {
+      type = lib.types.listOf lib.types.int;
+      default = [
+        443
+        8443
+        10000
+      ];
+      description = ''
+        The public ports nodes may funnel on, sent to them as the `funnel-ports` capability. The relays listen on them.
+      '';
+      example = [
+        443
+        8443
+      ];
+    };
+    relay_tags = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        The tags of the relay nodes. Headscale grants nodes carrying one of them the ingress capability towards every node with the `funnel` attribute.
+      '';
+      example = [
+        "tag:funnel-relay"
+      ];
+    };
+  };
   tuning = {
     batch_change_delay = lib.mkOption {
       type = t.duration;

@@ -122,6 +122,13 @@ type PolicyManager struct {
 	nodeAttrsPending atomic.Bool
 
 	routerSession func(types.NodeID) (time.Time, bool)
+
+	// funnelRelayTags are the tags of the funnel relay nodes, from the
+	// server config ([WithFunnelRelayTags]).
+	funnelRelayTags []string
+	// funnelConfigured is set by [WithFunnelRelayTags]: the server config
+	// was passed, so empty relay tags mean funnel is disabled.
+	funnelConfigured bool
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -235,7 +242,7 @@ func validateUserReferences(pol *Policy, users types.Users) error {
 // NewPolicyManager creates a new [PolicyManager] from a policy file and a list of users and nodes.
 // It returns an error if the policy file is invalid.
 // The policy manager will update the filter rules based on the users and nodes.
-func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.NodeView]) (*PolicyManager, error) {
+func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.NodeView], opts ...Option) (*PolicyManager, error) {
 	policy, err := unmarshalPolicy(b)
 	if err != nil {
 		return nil, fmt.Errorf("parsing policy: %w", err)
@@ -256,12 +263,17 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 		matchersForNodeMap: xsync.NewMap[types.NodeID, []matcher.Match](),
 	}
 
+	for _, opt := range opts {
+		opt(&pm)
+	}
+
 	_, err = pm.updateLocked()
 	if err != nil {
 		return nil, err
 	}
 
 	warnMalformedNextDNSAttrs(policy)
+	warnFunnelWithoutRelays(policy, pm.funnelConfigured, pm.funnelRelayTags)
 
 	// Boot path: log a warning if the stored policy's tests would
 	// fail against the current users and nodes, but keep the server
@@ -288,7 +300,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	// One tag index and one resolution of every group serve this whole
 	// compile; each step below would otherwise resolve them again for
 	// every rule naming them.
-	pol := pm.pol.withNodesByTag(pm.nodes).withResolvedGroups(pm.users, pm.nodes)
+	pol := pm.pol.withFunnelGrant(pm.funnelRelayTags).withNodesByTag(pm.nodes).withResolvedGroups(pm.users, pm.nodes)
 
 	// Compile all grants once. Both global and per-node filter
 	// rules are derived from these compiled grants.
@@ -338,7 +350,9 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.relayTargetIPs = relayTargetIPs
 
 	var filter []tailcfg.FilterRule
-	if pm.pol == nil || (pm.pol.ACLs == nil && pm.pol.Grants == nil) {
+	// pol, not pm.pol: the funnel grant turns a policy without rules
+	// into allow-all plus that grant (see [Policy.withFunnelGrant]).
+	if pol == nil || (pol.ACLs == nil && pol.Grants == nil) {
 		filter = noRulesFilter(pm.users, pm.nodes)
 	} else {
 		filter = globalFilterRules(pm.compiledGrants)
@@ -770,6 +784,7 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	// Reloading the same bytes leaves changed false, so each policy warns once.
 	if changed {
 		warnMalformedNextDNSAttrs(pol)
+		warnFunnelWithoutRelays(pol, pm.funnelConfigured, pm.funnelRelayTags)
 	}
 
 	return changed, nil

@@ -3128,6 +3128,111 @@ Makes auto-update the default for clients that have not chosen locally. Clients 
     services.headscale.settings.auto_update.enabled = true;
     ```
 
+## `funnel` { #funnel data-toc-label="funnel" }
+
+Lets nodes publish a service to the internet with `tailscale funnel`, through relays the operator runs. Headscale itself exposes nothing. See [Funnel](funnel.md).
+
+??? example "All `funnel` keys and defaults"
+
+    ```yaml
+    funnel:
+      enabled: false
+      ports:
+        - 443
+        - 8443
+        - 10000
+      relay_tags: []
+    ```
+
+### `funnel.enabled` { #funnel.enabled data-toc-label="enabled" }
+
+- **Type:** [boolean](#type-boolean)
+- **Default:** `false`
+- **Env:** `HEADSCALE_FUNNEL_ENABLED`
+
+Delivers the [`funnel`](#funnel) node attribute from the policy. It requires [`dns.certificates.enabled`](#dns.certificates.enabled) and [`funnel.relay_tags`](#funnel.relay_tags).
+
+=== "YAML"
+
+    ```yaml
+    funnel:
+      enabled: true
+    ```
+
+=== "Environment"
+
+    ```shell
+    export HEADSCALE_FUNNEL_ENABLED=true
+    ```
+
+=== "NixOS"
+
+    ```nix
+    services.headscale.settings.funnel.enabled = true;
+    ```
+
+### `funnel.ports` { #funnel.ports data-toc-label="ports" }
+
+- **Type:** [list of integers](#type-list)
+- **Default:** `[443, 8443, 10000]`
+- **Env:** `HEADSCALE_FUNNEL_PORTS` ([space-separated or JSON array](#env))
+
+The public ports nodes may funnel on, sent to them as the `funnel-ports` capability. The relays listen on them.
+
+=== "YAML"
+
+    ```yaml
+    funnel:
+      ports:
+        - 443
+        - 8443
+    ```
+
+=== "Environment"
+
+    ```shell
+    export HEADSCALE_FUNNEL_PORTS='[443,8443]'
+    ```
+
+=== "NixOS"
+
+    ```nix
+    services.headscale.settings.funnel.ports = [
+      443
+      8443
+    ];
+    ```
+
+### `funnel.relay_tags` { #funnel.relay_tags data-toc-label="relay_tags" }
+
+- **Type:** [list of strings](#type-list)
+- **Default:** `[]`
+- **Env:** `HEADSCALE_FUNNEL_RELAY_TAGS` ([space-separated or JSON array](#env))
+
+The tags of the relay nodes. Headscale grants nodes carrying one of them the ingress capability towards every node with the [`funnel`](#funnel) attribute.
+
+=== "YAML"
+
+    ```yaml
+    funnel:
+      relay_tags:
+        - tag:funnel-relay
+    ```
+
+=== "Environment"
+
+    ```shell
+    export HEADSCALE_FUNNEL_RELAY_TAGS='["tag:funnel-relay"]'
+    ```
+
+=== "NixOS"
+
+    ```nix
+    services.headscale.settings.funnel.relay_tags = [
+      "tag:funnel-relay"
+    ];
+    ```
+
 ## `cli` { #cli data-toc-label="cli" }
 
 How the headscale CLI reaches the server: the local [`unix_socket`](#unix_socket) without authentication, or a remote [`cli.address`](#cli.address) with [`cli.api_key`](#cli.api_key). The CLI reads these keys from its own configuration, such as `~/.config/headscale/config.yaml`, or from `HEADSCALE_CLI_*` variables; the server does not read them, so on NixOS they do not belong in `services.headscale.settings`. See [Remote control](api.md#remote-control).

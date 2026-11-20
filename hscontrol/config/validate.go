@@ -18,7 +18,10 @@ import (
 	"tailscale.com/util/dnsname"
 )
 
-const dnsDocsURL = "https://headscale.net/stable/ref/dns/"
+const (
+	dnsDocsURL    = "https://headscale.net/stable/ref/dns/"
+	funnelDocsURL = "https://headscale.net/stable/ref/funnel/"
+)
 
 var (
 	errOIDCClientIDRequired     = errors.New("oidc.client_id is required when oidc.issuer is set")
@@ -227,6 +230,7 @@ func Validate(c *types.Config) error {
 	validateMagicDNS(c, v)
 	validateBaseDomain(c, v)
 	validateCertificates(c, v)
+	validateFunnel(c, v)
 	validatePrefixes(c, v)
 	validateDNSProvider(c, v)
 
@@ -578,6 +582,62 @@ func validateBaseDomain(c *types.Config, v *configValidator) {
 		Hint:    `use letters, digits, "-" and "."; write "" to clear it`,
 		See:     dnsDocsURL,
 	})
+}
+
+// validateFunnel records ConfigErrors when funnel is enabled without what
+// it needs: node certificates, at least one relay tag and valid ports.
+func validateFunnel(c *types.Config, v *configValidator) {
+	f := c.Funnel
+	if !f.Enabled {
+		return
+	}
+
+	if !c.DNSConfig.Certificates.Enabled {
+		v.Add(&types.ConfigError{
+			Reason:  "funnel requires dns.certificates",
+			Current: []types.KV{{Key: "funnel.enabled", Value: true}, {Key: "dns.certificates.enabled", Value: false}},
+			Hint:    "funnel nodes terminate TLS with their own certificate; set dns.certificates.enabled: true",
+			See:     funnelDocsURL,
+		})
+	}
+
+	if len(f.RelayTags) == 0 {
+		v.Add(&types.ConfigError{
+			Reason:  "funnel requires at least one relay tag",
+			Current: []types.KV{{Key: "funnel.relay_tags", Value: "[]"}},
+			Hint:    "list the tags of the nodes running the funnel relay, e.g. [tag:funnel-relay]",
+			See:     funnelDocsURL,
+		})
+	}
+
+	for _, tag := range f.RelayTags {
+		if !strings.HasPrefix(tag, "tag:") {
+			v.Add(&types.ConfigError{
+				Reason:  "funnel.relay_tags entries must start with tag:",
+				Current: []types.KV{{Key: "funnel.relay_tags", Value: tag}},
+				See:     funnelDocsURL,
+			})
+		}
+	}
+
+	if len(f.Ports) == 0 {
+		v.Add(&types.ConfigError{
+			Reason:  "funnel requires at least one port",
+			Current: []types.KV{{Key: "funnel.ports", Value: "[]"}},
+			Hint:    "Tailscale clients use 443, 8443 and 10000",
+			See:     funnelDocsURL,
+		})
+	}
+
+	for _, port := range f.Ports {
+		if port < 1 || port > 65535 {
+			v.Add(&types.ConfigError{
+				Reason:  "funnel.ports entries must be between 1 and 65535",
+				Current: []types.KV{{Key: "funnel.ports", Value: port}},
+				See:     funnelDocsURL,
+			})
+		}
+	}
 }
 
 // validateCertificates records ConfigErrors when node certificates are
