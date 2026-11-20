@@ -2206,6 +2206,68 @@ func TestAcceptedExpirySurvivesRestart(t *testing.T) {
 	}
 }
 
+// TestRegistrationRecordsCreator: a node remembers the user who registered
+// it — the user of a login, the user of a user's key, the maker of a tagged
+// key — and nobody for a key a token made. It stays when the node is
+// tagged later.
+func TestRegistrationRecordsCreator(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err := s.SetPolicy([]byte(`{"tagOwners": {"tag:ci": ["creator-user@"]}}`))
+	require.NoError(t, err)
+
+	user := s.CreateUserForTest("creator-user")
+
+	viaKey := func(t *testing.T, pak *types.PreAuthKeyNew) types.NodeView {
+		t.Helper()
+
+		nv, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "creator-node"},
+		}, key.NewMachine().Public())
+		require.NoError(t, err)
+
+		return nv
+	}
+
+	creator := func(nv types.NodeView) *uint {
+		got, _ := s.GetNodeByID(nv.ID())
+
+		return got.AsStruct().CreatedByUserID
+	}
+
+	userKey, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	byUserKey := viaKey(t, userKey)
+	assert.Equal(t, new(user.ID), creator(byUserKey), "a user's key")
+
+	_, _, err = s.SetNodeTags(byUserKey.ID(), []string{"tag:ci"})
+	require.NoError(t, err)
+	assert.Equal(t, new(user.ID), creator(byUserKey), "it stays when the node is tagged")
+
+	taggedKey, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+	assert.Equal(t, new(user.ID), creator(viaKey(t, taggedKey)), "the maker of a tagged key")
+
+	tokenKey, err := s.CreateTokenPreAuthKey(nil, false, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+	assert.Nil(t, creator(viaKey(t, tokenKey)), "a key a token made")
+
+	authID := types.MustAuthID()
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: key.NewMachine().Public(),
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "cli-node",
+	})))
+
+	byLogin, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodCLI)
+	require.NoError(t, err)
+	assert.Equal(t, new(user.ID), creator(byLogin), "a login")
+}
+
 // TestLoadedExpiryIsUTC proves an expiry the database returns in another zone is
 // served in UTC. PostgreSQL returns the server's zone, where the latest accepted
 // expiry is in the year 10000 and cannot be encoded.

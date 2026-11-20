@@ -2948,11 +2948,17 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		nodeToRegister.AuthKey = params.PreAuthKey.AsCredential()
 		nodeToRegister.AuthKeyID = &params.PreAuthKey.ID
 		nodeToRegister.Ephemeral = params.PreAuthKey.Ephemeral
+		// The key's user: the owner of a user's key, the maker of a tagged
+		// one; none for a key a token made.
+		if uid := params.PreAuthKey.UserID; uid != nil {
+			nodeToRegister.CreatedByUserID = new(*uid)
+		}
 	} else {
 		// Non-PreAuthKey registration (OIDC, CLI) - always user-owned
 		nodeToRegister.UserID = &params.User.ID
 		nodeToRegister.User = &params.User
 		nodeToRegister.Tags = nil
+		nodeToRegister.CreatedByUserID = new(params.User.ID)
 	}
 
 	// Process RequestTags (from tailscale up --advertise-tags) ONLY for non-PreAuthKey registrations.
