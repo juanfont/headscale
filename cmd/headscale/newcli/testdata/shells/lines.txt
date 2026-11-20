@@ -63,7 +63,7 @@ headscale nodes list --columns id,|
 headscale nodes list --sort la|
 headscale nodes list --sort -la|
 headscale nodes list --filter=ow|
-headscale policy set |	waits policy set
+headscale policy set |
 headscale check config |	waits check config
 headscale nodes list |
 headscale nodes delete |
@@ -81,7 +81,7 @@ headscale nodes list --s|
 headscale nodes list -|
 headscale nodes list -c|
 headscale nodes list --bogus --l|
-headscale policy set --bogus |	waits policy set
+headscale policy set --bogus |
 headscale nodes list --sort id --s|
 headscale nodes list --filter id --f|
 headscale nodes delete o |

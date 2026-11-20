@@ -767,6 +767,7 @@ var beyondKit = []string{
 	"nodes get", "nodes expire", "nodes update-client", "nodes routes list", "nodes routes clear", "nodes tags", "nodes tags list", "nodes tags set",
 	"auth keys list", "auth keys get", "auth keys delete", "auth register", "auth approve", "auth reject", "debug create-node",
 	"api keys list", "api keys get", "api keys delete", "api oauth-clients list", "api oauth-clients get", "api oauth-clients delete",
+	"policy get", "policy reload",
 }
 
 func TestKitKnowsHeadscale(t *testing.T) {

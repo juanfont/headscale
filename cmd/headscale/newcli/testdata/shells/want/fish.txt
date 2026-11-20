@@ -198,6 +198,10 @@ LINE: headscale nodes list --filter=ow|
 LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --filter=owner$ headscale nodes list --filter=owner]
 FINAL: [headscale nodes list --filter=owner]
 
+LINE: headscale policy set |
+LISTED: [$ headscale $ headscale policy $ headscale policy set $ headscale policy set $ headscale policy set ]
+FINAL: [headscale policy set ]
+
 LINE: headscale nodes list |
 LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list $ headscale nodes list $ headscale nodes list $ headscale nodes list ]
 FINAL: [headscale nodes list ]
@@ -261,6 +265,10 @@ FINAL: [headscale nodes list -c ]
 LINE: headscale nodes list --bogus --l|
 LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --bogus $ headscale nodes list --bogus --list-columns $ headscale nodes list --bogus --list-columns ]
 FINAL: [headscale nodes list --bogus --list-columns ]
+
+LINE: headscale policy set --bogus |
+LISTED: [$ headscale $ headscale policy $ headscale policy set $ headscale policy set --bogus $ headscale policy set --bogus $ headscale policy set --bogus ]
+FINAL: [headscale policy set --bogus ]
 
 LINE: headscale nodes list --sort id --s|
 LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --sort $ headscale nodes list --sort id $ headscale nodes list --sort id --s$ headscale nodes list --sort id --s$ headscale nodes list --sort id --s$ headscale nodes list --sort id --s]
