@@ -196,7 +196,7 @@ func ruleRefusal(ctx context.Context, a access, in any) *Problem {
 // log line.
 var refused = []error{
 	gorm.ErrRecordNotFound,
-	db.ErrAPIKeyFailedToParse, db.ErrAPIKeyExpired,
+	db.ErrAPIKeyFailedToParse, db.ErrAPIKeyExpired, db.ErrAPIKeyRevoked,
 	db.ErrAccessTokenFailedToParse, db.ErrAccessTokenExpired, db.ErrAccessTokenClientRevoked,
 }
 

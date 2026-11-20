@@ -22,6 +22,7 @@ var (
 	ErrAPIKeyFailedToParse    = errors.New("failed to parse ApiKey")
 	ErrAPIKeyGenerationFailed = errors.New("failed to generate API key")
 	ErrAPIKeyExpired          = errors.New("API key expired")
+	ErrAPIKeyRevoked          = errors.New("API key revoked")
 	ErrAPIKeyNotFound         = fmt.Errorf("API key not found: %w", gorm.ErrRecordNotFound)
 )
 
@@ -45,11 +46,12 @@ func (hsdb *HSDatabase) CreateAPIKey(
 	return keyStr, credentialToAPIKey(&cred), nil
 }
 
-// ListAPIKeys returns the list of [types.APIKey] values for a user.
+// ListAPIKeys returns every API key that is not revoked, for /api/v1, whose
+// answer cannot say that a key is revoked.
 func (hsdb *HSDatabase) ListAPIKeys() ([]types.APIKey, error) {
 	var creds []types.Credential
 
-	err := hsdb.DB.Where("kind = ?", types.CredentialAPIKey).Order("id").Find(&creds).Error
+	err := hsdb.DB.Where("kind = ? AND revoked IS NULL", types.CredentialAPIKey).Order("id").Find(&creds).Error
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +105,13 @@ func (hsdb *HSDatabase) ExpireAPIKey(key *types.APIKey) error {
 	return apiKeyAffected(res)
 }
 
+// RevokeAPIKey ends an API key: it is refused from the next request on, and
+// its record stays, revoked, until the removal. See [revokeCredential]; an
+// unknown id returns [ErrAPIKeyNotFound].
+func (hsdb *HSDatabase) RevokeAPIKey(id uint64) error {
+	return revokeCredential(hsdb.DB, types.CredentialAPIKey, "id = ?", id, ErrAPIKeyNotFound)
+}
+
 // apiKeyAffected maps a write that matched no API key row to [ErrAPIKeyNotFound].
 func apiKeyAffected(res *gorm.DB) error {
 	if res.Error != nil {
@@ -117,33 +126,33 @@ func apiKeyAffected(res *gorm.DB) error {
 }
 
 func (hsdb *HSDatabase) ValidateAPIKey(keyStr string) (bool, error) {
-	key, err := validateAPIKey(hsdb.DB, keyStr)
-	if err != nil {
-		return false, err
-	}
-
-	if key.Expiration != nil && key.Expiration.Before(time.Now()) {
+	_, err := hsdb.AuthenticateAPIKey(keyStr)
+	if errors.Is(err, ErrAPIKeyExpired) || errors.Is(err, ErrAPIKeyRevoked) {
 		return false, nil
 	}
 
-	return true, nil
+	return err == nil, err
 }
 
-// AuthenticateAPIKey validates keyStr and returns the matching, unexpired
-// [types.APIKey] (with its owning UserID populated). Unlike ValidateAPIKey it
-// returns the key itself, so the v2 API can act as the key's owning user. A
-// non-nil error means the key is missing, malformed, or expired.
+// AuthenticateAPIKey validates keyStr and returns the matching [types.APIKey]
+// (with its owning UserID populated), for every API alike. Unlike
+// ValidateAPIKey it returns the key itself, so the v2 API can act as the
+// key's owning user. A non-nil error means the key is missing, malformed,
+// expired ([ErrAPIKeyExpired]) or revoked ([ErrAPIKeyRevoked]).
 func (hsdb *HSDatabase) AuthenticateAPIKey(keyStr string) (*types.APIKey, error) {
-	key, err := validateAPIKey(hsdb.DB, keyStr)
+	cred, err := validateAPIKey(hsdb.DB, keyStr)
 	if err != nil {
 		return nil, err
 	}
 
-	if key.Expiration != nil && key.Expiration.Before(time.Now()) {
+	switch {
+	case cred.Revoked != nil:
+		return nil, ErrAPIKeyRevoked
+	case cred.Expiration != nil && cred.Expiration.Before(time.Now()):
 		return nil, ErrAPIKeyExpired
 	}
 
-	return key, nil
+	return credentialToAPIKey(cred), nil
 }
 
 // SetAPIKeyUser sets the owning user of an API key. Used when an admin mints a
@@ -193,9 +202,10 @@ func ParseAPIKeyPrefix(displayPrefix string) (string, error) {
 	return displayPrefix, nil
 }
 
-// validateAPIKey validates an API key and returns the key if valid.
-// Handles both new (hskey-api-{prefix}-{secret}) and legacy (prefix.secret) formats.
-func validateAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
+// validateAPIKey finds the API key whose secret keyStr holds, whatever its
+// state. Handles both new (hskey-api-{prefix}-{secret}) and legacy
+// (prefix.secret) formats.
+func validateAPIKey(db *gorm.DB, keyStr string) (*types.Credential, error) {
 	// Validate input is not empty
 	if keyStr == "" {
 		return nil, ErrAPIKeyFailedToParse
@@ -215,18 +225,13 @@ func validateAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 		return nil, err
 	}
 
-	cred, err := authenticateCredential(db, types.CredentialAPIKey, prefix, secret, ErrAPIKeyNotFound)
-	if err != nil {
-		return nil, err
-	}
-
-	return credentialToAPIKey(cred), nil
+	return authenticateCredential(db, types.CredentialAPIKey, prefix, secret, ErrAPIKeyNotFound)
 }
 
 // validateLegacyAPIKey validates a legacy format API key (prefix.secret).
 //
 // TODO(kradalby): remove in 0.32 with legacy key formats (announced).
-func validateLegacyAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
+func validateLegacyAPIKey(db *gorm.DB, keyStr string) (*types.Credential, error) {
 	// Legacy format uses "." as separator
 	prefix, secret, found := strings.Cut(keyStr, ".")
 	if !found {
@@ -238,10 +243,5 @@ func validateLegacyAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 		return nil, fmt.Errorf("%w: legacy prefix length mismatch", ErrAPIKeyFailedToParse)
 	}
 
-	cred, err := authenticateCredential(db, types.CredentialAPIKey, prefix, secret, ErrAPIKeyNotFound)
-	if err != nil {
-		return nil, err
-	}
-
-	return credentialToAPIKey(cred), nil
+	return authenticateCredential(db, types.CredentialAPIKey, prefix, secret, ErrAPIKeyNotFound)
 }

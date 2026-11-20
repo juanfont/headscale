@@ -335,7 +335,7 @@ func TestOAuthClientRevoke(t *testing.T) {
 	require.ErrorIs(t, db.RevokeOAuthClient("unknown"), ErrOAuthClientNotFound)
 
 	// The collector removes it once the retention window has passed.
-	n, err := db.DestroyRevokedOAuthClientsBefore(revoked.Revoked.Add(time.Second))
+	n, err := db.DestroyRevokedCredentialsBefore(revoked.Revoked.Add(time.Second))
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
 

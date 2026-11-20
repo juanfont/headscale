@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -51,6 +52,46 @@ func TestAPIV1AuthMiddleware(t *testing.T) {
 			assert.Equalf(t, tt.wantStatus, rec.Code, "body: %s", rec.Body.String())
 		})
 	}
+}
+
+// TestAPIV1RevokedAPIKey: an API key revoked through /api/headscale/v0 is
+// refused by /api/v1 from its next request on, and its list no longer shows
+// it, since its answer cannot say that a key is revoked.
+func TestAPIV1RevokedAPIKey(t *testing.T) {
+	app := createTestApp(t)
+	handler := app.HTTPHandler()
+
+	other, _, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+
+	secret, key, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+
+	get := func(bearer string) *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/apikey", nil)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		return rec
+	}
+
+	require.Equal(t, http.StatusOK, get(secret).Code)
+	require.NoError(t, app.state.RevokeAPIKey(key.ID))
+	require.Equal(t, http.StatusUnauthorized, get(secret).Code)
+
+	rec := get(other)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var list struct {
+		APIKeys []struct {
+			ID string `json:"id"`
+		} `json:"apiKeys"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &list))
+	require.Len(t, list.APIKeys, 1)
+	assert.NotEqual(t, strconv.FormatUint(key.ID, 10), list.APIKeys[0].ID)
 }
 
 // TestAPIV1DocsArePublic proves the OpenAPI document and docs UI live under

@@ -998,9 +998,9 @@ func TestRevokedKeysBackingNodesSurviveCollection(t *testing.T) {
 		require.NoError(t, hsdb.RevokePreAuthKey(id))
 	}
 
-	reaped, err := hsdb.DestroyRevokedPreAuthKeysBefore(time.Now().Add(24 * time.Hour))
+	reaped, err := hsdb.DestroyRevokedCredentialsBefore(time.Now().Add(24 * time.Hour))
 	require.NoError(t, err)
-	assert.Equal(t, 1, reaped, "only the unreferenced revoked key is reaped")
+	assert.Equal(t, int64(1), reaped, "only the unreferenced revoked key is reaped")
 
 	require.NoError(t, hsdb.Close())
 

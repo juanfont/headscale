@@ -2520,6 +2520,12 @@ func (s *State) ListAPIKeys() ([]types.APIKey, error) {
 	return s.db.ListAPIKeys()
 }
 
+// RevokeAPIKey ends an API key from its next request on; its record stays,
+// revoked, until the removal.
+func (s *State) RevokeAPIKey(id uint64) error {
+	return s.db.RevokeAPIKey(id)
+}
+
 // DestroyAPIKey permanently removes an API key.
 func (s *State) DestroyAPIKey(key types.APIKey) error {
 	return s.db.DestroyAPIKey(key)
@@ -2654,10 +2660,11 @@ func (s *State) RevokePreAuthKey(id uint64) error {
 	return s.db.RevokePreAuthKey(id)
 }
 
-// DestroyRevokedPreAuthKeysBefore hard-deletes pre-auth keys revoked before
-// cutoff, returning how many were removed.
-func (s *State) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, error) {
-	return s.db.DestroyRevokedPreAuthKeysBefore(cutoff)
+// DestroyRevokedCredentialsBefore removes the auth keys, API keys and OAuth
+// clients revoked before cutoff, but an auth key a node refers to, and
+// returns how many.
+func (s *State) DestroyRevokedCredentialsBefore(cutoff time.Time) (int64, error) {
+	return s.db.DestroyRevokedCredentialsBefore(cutoff)
 }
 
 // ListPreAuthKeys returns all pre-authentication keys for a user.
@@ -2699,11 +2706,6 @@ func (s *State) ListOAuthClients() ([]types.OAuthClient, error) {
 // RevokeOAuthClient revokes a client and deletes the access tokens it issued.
 func (s *State) RevokeOAuthClient(clientID string) error {
 	return s.db.RevokeOAuthClient(clientID)
-}
-
-// DestroyRevokedOAuthClientsBefore hard-deletes clients revoked before cutoff.
-func (s *State) DestroyRevokedOAuthClientsBefore(cutoff time.Time) (int64, error) {
-	return s.db.DestroyRevokedOAuthClientsBefore(cutoff)
 }
 
 // MintAccessToken stores a new scoped access token for an OAuth client.

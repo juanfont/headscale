@@ -387,18 +387,11 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 		case <-revokedKeyGCChan:
 			cutoff := time.Now().Add(-h.cfg.Credentials.RevokedRetention)
 
-			reaped, err := h.state.DestroyRevokedPreAuthKeysBefore(cutoff)
+			reaped, err := h.state.DestroyRevokedCredentialsBefore(cutoff)
 			if err != nil {
-				log.Error().Err(err).Msg("reaping revoked pre-auth keys")
+				log.Error().Err(err).Msg("removing revoked credentials")
 			} else if reaped > 0 {
-				log.Info().Int("count", reaped).Msg("reaped revoked pre-auth keys")
-			}
-
-			reapedClients, err := h.state.DestroyRevokedOAuthClientsBefore(cutoff)
-			if err != nil {
-				log.Error().Err(err).Msg("reaping revoked oauth clients")
-			} else if reapedClients > 0 {
-				log.Info().Int64("count", reapedClients).Msg("reaped revoked oauth clients")
+				log.Info().Int64("count", reaped).Msg("removed revoked credentials")
 			}
 
 		case <-accessTokenTicker.C:

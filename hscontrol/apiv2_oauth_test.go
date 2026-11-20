@@ -944,3 +944,16 @@ func TestAPIv2OAuth_SetDeviceRoutesCompat(t *testing.T) {
 		return v2RouteCall(t, resp.StatusCode, raw)
 	})
 }
+
+// TestAPIv2RevokedAPIKey: an API key revoked through /api/headscale/v0 is
+// refused by /api/v2 from its next request on.
+func TestAPIv2RevokedAPIKey(t *testing.T) {
+	app, baseURL, _ := newOAuthTestServer(t)
+
+	secret, key, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, apiGet(t, baseURL+"/api/v2/tailnet/-/keys", secret))
+	require.NoError(t, app.state.RevokeAPIKey(key.ID))
+	require.Equal(t, http.StatusUnauthorized, apiGet(t, baseURL+"/api/v2/tailnet/-/keys", secret))
+}
