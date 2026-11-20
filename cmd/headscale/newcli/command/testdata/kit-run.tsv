@@ -1,0 +1,410 @@
+# headscale: 204 rows: pass 31 waits 173
+# model: 204 rows: pass 201 seen 3
+headscale	T01	waits	nodes routes set
+headscale	T02	waits	nodes routes set
+headscale	T03	waits	nodes delete
+headscale	T04	waits	nodes list
+headscale	T05	waits	users delete
+headscale	T06	waits	auth keys
+headscale	T07	waits	auth keys create
+headscale	T08	waits	api keys create
+headscale	T09	waits	check config
+headscale	T10	waits	check config
+headscale	T11	waits	serve
+headscale	T12	pass
+headscale	T13	waits	nodes
+headscale	T14	waits	nodes routes
+headscale	T15	waits	check
+headscale	H01	pass
+headscale	H02	pass
+headscale	H03	waits	nodes
+headscale	H04	waits	nodes routes
+headscale	H05	waits	nodes routes set
+headscale	H06	waits	nodes delete
+headscale	H07	waits	nodes delete
+headscale	H08	waits	nodes delete
+headscale	H09	waits	nodes routes set
+headscale	H10	waits	auth keys create
+headscale	H11	pass
+headscale	H12	pass
+headscale	H13	waits	nodes
+headscale	H14	waits	nodes list
+headscale	H15	waits	nodes list
+headscale	H16	waits	nodes list
+headscale	H17	waits	nodes list
+headscale	H18	pass
+headscale	H19	waits	nodes delete
+headscale	H20	waits	nodes list
+headscale	H21	waits	auth keys create
+headscale	H22	waits	nodes routes set
+headscale	H23	waits	nodes delete
+headscale	V01	pass
+headscale	V02	pass
+headscale	V03	pass
+headscale	V04	waits	nodes list
+headscale	V05	waits	nodes list
+headscale	V06	pass
+headscale	V07	pass
+headscale	V08	pass
+headscale	V09	pass
+headscale	V10	pass
+headscale	V11	waits	nodes
+headscale	V12	pass
+headscale	F01	waits	auth keys create
+headscale	F02	waits	auth keys create
+headscale	F03	waits	nodes list
+headscale	F04	waits	nodes list
+headscale	F05	waits	nodes list
+headscale	F06	waits	auth keys create
+headscale	F07	waits	nodes delete
+headscale	F08	waits	nodes delete
+headscale	F09	waits	nodes routes set
+headscale	F10	waits	auth keys create
+headscale	F11	waits	nodes set
+headscale	F12	waits	nodes set
+headscale	F13	waits	nodes set
+headscale	F14	waits	nodes list
+headscale	F15	waits	nodes list
+headscale	F16	waits	nodes list
+headscale	F17	waits	nodes list
+headscale	F18	waits	nodes list
+headscale	F19	waits	nodes list
+headscale	F20	waits	policy set
+headscale	F21	waits	nodes delete
+headscale	F22	waits	nodes routes set
+headscale	F23	waits	users delete
+headscale	F24	waits	users delete
+headscale	F25	waits	api keys create
+headscale	F26	waits	nodes set
+headscale	F27	waits	nodes list
+headscale	F28	waits	nodes list
+headscale	B01	waits	nodes delete
+headscale	B02	waits	nodes delete
+headscale	B03	waits	nodes delete
+headscale	B04	waits	nodes delete
+headscale	B06	waits	nodes delete
+headscale	B07	waits	nodes delete
+headscale	B08	waits	nodes delete
+headscale	B09	waits	nodes delete
+headscale	B10	waits	nodes list
+headscale	B11	waits	nodes delete
+headscale	B05	waits	nodes delete
+headscale	G01	waits	nodes list
+headscale	G02	waits	nodes list
+headscale	G03	waits	nodes list
+headscale	G04	waits	nodes routes set
+headscale	G05	waits	nodes delete
+headscale	G06	pass
+headscale	G07	waits	check config
+headscale	G08	waits	check config
+headscale	G09	pass
+headscale	G10	waits	serve
+headscale	G11	waits	nodes list
+headscale	L01	waits	auth keys create
+headscale	L02	waits	auth keys create
+headscale	L03	waits	nodes list
+headscale	L04	waits	auth keys create
+headscale	L05	waits	nodes list
+headscale	L06	waits	nodes list
+headscale	L07	waits	nodes list
+headscale	L08	waits	nodes list
+headscale	L09	waits	nodes list
+headscale	L10	waits	nodes routes set
+headscale	L11	waits	auth keys create
+headscale	L12	waits	nodes list
+headscale	L13	waits	nodes set
+headscale	E01	pass
+headscale	E02	waits	nodes
+headscale	E03	waits	nodes routes
+headscale	E04	waits	auth
+headscale	E05	pass
+headscale	E06	pass
+headscale	E07	pass
+headscale	E08	waits	nodes
+headscale	E09	waits	nodes list
+headscale	E10	waits	nodes list
+headscale	E11	waits	auth keys create
+headscale	E12	waits	auth keys create
+headscale	E13	waits	nodes list
+headscale	E14	waits	auth keys create
+headscale	E15	waits	nodes list
+headscale	E16	waits	nodes delete
+headscale	E17	waits	nodes delete
+headscale	E18	waits	nodes routes set
+headscale	E19	waits	check config
+headscale	E20	waits	nodes list
+headscale	E21	pass
+headscale	E22	waits	nodes list
+headscale	E23	waits	nodes list
+headscale	E24	waits	nodes delete
+headscale	E25	pass
+headscale	E26	waits	nodes
+headscale	P01	waits	check config
+headscale	P02	waits	check config
+headscale	P03	waits	nodes delete
+headscale	P04	waits	nodes delete
+headscale	P05	waits	nodes delete
+headscale	P06	pass
+headscale	P07	waits	nodes list
+headscale	P08	waits	nodes routes set
+headscale	P09	waits	nodes routes set
+headscale	P10	pass
+headscale	P11	waits	nodes list
+headscale	P12	waits	nodes delete
+headscale	D01	waits	nodes delete
+headscale	D02	waits	nodes routes set
+headscale	D03	waits	nodes routes set
+headscale	D04	waits	nodes routes set
+headscale	D05	waits	nodes routes set
+headscale	D06	waits	nodes routes set
+headscale	D07	waits	nodes list
+headscale	D08	waits	auth keys create
+headscale	A01	waits	nodes delete
+headscale	A02	waits	nodes routes set
+headscale	A03	waits	check config
+headscale	A04	waits	nodes delete
+headscale	A05	waits	users delete
+headscale	R01	waits	nodes list
+headscale	R02	waits	nodes list
+headscale	R03	waits	nodes list
+headscale	R04	waits	nodes delete
+headscale	R05	waits	nodes set
+headscale	R06	pass
+headscale	G12	waits	nodes list
+headscale	G13	waits	nodes list
+headscale	G14	waits	nodes list
+headscale	G15	waits	nodes list
+headscale	X01	waits	auth keys create
+headscale	X02	waits	nodes list
+headscale	X03	waits	nodes list
+headscale	X04	waits	nodes list
+headscale	X05	waits	nodes list
+headscale	X06	waits	auth keys create
+headscale	O01	waits	nodes set
+headscale	O02	waits	nodes set
+headscale	O03	waits	nodes list
+headscale	O04	waits	nodes
+headscale	O05	waits	nodes list
+headscale	O06	waits	nodes
+headscale	O07	pass
+headscale	O08	waits	nodes
+headscale	O09	pass
+headscale	O10	waits	nodes delete
+headscale	O11	pass
+headscale	J01	waits	nodes list
+headscale	J02	waits	nodes list
+headscale	J03	waits	nodes list
+headscale	J04	waits	nodes list
+headscale	J05	pass
+headscale	J06	waits	nodes list
+headscale	J07	waits	nodes list
+headscale	J08	pass
+headscale	J09	waits	nodes list
+headscale	J10	waits	nodes list
+headscale	J11	waits	nodes delete
+headscale	J12	waits	nodes list
+headscale	J13	waits	check config
+model	T01	pass
+model	T02	pass
+model	T03	pass
+model	T04	pass
+model	T05	pass
+model	T06	pass
+model	T07	pass
+model	T08	pass
+model	T09	pass
+model	T10	pass
+model	T11	pass
+model	T12	pass
+model	T13	pass
+model	T14	pass
+model	T15	pass
+model	H01	pass
+model	H02	pass
+model	H03	pass
+model	H04	pass
+model	H05	pass
+model	H06	pass
+model	H07	pass
+model	H08	pass
+model	H09	pass
+model	H10	pass
+model	H11	pass
+model	H12	pass
+model	H13	pass
+model	H14	pass
+model	H15	pass
+model	H16	pass
+model	H17	pass
+model	H18	pass
+model	H19	pass
+model	H20	pass
+model	H21	pass
+model	H22	pass
+model	H23	pass
+model	V01	pass
+model	V02	pass
+model	V03	pass
+model	V04	pass
+model	V05	pass
+model	V06	pass
+model	V07	pass
+model	V08	pass
+model	V09	pass
+model	V10	pass
+model	V11	pass
+model	V12	pass
+model	F01	pass
+model	F02	pass
+model	F03	pass
+model	F04	pass
+model	F05	seen	unknown-flag [nodes list] "ojson"
+model	F06	pass
+model	F07	pass
+model	F08	pass
+model	F09	pass
+model	F10	pass
+model	F11	pass
+model	F12	pass
+model	F13	pass
+model	F14	pass
+model	F15	pass
+model	F16	pass
+model	F17	pass
+model	F18	pass
+model	F19	pass
+model	F20	pass
+model	F21	pass
+model	F22	pass
+model	F23	pass
+model	F24	pass
+model	F25	pass
+model	F26	pass
+model	F27	pass
+model	F28	seen	unknown-flag [nodes list] "ho"
+model	B01	pass
+model	B02	pass
+model	B03	pass
+model	B04	pass
+model	B06	pass
+model	B07	pass
+model	B08	pass
+model	B09	pass
+model	B10	pass
+model	B11	pass
+model	B05	pass
+model	G01	pass
+model	G02	pass
+model	G03	pass
+model	G04	pass
+model	G05	pass
+model	G06	pass
+model	G07	pass
+model	G08	pass
+model	G09	pass
+model	G10	pass
+model	G11	pass
+model	L01	pass
+model	L02	pass
+model	L03	pass
+model	L04	pass
+model	L05	pass
+model	L06	pass
+model	L07	pass
+model	L08	pass
+model	L09	pass
+model	L10	pass
+model	L11	pass
+model	L12	pass
+model	L13	pass
+model	E01	pass
+model	E02	pass
+model	E03	pass
+model	E04	pass
+model	E05	pass
+model	E06	pass
+model	E07	pass
+model	E08	pass
+model	E09	pass
+model	E10	pass
+model	E11	pass
+model	E12	pass
+model	E13	pass
+model	E14	pass
+model	E15	pass
+model	E16	pass
+model	E17	pass
+model	E18	pass
+model	E19	pass
+model	E20	pass
+model	E21	pass
+model	E22	pass
+model	E23	pass
+model	E24	pass
+model	E25	pass
+model	E26	pass
+model	P01	pass
+model	P02	pass
+model	P03	pass
+model	P04	pass
+model	P05	pass
+model	P06	pass
+model	P07	pass
+model	P08	pass
+model	P09	pass
+model	P10	pass
+model	P11	pass
+model	P12	pass
+model	D01	pass
+model	D02	pass
+model	D03	pass
+model	D04	pass
+model	D05	pass
+model	D06	pass
+model	D07	pass
+model	D08	pass
+model	A01	pass
+model	A02	pass
+model	A03	pass
+model	A04	pass
+model	A05	pass
+model	R01	pass
+model	R02	pass
+model	R03	pass
+model	R04	pass
+model	R05	pass
+model	R06	pass
+model	G12	pass
+model	G13	pass
+model	G14	pass
+model	G15	pass
+model	X01	seen	unknown-flag [auth keys create] "e24h"
+model	X02	pass
+model	X03	pass
+model	X04	pass
+model	X05	pass
+model	X06	pass
+model	O01	pass
+model	O02	pass
+model	O03	pass
+model	O04	pass
+model	O05	pass
+model	O06	pass
+model	O07	pass
+model	O08	pass
+model	O09	pass
+model	O10	pass
+model	O11	pass
+model	J01	pass
+model	J02	pass
+model	J03	pass
+model	J04	pass
+model	J05	pass
+model	J06	pass
+model	J07	pass
+model	J08	pass
+model	J09	pass
+model	J10	pass
+model	J11	pass
+model	J12	pass
+model	J13	pass

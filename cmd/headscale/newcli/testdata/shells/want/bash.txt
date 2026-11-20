@@ -1,0 +1,119 @@
+LINE: headscale |
+LISTED: [headscale  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)              / completion  (Print the completion script of a shell)    version     (Print the version)                          / $ headscale ]
+FINAL: [headscale ]
+
+LINE: headscale ve|
+LISTED: [headscale version ]
+FINAL: [headscale version ]
+
+LINE: headscale api |
+LISTED: [headscale api whoami ]
+FINAL: [headscale api whoami ]
+
+LINE: headscale debug h|
+LISTED: [headscale debug health ]
+FINAL: [headscale debug health ]
+
+LINE: headscale completion |
+LISTED: [headscale completion  / bash        fish        powershell  zsh          / $ headscale completion ]
+FINAL: [headscale completion ]
+
+LINE: headscale completion z|
+LISTED: [headscale completion zsh ]
+FINAL: [headscale completion zsh ]
+
+LINE: headscale completion bash |
+LISTED: [headscale completion bash <BEL>]
+FINAL: [headscale completion bash ]
+
+LINE: headscale -|
+LISTED: [headscale - / --config   (Config file)                           --output   (Output format: json (the API object))   / --help     (Show this help)                        --version  (Print the version line)                 / $ headscale --]
+FINAL: [headscale --]
+
+LINE: headscale version -|
+LISTED: [headscale version - / --config  (Config file)          --help    (Show this help)       --output  (Output format: json)   / $ headscale version --]
+FINAL: [headscale version --]
+
+LINE: headscale version --|
+LISTED: [headscale version -- / --config  (Config file)          --help    (Show this help)       --output  (Output format: json)   / $ headscale version --]
+FINAL: [headscale version --]
+
+LINE: headscale version -c|
+LISTED: [headscale version -c ]
+FINAL: [headscale version -c ]
+
+LINE: headscale api whoami --|
+LISTED: [headscale api whoami -- / --config  (Config file)                           --help    (Show this help)                        --output  (Output format: json (the API object)) / $ headscale api whoami --]
+FINAL: [headscale api whoami --]
+
+LINE: headscale -o |
+LISTED: [headscale -o json ]
+FINAL: [headscale -o json ]
+
+LINE: headscale -o=|
+LISTED: [headscale -o=json ]
+FINAL: [headscale -o=json ]
+
+LINE: headscale --output=j|
+LISTED: [headscale --output=json ]
+FINAL: [headscale --output=json ]
+
+LINE: headscale debug health -o |
+LISTED: [headscale debug health -o json ]
+FINAL: [headscale debug health -o json ]
+
+LINE: headscale version --output=|
+LISTED: [headscale version --output=json ]
+FINAL: [headscale version --output=json ]
+
+LINE: headscale -c |
+LISTED: [headscale -c  / config.yaml    policy.hujson   / $ headscale -c ]
+FINAL: [headscale -c ]
+
+LINE: headscale --config=|
+LISTED: [headscale --config= / config.yaml    policy.hujson   / $ headscale --config=]
+FINAL: [headscale --config=]
+
+LINE: headscale version --config |
+LISTED: [headscale version --config  / config.yaml    policy.hujson   / $ headscale version --config ]
+FINAL: [headscale version --config ]
+
+LINE: headscale -o json -c x debug health --|
+LISTED: [headscale -o json -c x debug health --help ]
+FINAL: [headscale -o json -c x debug health --help ]
+
+LINE: headscale version -o json --|
+LISTED: [headscale version -o json -- / --config  (Config file)     --help    (Show this help)   / $ headscale version -o json --]
+FINAL: [headscale version -o json --]
+
+LINE: headscale -c -o |
+LISTED: [headscale -c -o  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)              / completion  (Print the completion script of a shell)    version     (Print the version)                          / $ headscale -c -o ]
+FINAL: [headscale -c -o ]
+
+LINE: headscale -c x ve|
+LISTED: [headscale -c x version ]
+FINAL: [headscale -c x version ]
+
+LINE: headscale nodez |
+LISTED: [headscale nodez  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)              / completion  (Print the completion script of a shell)    version     (Print the version)                          / $ headscale nodez ]
+FINAL: [headscale nodez ]
+
+LINE: headscale versoin --|
+LISTED: [headscale versoin -- / --config   (Config file)                           --output   (Output format: json (the API object))   / --help     (Show this help)                        --version  (Print the version line)                 / $ headscale versoin --]
+FINAL: [headscale versoin --]
+
+LINE: headscale version --bogus --|
+LISTED: [headscale version --bogus -- / --config  (Config file)          --help    (Show this help)       --output  (Output format: json)   / $ headscale version --bogus --]
+FINAL: [headscale version --bogus --]
+
+LINE: headscale completion bash -c|
+LISTED: [headscale completion bash -c<BEL>]
+FINAL: [headscale completion bash -c]
+
+LINE: headscale -h ve|
+LISTED: [headscale -h version ]
+FINAL: [headscale -h version ]
+
+LINE: headscale --version |
+LISTED: [headscale --version  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)              / completion  (Print the completion script of a shell)    version     (Print the version)                          / $ headscale --version ]
+FINAL: [headscale --version ]

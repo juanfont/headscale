@@ -212,11 +212,22 @@
             ./hscontrol/config/testdata
             ./hscontrol/db/testdata
             ./hscontrol/policy/v2/testdata
+            # The corpus of parser edge cases and the fuzz seeds; the lines
+            # of the real-shell Tab job.
+            ./cmd/headscale/newcli/command/testdata
+            ./cmd/headscale/newcli/testdata
             # The API v0 document and page of codes, compared with the code.
             ./docs/ref/api/headscale-v0.yaml
             ./docs/ref/api/problems.md
           ];
         };
+        # TestKitScripts checks the completion script of each shell it finds
+        # and skips the others; go test hides a skip, so the log names them.
+        kitShellsNote = ''
+          for s in bash zsh fish pwsh; do
+            command -v "$s" >/dev/null || echo "TestKitScripts: no $s here, its completion script is not checked"
+          done
+        '';
         goChecks = {
           build = fc.goBuild (common // { subPackages = [ "cmd/headscale" ]; });
 
@@ -235,21 +246,21 @@
                 "/hscontrol/servertest"
               ];
               goSkip = [ "TestPostgres" ];
-              testEnv = "export CGO_ENABLED=0";
+              testEnv = "export CGO_ENABLED=0\n" + kitShellsNote;
             }
           );
 
           # -race needs cgo; release build and dev shell stay CGO-free.
-          # Test hscontrol and cmdline recursively; servertest runs in its own workflow, without -race.
+          # Test hscontrol, cmdline and the new CLI recursively; servertest runs in its own workflow, without -race.
           gorace = fc.goTest (
             common
             // {
               name = "headscale-gorace";
               goRace = true;
-              testEnv = "export CGO_ENABLED=1";
+              testEnv = "export CGO_ENABLED=1\n" + kitShellsNote;
               testFlags = [ "-p=2" ];
               goSkip = [ "TestPostgres" ];
-              testPackages = "./hscontrol/... ./cmdline/...";
+              testPackages = "./hscontrol/... ./cmdline/... ./cmd/headscale/newcli/...";
               testExclude = [ "/hscontrol/servertest" ];
             }
           );
@@ -439,6 +450,32 @@
           shellHook = ''
             export PATH="$PWD/result/bin:$PATH"
             export CGO_ENABLED=0
+          '';
+        };
+
+        # `nix develop .#shells -c cmd/headscale/newcli/testdata/shells/run.sh`:
+        # the real-shell Tab job, in a shell of its own so that the default
+        # one does not carry PowerShell, fish and zsh.
+        devShells.shells = pkgs.mkShell {
+          buildInputs = buildDeps ++ [
+            pkgs.bashInteractive
+            pkgs.bash-completion
+            # zsh -f still reads the global zshenv, which nixpkgs points at
+            # /etc/zshenv or, on NixOS, /etc/set-environment; this one has none.
+            (pkgs.zsh.overrideAttrs (o: {
+              configureFlags = map (
+                f: if pkgs.lib.hasPrefix "--enable-zshenv=" f then "--disable-zshenv" else f
+              ) o.configureFlags;
+            }))
+            pkgs.fish
+            pkgs.powershell
+            pkgs.python3
+          ];
+
+          shellHook = ''
+            export CGO_ENABLED=0
+            # run.sh refuses to run without it.
+            export BASH_COMPLETION_SH=${pkgs.bash-completion}/share/bash-completion/bash_completion
           '';
         };
 
