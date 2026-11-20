@@ -314,6 +314,12 @@ func clientFor(t *testing.T, clients []integration.TailscaleClient, hostname str
 func (e *env) authKey(t *testing.T) string {
 	t.Helper()
 
+	return e.newAuthKey(t).Key
+}
+
+func (e *env) newAuthKey(t *testing.T) *clientv1.PreAuthKey {
+	t.Helper()
+
 	users, err := e.headscale.ListUsers()
 	require.NoError(t, err)
 	require.Len(t, users, 1)
@@ -324,7 +330,7 @@ func (e *env) authKey(t *testing.T) string {
 	key, err := e.headscale.CreateAuthKey(userID, false, false)
 	require.NoError(t, err)
 
-	return key.Key
+	return key
 }
 
 func TestAndroidLoginCustomControlURL(t *testing.T) {
@@ -524,22 +530,110 @@ func TestAndroidLoginAuthKey(t *testing.T) {
 	e := setup(t, apk, noTLS)
 	require.NoError(t, e.android.Launch())
 
-	// The auth key screen logs in to the current control server, so point
-	// the app at headscale first and back out of the browser the
-	// interactive login opens, as a user would.
-	e.setControlURL(t)
-	require.NoError(t, e.android.WaitForBrowser())
+	e.loginAuthKey(t)
+}
 
-	e.leaveBrowser(t)
-
-	key := e.authKey(t)
+// enterAuthKey submits key in the "Use an auth key" dialog. The app sends it
+// to its current control server and keeps no copy: any later login is
+// interactive.
+func (e *env) enterAuthKey(t *testing.T, key string) {
+	t.Helper()
 
 	e.openAccountMenu(t)
 	require.NoError(t, e.android.Tap("Use an auth key"))
 	require.NoError(t, e.android.EnterText(key))
 	require.NoError(t, e.android.Tap("Add account"))
+}
 
+// useControlURL points the app at headscale and backs out of the browser
+// the interactive login opens, as a user about to enter an auth key would.
+func (e *env) useControlURL(t *testing.T) {
+	t.Helper()
+
+	e.setControlURL(t)
+	require.NoError(t, e.android.WaitForBrowser(), "app did not start an interactive login")
+	e.leaveBrowser(t)
+}
+
+// loginAuthKey logs in with an auth key the documented way, alternate
+// server first, returning the registered node. Nothing completes the
+// interactive registration, so a node only appears if the key was used.
+func (e *env) loginAuthKey(t *testing.T) *clientv1.Node {
+	t.Helper()
+
+	e.useControlURL(t)
+	e.enterAuthKey(t, e.authKey(t))
+
+	node := e.androidNode(t)
+	e.assertReachable(t, node)
+
+	return node
+}
+
+// TestAndroidLoginAuthKeyBeforeControlURL enters an auth key before the
+// alternate server. The app sends that key to its default control server
+// and drops it, so setting the server afterwards starts an interactive
+// login: what users report as the key being ignored
+// (tailscale/tailscale#15660). The documented order must still work.
+func TestAndroidLoginAuthKeyBeforeControlURL(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, noTLS)
+	require.NoError(t, e.android.Launch())
+
+	e.enterAuthKey(t, e.authKey(t))
+
+	e.loginAuthKey(t)
+}
+
+// TestAndroidLoginAuthKeyRejected enters a key headscale refuses. The app
+// shows no error, and "Reauthenticate" does not retry with a key: it starts
+// an interactive login. A good key must still log in afterwards.
+func TestAndroidLoginAuthKeyRejected(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, noTLS)
+	require.NoError(t, e.android.Launch())
+
+	revoked := e.newAuthKey(t)
+
+	id, err := strconv.ParseUint(revoked.Id, 10, 64)
+	require.NoError(t, err)
+	require.NoError(t, e.headscale.DeleteAuthKey(id))
+
+	e.useControlURL(t)
+	e.enterAuthKey(t, revoked.Key)
+
+	e.tapPast(t, "Open settings", "Accounts")
+	e.tapPast(t, "Accounts", "Reauthenticate")
+	require.NoError(t, e.android.Tap("Reauthenticate"))
+	require.NoError(t, e.android.WaitForBrowser(), "Reauthenticate did not start an interactive login")
+	e.leaveBrowser(t)
+
+	e.enterAuthKey(t, e.authKey(t))
 	e.assertReachable(t, e.androidNode(t))
+}
+
+// TestAndroidReloginAuthKey logs a registered device out and back in with
+// an auth key, as a user re-authenticating a device does. Logging out
+// returns the app to its default control server, so the alternate server is
+// set again; the device must come back as the same node.
+func TestAndroidReloginAuthKey(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, noTLS)
+
+	before := e.loginInteractive(t)
+
+	// A logged-in app replaces the settings icon with the avatar and the
+	// Accounts row with the login; hsic gives every user this email.
+	require.NoError(t, e.android.Launch())
+	e.tapPast(t, "Settings", "DNS settings")
+	e.tapPast(t, user+"@test.no", "Log out")
+	require.NoError(t, e.android.Tap("Log out"))
+
+	_, err := e.android.WaitForAny("Log in")
+	require.NoError(t, err, "app did not log out")
+
+	after := e.loginAuthKey(t)
+	assert.Equal(t, before.Id, after.Id, "re-login registered a new node")
 }
 
 func TestAndroidLoginMDM(t *testing.T) {
