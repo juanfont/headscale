@@ -255,6 +255,10 @@ type Env struct {
 	// Answered, when set, is told every answer of the server as it came, so
 	// a test compares -o json with what the server sent in that run.
 	Answered func(req *http.Request, body []byte)
+	// Sent, when set, is told every request as it leaves for the server,
+	// before any answer, with its headers: GET /version before a first
+	// write, and a request that gets no answer, too.
+	Sent func(req *http.Request)
 	// Version is the build the run is; nil is this binary's. A test sets
 	// it to run as a release.
 	Version *types.VersionInfo

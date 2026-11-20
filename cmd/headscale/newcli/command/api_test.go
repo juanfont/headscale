@@ -441,6 +441,51 @@ func TestTimeout(t *testing.T) {
 		"The change may have been made: look before you run the command again.")
 }
 
+// TestSent: a test is told every request as it leaves, with its headers:
+// the GET /version before a first write, and a write that got no answer.
+func TestSent(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Headscale-Version", "dev")
+
+		if r.URL.Path == "/api/headscale/v0/version" {
+			_, _ = w.Write([]byte(`{}`))
+
+			return
+		}
+
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}))
+	t.Cleanup(s.Close)
+
+	var (
+		mu   sync.Mutex
+		sent []string
+	)
+
+	a, err := connect(&types.Config{CLI: types.CLIConfig{Address: s.URL, APIKey: "key", Timeout: time.Minute}},
+		Env{Stderr: io.Discard, Version: types.GetVersionInfo(), Sent: func(req *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			sent = append(sent, req.Method+" "+req.URL.Path+" "+req.Header.Get("Authorization"))
+		}})
+	require.NoError(t, err)
+
+	_, err = a.UpdateUser(t.Context(), "3", clientv0.UpdateUserBody{})
+	require.Error(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// GET /version is asked with no credential.
+	require.Equal(t, []string{"GET /api/headscale/v0/version ", "PATCH /api/headscale/v0/users/3 Bearer key"}, sent)
+}
+
 // TestNotTheAPI: an answer of success that is not JSON, though it carries
 // Headscale-Version, is an error, also for a call that reads no body; a 204
 // has none.

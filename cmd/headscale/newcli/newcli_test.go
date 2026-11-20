@@ -78,11 +78,14 @@ type result struct {
 	stdout, stderr string
 	code           int
 	// answers are the bodies the server sent in this run, by path, in the
-	// order sent; asked are the requests, as "METHOD path?query", and sent
-	// the same with the body of each, as the CLI wrote them.
+	// order sent; asked are the requests that got an answer, as "METHOD
+	// path?query". sent is every request that left for the server, answered
+	// or not, GET /version among them, as "METHOD path?query body", and
+	// headers the headers of each.
 	answers map[string][][]byte
 	asked   []string
 	sent    []string
+	headers []http.Header
 }
 
 // fixture is the server of one case, reached over its socket and its TCP
@@ -160,6 +163,7 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		mu          sync.Mutex
 		answers     = map[string][][]byte{}
 		asked, sent []string
+		headers     []http.Header
 	)
 
 	pageSize := tc.pageSize
@@ -190,15 +194,21 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 
 			answers[req.URL.Path] = append(answers[req.URL.Path], body)
 			asked = append(asked, req.Method+" "+req.URL.RequestURI())
-			sent = append(sent, req.Method+" "+req.URL.RequestURI()+" "+bodyOf(tb, req))
 
 			if tc.answered != nil {
 				tc.answered(tb, f, req.Method+" "+req.URL.RequestURI())
 			}
 		},
+		Sent: func(req *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			sent = append(sent, req.Method+" "+req.URL.RequestURI()+" "+bodyOf(tb, req))
+			headers = append(headers, req.Header.Clone())
+		},
 	})
 
-	return result{stdout: out.String(), stderr: errOut.String(), code: code, answers: answers, asked: asked, sent: sent}
+	return result{stdout: out.String(), stderr: errOut.String(), code: code, answers: answers, asked: asked, sent: sent, headers: headers}
 }
 
 // bodyOf is the body the CLI sent with req, read again.

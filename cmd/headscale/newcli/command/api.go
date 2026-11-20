@@ -705,6 +705,10 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 		base = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.CLI.Insecure}} //nolint:gosec
 	}
 
+	if env.Sent != nil {
+		base = told{next: base, sent: env.Sent}
+	}
+
 	check := &versionCheck{next: base, own: env.Version, target: target, server: server, warn: env.Stderr}
 
 	a := &API{}
@@ -731,6 +735,20 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 	a.c, a.target, a.answered, a.socket, a.pageSize, a.check, a.timeout = c, target, env.Answered, sock, size, check, cfg.CLI.Timeout
 
 	return a, nil
+}
+
+// told tells sent of every request as it leaves, below the version check
+// and any other step, so a test sees what goes over the wire: each request,
+// answered or not, with its headers.
+type told struct {
+	next http.RoundTripper
+	sent func(req *http.Request)
+}
+
+func (t told) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.sent(req)
+
+	return t.next.RoundTrip(req)
 }
 
 // revision is the guard of a write on the target of a command: what the
