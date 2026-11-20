@@ -321,7 +321,7 @@ var runCases = []runCase{
 	{"R06", Must, "D15 D3", sh("--config=/a -c /b version"), usage(FlagRepeated, "version", "config")},
 
 	// v2: globals before the subcommand, the decided spellings.
-	{"G12", Must, "D3", sh("-c nodes nodes list"), ran("nodes list", nil, "config", "nodes")}, //nolint:dupword // the value is a command word
+	{"G12", Must, "D3", sh("-c nodes nodes list"), ran("nodes list", nil, "config", "nodes")},
 	{"G13", Must, "D3 D11", sh("-o=json nodes list"), ran("nodes list", nil, "output", "json")},
 	{"G14", Must, "D3 D11", sh("-c=/x nodes list"), ran("nodes list", nil, "config", "/x")},
 	{"G15", Must, "D3 R23", sh("-c '' nodes list"), ran("nodes list", nil, "config", "")},
@@ -766,6 +766,7 @@ var beyondKit = []string{
 	"api whoami", "debug", "debug health", "users list", "users get", "users create", "users set",
 	"nodes get", "nodes expire", "nodes update-client", "nodes routes list", "nodes routes clear", "nodes tags", "nodes tags list", "nodes tags set",
 	"auth keys list", "auth keys get", "auth keys delete",
+	"api keys list", "api keys get", "api keys delete", "api oauth-clients list", "api oauth-clients get", "api oauth-clients delete",
 }
 
 func TestKitKnowsHeadscale(t *testing.T) {

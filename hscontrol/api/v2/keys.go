@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/scope"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -422,7 +423,7 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 
 	// checkTags reads the policy; it runs under the lock of every policy
 	// write, so the key is stored under the policy that allowed it.
-	checkTags := func() error { return nil }
+	checkTags := func(state.TagPolicy) error { return nil }
 
 	switch {
 	case len(create.Tags) > 0:
@@ -430,14 +431,14 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 		// A1). A key minted by an OAuth token may only carry tags within the
 		// token's grant (held directly, or owned by a held tag), matching
 		// SetNodeTags. An admin key records its user as the key's creator.
-		checkTags = func() error {
-			err := undefinedTagsRefused(b, create.Tags)
+		checkTags = func(pol state.TagPolicy) error {
+			err := undefinedTagsRefused(pol, create.Tags)
 			if err != nil {
 				return err
 			}
 
 			if isOAuth {
-				if refused := unownedTags(b, create.Tags, tokenTags); len(refused) > 0 {
+				if refused := unownedTags(pol, create.Tags, tokenTags); len(refused) > 0 {
 					return tagsRefused("", refused)
 				}
 			}
@@ -486,8 +487,8 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 
 	var refused error
 
-	_, pak, err := b.State.CreateAuthKeyIf(k, func() error {
-		refused = checkTags()
+	_, pak, err := b.State.CreateAuthKeyIf(k, func(pol state.TagPolicy) error {
+		refused = checkTags(pol)
 
 		return refused
 	})
@@ -540,32 +541,42 @@ func createOAuthClient(ctx context.Context, b Backend, body CreateKeyRequest) (*
 		}
 	}
 
-	err = undefinedTagsRefused(b, body.Tags)
-	if err != nil {
-		return nil, err
-	}
-
-	// A tagged token may still create an untagged "all" client, whose tokens
-	// then take any tag: Tailscale allows it (probe-U U1a, U1h-U1j).
-	if tokenTags, isOAuth := principalTags(ctx); isOAuth {
-		if refused := unownedTags(b, body.Tags, tokenTags); len(refused) > 0 {
-			return nil, tagsRefused("", refused)
-		}
-	}
-
-	var creator *uint
+	c := db.NewOAuthClient{Scopes: body.Scopes, Tags: body.Tags, Description: body.Description}
 
 	if uid, ok := ownerUser(ctx); ok {
-		u := uint(uid)
-		creator = &u
+		c.CreatedBy = &uid
 	}
 
-	secret, client, err := b.State.CreateOAuthClient(body.Scopes, body.Tags, body.Description, creator)
-	if err != nil {
+	// The tag checks read the policy; they run under the lock of every
+	// policy write, so the client is stored under the policy that allowed it.
+	var refused error
+
+	stored, secret, err := b.State.CreateOAuthClientIf(c, func(pol state.TagPolicy) error {
+		refused = undefinedTagsRefused(pol, body.Tags)
+		if refused != nil {
+			return refused
+		}
+
+		// A tagged token may still create an untagged "all" client, whose
+		// tokens then take any tag: Tailscale allows it (probe-U U1a,
+		// U1h-U1j).
+		if tokenTags, isOAuth := principalTags(ctx); isOAuth {
+			if unowned := unownedTags(pol, body.Tags, tokenTags); len(unowned) > 0 {
+				refused = tagsRefused("", unowned)
+			}
+		}
+
+		return refused
+	})
+
+	switch {
+	case refused != nil:
+		return nil, refused
+	case err != nil:
 		return nil, mapError("creating oauth client", err)
 	}
 
-	return &keyOutput{Body: oauthClientToKey(client, secret)}, nil
+	return &keyOutput{Body: oauthClientToKey(db.OAuthClientFromCredential(stored), secret)}, nil
 }
 
 // findKeyByID looks up a stored pre-auth key by its (stringified) id with a

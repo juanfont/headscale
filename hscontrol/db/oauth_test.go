@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // legacyArgon2idHash builds a PHC-encoded Argon2id hash in the form development
@@ -335,7 +336,7 @@ func TestOAuthClientRevoke(t *testing.T) {
 	require.ErrorIs(t, db.RevokeOAuthClient("unknown"), ErrOAuthClientNotFound)
 
 	// The collector removes it once the retention window has passed.
-	n, err := db.DestroyRevokedOAuthClientsBefore(revoked.Revoked.Add(time.Second))
+	n, err := db.DestroyRevokedCredentialsBefore(revoked.Revoked.Add(time.Second))
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
 
@@ -551,4 +552,23 @@ func TestMintAccessTokenKeepsNewestPerClient(t *testing.T) {
 	t.Run("postgres", func(t *testing.T) {
 		test(t, newPostgresTestDB(t))
 	})
+}
+
+// TestOAuthClientMakerGone: a client whose maker was deleted while the
+// request ran is made, with no maker, as the maker's delete leaves the
+// clients it made.
+func TestOAuthClientMakerGone(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	gone := types.UserID(999)
+
+	stored, err := Write(db.DB, func(tx *gorm.DB) (*types.Credential, error) {
+		c, _, err := CreateOAuthClientFrom(tx, NewOAuthClient{Scopes: []string{"all"}, CreatedBy: &gone})
+
+		return c, err
+	})
+	require.NoError(t, err)
+	require.Nil(t, stored.UserID)
+	require.Nil(t, stored.User)
 }

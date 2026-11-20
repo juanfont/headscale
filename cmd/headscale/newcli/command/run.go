@@ -136,11 +136,9 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
 	file, _ := cmdline.Get[configFlags](line)
 
 	// A value that the parser takes as any word is checked before any call.
-	if l.valid != nil {
-		err := l.valid(line)
-		if err != nil {
-			return err
-		}
+	err = l.valid(line)
+	if err != nil {
+		return err
 	}
 
 	stdin := env.Stdin
@@ -446,15 +444,22 @@ func (c Ctx) confirm(p Prompt, before string) (bool, error) {
 		return false, nil
 	}
 
+	question, action := p.Question, "Run again with --force to "+p.Action+"."
+	if p.Warning != nil {
+		if w := p.Warning(); w != "" {
+			question, action = question+" "+w, action+" "+w
+		}
+	}
+
 	if !c.terminal {
-		return false, fmt.Errorf("confirmation needed, but there is no terminal.\nRun again with --force to %s.", p.Action) //nolint:err113,staticcheck // a sentence of the CLI
+		return false, fmt.Errorf("confirmation needed, but there is no terminal.\n%s", action) //nolint:err113 // a sentence of the CLI
 	}
 
 	if before != "" {
 		_, _ = io.WriteString(c.stderr, before+"\n")
 	}
 
-	_, _ = io.WriteString(c.stderr, p.Question+" [y/N] ")
+	_, _ = io.WriteString(c.stderr, question+" [y/N] ")
 
 	reply, _ := c.answers.ReadString('\n')
 	if r := strings.ToLower(strings.TrimSpace(reply)); r == "y" || r == "yes" {
@@ -706,6 +711,10 @@ func (t *Tree) usage(e *cmdline.UsageError) error {
 	}
 
 	name := strings.TrimSuffix(cmp.Or(e.Flag, e.Arg), "s")
+
+	if m, ok := errors.AsType[*mustExpireError](e.Err); ok {
+		return usagef(e.Kind, e.Path, what, "%s", m.Error())
+	}
 
 	switch {
 	case errors.Is(e.Err, cmdline.ErrBool):

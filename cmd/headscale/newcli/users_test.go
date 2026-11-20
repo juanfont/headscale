@@ -197,7 +197,6 @@ var usersListCases = []cliCase{
 
 	{
 		name: "the columns", args: "users list --list-columns",
-		//nolint:dupword // a column is often named as its field
 		stdout: `COLUMN           FIELD          KIND    DEFAULT  DESCRIPTION
 id               id             id      yes      User ID
 name             name           text    yes      Username; empty for some users from OIDC
@@ -265,7 +264,6 @@ var usersGetCases = []cliCase{
 	{name: "an empty word is no user", args: "users get ''", stderr: "Error: an empty word names no user.\n", code: 1, check: noCall},
 	{
 		name: "a word that is one user's provider identifier and another's name", setup: namedLikeProviderID, args: "users get https://idp.example.com/d",
-		//nolint:dupword // the provider and its identifier are two columns
 		stderr: `Error: "https://idp.example.com/d" matches 2 users. Use the ID to select one:
 
   ID  NAME                       EMAIL          PROVIDER  PROVIDER ID

@@ -53,11 +53,14 @@ type leaf struct {
 	force bool
 	// secret is a command that prints a secret once: Spec.Secret.
 	secret bool
+	// end is the delete of a credential, made by NewEnd.
+	end bool
 	// hint follows a wrong argument count or an empty list argument;
 	// emptyList follows the sentence of an empty list argument.
 	hint      func(args []string) string
 	emptyList string
-	// valid checks the line, read but not looked up, before any call.
+	// valid checks the line, read but not looked up, before any call: the
+	// rule on the way in, then Spec.Valid.
 	valid func(*cmdline.Line) error
 	// target is the type of the command's target: the first argument that
 	// is an entity; nil for none.
@@ -137,7 +140,9 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
 	l.output = !noOut || !s.Local || s.NeedsServer != nil
 	l.own = !noOut && s.Local && s.NeedsServer == nil
-	l.check = func() error { return checkSpec(s) }
+	rule, ruleErr := inputRule[In]()
+	l.valid = rule
+	l.check = func() error { return errors.Join(checkSpec(s), ruleErr) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
 	l.secret = s.Secret != nil
@@ -147,6 +152,11 @@ func New[In, Out any](s Spec[In, Out]) Node {
 
 	if s.Valid != nil {
 		l.valid = func(line *cmdline.Line) error {
+			err := rule(line)
+			if err != nil {
+				return err
+			}
+
 			in, _ := cmdline.Get[In](line)
 
 			return s.Valid(in)
@@ -277,8 +287,10 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 	l.only = s.Only
 	l.filter = filterExample(s.Example)
 	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
+	rule, ruleErr := inputRule[In]()
+	l.valid = rule
 	l.check = func() error {
-		var errs []error
+		errs := []error{ruleErr}
 
 		if s.Run == nil {
 			errs = append(errs, errNoRun)
@@ -511,6 +523,10 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 				bad("%v", errNoAsk)
 			}
 
+			if n.name == "delete" && revokable(n.target) && !n.end {
+				bad("%v", errNotEnd)
+			}
+
 			if e, ok := t.entities[n.target]; n.target != nil && hasJSON(n.target, "revision") && (!ok || e.read == nil) {
 				bad("target %v %v", n.target, errNoRead)
 			}
@@ -634,6 +650,9 @@ type Command struct {
 	Path    string
 	Example []string
 	Aliases []string
+	// Secret prints a secret once: it makes a credential, whose group the
+	// tests of every kind of credential run on.
+	Secret bool
 }
 
 // Commands lists every command that runs, in the order of the tree.
@@ -644,7 +663,7 @@ func (t *Tree) Commands() []Command {
 
 	walk = func(c *cmdline.Info) {
 		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && len(c.Commands) == 0 {
-			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases})
+			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret})
 		}
 
 		for _, s := range c.Commands {

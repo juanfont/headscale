@@ -37,10 +37,7 @@ func secretTree(tb testing.TB, made func() (secreted, error)) *Tree {
 			Secret: func(out secreted) string { return out.Key },
 			Done:   func(_ NoInput, out secreted, _ time.Time) string { return "Key " + out.ID + ".\nShown once." },
 		}),
-		New(Spec[getIn, NoOutput]{
-			Name: "delete", Short: "S", Long: "S.", Example: []string{"prog keys delete 7"}, Local: true, Run: noop[getIn, NoOutput],
-			Confirm: func(Ctx, getIn) (Prompt, error) { return Prompt{}, nil },
-		}),
+		endOf(),
 	}})
 	require.NoError(tb, err)
 
@@ -186,10 +183,7 @@ func TestSecretChecks(t *testing.T) {
 		return []Node{Group{Name: "keys", Short: "Keys", Commands: []Node{
 			n,
 			NewList(ListSpec[NoInput, item]{Name: "list", Short: "S", Long: "S.", Example: []string{"prog keys list"}, Local: true, Columns: itemColumns, NoRows: "None.", Run: noop[NoInput, []item]}),
-			New(Spec[getIn, NoOutput]{
-				Name: "delete", Short: "S", Long: "S.", Example: []string{"prog keys delete 7"}, Local: true, Run: noop[getIn, NoOutput],
-				Confirm: func(Ctx, getIn) (Prompt, error) { return Prompt{}, nil },
-			}),
+			endOf(),
 		}}}
 	}
 
@@ -204,7 +198,7 @@ func TestSecretChecks(t *testing.T) {
 		nodes []Node
 		want  string
 	}{
-		{"a secret with no Secret", beside(create(Spec[NoInput, secreted]{Done: note})), "keys create: " + errSecret.Error()},
+		{"a secret with no Secret", beside(create(Spec[NoInput, secreted]{Done: note})), "keys create: " + errSecret.Error() + "\nkeys delete: " + errEndAlone.Error()},
 		{"a Secret with no note", beside(create(Spec[NoInput, secreted]{Secret: key})), "keys create: " + errNoShow.Error() + "\n" + errSecretNote.Error()},
 		{
 			"a Secret and a sheet",
@@ -264,4 +258,20 @@ func TestSecretChecks(t *testing.T) {
 		Done: func(NoInput, *item, time.Time) string { return "" },
 	}))
 	require.NoError(t, err)
+}
+
+// TestCreatedNote: the owner ends at a semicolon, a name with no owner at a
+// colon, and the last line says what is shown once.
+func TestCreatedNote(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct{ name, owner, what, word, want string }{
+		{"Auth key 9 (ef34gh)", "tag:build, tag:ci", "ephemeral, expires in 1h", "key", "Auth key 9 (ef34gh) for tag:build, tag:ci; ephemeral, expires in 1h.\nThis is the only time the key is shown."},
+		{"API key 3 (vw56xy)", "User 3 (alice)", "expires in 90d", "key", "API key 3 (vw56xy) for User 3 (alice); expires in 90d.\nThis is the only time the key is shown."},
+		{"API key 3 (vw56xy)", "", "expires in 90d", "key", "API key 3 (vw56xy): expires in 90d.\nThis is the only time the key is shown."},
+		{"OAuth client c9f2", "", "scopes devices:core; tags tag:ci", "secret", "OAuth client c9f2: scopes devices:core; tags tag:ci.\nThis is the only time the secret is shown."},
+		{"API key 3 (vw56xy)", "User 3 (alice)", "", "key", "API key 3 (vw56xy) for User 3 (alice).\nThis is the only time the key is shown."},
+	} {
+		require.Equal(t, tt.want, CreatedNote(tt.name, tt.owner, tt.what, tt.word))
+	}
 }

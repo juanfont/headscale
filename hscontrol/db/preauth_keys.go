@@ -77,6 +77,8 @@ type NewPreAuthKey struct {
 	ByToken bool
 	// Created is when the key was made; zero is now.
 	Created time.Time
+	// Maker is the credential that asks for the key; see [holdCredential].
+	Maker uint64
 }
 
 // CreatePreAuthKey creates a new [types.PreAuthKey] in a user, and returns it.
@@ -106,14 +108,17 @@ func CreatePreAuthKeyFrom(tx *gorm.DB, k NewPreAuthKey) (*types.PreAuthKey, *typ
 		return nil, nil, ErrPreAuthKeyNotTaggedOrOwned
 	}
 
+	err := holdCredential(tx, k.Maker)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	var (
 		user   *types.User
 		userID *uint
 	)
 
 	if k.User != nil {
-		var err error
-
 		user, err = GetUserByID(tx, *k.User)
 		if err != nil {
 			return nil, nil, err
@@ -545,7 +550,7 @@ func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 		res := db.Model(&types.Credential{}).
 			Where("kind = ? AND id = ? AND ephemeral = ?", types.CredentialPreAuthKey, id, true).
 			Where("id IN (SELECT auth_key_id FROM nodes WHERE auth_key_id IS NOT NULL)").
-			Update("revoked", gorm.Expr("COALESCE(revoked, ?)", time.Now()))
+			Update("revoked", gorm.Expr("COALESCE(revoked, ?)", revokedNow()))
 		if res.Error != nil {
 			return res.Error
 		}
@@ -596,57 +601,12 @@ func (hsdb *HSDatabase) RevokePreAuthKey(id uint64) error {
 	})
 }
 
-// RevokePreAuthKey soft-revokes a key (the v2 API's DELETE): the row is kept and
-// stays retrievable with its invalid flag set, but the key can no longer
-// authorize nodes. The background collector hard-deletes it after the retention
-// window. Revoking a revoked key keeps its first revoke time and succeeds, as a
-// repeated DELETE does on Tailscale; an unknown id returns [ErrPreAuthKeyNotFound].
+// RevokePreAuthKey soft-revokes a key (the DELETE of /api/v2 and of
+// /api/headscale/v0): it can no longer register a node, and nodes that joined
+// with it stay. See [revokeCredential]; an unknown id returns
+// [ErrPreAuthKeyNotFound].
 func RevokePreAuthKey(tx *gorm.DB, id uint64) error {
-	res := tx.Model(&types.Credential{}).
-		Where("kind = ? AND id = ?", types.CredentialPreAuthKey, id).
-		Update("revoked", gorm.Expr("COALESCE(revoked, ?)", time.Now()))
-	if res.Error != nil {
-		return res.Error
-	}
-
-	if res.RowsAffected == 0 {
-		return ErrPreAuthKeyNotFound
-	}
-
-	return nil
-}
-
-// DestroyRevokedPreAuthKeysBefore hard-deletes every key revoked before cutoff,
-// returning how many were removed. The background collector calls this to reap
-// soft-revoked keys after the retention window. Keys still referenced by a node
-// are kept, so revoking a key does not change nodes already registered with it.
-func (hsdb *HSDatabase) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, error) {
-	var count int
-
-	err := hsdb.Write(func(tx *gorm.DB) error {
-		var ids []uint64
-
-		err := tx.Model(&types.Credential{}).
-			Where("kind = ? AND revoked IS NOT NULL AND revoked < ?", types.CredentialPreAuthKey, cutoff).
-			Where("id NOT IN (SELECT auth_key_id FROM nodes WHERE auth_key_id IS NOT NULL)").
-			Pluck("id", &ids).Error
-		if err != nil {
-			return err
-		}
-
-		for _, id := range ids {
-			err := DestroyPreAuthKey(tx, id)
-			if err != nil {
-				return err
-			}
-		}
-
-		count = len(ids)
-
-		return nil
-	})
-
-	return count, err
+	return revokeCredential(tx, types.CredentialPreAuthKey, "id = ?", id, ErrPreAuthKeyNotFound)
 }
 
 // UsePreAuthKey atomically marks a [types.PreAuthKey] as used. The UPDATE is

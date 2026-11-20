@@ -27,8 +27,8 @@ var authKeyColumns = table.Columns[clientv0.AuthKey]{
 	{Name: "state", Field: "state", Help: "valid, used, expired or revoked"},
 	{Name: "reusable", Field: "reusable", Default: true, Help: "Whether more than one node may join with the key"},
 	{Name: "ephemeral", Field: "ephemeral", Default: true, Help: "Whether a node that joins is removed some time after it disconnects"},
-	{Name: "expiry", Field: "expiry", Default: true, Ahead: true, Help: "When the key stops working"},
-	{Name: "created", Field: "created", Default: true, Help: "When the key was made"}, //nolint:goconst // a column is named as its field
+	{Name: "expiry", Field: "expiry", Default: true, Ahead: true, Help: "When the key stops working"}, //nolint:goconst // a column is named as its field
+	{Name: "created", Field: "created", Default: true, Help: "When the key was made"},                 //nolint:goconst // a column is named as its field
 	{Name: "description", Field: "description", Help: "What the key is for"},
 }
 
@@ -162,28 +162,20 @@ secret in the field key.`,
 			what = append(what, "expires "+table.Ago(t, now))
 		}
 
-		// The owner ends at a semicolon, so a list of tags and the list of
-		// what the key is do not run together.
-		head := table.Entity("authKey", out.Id, out.Prefix)
-		if owner, _ := command.OwnerName(out.Owner); owner != "" {
-			head += " for " + owner + ";"
-		} else if len(what) > 0 {
-			head += ","
-		}
+		owner, _ := command.OwnerName(out.Owner)
 
-		return strings.TrimSpace(head+" "+strings.Join(what, ", ")) + ".\nThis is the only time the key is shown."
+		return command.CreatedNote(table.Entity("authKey", out.Id, out.Prefix), owner, strings.Join(what, ", "), "key")
 	},
 })
 
-var authKeysDelete = command.New(command.Spec[authKeyIn, clientv0.AuthKey]{
-	Name:  "delete",
+var authKeysDelete = command.NewEnd(command.EndSpec[authKeyIn, clientv0.AuthKey]{
 	Short: "Revoke an auth key",
 	Long: `Revoke an auth key: it stops working at once. Nodes that joined with it
 are not touched. The command asks first; --force does not ask.
 
 The record stays, in the state revoked, so that list --all and get show
 what was stopped. The server removes it after the retention time,
-preauth_keys.revoked_retention, 7 days by default; a retention of 0 keeps
+credentials.revoked_retention, 7 days by default; a retention of 0 keeps
 it, and so does a node that still refers to the key. Deleting a revoked key
 succeeds and changes nothing, and does not ask.
 
@@ -194,48 +186,12 @@ removal, the time its record is removed; nothing when that read fails.`,
 		"headscale auth keys rm ab12cd --force",
 		"headscale auth keys delete 7 --force -o json | jq -r .removal",
 	},
-	Aliases: []string{"rm"},
-	Confirm: func(_ command.Ctx, in authKeyIn) (command.Prompt, error) {
-		if in.Key.Revoked.IsSpecified() && !in.Key.Revoked.IsNull() {
-			return command.Prompt{}, nil
-		}
-
-		return command.Prompt{Question: "Delete " + authKey(in.Key) + ", " + command.Owned(in.Key.Owner) + "?", Action: "delete " + authKey(in.Key)}, nil
+	Target: func(in authKeyIn) clientv0.AuthKey { return in.Key },
+	Of: func(k clientv0.AuthKey) command.Ended {
+		return command.Ended{ID: k.Id, Name: authKey(k), Owned: command.Owned(k.Owner), Revoked: k.Revoked, Removal: k.Removal}
 	},
-	Run: func(c command.Ctx, in authKeyIn) (clientv0.AuthKey, error) {
-		err := c.API.DeleteAuthKey(c, in.Key.Id)
-		if err != nil {
-			return clientv0.AuthKey{}, err
-		}
-
-		// The delete has worked; the read of its removal is best effort, and
-		// fails when the CLI revoked the credential it calls with.
-		k, err := c.API.GetAuthKey(c, in.Key.Id)
-		if err != nil {
-			return clientv0.AuthKey{}, command.ErrNotRead
-		}
-
-		return k, nil
-	},
-	Done: func(in authKeyIn, out clientv0.AuthKey, now time.Time) string {
-		s := authKey(in.Key) + " is revoked."
-		if in.Key.Revoked.IsSpecified() && !in.Key.Revoked.IsNull() {
-			s = authKey(in.Key) + " was revoked already."
-		}
-
-		if out.Id == "" {
-			return s
-		}
-
-		removal, err := out.Removal.Get()
-
-		switch {
-		case err != nil:
-			return s + " Its record is kept."
-		case !removal.After(now):
-			return s + " Its record is due for removal."
-		}
-
-		return s + " Its record is removed " + table.Ago(removal, now) + "."
-	},
+	Revoke: func(c command.Ctx, id string) error { return c.API.DeleteAuthKey(c, id) },
+	Get:    func(c command.Ctx, id string) (clientv0.AuthKey, error) { return c.API.GetAuthKey(c, id) },
+	// An auth key lets a node join; no API call is made with one.
+	NeverOwn: true,
 })

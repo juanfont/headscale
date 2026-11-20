@@ -1,4 +1,4 @@
-# headscale: 76 rows: fails 2 pass 57 waits 17
+# headscale: 76 rows: fails 2 pass 60 stretch 2 waits 12
 # model: 76 rows: fails 2 pass 74
 headscale	C01	waits	serve, check, policy
 headscale	C02	pass
@@ -9,7 +9,7 @@ headscale	C06	pass
 headscale	C07	pass
 headscale	C08	pass
 headscale	C09	waits	users delete
-headscale	C10	waits	api oauth-clients create
+headscale	C10	pass
 headscale	C11	pass
 headscale	C12	pass
 headscale	C13	pass
@@ -38,8 +38,8 @@ headscale	N15	waits	check config
 headscale	N16	pass
 headscale	N17	waits	serve
 headscale	N18	pass
-headscale	N19	waits	api oauth-clients create
-headscale	N20	waits	api oauth-clients create
+headscale	N19	stretch	":4\n"
+headscale	N20	stretch	":4\n"
 headscale	N21	pass
 headscale	Q01	pass
 headscale	Q02	pass
@@ -66,7 +66,7 @@ headscale	Q22	pass
 headscale	Q23	pass
 headscale	Q24	pass
 headscale	Q25	pass
-headscale	Q26	waits	api oauth-clients create
+headscale	Q26	pass
 headscale	Q27	pass
 headscale	Q28	pass
 headscale	Q29	pass
@@ -74,7 +74,7 @@ headscale	Q30	pass
 headscale	Q31	pass
 headscale	Q32	pass
 headscale	Q33	pass
-headscale	Q34	waits	api oauth-clients create
+headscale	Q34	pass
 headscale	Q35	pass
 model	C01	pass
 model	C02	pass

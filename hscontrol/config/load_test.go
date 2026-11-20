@@ -3751,7 +3751,7 @@ func compatView(cfg *types.Config) compatConfig {
 			Ephemeral: compatEphemeralConfig(cfg.Node.Ephemeral),
 			Routes:    compatRouteConfig{HA: compatHARouteConfig(cfg.Node.Routes.HA)},
 		},
-		PreAuthKeys:         compatPreAuthKeysConfig(cfg.PreAuthKeys),
+		PreAuthKeys:         compatPreAuthKeysConfig(cfg.Credentials),
 		PrefixV4:            cfg.Prefixes.V4,
 		PrefixV6:            cfg.Prefixes.V6,
 		IPAllocation:        string(cfg.Prefixes.Allocation),

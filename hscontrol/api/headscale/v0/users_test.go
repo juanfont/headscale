@@ -244,7 +244,7 @@ func TestGetUser(t *testing.T) {
 			{ID: strconv.FormatUint(uint64(nodes[0].ID), 10), Name: stored[0].GivenName()},
 			{ID: strconv.FormatUint(uint64(nodes[1].ID), 10), Name: stored[1].GivenName()},
 		},
-		Created: alice.CreatedAt.UTC(),
+		Created: micro(alice.CreatedAt),
 	}, got)
 
 	for _, path := range []string{"999", "abc", "-1", "1.0", "0", "007", "+7", "9223372036854775808", "18446744073709551616"} {
@@ -577,6 +577,11 @@ func TestUpdateUserTokenRule(t *testing.T) {
 			require.Equal(t, []any{}, p.Details["scopes"])
 		})
 	}
+
+	t.Run("token, a field wrong in itself before the rule", func(t *testing.T) {
+		p := decodeProblem(t, patch(t.Context(), alice, `{"email": "x"}`, token), CodeInvalidField)
+		require.Equal(t, []string{"body.email"}, locations(p))
+	})
 
 	t.Run("token may change the display name and the picture", func(t *testing.T) {
 		rec := patch(t.Context(), alice, `{"displayName": "Alice", "profilePicUrl": "https://example.com/a.png"}`, token)

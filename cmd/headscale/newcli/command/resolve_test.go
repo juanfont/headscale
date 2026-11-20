@@ -24,7 +24,7 @@ func TestResolve(t *testing.T) {
 	}
 
 	find2 := func(rows []clientv0.User, word string) (string, error) {
-		u, err := resolve(rows, word, "user", userCandidates(),
+		u, err := resolve(rows, word, word, "user", userCandidates(),
 			func(u clientv0.User) string { return u.Id },
 			func(u clientv0.User) []string { return []string{u.Email, u.Name, u.ProviderId} },
 		)
@@ -33,7 +33,7 @@ func TestResolve(t *testing.T) {
 	}
 
 	find := func(word string) (string, error) {
-		u, err := resolve(users, word, "user", userCandidates(),
+		u, err := resolve(users, word, word, "user", userCandidates(),
 			func(u clientv0.User) string { return u.Id },
 			func(u clientv0.User) []string { return []string{u.Email, u.Name, u.ProviderId} },
 		)
@@ -69,7 +69,6 @@ func TestResolve(t *testing.T) {
 
 	// A word that is a provider identifier says so in the list.
 	_, err = find2(append(slices.Clone(users), clientv0.User{Id: "14", Name: "sub-13", Provider: "local"}), "sub-13")
-	//nolint:dupword // the provider and its identifier are two columns
 	require.EqualError(t, err, `"sub-13" matches 2 users. Use the ID to select one:
 
   ID  NAME    EMAIL  PROVIDER  PROVIDER ID
@@ -77,7 +76,7 @@ func TestResolve(t *testing.T) {
   14  sub-13  -      local     -`)
 
 	both := append(slices.Clone(users), clientv0.User{Id: "20", Name: "x@y.z", Email: "x@y.z"})
-	u, err := resolve(both, "x@y.z", "user", userCandidates(),
+	u, err := resolve(both, "x@y.z", "x@y.z", "user", userCandidates(),
 		func(u clientv0.User) string { return u.Id },
 		func(u clientv0.User) []string { return []string{u.Email, u.Name, u.ProviderId} },
 	)
@@ -119,10 +118,10 @@ func TestMatchAuthKey(t *testing.T) {
 		"9":                            "9",
 		"hskey-auth-legacy-0f1e2d-***": "10",
 	} {
-		w, err := authKeyWord(word)
+		w, err := credentialWord(authKeyTyped(), word)
 		require.NoError(t, err, word)
 
-		k, err := matchAuthKey(keys, w)
+		k, err := matchAuthKey(keys, w, word)
 		require.NoError(t, err, word)
 		require.Equal(t, want, k.Id, word)
 	}
@@ -138,17 +137,55 @@ func TestMatchAuthKey(t *testing.T) {
 		"hskey-api-ab12cd345678-0123456789abcd":  "",
 		"hskey-auth-short":                       "",
 	} {
-		_, err := authKeyWord(word)
+		_, err := credentialWord(authKeyTyped(), word)
 		require.EqualError(t, err, "a key is named by its ID or its prefix, never by the whole key."+want, word)
 	}
 
-	_, err := matchAuthKey(keys, "ffffff")
+	_, err := matchAuthKey(keys, "ffffff", "ffffff")
 	require.EqualError(t, err, `no auth key matches "ffffff".`)
 
-	_, err = matchAuthKey(keys, "dup123")
+	// A secret typed in the masked form is a part that holds the secret:
+	// the message quotes the word as typed, which the edge masks.
+	w, err := credentialWord(authKeyTyped(), "hskey-auth-ab12cd345678-s3cret-***")
+	require.NoError(t, err)
+
+	_, err = matchAuthKey(keys, w, "hskey-auth-ab12cd345678-s3cret-***")
+	require.EqualError(t, err, `no auth key matches "hskey-auth-ab12cd345678-s3cret-***".`)
+	require.Equal(t, `no auth key matches "hskey-auth-***".`, masked(err.Error()))
+
+	_, err = matchAuthKey(keys, "dup123", "dup123")
 	require.EqualError(t, err, `"dup123" matches 2 auth keys. Use the ID to select one:
 
   ID  PREFIX  OWNER   STATE
   11  dup123  alice   valid
   12  dup123  tag:ci  expired`)
+}
+
+// TestCredentialWord: a key reads its masked form, and every kind refuses
+// its whole secret, saying the part that names it; another kind's secret
+// is refused without it.
+func TestCredentialWord(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		k           typed
+		masked, got string
+		whole, want string
+	}{
+		{authKeyTyped(), "hskey-auth-ab12cd-***", "ab12cd", "hskey-auth-ab12cd345678-s3cret", "a key is named by its ID or its prefix, never by the whole key. Its prefix is ab12cd345678."},
+		{apiKeyTyped(), "hskey-api-tr81ys-***", "tr81ys", "hskey-api-tr81ys345678-s3cret", "a key is named by its ID or its prefix, never by the whole key. Its prefix is tr81ys345678."},
+		{oauthClientTyped(), "c9f2aa000000", "c9f2aa000000", "HSKEY-CLIENT-c9f2aa000000-s3cret", "an OAuth client is named by its ID, never by its secret. Its ID is c9f2aa000000."},
+		// No output prints a client in the masked form with its ID, so it
+		// names none.
+		{oauthClientTyped(), "c9f2aa000000", "c9f2aa000000", "hskey-client-c9f2aa000000-***", "an OAuth client is named by its ID, never by its secret. Its ID is c9f2aa000000."},
+		{apiKeyTyped(), "7", "7", "hskey-auth-tr81ys345678-s3cret", "a key is named by its ID or its prefix, never by the whole key."},
+		{oauthClientTyped(), "c9f2aa000000", "c9f2aa000000", "hskey-api-c9f2aa000000-s3cret", "an OAuth client is named by its ID, never by its secret."},
+	} {
+		got, err := credentialWord(tt.k, tt.masked)
+		require.NoError(t, err, tt.masked)
+		require.Equal(t, tt.got, got, tt.masked)
+
+		_, err = credentialWord(tt.k, tt.whole)
+		require.EqualError(t, err, tt.want, tt.whole)
+	}
 }

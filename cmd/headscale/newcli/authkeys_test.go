@@ -70,7 +70,6 @@ const authKeysPath = "/api/headscale/v0/auth-keys"
 
 var authKeys = listAt{authKeysPath, "authKeys"}
 
-//nolint:dupword // a table repeats no and yes
 const allKeysTable = `ID  PREFIX  OWNER   STATE    REUSABLE  EPHEMERAL  EXPIRY  CREATED
 3   zz91aa  alice   revoked  no        no         in 5d   2d ago
 5   kk20bb  bob     expired  yes       no         3d ago  33d ago
@@ -122,14 +121,12 @@ var authKeysListCases = []cliCase{
 	{name: "a filter on state as JSON", args: "auth keys list --filter state=used -o json", want: authKeys.rows(onlyID("6"))},
 	{name: "the columns named, without --all", args: "auth keys list --columns id,state,description", stdout: "ID  STATE  DESCRIPTION\n7   valid  -\n9   valid  CI runners\n"},
 	{name: "the columns named, with --all", args: "auth keys list --all --columns id,prefix", stdout: "ID  PREFIX\n3   zz91aa\n5   kk20bb\n6   mm77cc\n7   ab12cd\n9   ef34gh\n"},
-	//nolint:dupword // a table repeats no and yes
 	{name: "a column added to --all", args: "auth keys list --all --columns +description,-created --filter id>5", stdout: "ID  PREFIX  OWNER   STATE  REUSABLE  EPHEMERAL  EXPIRY  DESCRIPTION\n6   mm77cc  bob     used   no        no         in 2d   -\n7   ab12cd  alice   valid  yes       no         in 23h  -\n9   ef34gh  tag:ci  valid  no        yes        in 6d   CI runners\n"},
 	{name: "the next expiry first", args: "auth keys list --all --sort expiry --columns id,expiry", stdout: "ID  EXPIRY\n5   3d ago\n7   in 23h\n6   in 2d\n3   in 5d\n9   in 6d\n"},
 	{name: "expiring within a week", args: "auth keys ls --filter 'expiry<7d' -o json", want: authKeys.rows(onlyID("7", "9"))},
 	{name: "the state filter of the proposal", args: "auth keys list --filter state=expired --columns id", stdout: "ID\n5\n"},
 	{name: "nothing valid, on a terminal", args: "auth keys list --filter owner=bob", terminal: true, stdout: "No auth keys. --all shows 2 more.\n"},
 	{name: "nothing at all, on a terminal", args: "auth keys list --all --filter owner=tag:build", terminal: true, stdout: "No auth keys.\n"},
-	//nolint:dupword // a column is often named as its field
 	{
 		name: "the columns", args: "auth keys list --list-columns",
 		stdout: `COLUMN       FIELD        KIND   DEFAULT  DESCRIPTION
@@ -248,6 +245,11 @@ var authKeysCreateCases = []cliCase{
 		}),
 	},
 	{
+		name: "tags copied from a table, a space after each comma", args: `auth keys create "tag:ci, tag:build"`, want: created,
+		stderr: "Auth key {id} ({prefix}) for tag:build, tag:ci; expires in 1h.\n" + shownOnce,
+	},
+	{name: "a user with space around it", args: `auth keys create " alice "`, want: created, stderr: "Auth key {id} ({prefix}) for User 3 (alice); expires in 1h.\n" + shownOnce},
+	{
 		name: "until a date", args: "auth keys create tag:ci --expiry 2999-08-27", want: created,
 		// Days counted apart from the table engine, which once read this
 		// date as minus millions of minutes.
@@ -258,16 +260,16 @@ var authKeysCreateCases = []cliCase{
 	},
 	{name: "as JSON, the secret in key and no note", args: "auth keys create tag:ci -o json", want: answer(authKeysPath)},
 	{name: "a user by ID, an expiry as a time", args: "auth keys create 4 -e 2999-08-27T10:00:00Z -o json", want: answer(authKeysPath)},
-	{name: "a user and tags", args: "auth keys create alice,tag:ci", stderr: "Error: a key is owned by one user or by tags, not both.\n", code: 1},
+	{name: "a user and tags", args: "auth keys create alice,tag:ci", stderr: "Error: a key needs one owner: one user, or tags, not both.\n", code: 1},
 	{name: "two users", args: "auth keys create alice,bob", stderr: "Error: a key is owned by one user. Got 2: alice, bob.\n", code: 1},
-	{name: "a tag that is not in the policy", args: "auth keys create tag:serverr --reusable", stderr: "Error: these tags are not in the policy: tag:serverr\n", code: 1},
+	{name: "a tag that is not in the policy", args: "auth keys create tag:serverr --reusable", stderr: "Error: these tags are not in the policy: tag:serverr.\n", code: 1},
 	{name: "a user nobody is", args: "auth keys create alcie", stderr: "Error: no user matches \"alcie\".\n", code: 1},
-	{name: "never", args: "auth keys create alice --expiry never", stderr: "Error: \"never\" is not a valid --expiry: it is a time, a date or a duration such as 90d.\n", code: 1},
+	{name: "never", args: "auth keys create alice --expiry never", stderr: "Error: a key must have an expiry: a time, a date or a duration such as 90d.\n", code: 1},
 	{
 		name: "no upper limit, but a duration has one", args: "auth keys create alice -e 300y",
 		stderr: "Error: \"300y\" is not a valid --expiry: a duration from now is at most 292y; a later time is written as a date, such as 2999-08-27.\n", code: 1,
 	},
-	{name: "now", args: "auth keys create alice --expiry now", stderr: "Error: \"now\" is not a valid --expiry: it is a time, a date or a duration such as 90d.\n", code: 1},
+	{name: "now", args: "auth keys create alice --expiry now", stderr: "Error: a key must have an expiry: a time, a date or a duration such as 90d.\n", code: 1},
 	{name: "no time ahead", args: "auth keys create alice -e 0s", stderr: "Error: \"0s\" is not a valid --expiry: a duration from now is longer than 0.\n", code: 1},
 	{name: "a time in the past", args: "auth keys create alice --expiry 2024-01-01", stderr: "Error: 2024-01-01 00:00 UTC is in the past.\n", code: 1},
 	{
@@ -287,7 +289,7 @@ var authKeysCreateCases = []cliCase{
 		stderr: "Error: the server refused a value:\n  <owner>: no user has this ID\n", code: 1,
 	},
 	{name: "no owner", args: "auth keys create", stderr: "Error: `auth keys create` needs 1 argument, got 0.\n\n  headscale auth keys create <owner>\n", code: 1},
-	{name: "--tags is no flag", args: "auth keys create alice --tags tag:ci", stderr: "Error: unknown flag --tags for `auth keys create`.\nRun `headscale auth keys create --help`.\n", code: 1},
+	{name: "--tags is no flag of it", args: "auth keys create alice --tags tag:ci", stderr: "Error: --tags does not apply to `auth keys create`.\nRun `headscale auth keys create --help`.\n", code: 1},
 	{
 		name: "a token makes a key for its tag", args: "auth keys create tag:ci", setup: withToken([]string{"tag:ci"}, "auth_keys"), env: tokenEnv, want: created,
 		stderr: "Auth key {id} ({prefix}) for tag:ci; expires in 1h.\n" + shownOnce,
@@ -298,8 +300,8 @@ var authKeysCreateCases = []cliCase{
 	},
 	{
 		name: "a token and a tag it does not own", args: "auth keys create tag:build", setup: withToken([]string{"tag:ci"}, "auth_keys"), env: tokenEnv,
-		stderr: "Error: this credential may not do that.\nAn OAuth access token gives, takes and makes keys for only tags it holds or owns, " +
-			"and changes only a node whose tags are all its own; an API key may give any tag of the policy.\n", code: 1,
+		stderr: "Error: this credential may not do that.\nAn OAuth access token gives a key or an OAuth client only tags it holds or owns; " +
+			"an API key may give any tag of the policy.\n", code: 1,
 	},
 	{
 		name: "a token and a user", args: "auth keys create alice", setup: withToken([]string{"tag:ci"}, "auth_keys", "users:read"), env: tokenEnv,
@@ -409,62 +411,4 @@ func TestAuthKeysDelete(t *testing.T) {
 	t.Parallel()
 
 	runCases(t, keyring, authKeysDeleteCases)
-}
-
-// TestAuthKeySecretOnce: the secret of a new key is on the create's stdout
-// and in its -o json, and in nothing else: no other output of any command,
-// typed into any place of a line, no request the CLI sends, and not the
-// create's stderr. The secret holds a dash, as keys of 0.28 and 0.29 can.
-func TestAuthKeySecretOnce(t *testing.T) {
-	t.Parallel()
-
-	f := newFixture(t, false)
-	keyring(t, f)
-
-	r := f.run(t, cliCase{args: "auth keys create alice --reusable -d ci"})
-	require.Equal(t, 0, r.code, r.stderr)
-
-	k := created(t, f, r)
-	secret := strings.TrimSpace(strings.TrimPrefix(k, "hskey-auth-"+f.vars["prefix"]+"-"))
-	require.Len(t, secret, 64)
-	require.Equal(t, "hskey-auth-"+f.vars["prefix"]+"-"+secret+"\n", r.stdout, "stdout is the key alone")
-	require.NotContains(t, r.stderr, secret)
-
-	// A key with a dash in its secret, as one made before 0.30.
-	f.vars["dashed"] = "hskey-auth-" + f.vars["prefix"] + "-" + secret[:20] + "-" + secret[21:]
-	upper := strings.ToUpper(f.vars["key"])
-
-	for _, args := range []string{
-		"auth keys list", "auth keys list --all", "auth keys list --all -o json", "auth keys list --columns id,prefix,description",
-		"auth keys list --list-columns", "auth keys list --list-columns -o json",
-		"auth keys get {prefix}", "auth keys get {id} -o json", "auth keys get {key}", "auth keys get {dashed}", "auth keys get " + upper,
-		"auth keys get hskey-auht-{prefix}-" + secret, "auth keys get hskey-auth-{prefix}-***", "auth keys get hskey-auth-000000000000-" + secret,
-		"auth keys delete {key}", "auth keys delete {dashed} --force", "auth keys delete {key} --force -o json",
-		"auth keys create alice,bob -d " + secret, "auth keys create {key}", "auth keys create {dashed}", "auth keys create alice,{key}", "auth keys create tag:ci,{key}",
-		"auth keys list --filter owner={key}", "auth keys list --filter description={key}", "auth keys list --columns {key}",
-		"nodes get {key}", "users get {key}", "auth keys {key}", "auth keys get --{key}", "auth keys get {id} --{key}",
-		"auth keys --help", "auth keys create --help",
-		"auth keys delete {id} --force", "auth keys list --filter id={id} --all",
-	} {
-		r := f.run(t, cliCase{args: args})
-		require.NotContains(t, r.stdout, secret, args)
-		require.NotContains(t, r.stderr, secret, args)
-		require.NotContains(t, strings.ToLower(r.stdout+r.stderr), strings.ToLower(secret[21:]), args)
-
-		for _, req := range r.sent {
-			require.NotContains(t, req, secret, "%s: a request", args)
-			require.NotContains(t, req, secret[21:], "%s: a request", args)
-		}
-
-		for path, bodies := range r.answers {
-			for _, b := range bodies {
-				require.NotContains(t, string(b), secret, "%s: the answer of %s", args, path)
-			}
-		}
-	}
-
-	r = f.run(t, cliCase{args: "auth keys create tag:ci -o json"})
-	require.Equal(t, 0, r.code, r.stderr)
-	require.Contains(t, r.stdout, `"key": "hskey-auth-`, "-o json has the secret in key")
-	require.Empty(t, r.stderr, "-o json prints no note")
 }

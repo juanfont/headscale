@@ -710,17 +710,17 @@ func TestNodesUpdateClient(t *testing.T) {
 var routesCases = []cliCase{
 	{
 		name: "only nodes with routes, exit as a word", args: "nodes routes list",
-		stdout: "ID  NAME     ENABLED     ADVERTISED                  SERVING\n12  mynode   10.0.0.0/8  10.0.0.0/8, 192.168.0.0/24  10.0.0.0/8\n14  gateway  exit        exit                        exit\n", //nolint:dupword // exit in three columns
+		stdout: "ID  NAME     ENABLED     ADVERTISED                  SERVING\n12  mynode   10.0.0.0/8  10.0.0.0/8, 192.168.0.0/24  10.0.0.0/8\n14  gateway  exit        exit                        exit\n",
 	},
 	{
 		name: "a terminal stacks the routes", args: "nodes routes list", terminal: true, width: 80, env: []string{"NO_COLOR=1"},
-		stdout: "ID  NAME     ENABLED     ADVERTISED      SERVING\n12  mynode   10.0.0.0/8  10.0.0.0/8      10.0.0.0/8\n                         192.168.0.0/24\n14  gateway  exit        exit            exit\n", //nolint:dupword // exit in three columns
+		stdout: "ID  NAME     ENABLED     ADVERTISED      SERVING\n12  mynode   10.0.0.0/8  10.0.0.0/8      10.0.0.0/8\n                         192.168.0.0/24\n14  gateway  exit        exit            exit\n",
 	},
 	{name: "one node", args: "nodes routes list mynode", stdout: "ID  NAME    ENABLED     ADVERTISED                  SERVING\n12  mynode  10.0.0.0/8  10.0.0.0/8, 192.168.0.0/24  10.0.0.0/8\n"},
 	{name: "one node as JSON", args: "nodes routes list mynode -o json", want: nodes.rows(onlyID("12"))},
 	{name: "JSON is the nodes with routes", args: "nodes routes list -o json", want: nodes.rows(onlyID("12", "14"))},
 	{name: "an unknown node is an error", args: "nodes routes list nope", stderr: "Error: no node matches \"nope\".\n", code: 1},
-	{name: "a filter on exit", args: "nodes routes ls --filter enabled-routes=exit", stdout: "ID  NAME     ENABLED  ADVERTISED  SERVING\n14  gateway  exit     exit        exit\n"}, //nolint:dupword // exit in three columns
+	{name: "a filter on exit", args: "nodes routes ls --filter enabled-routes=exit", stdout: "ID  NAME     ENABLED  ADVERTISED  SERVING\n14  gateway  exit     exit        exit\n"},
 	{name: "the real prefix in a filter", args: "nodes routes list --filter enabled-routes=::/0 --columns id", stdout: "ID\n14\n"},
 	{name: "two arguments", args: "nodes routes list 12 13", stderr: "Error: `nodes routes list` takes at most 1 argument, got 2.\n\n  headscale nodes routes list [node]\n", code: 1},
 	{
@@ -854,7 +854,7 @@ tag:test     0      yes
 		name: "an empty list", args: "nodes tags set 13 ''",
 		stderr: "Error: the tag list is empty. A tagged node needs at least one tag.\n", code: 1,
 	},
-	{name: "a tag the policy does not name", args: "nodes tags set 13 tag:serverr", stderr: "Error: these tags are not in the policy: tag:serverr\n", code: 1},
+	{name: "a tag the policy does not name", args: "nodes tags set 13 tag:serverr", stderr: "Error: these tags are not in the policy: tag:serverr.\n", code: 1},
 	{name: "-o json", args: "nodes tags set 13 tag:ci -o json", want: answer(nodesPath + "/13/tags")},
 	{
 		name: "a tagged node that became a user's while the CLI read it: asked on the new state", args: "nodes tags set builder tag:ci", terminal: true, stdin: "y\n",
@@ -881,7 +881,7 @@ tag:test     0      yes
 			f.vars["token"] = f.taggedToken(tb, []string{"tag:ci"}, "devices:core")
 		},
 		env: []string{"HEADSCALE_CLI_ADDRESS={url}", "HEADSCALE_CLI_API_KEY={token}"},
-		stderr: "Error: this credential may not do that.\nAn OAuth access token gives, takes and makes keys for only tags it holds or owns, " +
+		stderr: "Error: this credential may not do that.\nAn OAuth access token gives and takes only tags it holds or owns, " +
 			"and changes only a node whose tags are all its own; an API key may give any tag of the policy.\n", code: 1,
 	},
 }

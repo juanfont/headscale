@@ -59,11 +59,23 @@ type NowNever struct{}
 
 func (NowNever) Words() []string { return []string{"now", "never"} }
 
-// NoWords are the words of an expiry that takes a time alone, such as a
-// key's: never and now are words it refuses, as any other word.
+// NoWords are the words of an expiry that takes a time alone, a key's:
+// never and now are words it refuses, with the rule that it breaks.
 type NoWords struct{}
 
 func (NoWords) Words() []string { return nil }
+
+// Noun is what must expire. shortcut: every expiry with no words is a
+// key's; another thing that must expire gets a W of its own with its noun.
+func (NoWords) Noun() string { return "key" }
+
+// mustExpireError is now or never given to an expiry that takes neither: the
+// sentence names the rule and what to give, so it is the whole error.
+type mustExpireError struct{ noun string }
+
+func (e *mustExpireError) Error() string {
+	return "a " + e.noun + " must have an expiry: a time, a date or a duration such as 90d."
+}
 
 // Expiry is the value of an expiry flag, read by the one time parser of
 // the CLI: a time, a date at midnight UTC, a duration from now, or one of
@@ -87,6 +99,10 @@ func (e *Expiry[W]) UnmarshalText(b []byte) error {
 		*e = Expiry[W]{word: s}
 
 		return nil
+	}
+
+	if n, ok := any(w).(interface{ Noun() string }); ok && slices.Contains(NowNever{}.Words(), s) {
+		return &mustExpireError{n.Noun()}
 	}
 
 	d, t, ahead, err := table.ReadTime(s)
@@ -187,13 +203,26 @@ func (o Owner) Tags() []string { return o.tags }
 func findOwner(ctx context.Context, word string) (Owner, error) {
 	var tags, users []string
 
-	for w := range strings.SplitSeq(word, ",") {
+	// Space around an item is dropped, as in every list.
+	items := strings.Split(word, ",")
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+
+	for _, w := range items {
 		switch {
-		case w == "" && word == "":
+		case w == "" && len(items) == 1:
 			return Owner{}, emptyWord("owner")
 		case w == "":
 			return Owner{}, &lookupError{text: "the owner list has an empty item."}
 		case strings.HasPrefix(w, "tag:"):
+			// A tag is sent as it is typed, so it is held to the rule on
+			// the way in; a user is only looked up.
+			err := typedCredential(textField{word: "<owner>"}, w)
+			if err != nil {
+				return Owner{}, err
+			}
+
 			tags = append(tags, w)
 		default:
 			users = append(users, table.Visible(w, ""))
@@ -202,14 +231,14 @@ func findOwner(ctx context.Context, word string) (Owner, error) {
 
 	switch {
 	case len(users) > 0 && len(tags) > 0:
-		return Owner{}, &lookupError{text: "a key is owned by one user or by tags, not both."}
+		return Owner{}, &lookupError{text: "a key needs one owner: one user, or tags, not both."}
 	case len(users) > 1:
 		return Owner{}, &lookupError{text: "a key is owned by one user. Got " + strconv.Itoa(len(users)) + ": " + strings.Join(users, ", ") + "."}
 	case len(tags) > 0:
 		return Owner{tags: tags}, nil
 	}
 
-	u, err := findUser(ctx, word)
+	u, err := findUser(ctx, items[0])
 
 	return Owner{user: u}, err
 }

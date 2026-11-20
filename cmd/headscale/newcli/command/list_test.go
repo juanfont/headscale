@@ -67,9 +67,7 @@ func TestListFlags(t *testing.T) {
 		{line: "items list --filter id=9", stdout: "ID  NAME\n"},
 		{line: "items list --filter id=9", screen: true, stdout: "No items.\n"},
 		{line: "items list --filter id=9 -o json", screen: true, stdout: "[]\n"},
-		//nolint:dupword // a column is often named as its field
 		{line: "items list --list-columns", stdout: "COLUMN  FIELD  KIND  DEFAULT  DESCRIPTION\nid      id     id    yes\nname    name   text  yes\n"},
-		//nolint:dupword // a column is often named as its field
 		{line: "items list --list-columns x", stdout: "COLUMN  FIELD  KIND  DEFAULT  DESCRIPTION\nid      id     id    yes\nname    name   text  yes\n"},
 		{
 			line:   "items ls --list-columns -o json",

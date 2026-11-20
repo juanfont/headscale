@@ -367,3 +367,161 @@ func TestCredentialKindsAreIsolated(t *testing.T) {
 	_, err = db.AuthenticateAPIKey(apiKeyPrefix + pakRest)
 	require.ErrorIs(t, err, ErrAPIKeyNotFound)
 }
+
+// TestAPIKeyLastSeen: a use is recorded, in UTC to the microsecond, and at
+// most once in apiKeyLastSeenEvery, so a busy key does not write each
+// request. A refused key records nothing.
+func TestAPIKeyLastSeen(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	secret, key, err := db.CreateAPIKey(nil)
+	require.NoError(t, err)
+
+	seen := func() *time.Time {
+		c, err := db.GetAPIKeyCredential(key.ID)
+		require.NoError(t, err)
+
+		return c.LastSeen
+	}
+
+	setSeen := func(at time.Time) {
+		require.NoError(t, db.DB.Model(&types.Credential{}).Where("id = ?", key.ID).Update("last_seen", at).Error)
+	}
+
+	require.Nil(t, seen(), "never used")
+
+	before := time.Now()
+	_, err = db.AuthenticateAPIKey(secret)
+	require.NoError(t, err)
+
+	first := seen()
+	require.NotNil(t, first)
+	require.False(t, first.Before(before.Truncate(time.Microsecond)))
+	require.Zero(t, first.Nanosecond()%int(time.Microsecond))
+
+	recent := time.Now().Add(-apiKeyLastSeenEvery / 2).UTC().Truncate(time.Microsecond)
+	setSeen(recent)
+
+	ok, err := db.ValidateAPIKey(secret)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, recent.Equal(*seen()), "a use within the interval writes nothing")
+
+	setSeen(time.Now().Add(-2 * apiKeyLastSeenEvery).UTC())
+
+	_, err = db.AuthenticateAPIKey(secret)
+	require.NoError(t, err)
+	require.True(t, seen().After(recent), "an older use is written again")
+
+	stale := time.Now().Add(-2 * apiKeyLastSeenEvery).UTC().Truncate(time.Microsecond)
+	setSeen(stale)
+	require.NoError(t, db.RevokeAPIKey(key.ID))
+
+	_, err = db.AuthenticateAPIKey(secret)
+	require.ErrorIs(t, err, ErrAPIKeyRevoked)
+	require.True(t, stale.Equal(*seen()), "a refused key is not a use")
+}
+
+// TestAPIKeyUseWaitsForAnEnd: a revoke or an expiry of a key that has not
+// committed holds the write of the key's use, which then refuses the key: no
+// request comes out of authentication valid after the end answered.
+func TestAPIKeyUseWaitsForAnEnd(t *testing.T) {
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		for _, end := range []struct {
+			name string
+			hold func(tx *gorm.DB, id uint64) error
+			want error
+		}{
+			{"revoke", func(tx *gorm.DB, id uint64) error {
+				return revokeCredential(tx, types.CredentialAPIKey, "id = ?", id, ErrAPIKeyNotFound)
+			}, ErrAPIKeyRevoked},
+			{"expire", func(tx *gorm.DB, id uint64) error {
+				return tx.Model(&types.Credential{}).Where("id = ?", id).Update("expiration", time.Now().Add(-time.Second)).Error
+			}, ErrAPIKeyExpired},
+		} {
+			secret, key, err := db.CreateAPIKey(new(time.Now().Add(time.Hour)))
+			require.NoError(t, err)
+
+			err = whileHeld(t, db,
+				func(tx *gorm.DB) error { return end.hold(tx, key.ID) },
+				func() error {
+					_, err := db.AuthenticateAPIKey(secret)
+
+					return err
+				})
+			require.ErrorIs(t, err, end.want, end.name)
+		}
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
+}
+
+// TestCredentialTimesInAnyZone: a key near its expiry authenticates as its
+// instant says, and the removal takes what was revoked before its cutoff,
+// whatever the server's zone and whatever offset a time was stored with.
+// SQLite compares stored times as text, so a time compared in SQL with
+// another offset is off by the difference.
+func TestCredentialTimesInAnyZone(t *testing.T) {
+	zones := map[string]*time.Location{
+		"UTC":   time.UTC,
+		"east":  time.FixedZone("east", 9*60*60),
+		"west":  time.FixedZone("west", -5*60*60),
+		"south": time.FixedZone("south", -(3*60+30)*60),
+	}
+
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		local := time.Local //nolint:gosmopolitan // the server's zone is what the test varies
+
+		t.Cleanup(func() { time.Local = local }) //nolint:gosmopolitan // the server's zone is what the test varies
+
+		for serverName, server := range zones {
+			for storedName, stored := range zones {
+				time.Local = server //nolint:gosmopolitan // the server's zone is what the test varies
+				name := "server " + serverName + ", stored " + storedName
+
+				soon, _, err := db.CreateAPIKey(new(time.Now().Add(30 * time.Minute).In(stored)))
+				require.NoError(t, err)
+
+				_, err = db.AuthenticateAPIKey(soon)
+				require.NoError(t, err, "%s: expires in 30 minutes", name)
+
+				gone, _, err := db.CreateAPIKey(new(time.Now().Add(-30 * time.Minute).In(stored)))
+				require.NoError(t, err)
+
+				_, err = db.AuthenticateAPIKey(gone)
+				require.ErrorIs(t, err, ErrAPIKeyExpired, "%s: expired 30 minutes ago", name)
+			}
+
+			time.Local = server //nolint:gosmopolitan // the server's zone is what the test varies
+
+			_, key, err := db.CreateAPIKey(nil)
+			require.NoError(t, err)
+			require.NoError(t, db.RevokeAPIKey(key.ID))
+
+			removed, err := db.DestroyRevokedCredentialsBefore(time.Now().Add(-30 * time.Minute))
+			require.NoError(t, err)
+			require.Zero(t, removed, "server %s: revoked after the cutoff", serverName)
+
+			removed, err = db.DestroyRevokedCredentialsBefore(time.Now().Add(30 * time.Minute))
+			require.NoError(t, err)
+			require.Equal(t, int64(1), removed, "server %s: revoked before the cutoff", serverName)
+		}
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
+}

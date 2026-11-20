@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/scope"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	tsset "tailscale.com/util/set"
 )
@@ -46,15 +47,9 @@ const (
 // Schema is registered once and referred to, so a client has one type for
 // it, not one for each object that holds it.
 func (AuthKeyState) Schema(r huma.Registry) *huma.Schema {
-	const name = "AuthKeyState"
-
-	r.Map()[name] = &huma.Schema{
-		Type:        huma.TypeString,
-		Enum:        []any{string(AuthKeyValid), string(AuthKeyUsed), string(AuthKeyExpired), string(AuthKeyRevoked)},
-		Description: "revoked wins over used, which wins over expired; used is a single-use key that a node took. A client must accept a value it does not know.",
-	}
-
-	return &huma.Schema{Ref: "#/components/schemas/" + name}
+	return stateSchema(r, "AuthKeyState",
+		"revoked wins over used, which wins over expired; used is a single-use key that a node took. A client must accept a value it does not know.",
+		string(AuthKeyValid), string(AuthKeyUsed), string(AuthKeyExpired), string(AuthKeyRevoked))
 }
 
 // CreatedAuthKey is the answer to a create: the key and its secret.
@@ -80,13 +75,30 @@ type CreateAuthKeyBody struct {
 	Description Optional[string]    `doc:"Free text for people, such as what the key is for."                                                             json:"description,omitzero" maxLength:"50"`
 }
 
+func (b *CreateAuthKeyBody) problem() *Problem {
+	switch {
+	case b.UserID.Set && b.Tags.Set:
+		return newProblem(CodeOwnerConflict, "Send userId or tags, not both.")
+	case !b.UserID.Set && !b.Tags.Set:
+		return newProblem(CodeOwnerConflict, "Send userId, or at least one tag.")
+	case b.Tags.Set && len(b.Tags.Value) == 0:
+		return newProblem(CodeTagsRequired, "A key for tags needs at least one tag.")
+	case !b.Expiry.Set:
+		return newProblem(CodeExpiryRequired, "Send an expiry; a key has one.")
+	case !b.Expiry.Value.After(time.Now()):
+		return newProblem(CodeExpiryInPast, "The expiry must be in the future.")
+	}
+
+	return nil
+}
+
 func (b *CreateAuthKeyBody) fieldErrors() []FieldError {
 	var errs []FieldError
 
 	if b.UserID.Set {
 		_, err := pathID[types.UserID](b.UserID.Value)
 		if err != nil {
-			errs = append(errs, FieldError{Location: "body.userId", Message: "is not a user ID"})
+			errs = append(errs, FieldError{Location: "body.userId", Message: notUserID})
 		}
 	}
 
@@ -113,7 +125,7 @@ const maxAuthKeyBody = 64 << 10
 var tokenCannotCreateKeyForUser = tokenRule{
 	name: "token_cannot_create_key_for_user",
 	why:  "An OAuth access token can make an auth key for tags only, never for a user (userId). Use an API key.",
-	refuses: func(in any) bool {
+	refuses: func(_ *caller, in any) bool {
 		k, ok := in.(*createAuthKeyInput)
 
 		return ok && k.Body.UserID.Set
@@ -161,7 +173,7 @@ func registerAuthKeys(api huma.API, b Backend) {
 			id, err := pathID[types.UserID](in.User)
 			if err != nil {
 				p := newProblem(CodeInvalidField, "A query parameter is not valid.")
-				p.Errors = []FieldError{{Location: "query.user", Message: "is not a user ID"}}
+				p.Errors = []FieldError{{Location: "query.user", Message: notUserID}}
 
 				return nil, p
 			}
@@ -258,23 +270,10 @@ func registerAuthKeys(api huma.API, b Backend) {
 	})
 }
 
-// createAuthKey checks what the request alone shows, then makes the key
-// with the checks that read the policy and the user under the lock of
+// createAuthKey makes the key of a body that is right in itself
+// ([CreateAuthKeyBody.problem]), with the checks that read the policy and the user under the lock of
 // every policy write, so the key is made under the policy that allowed it.
 func (b Backend) createAuthKey(ctx context.Context, body CreateAuthKeyBody) (*createdAuthKeyOutput, error) {
-	switch {
-	case body.UserID.Set && body.Tags.Set:
-		return nil, newProblem(CodeOwnerConflict, "Send userId or tags, not both.")
-	case !body.UserID.Set && !body.Tags.Set:
-		return nil, newProblem(CodeOwnerConflict, "Send userId, or at least one tag.")
-	case body.Tags.Set && len(body.Tags.Value) == 0:
-		return nil, newProblem(CodeTagsRequired, "A key for tags needs at least one tag.")
-	case !body.Expiry.Set:
-		return nil, newProblem(CodeExpiryRequired, "Send an expiry; a key has one.")
-	case !body.Expiry.Value.After(time.Now()):
-		return nil, newProblem(CodeExpiryInPast, "The expiry must be in the future.")
-	}
-
 	c := callerFrom(ctx)
 	token := isToken(ctx)
 	want := slices.Compact(slices.Sorted(slices.Values(body.Tags.Value)))
@@ -283,11 +282,11 @@ func (b Backend) createAuthKey(ctx context.Context, body CreateAuthKeyBody) (*cr
 		Tags:        want,
 		Reusable:    body.Reusable.Value,
 		Ephemeral:   body.Ephemeral.Value,
-		Expiration:  new(body.Expiry.Value.UTC().Truncate(time.Microsecond)),
+		Expiration:  new(micro(body.Expiry.Value)),
 		Description: body.Description.Value,
 		ByToken:     token,
-		// PostgreSQL keeps microseconds; the create answers what a get will.
-		Created: time.Now().UTC().Truncate(time.Microsecond),
+		Created:     micro(time.Now()),
+		Maker:       maker(ctx),
 	}
 
 	if c.credential != nil && c.credential.owner != nil {
@@ -299,12 +298,13 @@ func (b Backend) createAuthKey(ctx context.Context, body CreateAuthKeyBody) (*cr
 		k.User = &id
 	}
 
-	stored, made, err := b.State.CreateAuthKeyIf(k, func() error {
-		if token && !ownsAll(b.State.TagsOwnedByTags(c.tags), want) {
-			return ruleForbidden(&tokenMustOwnTags)
+	stored, made, err := b.State.CreateAuthKeyIf(k, func(pol state.TagPolicy) error {
+		p := b.tokenMayGive(ctx, pol, want)
+		if p != nil {
+			return p
 		}
 
-		p := tagsNotPermitted(b.State, want)
+		p = tagsNotPermitted(pol, want)
 		if p != nil {
 			return p
 		}
@@ -356,7 +356,7 @@ func (b Backend) authKeys(ks []types.PreAuthKey, refs tsset.Set[uint64]) ([]Auth
 
 	for i := range ks {
 		k := ks[i].View()
-		a := authKeyFromView(k, refs.Contains(k.ID()), now, b.Cfg.PreAuthKeys.RevokedRetention)
+		a := authKeyFromView(k, refs.Contains(k.ID()), now, b.Cfg.Credentials.RevokedRetention)
 
 		if id, ok := keyCreator(&ks[i]); ok {
 			if u, ok := users[id]; ok {
@@ -414,9 +414,7 @@ func authKeyFromView(k types.PreAuthKeyView, referenced bool, now time.Time, ret
 		a.State = AuthKeyValid
 	}
 
-	if a.Revoked != nil && retention > 0 && !referenced {
-		a.Removal = new(a.Revoked.Add(retention))
-	}
+	a.Removal = removal(a.Revoked, retention, referenced)
 
 	return a
 }
@@ -428,5 +426,5 @@ func utcOrNil(p interface{ GetOk() (time.Time, bool) }) *time.Time {
 		return nil
 	}
 
-	return new(t.UTC())
+	return new(micro(t))
 }

@@ -424,8 +424,17 @@ func (f *field) split(text string) ([]string, error) {
 		return nil, ErrEmpty
 	}
 
+	// Space around an item is dropped: a list copied from a table, which
+	// joins its items with ", ", reads as it was written.
 	items := strings.Split(text, ",")
-	if slices.Contains(items, "") {
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+
+	switch {
+	case len(items) == 1 && items[0] == "":
+		return nil, ErrEmpty
+	case slices.Contains(items, ""):
 		return nil, ErrEmptyItem
 	}
 

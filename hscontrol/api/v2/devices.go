@@ -14,9 +14,15 @@ import (
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/net/tsaddr"
 )
+
+// tagWriteTries bounds how often a token's tag write of a device is checked
+// again after a change of the device refused it; each refusal is an admin's
+// change that landed in between.
+const tagWriteTries = 3
 
 func init() {
 	registrations = append(registrations, registerDevices, registerDeviceUpdates)
@@ -373,18 +379,48 @@ func registerDevices(api huma.API, b Backend) {
 		// tag exists in policy. SetNodeTags replaces the set, so the token must
 		// also own every tag the device holds; as on Tailscale SaaS, the refusal
 		// then names them all.
-		if tokenTags, isOAuth := principalTags(ctx); isOAuth {
-			current := node.Tags().AsSlice()
-			if len(unownedTags(b, current, tokenTags)) > 0 {
-				return nil, tagsRefused("cannot remove current tags: ", current)
-			}
+		// The checks read the policy; they run under the lock of every policy
+		// write, so the tags are written under the policy that allowed them. A
+		// token's checks read the device, so its write is guarded by the
+		// device's revision; a write that a change of the device refused is
+		// checked again on the device as it is now.
+		var (
+			refused    error
+			nodeChange change.Change
+		)
 
-			if refused := unownedTags(b, in.Body.Tags, tokenTags); len(refused) > 0 {
-				return nil, tagsRefused("", refused)
+		for range tagWriteTries {
+			refused = nil
+
+			_, nodeChange, err = b.State.SetNodeTagsIf(node.ID(), in.Body.Tags, func(pol state.TagPolicy) (string, error) {
+				tokenTags, isOAuth := principalTags(ctx)
+				if !isOAuth {
+					return "", nil
+				}
+
+				now, ok := b.State.GetNodeByID(node.ID())
+				if !ok {
+					return "", nil
+				}
+
+				current := now.Tags().AsSlice()
+				if len(unownedTags(pol, current, tokenTags)) > 0 {
+					refused = tagsRefused("cannot remove current tags: ", current)
+				} else if unowned := unownedTags(pol, in.Body.Tags, tokenTags); len(unowned) > 0 {
+					refused = tagsRefused("", unowned)
+				}
+
+				return now.Revision(), refused
+			})
+			if !errors.Is(err, state.ErrNodeRevisionChanged) {
+				break
 			}
 		}
 
-		_, nodeChange, err := b.State.SetNodeTags(node.ID(), in.Body.Tags)
+		if refused != nil {
+			return nil, refused
+		}
+
 		b.Change(nodeChange)
 
 		if err != nil {

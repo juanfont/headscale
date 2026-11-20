@@ -382,6 +382,57 @@ func TestNoAsStruct(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// policyAnswers are the only functions of the API packages that read the
+// policy's tags from State, each for an answer that shows them. A check
+// before a write reads them from the [state.TagPolicy] that its State …If
+// call hands it under the policy's lock, so that a policy change cannot come
+// between the check and the write.
+var policyAnswers = map[string]string{
+	"TagsOwnedByTags": "headscale/v0.whoAmI",
+	"PolicyTags":      "headscale/v0.registerTags",
+}
+
+// TestPolicyIsReadInTheCheck holds the API packages to [policyAnswers]. It
+// reads the source; a State reached by another name is not seen.
+func TestPolicyIsReadInTheCheck(t *testing.T) {
+	err := filepath.WalkDir("../..", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+
+			ast.Inspect(fn, func(n ast.Node) bool {
+				sel, ok := n.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+
+				owner, isState := sel.X.(*ast.SelectorExpr)
+				// The function is named with its package, from hscontrol/api.
+				where := filepath.ToSlash(filepath.Dir(strings.TrimPrefix(path, "../../"))) + "." + fn.Name.Name
+				if allowed, reads := policyAnswers[sel.Sel.Name]; reads && isState && owner.Sel.Name == "State" && where != allowed {
+					t.Errorf("%s: %s reads State.%s; a check reads the TagPolicy its …If call hands it", path, fn.Name.Name, sel.Sel.Name)
+				}
+
+				return true
+			})
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
+}
+
 // problemFillers are the functions whose arguments become the detail of a
 // problem.
 var problemFillers = []string{"newProblem", "unhealthy", "forbidden"}

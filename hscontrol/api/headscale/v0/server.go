@@ -184,7 +184,7 @@ func whoAmI(b Backend, c *caller) (Me, error) {
 	}
 
 	if cred.expiry != nil {
-		me.Credential.Expiry = new(cred.expiry.UTC())
+		me.Credential.Expiry = new(micro(*cred.expiry))
 	}
 
 	if cred.owner != nil {
