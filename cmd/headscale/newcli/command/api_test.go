@@ -441,6 +441,54 @@ func TestTimeout(t *testing.T) {
 		"The change may have been made: look before you run the command again.")
 }
 
+// TestNotTheAPI: an answer of success that is not JSON, though it carries
+// Headscale-Version, is an error, also for a call that reads no body; a 204
+// has none.
+func TestNotTheAPI(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name, ctype, body string
+		status            int
+		wantErr           bool
+	}{
+		{name: "a page of HTML", ctype: "text/html", body: "<html>hi</html>", status: 200, wantErr: true},
+		{name: "a 201 with no body", status: 201, wantErr: true},
+		{name: "JSON", ctype: "application/json", body: `{"id": "1"}`, status: 201},
+		{name: "a 204", status: 204},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Headscale-Version", "dev")
+
+				if tt.ctype != "" {
+					w.Header().Set("Content-Type", tt.ctype)
+				}
+
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(s.Close)
+
+			a, err := connect(&types.Config{CLI: types.CLIConfig{Address: s.URL, APIKey: "key", Timeout: time.Minute}},
+				Env{Stderr: io.Discard, Version: types.GetVersionInfo()})
+			require.NoError(t, err)
+
+			// A write that reads no body, as debug create-node is.
+			_, err = a.do(func(c *clientv0.Client) (*http.Response, error) { return c.DeleteNode(t.Context(), "3", nil) })
+			if !tt.wantErr {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.EqualError(t, err, "the server at "+strings.TrimPrefix(s.URL, "http://")+" sent an answer this CLI cannot read: it is not JSON.")
+		})
+	}
+}
+
 // TestRedirect: no request follows a redirect, whatever its method and its
 // status, so nothing reaches the host the answer points to; the error names
 // that host by scheme and host only.

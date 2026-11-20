@@ -450,6 +450,13 @@ func (a *API) do(do func(*clientv0.Client) (*http.Response, error)) ([]byte, err
 		return nil, problemOf(resp.StatusCode, body)
 	}
 
+	// Headscale-Version is no proof that the answer is the API's: a page in
+	// front of the server can carry it. Every answer of v0 but a 204 is JSON,
+	// so a call that reads no body cannot take another for success.
+	if resp.StatusCode != http.StatusNoContent && !json.Valid(body) {
+		return nil, &unreadableError{text: "the server at " + a.target + " sent an answer this CLI cannot read: it is not JSON."}
+	}
+
 	return bytes.TrimSpace(body), nil
 }
 
