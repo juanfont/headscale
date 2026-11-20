@@ -2,11 +2,13 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -2755,4 +2757,170 @@ func TestDeleteNodeReturnsPeersOfReplacedSnapshot(t *testing.T) {
 
 	assert.Equal(t, []types.NodeID{4}, store.DeleteNode(2))
 	assert.Empty(t, store.DeleteNode(42), "an unknown node has no peers")
+}
+
+var errStale = errors.New("stale")
+
+// TestNodeStoreGuardedWrites holds UpdateNodeIf and the claimed delete: a
+// check or a revision that refuses writes nothing, a name another node holds
+// is refused unless asked to bump, and a missing or claimed node is
+// ErrNodeNotFound.
+func TestNodeStoreGuardedWrites(t *testing.T) {
+	a, b := createTestNode(1, 1, "alice", "a"), createTestNode(2, 1, "alice", "b")
+	store := NewNodeStore(types.Nodes{&a, &b}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	_, err := store.UpdateNodeIf(1, "", false, func(n *types.Node) error {
+		n.GivenName = "changed"
+
+		return errStale
+	})
+	require.ErrorIs(t, err, errStale)
+
+	got, _ := store.GetNode(1)
+	assert.Equal(t, "a", got.GivenName(), "a refused update writes nothing")
+
+	ran := false
+	_, err = store.UpdateNodeIf(1, "0000000000000000", false, func(*types.Node) error {
+		ran = true
+
+		return nil
+	})
+	require.ErrorIs(t, err, ErrNodeRevisionChanged)
+	assert.False(t, ran, "an old revision does not run the update")
+
+	_, err = store.UpdateNodeIf(1, got.Revision(), false, func(n *types.Node) error {
+		n.GivenName = "b"
+
+		return nil
+	})
+	require.ErrorIs(t, err, ErrGivenNameTaken)
+
+	nv, err := store.UpdateNodeIf(1, got.Revision(), true, func(n *types.Node) error {
+		n.GivenName = "b"
+
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "b-1", nv.GivenName(), "bumped when asked")
+
+	_, err = store.UpdateNodeIf(9, "", false, func(*types.Node) error { return nil })
+	require.ErrorIs(t, err, ErrNodeNotFound)
+
+	_, err = store.BeginDeleteIf(2, "0000000000000000")
+	require.ErrorIs(t, err, ErrNodeRevisionChanged)
+
+	two, _ := store.GetNode(2)
+
+	claimed, err := store.BeginDeleteIf(2, two.Revision())
+	require.NoError(t, err)
+	assert.Equal(t, types.NodeID(2), claimed.ID())
+
+	_, err = store.BeginDeleteIf(2, "")
+	require.ErrorIs(t, err, ErrNodeNotFound, "claimed once")
+
+	_, err = store.UpdateNodeIf(2, "", false, func(*types.Node) error { return nil })
+	require.ErrorIs(t, err, ErrNodeNotFound, "an admin write to a claimed node")
+
+	_, err = store.SetGivenName(2, "renamed")
+	require.ErrorIs(t, err, ErrNodeNotFound, "a rename of a claimed node")
+
+	// What the node reports about itself still lands.
+	store.UpdateNode(2, func(n *types.Node) { n.Hostname = "reported" })
+
+	store.CancelDelete(2)
+
+	back, ok := store.GetNode(2)
+	require.True(t, ok)
+	assert.Equal(t, "reported", back.Hostname())
+	assert.Equal(t, "b", back.GivenName(), "given back with its name")
+
+	_, err = store.UpdateNodeIf(2, "", false, func(*types.Node) error { return nil })
+	require.NoError(t, err, "given back, it takes writes again")
+
+	_, err = store.BeginDeleteIf(2, "")
+	require.NoError(t, err)
+	assert.Equal(t, []types.NodeID{1}, store.DeleteNode(2))
+
+	_, err = store.BeginDeleteIf(2, "")
+	require.ErrorIs(t, err, ErrNodeNotFound)
+}
+
+// TestNodeStoreUpdateIfDeletedInBatch: a guarded update that a delete later
+// in its batch removed is not a success with nothing in it.
+func TestNodeStoreUpdateIfDeletedInBatch(t *testing.T) {
+	a := createTestNode(1, 1, "alice", "a")
+	store := NewNodeStore(types.Nodes{&a}, allowAllPeersFunc, 2, time.Hour)
+
+	store.Start()
+	defer store.Stop()
+
+	errs := make(chan error, 1)
+
+	go func() {
+		_, err := store.UpdateNodeIf(1, "", false, func(*types.Node) error { return nil })
+		errs <- err
+	}()
+
+	// The batch of two runs once both are in, the update first.
+	waitHeldByWriter(t)
+	store.DeleteNode(1)
+
+	require.ErrorIs(t, <-errs, ErrNodeNotFound)
+}
+
+// TestNodeStoreClaimRemovedInBatch: a delete's claim that another delete's
+// removal follows in the same batch is ErrNodeNotFound, never a node that
+// is not there with no error.
+func TestNodeStoreClaimRemovedInBatch(t *testing.T) {
+	a := createTestNode(1, 1, "alice", "a")
+	store := NewNodeStore(types.Nodes{&a}, allowAllPeersFunc, 2, time.Hour)
+
+	store.Start()
+	defer store.Stop()
+
+	errs := make(chan error, 1)
+
+	go func() {
+		nv, err := store.BeginDeleteIf(1, "")
+		if err == nil && !nv.Valid() {
+			err = errors.New("no error and no node") //nolint:err113 // the fault itself
+		}
+
+		errs <- err
+	}()
+
+	// The batch of two runs once both are in, the claim first.
+	waitHeldByWriter(t)
+	store.DeleteNode(1)
+
+	// A claim after the removal is held in TestNodeStoreGuardedWrites.
+	require.ErrorIs(t, <-errs, ErrNodeNotFound)
+}
+
+// waitHeldByWriter waits until a guarded write is queued in the writer's
+// batch, waiting for its result.
+func waitHeldByWriter(t *testing.T) {
+	t.Helper()
+
+	buf := make([]byte, 1<<20)
+
+	require.Eventually(t, func() bool {
+		for g := range strings.SplitSeq(string(buf[:runtime.Stack(buf, true)]), "\n\n") {
+			if strings.Contains(g, "[chan receive") && strings.Contains(g, "(*NodeStore).writeIf(") {
+				return true
+			}
+		}
+
+		return false
+	}, 5*time.Second, time.Millisecond)
+}
+
+func TestWriteIfLabel(t *testing.T) {
+	assert.Equal(t, "update", writeIfLabel(work{op: updateIf}), "an unguarded write keeps its label")
+	assert.Equal(t, "update_if", writeIfLabel(work{op: updateIf, revision: "r"}))
+	assert.Equal(t, "delete_if", writeIfLabel(work{op: beginDelIf}))
+	assert.Equal(t, "delete_cancel", writeIfLabel(work{op: cancelDel}), "a failed delete counts once under delete_if")
 }

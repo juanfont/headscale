@@ -35,6 +35,12 @@ const fallbackGivenName = "node"
 var (
 	ErrGivenNameTaken   = errors.New("given name already in use by another node")
 	ErrGivenNameInvalid = errors.New("given name is not a valid DNS label")
+	// ErrNodeRevisionChanged refuses a write whose revision is no longer
+	// the node's: someone changed the node since it was read.
+	ErrNodeRevisionChanged = errors.New("node changed since its revision was read")
+	// ErrNodeStoreStopped is a guarded write that the stopped store did not
+	// take.
+	ErrNodeStoreStopped = errors.New("node store is stopped")
 )
 
 const (
@@ -43,6 +49,9 @@ const (
 	rebuildPeerMaps = 4
 	setName         = 5
 	updateMulti     = 6
+	updateIf        = 7
+	beginDelIf      = 8
+	cancelDel       = 9
 )
 
 const prometheusNamespace = "headscale"
@@ -130,6 +139,10 @@ type NodeStore struct {
 
 	batchSize    int
 	batchTimeout time.Duration
+
+	// deleting holds the nodes a guarded delete has claimed while their
+	// rows are deleted; only the writer goroutine touches it.
+	deleting map[types.NodeID]struct{}
 }
 
 func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batchTimeout time.Duration) *NodeStore {
@@ -142,6 +155,7 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 		batchSize:    batchSize,
 		batchTimeout: batchTimeout,
 		stopped:      make(chan struct{}),
+		deleting:     map[types.NodeID]struct{}{},
 	}
 	store.data.Store(&snap)
 
@@ -248,6 +262,15 @@ type work struct {
 	// pre, when non-nil, receives each updated node as it was before its
 	// update function ran.
 	pre map[types.NodeID]types.NodeView
+	// For updateIf and beginDelIf: the revision the node must still have;
+	// "" guards nothing.
+	revision string
+	// For updateIf: refuses the write when it returns an error, else its
+	// changes to the copy it is given are stored.
+	check func(*types.Node) error
+	// For updateIf: a name the check sets is bumped when taken, as a
+	// registration's is, rather than refused.
+	bumpName bool
 }
 
 // updateChanges reports whether an in-place update moved a peer-visibility
@@ -481,7 +504,109 @@ func (s *NodeStore) SetGivenName(id types.NodeID, name string) (types.NodeView, 
 		return types.NodeView{}, err
 	}
 
-	return <-w.nodeResult, nil
+	// The view is the node at the end of the batch: a delete later in the
+	// batch, after this write or claim was applied, removed it.
+	nv := <-w.nodeResult
+	if !nv.Valid() && w.op != cancelDel {
+		return types.NodeView{}, ErrNodeNotFound
+	}
+
+	return nv, nil
+}
+
+// UpdateNodeIf runs update on the node inside the writer and stores the
+// result, or writes nothing when update returns an error, which it returns.
+// No other write can come between what update reads and what it stores.
+// When revision is not "", the node must still have it, or the write is
+// [ErrNodeRevisionChanged] and update does not run. A name that update
+// changes is refused with [ErrGivenNameTaken] when another node holds it,
+// unless bumpName, which bumps it as a registration does.
+//
+// Returns [ErrNodeNotFound] when no node has id, a delete has claimed it, or
+// a delete later in the same batch removed it.
+func (s *NodeStore) UpdateNodeIf(
+	id types.NodeID,
+	revision string,
+	bumpName bool,
+	update func(*types.Node) error,
+) (types.NodeView, error) {
+	return s.writeIf(work{op: updateIf, nodeID: id, revision: revision, check: update, bumpName: bumpName})
+}
+
+// BeginDeleteIf claims the node for a delete when it still has revision
+// ("" guards nothing), and returns it. While claimed, every guarded or admin
+// write to it is [ErrNodeNotFound], so the check stays true while the row is
+// deleted; what the node reports about itself still lands. Finish with
+// [NodeStore.DeleteNode], or give it back with [NodeStore.CancelDelete].
+//
+// Returns [ErrNodeNotFound] when no node has id, it is claimed already, or a
+// delete later in the same batch removed it.
+func (s *NodeStore) BeginDeleteIf(id types.NodeID, revision string) (types.NodeView, error) {
+	return s.writeIf(work{op: beginDelIf, nodeID: id, revision: revision})
+}
+
+// CancelDelete gives back a node that [NodeStore.BeginDeleteIf] claimed,
+// unchanged.
+func (s *NodeStore) CancelDelete(id types.NodeID) {
+	_, _ = s.writeIf(work{op: cancelDel, nodeID: id})
+}
+
+// writeIfLabel is the operation label of w in the metrics. An unguarded
+// write keeps the label it had before guards existed, so dashboards keep
+// their series.
+func writeIfLabel(w work) string {
+	switch {
+	case w.op == cancelDel:
+		return "delete_cancel"
+	case w.op == beginDelIf:
+		return "delete_if"
+	case w.revision != "":
+		return "update_if"
+	default:
+		return "update"
+	}
+}
+
+// writeIf queues w, an updateIf, beginDelIf or cancelDel, and waits for its
+// result.
+func (s *NodeStore) writeIf(w work) (types.NodeView, error) {
+	label := writeIfLabel(w)
+
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues(label))
+	defer timer.ObserveDuration()
+
+	w.result = make(chan struct{})
+	w.nodeResult = make(chan types.NodeView, 1)
+	w.errResult = make(chan error, 1)
+
+	nodeStoreQueueDepth.Inc()
+
+	select {
+	case s.writeQueue <- w:
+	case <-s.stopped:
+		nodeStoreQueueDepth.Dec()
+
+		return types.NodeView{}, ErrNodeStoreStopped
+	}
+
+	<-w.result
+	nodeStoreQueueDepth.Dec()
+
+	nodeStoreOperations.WithLabelValues(label).Inc()
+
+	err := <-w.errResult
+	if err != nil {
+		return types.NodeView{}, err
+	}
+
+	// The view is the node at the end of the batch: a delete later in the
+	// batch, after this write or claim was applied, removed it.
+	nv := <-w.nodeResult
+	if !nv.Valid() && w.op != cancelDel {
+		return types.NodeView{}, ErrNodeNotFound
+	}
+
+	return nv, nil
 }
 
 // Start initializes the [NodeStore] and starts processing the write queue.
@@ -615,6 +740,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 			}
 		case del:
 			delete(nodes, w.nodeID)
+			delete(s.deleting, w.nodeID)
 
 			if w.peers != nil {
 				*w.peers = slices.Clone(prev.peersByNode[w.nodeID])
@@ -628,7 +754,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 			electionChanged = true
 		case setName:
 			n, exists := nodes[w.nodeID]
-			if !exists {
+			if _, claimed := s.deleting[w.nodeID]; !exists || claimed {
 				setErrResults[w] = ErrNodeNotFound
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 
@@ -654,6 +780,10 @@ func (s *NodeStore) applyBatch(batch []work) {
 			nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			relationChanged = true
 			electionChanged = true
+		case updateIf, beginDelIf, cancelDel:
+			nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+
+			setErrResults[w] = s.applyGuarded(w, nodes, &relationChanged, &electionChanged)
 		case rebuildPeerMaps:
 			// rebuildPeerMaps doesn't modify nodes, it just forces the snapshot rebuild
 			// below to recalculate peer relationships using the current peersFunc
@@ -710,6 +840,67 @@ func (s *NodeStore) applyBatch(batch []work) {
 			close(w.result)
 		}
 	}
+}
+
+// applyGuarded applies w, an updateIf, beginDelIf or cancelDel, to nodes in
+// the writer, and marks what it moved in relation and election; an error
+// writes nothing.
+func (s *NodeStore) applyGuarded(w *work, nodes map[types.NodeID]types.Node, relation, election *bool) error {
+	if w.op == cancelDel {
+		delete(s.deleting, w.nodeID)
+
+		return nil
+	}
+
+	n, exists := nodes[w.nodeID]
+	if _, claimed := s.deleting[w.nodeID]; !exists || claimed {
+		return ErrNodeNotFound
+	}
+
+	err := revisionIs(&n, w.revision)
+	if err != nil {
+		return err
+	}
+
+	if w.op == beginDelIf {
+		s.deleting[w.nodeID] = struct{}{}
+
+		return nil
+	}
+
+	pre := n
+
+	err = w.check(&n)
+	if err != nil {
+		return err
+	}
+
+	if n.GivenName != pre.GivenName {
+		resolved := resolveGivenName(nodes, n.ID, n.GivenName, s.reservedLabel)
+		if resolved != n.GivenName && !w.bumpName {
+			return ErrGivenNameTaken
+		}
+
+		n.GivenName = resolved
+	}
+
+	nodes[w.nodeID] = n
+
+	moved, elect := updateChanges(&pre, &n)
+	*relation = *relation || moved
+	*election = *election || elect
+
+	return nil
+}
+
+// revisionIs refuses with [ErrNodeRevisionChanged] when n no longer has
+// revision; "" guards nothing.
+func revisionIs(n *types.Node, revision string) error {
+	if revision != "" && n.View().Revision() != revision {
+		return ErrNodeRevisionChanged
+	}
+
+	return nil
 }
 
 // resolveGivenName returns a unique DNS label for the node identified
