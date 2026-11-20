@@ -19,16 +19,7 @@ var traceableSince = time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
 // traceableSince that name no commit. Capture one again with a build of a
 // pushed tscap commit, then delete its entry: a listed file that names a
 // commit, or is gone, fails.
-var untraceable = map[string]bool{
-	"policy/v2/testdata/ssh_results/forwarding/ssh-forwarding-accept-agent.hujson":   true,
-	"policy/v2/testdata/ssh_results/forwarding/ssh-forwarding-accept-default.hujson": true,
-	"policy/v2/testdata/ssh_results/forwarding/ssh-forwarding-accept-local.hujson":   true,
-	"policy/v2/testdata/ssh_results/forwarding/ssh-forwarding-accept-remote.hujson":  true,
-	"policy/v2/testdata/ssh_results/forwarding/ssh-forwarding-check-agent.hujson":    true,
-	"policy/v2/testdata/ssh_results/forwarding/ssh-forwarding-check-default.hujson":  true,
-	"policy/v2/testdata/ssh_results/forwarding/ssh-forwarding-check-local.hujson":    true,
-	"policy/v2/testdata/ssh_results/forwarding/ssh-forwarding-check-remote.hujson":   true,
-}
+var untraceable = map[string]bool{}
 
 var (
 	// toolCommit is tool_version as a build of a commit stamps it.
