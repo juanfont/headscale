@@ -192,3 +192,25 @@ func (c Ctx) lost(id, why string) error {
 
 	return fmt.Errorf("%s\nThe new one, ID %s, works, and nobody holds its secret. Revoke it:\n  %s delete %s", why, id, group, id) //nolint:err113 // a sentence of the CLI
 }
+
+// CreatedNote is the note of a create, on stderr before the secret: the new
+// credential as messages name it, for its owner when it has one, what it
+// is, and that its secret is shown this once, the secret named as word. A
+// semicolon ends the owner, a colon the name with no owner, so the commas
+// of a list do not run into what follows.
+func CreatedNote(name, owner, what, word string) string {
+	s := name
+	if owner != "" {
+		s += " for " + owner
+	}
+
+	switch {
+	case what == "":
+	case owner != "":
+		s += "; " + what
+	default:
+		s += ": " + what
+	}
+
+	return s + ".\nThis is the only time the " + word + " is shown."
+}

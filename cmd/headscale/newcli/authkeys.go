@@ -162,16 +162,9 @@ secret in the field key.`,
 			what = append(what, "expires "+table.Ago(t, now))
 		}
 
-		// The owner ends at a semicolon, so a list of tags and the list of
-		// what the key is do not run together.
-		head := table.Entity("authKey", out.Id, out.Prefix)
-		if owner, _ := command.OwnerName(out.Owner); owner != "" {
-			head += " for " + owner + ";"
-		} else if len(what) > 0 {
-			head += ","
-		}
+		owner, _ := command.OwnerName(out.Owner)
 
-		return strings.TrimSpace(head+" "+strings.Join(what, ", ")) + ".\nThis is the only time the key is shown."
+		return command.CreatedNote(table.Entity("authKey", out.Id, out.Prefix), owner, strings.Join(what, ", "), "key")
 	},
 })
 

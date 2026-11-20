@@ -259,3 +259,19 @@ func TestSecretChecks(t *testing.T) {
 	}))
 	require.NoError(t, err)
 }
+
+// TestCreatedNote: the owner ends at a semicolon, a name with no owner at a
+// colon, and the last line says what is shown once.
+func TestCreatedNote(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct{ name, owner, what, word, want string }{
+		{"Auth key 9 (ef34gh)", "tag:build, tag:ci", "ephemeral, expires in 1h", "key", "Auth key 9 (ef34gh) for tag:build, tag:ci; ephemeral, expires in 1h.\nThis is the only time the key is shown."},
+		{"API key 3 (vw56xy)", "User 3 (alice)", "expires in 90d", "key", "API key 3 (vw56xy) for User 3 (alice); expires in 90d.\nThis is the only time the key is shown."},
+		{"API key 3 (vw56xy)", "", "expires in 90d", "key", "API key 3 (vw56xy): expires in 90d.\nThis is the only time the key is shown."},
+		{"OAuth client c9f2", "", "scopes devices:core; tags tag:ci", "secret", "OAuth client c9f2: scopes devices:core; tags tag:ci.\nThis is the only time the secret is shown."},
+		{"API key 3 (vw56xy)", "User 3 (alice)", "", "key", "API key 3 (vw56xy) for User 3 (alice).\nThis is the only time the key is shown."},
+	} {
+		require.Equal(t, tt.want, CreatedNote(tt.name, tt.owner, tt.what, tt.word))
+	}
+}
