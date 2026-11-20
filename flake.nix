@@ -205,6 +205,9 @@
             ./hscontrol/db/testdata
             ./hscontrol/policy/v2/testdata
           ];
+          # Modules of their own: the whitelist keeps their .go files but
+          # only the root go.mod, so they would join this module.
+          excludeSrc = [ ./docs/proposals/research/spikes ];
         };
         goChecks = {
           build = fc.goBuild (common // { subPackages = [ "cmd/headscale" ]; });
