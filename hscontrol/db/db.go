@@ -405,6 +405,44 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null';
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Who made a node or a credential, apart from its owner: a
+				// tagged node keeps the user who registered it, and a key one
+				// user made for another can say so. Nothing records it today,
+				// so existing rows stay NULL. A user delete nulls it (no
+				// foreign key: nodes come from AutoMigrate on a fresh
+				// database, which would not add one).
+				ID: "202611201200-created-by-user",
+				Migrate: func(tx *gorm.DB) error {
+					return tx.Transaction(func(tx *gorm.DB) error {
+						colType := "integer"
+						if tx.Name() != sqlite.DriverName {
+							colType = "bigint"
+						}
+
+						for _, table := range []any{&types.Node{}, &types.Credential{}} {
+							if tx.Migrator().HasColumn(table, "created_by_user_id") {
+								continue
+							}
+
+							stmt := &gorm.Statement{DB: tx}
+
+							err := stmt.Parse(table)
+							if err != nil {
+								return fmt.Errorf("reading the table of %T: %w", table, err)
+							}
+
+							err = tx.Exec(`ALTER TABLE ` + stmt.Table + ` ADD COLUMN created_by_user_id ` + colType).Error
+							if err != nil {
+								return fmt.Errorf("adding created_by_user_id to %s: %w", stmt.Table, err)
+							}
+						}
+
+						return nil
+					})
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 

@@ -38,7 +38,12 @@ var debugCases = []cliCase{
 		setup:  badNodes,
 		args:   "debug health",
 		stdout: "healthy\n",
-		stderr: "warning: 2 nodes have a name that is not valid.\nwarning: 1 node has a key expiry that is not valid.\n",
+		stderr: "warning: 2 nodes have a name that is not valid.\n  To see them: headscale nodes list --filter problems=node_name_invalid\n" +
+			"warning: 1 node has a key expiry that is not valid.\n  To see them: headscale nodes list --filter problems=node_expiry_invalid\n",
+	},
+	{
+		name: "the command a warning names shows those nodes", setup: badNodes, args: "nodes list --filter problems=node_name_invalid --columns id,problems",
+		stdout: "ID  PROBLEMS\n41  node_name_invalid\n42  node_name_invalid\n",
 	},
 	{name: "with -o json the warnings are in the object only", setup: badNodes, args: "debug health -o json", want: answer("/api/headscale/v0/health")},
 }

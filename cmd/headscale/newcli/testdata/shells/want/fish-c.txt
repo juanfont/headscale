@@ -2,6 +2,7 @@ LINE: headscale |
   api	Authentication towards the headscale API
   completion	Print the completion script of a shell
   debug	A health check and test tools
+  nodes	Manage nodes
   users	Manage users
   version	Print the version
 LINE: headscale ve|
@@ -66,6 +67,7 @@ LINE: headscale -c -o |
   api	Authentication towards the headscale API
   completion	Print the completion script of a shell
   debug	A health check and test tools
+  nodes	Manage nodes
   users	Manage users
   version	Print the version
 LINE: headscale -c x ve|
@@ -74,6 +76,7 @@ LINE: headscale nodez |
   api	Authentication towards the headscale API
   completion	Print the completion script of a shell
   debug	A health check and test tools
+  nodes	Manage nodes
   users	Manage users
   version	Print the version
 LINE: headscale versoin --|
@@ -125,5 +128,138 @@ LINE: headscale --version |
   api	Authentication towards the headscale API
   completion	Print the completion script of a shell
   debug	A health check and test tools
+  nodes	Manage nodes
   users	Manage users
   version	Print the version
+LINE: headscale no|
+  nodes	Manage nodes
+LINE: headscale nodes |
+  delete	Delete a node
+  expire	Log a node out
+  get	Show one node
+  list	List the nodes
+  routes	Manage the routes of a node
+  set	Change the name or expiry of a node
+  tags	Manage the tags of a node
+  update-client	Ask a node to update its Tailscale client
+LINE: headscale nodes routes ap|
+  approve	Replace the enabled routes of a node
+LINE: headscale -c x no|
+  nodes	Manage nodes
+LINE: headscale nodes list --|
+  --columns	Columns to show: a list, or +name and -name to change the default
+  --config	Config file
+  --filter	Keep the rows that match; may be repeated
+  --help	Show this help
+  --list-columns	List the columns, the API field behind each, and exit
+  --output	Output format: json (the API object)
+  --sort	Column to sort by; -name sorts in reverse
+LINE: headscale nodes list -o |
+  json
+LINE: headscale nodes list --columns |
+  advertised-routes
+  auth-key
+  created
+  disco-key
+  enabled-routes
+  ephemeral
+  expiry
+  hostname
+  id
+  ip
+  last-seen
+  machine-key
+  name
+  node-key
+  online
+  os
+  owner
+  problems
+  public-ip
+  register-method
+  serving-routes
+  update-available
+  version
+LINE: headscale nodes list --columns id,na|
+  id,name
+  id,name.
+LINE: headscale nodes list --columns=id,na|
+  --columns=id,name
+  --columns=id,name.
+LINE: headscale nodes list --columns id,|
+  id,advertised-routes
+  id,auth-key
+  id,created
+  id,disco-key
+  id,enabled-routes
+  id,ephemeral
+  id,expiry
+  id,hostname
+  id,ip
+  id,last-seen
+  id,machine-key
+  id,name
+  id,node-key
+  id,online
+  id,os
+  id,owner
+  id,problems
+  id,public-ip
+  id,register-method
+  id,serving-routes
+  id,update-available
+  id,version
+LINE: headscale nodes list --sort la|
+  last-seen
+LINE: headscale nodes list --sort -la|
+  -last-seen
+LINE: headscale nodes list --filter=ow|
+  --filter=owner
+  --filter=owner.
+LINE: headscale nodes list |
+  (none)
+LINE: headscale nodes delete |
+  (none)
+LINE: headscale nodes rm --f|
+  --force	Do not ask
+LINE: headscale nodes list -o=|
+  -o=json
+LINE: headscale nodes list --config |
+  config.yaml
+  policy.hujson
+LINE: headscale nodes list --config=|
+  --config=config.yaml
+  --config=policy.hujson
+LINE: headscale nodes set 12 --name |
+  (none)
+LINE: headscale nodes routes |
+  clear	Remove all enabled routes of a node
+  list	List routes
+  set	Replace the enabled routes of a node
+LINE: headscale nodes list --s|
+  --sort	Column to sort by; -name sorts in reverse
+LINE: headscale nodes list -|
+  --columns	Columns to show: a list, or +name and -name to change the default
+  --config	Config file
+  --filter	Keep the rows that match; may be repeated
+  --help	Show this help
+  --list-columns	List the columns, the API field behind each, and exit
+  --output	Output format: json (the API object)
+  --sort	Column to sort by; -name sorts in reverse
+LINE: headscale nodes list -c|
+  -c	Config file
+LINE: headscale nodes list --bogus --l|
+  --list-columns	List the columns, the API field behind each, and exit
+LINE: headscale nodes list --sort id --s|
+  (none)
+LINE: headscale nodes list --filter id --f|
+  --filter	Keep the rows that match; may be repeated
+LINE: headscale nodes delete o |
+  (none)
+LINE: headscale nodes routes set 12 -- --|
+  (none)
+LINE: headscale nodes list --filter -ow|
+  (none)
+LINE: headscale nodes list --columns id,-ho|
+  id,-hostname
+  id,-hostname.

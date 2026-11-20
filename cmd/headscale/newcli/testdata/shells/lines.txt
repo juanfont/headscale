@@ -50,39 +50,39 @@ headscale users set alice --|
 headscale -h ve|
 headscale --version |
 # Lines of the commands to come
-headscale no|	waits nodes
-headscale nodes |	waits nodes
-headscale nodes routes ap|	waits nodes routes set
-headscale -c x no|	waits nodes
-headscale nodes list --|	waits nodes list
-headscale nodes list -o |	waits nodes list
-headscale nodes list --columns |	waits nodes list
-headscale nodes list --columns id,na|	waits nodes list
-headscale nodes list --columns=id,na|	waits nodes list
-headscale nodes list --columns id,|	waits nodes list
-headscale nodes list --sort la|	waits nodes list
-headscale nodes list --sort -la|	waits nodes list
-headscale nodes list --filter=ow|	waits nodes list
+headscale no|
+headscale nodes |
+headscale nodes routes ap|
+headscale -c x no|
+headscale nodes list --|
+headscale nodes list -o |
+headscale nodes list --columns |
+headscale nodes list --columns id,na|
+headscale nodes list --columns=id,na|
+headscale nodes list --columns id,|
+headscale nodes list --sort la|
+headscale nodes list --sort -la|
+headscale nodes list --filter=ow|
 headscale policy set |	waits policy set
 headscale check config |	waits check config
-headscale nodes list |	waits nodes list
-headscale nodes delete |	waits nodes delete
-headscale nodes rm --f|	waits nodes delete
-headscale nodes list -o=|	waits nodes list
+headscale nodes list |
+headscale nodes delete |
+headscale nodes rm --f|
+headscale nodes list -o=|
 headscale auth keys create alice --tags tag:p|	waits auth keys create
 headscale auth keys create alice --tags tag:ci,tag:p|	waits auth keys create
-headscale nodes list --config |	waits nodes list
-headscale nodes list --config=|	waits nodes list
-headscale nodes set 12 --name |	waits nodes set
-headscale nodes routes |	waits nodes routes set
-headscale nodes list --s|	waits nodes list
-headscale nodes list -|	waits nodes list
-headscale nodes list -c|	waits nodes list
-headscale nodes list --bogus --l|	waits nodes list
+headscale nodes list --config |
+headscale nodes list --config=|
+headscale nodes set 12 --name |
+headscale nodes routes |
+headscale nodes list --s|
+headscale nodes list -|
+headscale nodes list -c|
+headscale nodes list --bogus --l|
 headscale policy set --bogus |	waits policy set
-headscale nodes list --sort id --s|	waits nodes list
-headscale nodes list --filter id --f|	waits nodes list
-headscale nodes delete o |	waits nodes delete
-headscale nodes routes set 12 -- --|	waits nodes routes set
-headscale nodes list --filter -ow|	waits nodes list
-headscale nodes list --columns id,-ho|	waits nodes list
+headscale nodes list --sort id --s|
+headscale nodes list --filter id --f|
+headscale nodes delete o |
+headscale nodes routes set 12 -- --|
+headscale nodes list --filter -ow|
+headscale nodes list --columns id,-ho|

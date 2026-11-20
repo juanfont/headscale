@@ -5,12 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,6 +23,7 @@ import (
 	"github.com/juanfont/headscale/cmdline"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/require"
 )
 
@@ -328,7 +333,7 @@ func TestLookupKeepsItsSentence(t *testing.T) {
 		Item found `arg:"item"`
 	}
 
-	lookup := cmdline.LateReader(func(_ context.Context, word string) (found, error) {
+	lookup := entityOf("item", func(_ context.Context, word string) (found, error) {
 		switch word {
 		case "nope":
 			return found{}, errNoMatch
@@ -337,9 +342,9 @@ func TestLookupKeepsItsSentence(t *testing.T) {
 		}
 
 		return found{ID: word}, nil
-	})
+	}, nil, func(f found) string { return f.ID }, nil)
 
-	tree, err := build("prog", "A program", allowedAliases, []cmdline.Option{lookup}, New(Spec[in, NoOutput]{
+	tree, err := build("prog", "A program", allowedAliases(), []entity{lookup}, New(Spec[in, NoOutput]{
 		Name: "get", Short: "S", Long: "S.", Example: []string{"prog get 1"}, Local: true,
 		Run:  noop[in, NoOutput],
 		Done: func(in in, _ NoOutput, _ time.Time) string { return "got " + in.Item.ID },
@@ -449,4 +454,319 @@ func TestVisibleText(t *testing.T) {
 	_, err := visible{&b}.Write([]byte("Error: \x1b[2J\u202e \\\\x\n\tnext\n"))
 	require.NoError(t, err)
 	require.Equal(t, `Error: \x1b[2J\u202e \\x`+"\n\tnext\n", b.String())
+}
+
+// TestPrompt: a command with Confirm asks on stderr and goes on only on y
+// or yes; no is "Aborted." and exit 1, no terminal is an error that names
+// --force, and --force or a Prompt with no question asks nothing.
+func TestPrompt(t *testing.T) {
+	t.Parallel()
+
+	ask := true
+	tree, err := Build("prog", "A program", New(Spec[getIn, NoOutput]{
+		Name: "delete", Short: "Delete an item", Long: "Delete an item.", Example: []string{"prog delete apple"}, Local: true,
+		Confirm: func(_ Ctx, in getIn) (Prompt, error) {
+			if !ask || in.Name == "pear" {
+				return Prompt{}, nil
+			}
+
+			return Prompt{Question: "Delete Item 1 (" + in.Name + ")?", Action: "delete Item 1 (" + in.Name + ")"}, nil
+		},
+		Run:  func(Ctx, getIn) (NoOutput, error) { return NoOutput{}, nil },
+		Done: func(in getIn, _ NoOutput, _ time.Time) string { return "Item 1 (" + in.Name + ") deleted." },
+	}))
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		name, args, stdin string
+		terminal          bool
+		stdout, stderr    string
+		code              int
+	}{
+		{name: "yes", args: "delete apple", stdin: "y\n", terminal: true, stdout: "Item 1 (apple) deleted.\n", stderr: "Delete Item 1 (apple)? [y/N] "},
+		{name: "yes in words", args: "delete apple", stdin: " YES \n", terminal: true, stdout: "Item 1 (apple) deleted.\n", stderr: "Delete Item 1 (apple)? [y/N] "},
+		{name: "no", args: "delete apple", stdin: "n\n", terminal: true, stderr: "Delete Item 1 (apple)? [y/N] Aborted.\n", code: 1},
+		{name: "enter is no", args: "delete apple", stdin: "\n", terminal: true, stderr: "Delete Item 1 (apple)? [y/N] Aborted.\n", code: 1},
+		{name: "no answer is no", args: "delete apple", terminal: true, stderr: "Delete Item 1 (apple)? [y/N] Aborted.\n", code: 1},
+		{
+			name: "no terminal", args: "delete apple", stdin: "y\n",
+			stderr: "Error: confirmation needed, but there is no terminal.\nRun again with --force to delete Item 1 (apple).\n", code: 1,
+		},
+		{name: "--force asks nothing", args: "delete apple --force", stdout: "Item 1 (apple) deleted.\n"},
+		{name: "--force=false asks", args: "delete --force=false apple", stdin: "y\n", terminal: true, stdout: "Item 1 (apple) deleted.\n", stderr: "Delete Item 1 (apple)? [y/N] "},
+		{name: "a prompt with no question asks nothing", args: "delete pear", stdout: "Item 1 (pear) deleted.\n"},
+		{name: "--force where nothing is asked", args: "delete pear --force", stdout: "Item 1 (pear) deleted.\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var stdout, stderr bytes.Buffer
+
+			code := Run(tree, strings.Fields(tt.args), Env{Stdin: strings.NewReader(tt.stdin), Stdout: &stdout, Stderr: &stderr, Terminal: tt.terminal})
+			require.Equal(t, tt.stdout, stdout.String())
+			require.Equal(t, tt.stderr, stderr.String())
+			require.Equal(t, tt.code, code)
+		})
+	}
+}
+
+// TestRetry: a write the server refuses because the target changed reads
+// the target again by its ID, asks again on what it read after a line that
+// says why, and writes once more with the new revision; a second refusal
+// is the sentence of the refusal. A target whose type has a revision and
+// no read is a tree that does not build.
+func TestRetry(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Node guarded `arg:"node"`
+	}
+
+	// server holds the node; each read of it bumps the revision this many
+	// times first, so the write after it is refused again.
+	type server struct {
+		mu       sync.Mutex
+		rev      int
+		bumps    int
+		gone     bool
+		seen     []string
+		prompted []string
+	}
+
+	start := func(t *testing.T, s *server) string {
+		t.Helper()
+
+		hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+
+			s.seen = append(s.seen, r.Method+" "+r.URL.Path+" "+r.Header.Get("If-Match"))
+			w.Header().Set("Headscale-Version", "dev")
+
+			node := func() string { return fmt.Sprintf(`{"id": "12", "name": "web%d", "revision": "r%d"}`, s.rev, s.rev) }
+
+			switch {
+			case r.Method == http.MethodGet && s.gone:
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"code": "not_found", "status": 404, "title": "Not found", "object": {"kind": "node", "id": "12"}}`))
+			case r.Method == http.MethodGet:
+				_, _ = w.Write([]byte(node()))
+				s.rev += s.bumps
+			case r.Header.Get("If-Match") != fmt.Sprintf(`"r%d"`, s.rev):
+				w.WriteHeader(http.StatusPreconditionFailed)
+				_, _ = fmt.Fprintf(w, `{"code": "precondition_failed", "status": 412, "title": "Precondition failed", "object": {"kind": "node", "id": "12", "name": "web%d"}}`, s.rev)
+			default:
+				_, _ = w.Write([]byte(node()))
+			}
+		}))
+		t.Cleanup(hs.Close)
+
+		return hs.URL
+	}
+
+	read := func(ctx context.Context, id string) (guarded, error) {
+		return call[guarded](ctxOf(ctx).API, func(cl *clientv0.Client) (*http.Response, error) {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, cl.Server+"nodes/"+id, nil)
+			if err != nil {
+				return nil, err
+			}
+
+			return cl.Client.Do(req)
+		})
+	}
+
+	build := func(t *testing.T, s *server, reads bool) (*Tree, error) {
+		t.Helper()
+
+		find := func(_ context.Context, word string) (guarded, error) {
+			return guarded{ID: "12", Name: "web0", Revision: word}, nil
+		}
+
+		e := entityOf("node", find, nil, func(g guarded) string { return g.Name }, read)
+		if !reads {
+			e = entityOf("node", find, nil, func(g guarded) string { return g.Name }, nil)
+		}
+
+		return build("prog", "A program", allowedAliases(), []entity{e}, New(Spec[in, guarded]{
+			Name: "rename", Short: "S", Long: "S.", Example: []string{"prog rename r1"},
+			Confirm: func(_ Ctx, in in) (Prompt, error) {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+
+				s.prompted = append(s.prompted, in.Node.Name)
+
+				return Prompt{Question: "Rename " + in.Node.Name + "?", Action: "rename it"}, nil
+			},
+			Run: func(c Ctx, in in) (guarded, error) {
+				return call[guarded](c.API, func(cl *clientv0.Client) (*http.Response, error) {
+					req, err := http.NewRequestWithContext(c, http.MethodPatch, cl.Server+"nodes/"+in.Node.ID, nil)
+					if err != nil {
+						return nil, err
+					}
+
+					if rev := c.API.ifMatch(in.Node.ID); rev != nil {
+						req.Header.Set("If-Match", *rev)
+					}
+
+					return cl.Client.Do(req)
+				})
+			},
+			Done: func(in in, out guarded, _ time.Time) string { return "renamed " + in.Node.Name + " to " + out.Name },
+		}))
+	}
+
+	tree := func(t *testing.T, s *server) *Tree {
+		t.Helper()
+
+		tr, err := build(t, s, true)
+		require.NoError(t, err)
+
+		return tr
+	}
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	run := func(tree *Tree, url, args, stdin string) (string, string) {
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, strings.Fields(args), Env{
+			Stdin: strings.NewReader(stdin), Stdout: &stdout, Stderr: &stderr, Terminal: true, Version: &types.VersionInfo{Version: "dev"},
+			Environ: []string{"HEADSCALE_CONFIG=" + file, "HEADSCALE_CLI_ADDRESS=" + url, "HEADSCALE_CLI_API_KEY=key"},
+		})
+
+		return stdout.String(), stderr.String()
+	}
+
+	t.Run("changed once: read again, asked again, written", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2}
+		stdout, stderr := run(tree(t, s), start(t, s), "rename r1", "y\nyes\n")
+		require.Equal(t, "Rename web0? [y/N] Node 12 (web0) changed while the question was open.\nRename web2? [y/N] ", stderr)
+		require.Equal(t, "renamed web2 to web2\n", stdout)
+		require.Equal(t, []string{"GET /api/headscale/v0/version ", `PATCH /nodes/12 "r1"`, "GET /nodes/12 ", `PATCH /nodes/12 "r2"`}, s.seen)
+	})
+
+	t.Run("with --force it still reads again, and asks nothing", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2}
+		stdout, stderr := run(tree(t, s), start(t, s), "rename r1 --force", "")
+		require.Empty(t, stderr)
+		require.Equal(t, "renamed web2 to web2\n", stdout)
+		require.Equal(t, []string{"web0", "web2"}, s.prompted)
+		require.Len(t, s.seen, 4)
+	})
+
+	t.Run("no to the second question", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2}
+		stdout, stderr := run(tree(t, s), start(t, s), "rename r1", "y\nn\n")
+		require.Equal(t, "Rename web0? [y/N] Node 12 (web0) changed while the question was open.\nRename web2? [y/N] Aborted.\n", stderr)
+		require.Empty(t, stdout)
+		require.Len(t, s.seen, 3, "no second write")
+	})
+
+	t.Run("it keeps changing", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2, bumps: 1}
+		stdout, stderr := run(tree(t, s), start(t, s), "rename r1 --force", "")
+		require.Equal(t, "Error: Node 12 (web4) changed while the command ran. Run it again.\n", stderr)
+		require.Empty(t, stdout)
+		require.Len(t, s.seen, 4, "one retry, no more")
+	})
+
+	t.Run("gone when read again", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2, gone: true}
+		_, stderr := run(tree(t, s), start(t, s), "rename r1 --force", "")
+		require.Equal(t, "Error: Node 12 (web0) no longer exists.\n", stderr, "the server names no object that is gone; the target has its name")
+	})
+
+	t.Run("a type with a revision and no read does not build", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := build(t, &server{}, false)
+		require.EqualError(t, err, "rename: target command.guarded has a revision and no read: a write the server refuses because the target changed would not run again")
+	})
+}
+
+// TestAbout: a problem of the server gets what the command knows of it. A
+// target that is gone keeps the name the command read; an expiry in the
+// past is the time sent, with the way to expire a node now.
+func TestAbout(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Node   clientv0.Node         `arg:"node"`
+		Expiry Opt[Expiry[NowNever]] `flag:"expiry" help:"x"`
+	}
+
+	ents := map[reflect.Type]entity{}
+	for _, e := range entities() {
+		ents[e.t] = e
+	}
+
+	c := Ctx{entities: ents, now: func() time.Time { return time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC) }}
+	node := clientv0.Node{Id: "12", Name: "mynode"}
+
+	var e Expiry[NowNever]
+	require.NoError(t, e.UnmarshalText([]byte("2024-01-01")))
+
+	problem := func(code clientv0.ProblemCode, o clientv0.ProblemObject) error {
+		p := clientv0.Problem{Code: code, Title: "T"}
+		if o.Id != "" {
+			p.Object = nullable.NewNullableWithValue(o)
+		}
+
+		return fmt.Errorf("wrapped: %w", &ProblemError{Problem: p})
+	}
+
+	for _, tt := range []struct {
+		name string
+		err  error
+		in   in
+		want string
+	}{
+		{"a target that is gone has the name read", problem(clientv0.NotFound, clientv0.ProblemObject{Kind: "node", Id: "12"}), in{Node: node}, "Node 12 (mynode) no longer exists."},
+		{"another object keeps no name", problem(clientv0.NotFound, clientv0.ProblemObject{Kind: "node", Id: "13"}), in{Node: node}, "Node 13 no longer exists."},
+		{"the expiry sent", problem(clientv0.ExpiryInPast, clientv0.ProblemObject{}), in{Node: node, Expiry: cmdline.Some(e)}, "2024-01-01 00:00 UTC is in the past.\nTo expire the node now: headscale nodes expire 12"},
+		{"no expiry sent", problem(clientv0.ExpiryInPast, clientv0.ProblemObject{}), in{Node: node}, "the expiry is in the past."},
+		{"not a problem", errBroken, in{Node: node}, errBroken.Error()},
+	} {
+		require.Equal(t, tt.want, sentence(c.about(tt.err, tt.in)), tt.name)
+	}
+}
+
+// TestValid: Valid refuses a line before any call or lookup, with its own
+// sentence; a line it takes runs.
+func TestValid(t *testing.T) {
+	t.Parallel()
+
+	ran := false
+	tree, err := Build("prog", "A program", New(Spec[getIn, NoOutput]{
+		Name: "get", Short: "Get", Long: "Get.", Example: []string{"prog get a"}, Local: true,
+		Valid: func(in getIn) error {
+			if in.Name != "a" {
+				return errors.New(strconv.Quote(in.Name) + " is not a.") //nolint:err113 // a sentence of the test
+			}
+
+			return nil
+		},
+		Run: func(Ctx, getIn) (NoOutput, error) { ran = true; return NoOutput{}, nil },
+	}))
+	require.NoError(t, err)
+
+	var stderr bytes.Buffer
+
+	require.Equal(t, 1, Run(tree, []string{"get", "b"}, Env{Stdout: io.Discard, Stderr: &stderr}))
+	require.Equal(t, "Error: \"b\" is not a.\n", stderr.String())
+	require.False(t, ran)
+
+	require.Equal(t, 0, Run(tree, []string{"get", "a"}, Env{Stdout: io.Discard, Stderr: io.Discard}))
+	require.True(t, ran)
 }

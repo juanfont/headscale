@@ -1450,3 +1450,87 @@ func TestValidateHostinfo(t *testing.T) {
 		})
 	}
 }
+
+// TestNodeRevision holds what moves the revision of a node: what an admin
+// decides, and nothing the node reports about itself.
+func TestNodeRevision(t *testing.T) {
+	past := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	base := func() *Node {
+		return &Node{
+			ID:             12,
+			GivenName:      "mynode",
+			Hostname:       "ubuntu-vm",
+			UserID:         new(uint(3)),
+			Expiry:         new(time.Date(2027, 2, 7, 10, 0, 0, 0, time.UTC)),
+			ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+		}
+	}
+
+	rev := base().View().Revision()
+	require.Len(t, rev, 16)
+
+	moves := map[string]func(*Node){
+		"owner":           func(n *Node) { n.UserID = new(uint(4)) },
+		"tags":            func(n *Node) { n.UserID, n.Tags = nil, []string{"tag:ci"} },
+		"approved routes": func(n *Node) { n.ApprovedRoutes = nil },
+		"name":            func(n *Node) { n.GivenName = "web-1" },
+		"expiry":          func(n *Node) { n.Expiry = new(n.Expiry.Add(time.Second)) },
+		"expiry off":      func(n *Node) { n.KeyExpiryDisabled = true },
+		"expiry gone":     func(n *Node) { n.Expiry = nil },
+		// A time outside the years 0 to 9999 still has a revision.
+		"expiry out of range": func(n *Node) { n.Expiry = new(time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)) },
+	}
+	for name, change := range moves {
+		n := base()
+		change(n)
+		assert.NotEqual(t, rev, n.View().Revision(), name)
+	}
+
+	stays := map[string]func(*Node){
+		"hostname":  func(n *Node) { n.Hostname = "other" },
+		"last seen": func(n *Node) { n.LastSeen = &past },
+		"online":    func(n *Node) { n.IsOnline = new(true) },
+		"endpoints": func(n *Node) { n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("1.2.3.4:41641")} },
+		"hostinfo":  func(n *Node) { n.Hostinfo = &tailcfg.Hostinfo{OS: "linux"} },
+	}
+	for name, change := range stays {
+		n := base()
+		change(n)
+		assert.Equal(t, rev, n.View().Revision(), name)
+	}
+
+	twoRoutes := func(routes ...string) string {
+		n := base()
+		n.ApprovedRoutes = nil
+
+		for _, r := range routes {
+			n.ApprovedRoutes = append(n.ApprovedRoutes, netip.MustParsePrefix(r))
+		}
+
+		return n.View().Revision()
+	}
+	assert.Equal(t, twoRoutes("10.0.0.0/8", "192.168.0.0/24"), twoRoutes("192.168.0.0/24", "10.0.0.0/8"), "route order")
+
+	// The time behind the switch is not what clients are sent.
+	off := base()
+	off.KeyExpiryDisabled = true
+	offMoved := base()
+	offMoved.KeyExpiryDisabled = true
+	offMoved.Expiry = &past
+	assert.Equal(t, off.View().Revision(), offMoved.View().Revision())
+
+	// With no time stored, the switch still shows, so it still moves.
+	noTime := base()
+	noTime.Expiry = nil
+	noTimeOff := base()
+	noTimeOff.Expiry = nil
+	noTimeOff.KeyExpiryDisabled = true
+	assert.NotEqual(t, noTime.View().Revision(), noTimeOff.View().Revision(), "switch with no time")
+
+	// What a database keeps: below a microsecond does not count.
+	fine := base()
+	fine.Expiry = new(fine.Expiry.Add(999 * time.Nanosecond))
+	assert.Equal(t, rev, fine.View().Revision(), "nanoseconds")
+
+	assert.Empty(t, NodeView{}.Revision())
+}

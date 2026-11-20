@@ -3,6 +3,9 @@ package command
 import (
 	"bytes"
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"net"
 	"net/http"
@@ -10,13 +13,13 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale/cmdline"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
@@ -443,95 +446,87 @@ type guarded struct {
 	Revision string `json:"revision"`
 }
 
-// TestIfMatch: a write on the target carries the target's revision, which
-// the command does not pass itself; no other request does, and a server
-// that holds another revision is the CLI's sentence.
+// TestIfMatch: a write on the target sends the revision the builder read
+// for it; a write on another entity, and a run with no target, send none.
 func TestIfMatch(t *testing.T) {
 	t.Parallel()
 
-	var (
-		mu   sync.Mutex
-		seen []string
-	)
+	a := &API{}
+	require.Nil(t, a.ifMatch("12"), "no target")
 
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-
-		seen = append(seen, r.Method+" "+r.URL.Path+" "+r.Header.Get("If-Match"))
-		mu.Unlock()
-
-		w.Header().Set("Headscale-Version", "dev")
-
-		switch {
-		case r.Method == http.MethodPatch && r.Header.Get("If-Match") != `"r2"`:
-			w.WriteHeader(http.StatusPreconditionFailed)
-			_, _ = w.Write([]byte(`{"code": "precondition_failed", "status": 412, "title": "Precondition failed", "object": {"kind": "node", "id": "12", "name": "mynode"}}`))
-		case r.Method == http.MethodPatch:
-			_, _ = w.Write([]byte(`{"id": "12", "name": "web", "revision": "r3"}`))
-		}
-	}))
-	t.Cleanup(s.Close)
-
-	type in struct {
+	a.guard.Store(guardOf(struct {
 		Node guarded `arg:"node"`
-	}
+	}{guarded{ID: "12", Revision: "r2"}}))
+	require.Equal(t, new(`"r2"`), a.ifMatch("12"))
+	require.Nil(t, a.ifMatch("13"), "another entity")
+}
 
-	send := func(c Ctx, method, path string) error {
-		_, err := call[NoOutput](c.API, func(cl *clientv0.Client) (*http.Response, error) {
-			req, err := http.NewRequestWithContext(c, method, cl.Server+path, nil)
-			if err != nil {
-				return nil, err
-			}
+// TestEveryIfMatchIsSent: every call that fills the parameters of an
+// operation that takes If-Match fills it with ifMatch, so a write that
+// the server can guard by the revision always is. An operation that takes
+// none, such as update-client, gets none.
+func TestEveryIfMatchIsSent(t *testing.T) {
+	t.Parallel()
 
-			return cl.Client.Do(req)
-		})
-
-		return err
-	}
-
-	lookup := cmdline.LateReader(func(_ context.Context, word string) (guarded, error) {
-		return guarded{ID: "12", Name: "mynode", Revision: word}, nil
-	})
-
-	tree, err := build("prog", "A program", allowedAliases, []cmdline.Option{lookup}, New(Spec[in, NoOutput]{
-		Name: "rename", Short: "S", Long: "S.", Example: []string{"prog rename r2"},
-		Run: func(c Ctx, _ in) (NoOutput, error) {
-			err := send(c, http.MethodPost, "other")
-			if err != nil {
-				return NoOutput{}, err
-			}
-
-			return NoOutput{}, send(c, http.MethodPatch, "nodes/12")
-		},
-		Done: func(in, NoOutput, time.Time) string { return "renamed" },
-	}))
+	gen, err := parser.ParseFile(token.NewFileSet(), "../../../../gen/client/headscale/v0/client.gen.go", nil, 0)
 	require.NoError(t, err)
 
-	file := filepath.Join(t.TempDir(), "config.yaml")
-	require.NoError(t, os.WriteFile(file, nil, 0o600))
+	takes := map[string]bool{}
 
-	run := func(rev string) (string, string) {
-		mu.Lock()
-		seen = nil
-		mu.Unlock()
+	ast.Inspect(gen, func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if !ok {
+			return true
+		}
 
-		var stdout, stderr bytes.Buffer
+		st, ok := ts.Type.(*ast.StructType)
+		if ok && strings.HasSuffix(ts.Name.Name, "Params") {
+			for _, f := range st.Fields.List {
+				for _, name := range f.Names {
+					takes[ts.Name.Name] = takes[ts.Name.Name] || name.Name == "IfMatch"
+				}
+			}
+		}
 
-		Run(tree, []string{"rename", rev}, Env{
-			Stdout: &stdout, Stderr: &stderr, Version: &types.VersionInfo{Version: "dev"},
-			Environ: []string{"HEADSCALE_CONFIG=" + file, "HEADSCALE_CLI_ADDRESS=" + s.URL, "HEADSCALE_CLI_API_KEY=key"},
+		return true
+	})
+
+	src, err := parser.ParseFile(token.NewFileSet(), "api.go", nil, 0)
+	require.NoError(t, err)
+
+	sent := 0
+
+	ast.Inspect(src, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+
+		sel, ok := lit.Type.(*ast.SelectorExpr)
+		if !ok || !takes[sel.Sel.Name] {
+			return true
+		}
+
+		has := slices.ContainsFunc(lit.Elts, func(e ast.Expr) bool {
+			kv, ok := e.(*ast.KeyValueExpr)
+			if !ok {
+				return false
+			}
+
+			key, _ := kv.Key.(*ast.Ident)
+			call, _ := kv.Value.(*ast.CallExpr)
+			fn, _ := call.Fun.(*ast.SelectorExpr)
+
+			return key != nil && key.Name == "IfMatch" && fn != nil && fn.Sel.Name == "ifMatch"
 		})
+		require.True(t, has, "clientv0.%s takes If-Match and api.go does not send a.ifMatch(id)", sel.Sel.Name)
 
-		return stdout.String(), stderr.String()
-	}
+		sent++
 
-	stdout, stderr := run("r2")
-	require.Empty(t, stderr)
-	require.Equal(t, "renamed\n", stdout)
-	require.Equal(t, []string{"GET /api/headscale/v0/version ", "POST /other ", `PATCH /nodes/12 "r2"`}, seen)
+		return true
+	})
 
-	_, stderr = run("r1")
-	require.Equal(t, "Error: Node 12 (mynode) changed while the command ran. Run it again.\n", stderr)
+	require.Positive(t, sent, "no operation that takes If-Match")
 }
 
 // TestGuardOf: the target is the first argument that is an entity; one

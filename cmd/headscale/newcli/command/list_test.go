@@ -54,7 +54,7 @@ func TestListFlags(t *testing.T) {
 		{line: "items list --filter count>=1", stderr: "Error: unknown column \"count\".\nRun `prog items list --list-columns`.\n", code: 1},
 		{line: "items list --filter id>=1", stderr: "Error: \"id>=1\": there is no >=. The operators are =, :, < and >.\n", code: 1},
 		{line: "items list --sort -id", stdout: "ID  NAME\n2   -\n1   apple\n"},
-		{line: "items list --sort name", stdout: "ID  NAME\n2   -\n1   apple\n"},
+		{line: "items list --sort name", stdout: "ID  NAME\n1   apple\n2   -\n"}, // a row with no name comes last
 		{line: "items list --sort -nam", stderr: "Error: unknown column \"nam\". Did you mean \"name\"?\nRun `prog items list --list-columns`.\n", code: 1},
 		{line: "items list --filter name=apple", stdout: "ID  NAME\n1   apple\n"},
 		{line: "items list --filter name:pp,id=1", stdout: "ID  NAME\n1   apple\n"},
@@ -78,6 +78,10 @@ func TestListFlags(t *testing.T) {
 		{line: "items list --list-columns -h", stdout: helpOf(t, "items", "list")},
 		// Tab offers the columns, after a sign and after a comma.
 		{line: "__complete items list --columns id,n", stdout: "id,name\n:6\n"},
+		// A column the list names already is not offered again.
+		{line: "__complete items list --columns id,", stdout: "id,name\n:6\n"},
+		{line: "__complete items list --columns=+name,", stdout: "+name,id\n:6\n"},
+		{line: "__complete items list --sort i", stdout: "id\n:4\n"},
 		{line: "__complete items list --sort -", stdout: "-id\n-name\n:4\n"},
 		{line: "__complete items list --filter n", stdout: "name\n:6\n"},
 	} {

@@ -1208,3 +1208,76 @@ func TestLastControlAddressMigration(t *testing.T) {
 	assert.Nil(t, reloaded.LastControlAddress,
 		"existing nodes must receive NULL rather than an invented address")
 }
+
+// TestCreatedByUserMigration upgrades a database from before the creator
+// columns: old rows know no creator, a new one is kept, and a user delete
+// forgets the user and keeps the node and the key it made.
+func TestCreatedByUserMigration(t *testing.T) {
+	for name, open := range map[string]func(*testing.T) func() *HSDatabase{
+		"sqlite": func(t *testing.T) func() *HSDatabase {
+			t.Helper()
+
+			dbPath := t.TempDir() + "/headscale_test.db"
+
+			return func() *HSDatabase {
+				hsdb, err := NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+				require.NoError(t, err)
+
+				return hsdb
+			}
+		},
+		"postgres": func(t *testing.T) func() *HSDatabase {
+			t.Helper()
+
+			u := newPostgresDBForTest(t)
+
+			return func() *HSDatabase { return newHeadscaleDBFromPostgresURL(t, u) }
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reopen := open(t)
+			hsdb := reopen()
+
+			alice, err := hsdb.CreateUser(types.User{Name: "alice"})
+			require.NoError(t, err)
+
+			old := &types.Node{Hostname: "old", UserID: &alice.ID}
+			require.NoError(t, hsdb.DB.Save(old).Error)
+
+			for _, stmt := range []string{
+				`ALTER TABLE nodes DROP COLUMN created_by_user_id`,
+				`ALTER TABLE credentials DROP COLUMN created_by_user_id`,
+				`DELETE FROM migrations WHERE id = '202611201200-created-by-user'`,
+			} {
+				require.NoError(t, hsdb.DB.Exec(stmt).Error, stmt)
+			}
+
+			require.NoError(t, hsdb.Close())
+
+			hsdb = reopen()
+
+			got, err := GetNodeByID(hsdb.DB, old.ID)
+			require.NoError(t, err)
+			assert.Nil(t, got.CreatedByUserID, "an old row knows no creator")
+
+			made := &types.Node{Hostname: "made", Tags: []string{"tag:ci"}, CreatedByUserID: &alice.ID}
+			require.NoError(t, hsdb.DB.Save(made).Error)
+
+			key, err := hsdb.CreatePreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+			require.NoError(t, err)
+			require.NoError(t, hsdb.DB.Model(&types.Credential{}).Where("id = ?", key.ID).
+				Update("created_by_user_id", alice.ID).Error)
+
+			require.NoError(t, hsdb.DB.Delete(old).Error)
+			require.NoError(t, hsdb.DestroyUser(types.UserID(alice.ID)))
+
+			got, err = GetNodeByID(hsdb.DB, made.ID)
+			require.NoError(t, err)
+			assert.Nil(t, got.CreatedByUserID, "the user is forgotten")
+
+			var cred types.Credential
+			require.NoError(t, hsdb.DB.First(&cred, key.ID).Error)
+			assert.Nil(t, cred.CreatedByUserID, "the user is forgotten")
+		})
+	}
+}

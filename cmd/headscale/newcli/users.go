@@ -23,7 +23,7 @@ var userColumns = table.Columns[clientv0.User]{
 	{Name: "email", Field: "email", Default: true, Help: "Email address"},
 	{Name: "provider", Field: "provider", Default: true, Help: "Where the user comes from: local or oidc"},
 	{Name: "count", Field: "nodeCount", Default: true, Help: "Nodes the user owns, tagged nodes not counted"},
-	{Name: "nodes", Field: "nodes", Default: true, Help: "Names of the nodes the user owns"},
+	{Name: "nodes", Field: "nodes", Default: true, List: table.Cut, Help: "Names of the nodes the user owns"},
 	{Name: "login-name", Field: "loginName", Help: "What headscale shows for the user: the email, else the username, else the provider identifier"},
 	{Name: "profile-pic-url", Field: "profilePicUrl", Help: "URL of the profile picture"},
 	{Name: "provider-id", Field: "providerId", Kind: table.Text, Help: "Identifier at the identity provider"},
@@ -41,6 +41,10 @@ var usersList = command.NewList(command.ListSpec[command.NoInput, clientv0.User]
 NAME is the stored username; a user from OIDC can have none. COUNT and
 NODES are the nodes the user owns; a tagged node is owned by its tags and
 is in neither.
+
+NODES is truncated to fit your terminal. For all nodes of a user:
+
+  headscale users get carol -o json | jq -r '.nodes[].name'
 
 With -o json the command prints an array of the users as the API gives
 them; --filter and --sort apply to it as to the table.`,

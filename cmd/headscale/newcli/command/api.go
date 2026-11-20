@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,8 +53,8 @@ type API struct {
 	// answered before and whether a write is out; timeout is cli.timeout.
 	check   *versionCheck
 	timeout time.Duration
-	// guard is the revision of the target, sent in If-Match with every
-	// write on it; see guardOf.
+	// guard is the revision of the target, which every write on it that
+	// takes If-Match sends; see guardOf and ifMatch.
 	guard atomic.Pointer[revision]
 
 	mu      sync.Mutex
@@ -138,6 +137,73 @@ func (a *API) CreateUser(ctx context.Context, body clientv0.CreateUserBody) (cli
 func (a *API) UpdateUser(ctx context.Context, id string, body clientv0.UpdateUserBody) (clientv0.User, error) {
 	return call[clientv0.User](a, func(c *clientv0.Client) (*http.Response, error) {
 		return c.UpdateUserWithApplicationMergePatchPlusJSONBody(ctx, id, body)
+	})
+}
+
+// ListNodes is every page of GET /nodes.
+func (a *API) ListNodes(ctx context.Context) ([]clientv0.Node, error) {
+	return walk[clientv0.Node](a, "nodes", func(c *clientv0.Client, p page) (*http.Response, error) {
+		return c.ListNodes(ctx, &clientv0.ListNodesParams{PageSize: &p.size, PageToken: p.token})
+	})
+}
+
+// GetNode is GET /nodes/{id}.
+func (a *API) GetNode(ctx context.Context, id string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetNode(ctx, id) })
+}
+
+// UpdateNode is PATCH /nodes/{id}, as a merge patch.
+func (a *API) UpdateNode(ctx context.Context, id string, body clientv0.UpdateNodeBody) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.UpdateNodeWithApplicationMergePatchPlusJSONBody(ctx, id, &clientv0.UpdateNodeParams{IfMatch: a.ifMatch(id)}, body)
+	})
+}
+
+// DeleteNode is DELETE /nodes/{id}.
+func (a *API) DeleteNode(ctx context.Context, id string) error {
+	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.DeleteNode(ctx, id, &clientv0.DeleteNodeParams{IfMatch: a.ifMatch(id)})
+	})
+
+	return err
+}
+
+// ExpireNode is POST /nodes/{id}/expire.
+func (a *API) ExpireNode(ctx context.Context, id string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.ExpireNode(ctx, id, &clientv0.ExpireNodeParams{IfMatch: a.ifMatch(id)})
+	})
+}
+
+// UpdateNodeClient is POST /nodes/{id}/update-client.
+func (a *API) UpdateNodeClient(ctx context.Context, id string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) { return c.UpdateNodeClient(ctx, id) })
+}
+
+// SetNodeTags is PUT /nodes/{id}/tags.
+func (a *API) SetNodeTags(ctx context.Context, id string, tags []string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.SetNodeTags(ctx, id, &clientv0.SetNodeTagsParams{IfMatch: a.ifMatch(id)}, clientv0.SetNodeTagsBody{Tags: tags})
+	})
+}
+
+// SetNodeRoutes is PUT /nodes/{id}/routes.
+func (a *API) SetNodeRoutes(ctx context.Context, id string, routes []string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.SetNodeRoutes(ctx, id, &clientv0.SetNodeRoutesParams{IfMatch: a.ifMatch(id)}, clientv0.SetNodeRoutesBody{Routes: routes})
+	})
+}
+
+// ListTags is every page of GET /tags; with a node ID, of the tags that
+// node has.
+func (a *API) ListTags(ctx context.Context, node string) ([]clientv0.Tag, error) {
+	var of *string
+	if node != "" {
+		of = &node
+	}
+
+	return walk[clientv0.Tag](a, "tags", func(c *clientv0.Client, p page) (*http.Response, error) {
+		return c.ListTags(ctx, &clientv0.ListTagsParams{PageSize: &p.size, PageToken: p.token, Node: of})
 	})
 }
 
@@ -353,23 +419,16 @@ func (e *writeError) Error() string {
 
 func (e *writeError) Unwrap() error { return e.err }
 
-// each is what every request of a run gets, whichever method made it: a
-// write on the target carries its revision in If-Match, and cli.timeout
-// bounds the dial, the answer and its body. The time of a command is the
-// sum of its requests, so a walk is not cut while its pages arrive. A
-// timeout of 0 bounds nothing.
+// each is what every request of a run gets, whichever method made it:
+// cli.timeout bounds the dial, the answer and its body. The time of a
+// command is the sum of its requests, so a walk is not cut while its pages
+// arrive. A timeout of 0 bounds nothing.
 type each struct {
 	next    http.RoundTripper
 	timeout time.Duration
-	guard   *atomic.Pointer[revision]
 }
 
 func (t each) RoundTrip(req *http.Request) (*http.Response, error) {
-	if g := t.guard.Load(); g != nil && g.on(req) {
-		req = req.Clone(req.Context())
-		req.Header.Set("If-Match", strconv.Quote(g.rev))
-	}
-
 	if t.timeout <= 0 {
 		return t.next.RoundTrip(req)
 	}
@@ -504,11 +563,10 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 
 	check := &versionCheck{next: base, own: env.Version, target: target, server: server, warn: env.Stderr}
 
-	// Each request reads the guard of the API it serves.
 	a := &API{}
 
 	c, err := clientv0.NewClient(server,
-		clientv0.WithHTTPClient(&http.Client{Transport: each{next: check, timeout: cfg.CLI.Timeout, guard: &a.guard}}),
+		clientv0.WithHTTPClient(&http.Client{Transport: each{next: check, timeout: cfg.CLI.Timeout}}),
 		clientv0.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 			if key != "" {
 				req.Header.Set("Authorization", "Bearer "+key)
@@ -537,10 +595,17 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 // is not lost.
 type revision struct{ id, rev string }
 
-// on reports whether req is a write on the target: not a GET, and a path
-// that has the target's ID as one of its segments.
-func (g *revision) on(req *http.Request) bool {
-	return req.Method != http.MethodGet && slices.Contains(strings.Split(req.URL.Path, "/"), g.id)
+// ifMatch is the If-Match of a write on the entity id: the revision the
+// builder read for the target, when id is the target; nil, which sends
+// none, for another. Every call whose operation takes If-Match passes it
+// (TestEveryIfMatchIsSent); a command never does.
+func (a *API) ifMatch(id string) *string {
+	g := a.guard.Load()
+	if g == nil || g.id != id {
+		return nil
+	}
+
+	return new(strconv.Quote(g.rev))
 }
 
 // guardOf is the revision of the target of in: its first argument that is
@@ -548,36 +613,57 @@ func (g *revision) on(req *http.Request) bool {
 // send it itself; the builder sets it before Run, so no write can leave it
 // out.
 func guardOf[In any](in In) *revision {
-	v := reflect.ValueOf(in)
-	if v.Kind() != reflect.Struct {
+	e, ok := target(reflect.ValueOf(in))
+	if !ok {
 		return nil
 	}
 
-	for i := range v.NumField() {
-		if v.Type().Field(i).Tag.Get("arg") == "" {
-			continue
-		}
-
-		e := v.Field(i)
-		if e.Kind() != reflect.Struct {
-			continue
-		}
-
-		// The first argument that is an entity, a struct with an id, is
-		// the target; one with no revision has nothing to guard.
-		id, rev := jsonText(e, "id"), jsonText(e, "revision")
-
-		switch {
-		case id == "":
-			continue
-		case rev == "":
-			return nil
-		}
-
-		return &revision{id: id, rev: rev}
+	rev := jsonText(e, "revision")
+	if rev == "" {
+		return nil
 	}
 
-	return nil
+	return &revision{id: jsonText(e, "id"), rev: rev}
+}
+
+// target is the field of the target in the input struct v, when it holds
+// one: see targetType.
+func target(v reflect.Value) (reflect.Value, bool) {
+	_, i := targetType(v.Type())
+	if i < 0 || jsonText(v.Field(i), "id") == "" {
+		return reflect.Value{}, false
+	}
+
+	return v.Field(i), true
+}
+
+// targetType is the type of the target of the input struct t, and its
+// field: the first argument that is an entity, a struct with a text id.
+func targetType(t reflect.Type) (reflect.Type, int) {
+	if t.Kind() != reflect.Struct {
+		return nil, -1
+	}
+
+	for f := range t.Fields() {
+		if f.Tag.Get("arg") != "" && f.Type.Kind() == reflect.Struct && hasJSON(f.Type, "id") {
+			return f.Type, f.Index[0]
+		}
+	}
+
+	return nil, -1
+}
+
+// hasJSON reports whether struct t has a text field under the JSON key
+// name.
+func hasJSON(t reflect.Type, name string) bool {
+	for f := range t.Fields() {
+		tag, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if tag == name && f.Type.Kind() == reflect.String {
+			return true
+		}
+	}
+
+	return false
 }
 
 // jsonText is the string field of struct v under the JSON key name; "" for

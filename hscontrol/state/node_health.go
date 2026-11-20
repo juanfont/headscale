@@ -50,8 +50,9 @@ var expiryIsEncodable = nodeHealthCheck{
 	name: "expiry-is-encodable",
 	code: "node_expiry_invalid",
 	check: func(nv types.NodeView, _ *types.Config) (string, string, bool) {
-		// No expiry is sent as the zero time, which is in range.
-		expiry, _ := nv.Expiry().GetOk()
+		// Only the time clients are sent counts: none while key expiry is
+		// disabled. No expiry is sent as the zero time, which is in range.
+		expiry, _ := nv.KeyExpiry()
 
 		_, err := types.ValidateExpiry(expiry)
 		if err != nil {
@@ -139,6 +140,20 @@ func (s *State) NodeHealthProblems() []NodeHealthProblem {
 		if ids := byCheck[c.name]; len(ids) > 0 {
 			slices.Sort(ids)
 			out = append(out, NodeHealthProblem{Code: c.code, Nodes: ids})
+		}
+	}
+
+	return out
+}
+
+// NodeProblems is the code of every check nv fails, in check order; empty,
+// never nil, for a good node. The codes are those of [NodeHealthProblems].
+func (s *State) NodeProblems(nv types.NodeView) []string {
+	out := []string{}
+
+	for _, c := range nodeHealthChecks {
+		if _, _, ok := c.check(nv, s.cfg); !ok {
+			out = append(out, c.code)
 		}
 	}
 

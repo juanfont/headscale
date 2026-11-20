@@ -186,17 +186,18 @@ type Filter[R any] struct {
 	user string
 }
 
-// The operators of a kind; the first line of each kind of the table in the
-// proposal.
-var operators = map[Kind]string{
-	ID:      "=<>",
-	Text:    "=:",
-	Number:  "=<>",
-	Bool:    "=",
-	Time:    "=<>",
-	Version: "=<>",
-	List:    "=:",
-	Owner:   "=:",
+// operators are the operators of a kind; the first line of each kind of
+// the table in the proposal.
+func operators(k Kind) string {
+	switch k {
+	case Text, List, Owner:
+		return "=:"
+	case Bool:
+		return "="
+	case ID, Number, Time, Version:
+	}
+
+	return "=<>"
 }
 
 // ParseFilter reads one condition: the column name, the first of = : < >
@@ -220,8 +221,8 @@ func (cs Columns[R]) ParseFilter(text string) (Filter[R], error) {
 		return f, mistake("%q: there is no %c=. The operators are =, :, < and >.", text, f.op)
 	}
 
-	if !strings.ContainsRune(operators[f.kind], rune(f.op)) {
-		return f, mistake("column %q %s. It works with %s only.", c.Name, article(f.kind), ops(operators[f.kind]))
+	if !strings.ContainsRune(operators(f.kind), rune(f.op)) {
+		return f, mistake("column %q %s. It works with %s only.", c.Name, article(f.kind), ops(operators(f.kind)))
 	}
 
 	if f.text == "" && (f.kind != Text || f.op != '=') {
@@ -301,7 +302,8 @@ func (f Filter[R]) Match(row R, now time.Time) (bool, error) {
 	v, ok := field(reflect.ValueOf(row), f.col.Field)
 
 	if f.kind == Time {
-		return f.matchTime(v, ok, now), nil
+		// An invalid time is neither never nor a time to compare.
+		return !f.col.invalid(row) && f.matchTime(v, ok, now), nil
 	}
 
 	if f.kind == Owner {
@@ -335,7 +337,8 @@ func (f Filter[R]) Match(row R, now time.Time) (bool, error) {
 
 		return ok && compare(float64(compareVersions(row, want)), 0, f.op), nil
 	case List:
-		return slices.ContainsFunc(items(v), f.textMatch), nil
+		// A route list matches exit as the table shows it, and each prefix.
+		return slices.ContainsFunc(append(f.col.entries(v), items(v)...), f.textMatch), nil
 	}
 
 	return f.textMatch(v.String()), nil
@@ -409,7 +412,10 @@ func compare(a, b float64, op byte) bool {
 }
 
 // Sort orders rows by the column key names, reversed when key starts with
-// "-". Ties keep the order of the API. The key is checked already.
+// "-". A row with no value, which the table shows as "-", "never", empty or
+// "invalid", comes last in both directions, so --sort expiry starts with
+// what expires next. Ties keep the order of the API. The key is checked
+// already.
 func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 	name, reverse := strings.CutPrefix(key, "-")
 	c, _ := cs.Find(name)
@@ -423,13 +429,35 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 		return err != nil
 	})
 
+	none := func(r R) bool {
+		v, ok := field(reflect.ValueOf(r), c.Field)
+		if !ok {
+			return true
+		}
+
+		switch kind { //nolint:exhaustive // the other kinds always hold a value
+		case Text:
+			return v.String() == ""
+		case Time:
+			at, _ := reflect.TypeAssert[time.Time](v)
+
+			return at.IsZero()
+		case Version:
+			_, ok := versionOf(v.String())
+
+			return !ok
+		case List:
+			return v.Len() == 0
+		}
+
+		return false
+	}
+
 	by := func(a, b R) int {
-		va, oka := field(reflect.ValueOf(a), c.Field)
-		vb, okb := field(reflect.ValueOf(b), c.Field)
+		va, _ := field(reflect.ValueOf(a), c.Field)
+		vb, _ := field(reflect.ValueOf(b), c.Field)
 
 		switch {
-		case !oka || !okb:
-			return cmp.Compare(btoi(oka), btoi(okb))
 		case numeric && kind == ID:
 			x, _ := strconv.ParseFloat(va.String(), 64)
 			y, _ := strconv.ParseFloat(vb.String(), 64)
@@ -445,13 +473,8 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 
 			return x.Compare(y)
 		case kind == Version:
-			x, okx := versionOf(va.String())
-			y, oky := versionOf(vb.String())
-
-			// A version that does not read sorts first, as a null does.
-			if !okx || !oky {
-				return cmp.Compare(btoi(okx), btoi(oky))
-			}
+			x, _ := versionOf(va.String())
+			y, _ := versionOf(vb.String())
 
 			return compareVersions(x, y)
 		}
@@ -460,7 +483,12 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 	}
 
 	slices.SortStableFunc(rows, func(a, b R) int {
-		if reverse {
+		na, nb := none(a), none(b)
+
+		switch {
+		case na || nb:
+			return cmp.Compare(btoi(na), btoi(nb))
+		case reverse:
 			return by(b, a)
 		}
 

@@ -61,6 +61,7 @@ CREATE TABLE credentials(
   expiration datetime,
   revoked datetime,
   created_by_token numeric DEFAULT false,
+  created_by_user_id integer,
 
   CONSTRAINT fk_credentials_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
   CONSTRAINT chk_credentials_hash CHECK(hash IS NOT NULL OR revoked IS NOT NULL),
@@ -86,6 +87,7 @@ CREATE TABLE nodes(
   -- Only set for user-owned nodes (no tags).
   user_id integer,
   register_method text,
+  created_by_user_id integer,
   tags text,
   auth_key_id integer,
   ephemeral numeric DEFAULT false,

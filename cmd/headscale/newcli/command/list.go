@@ -86,8 +86,20 @@ func (t *Tree) columnNames(argv []string, answer string) string {
 			sign, prefix = prefix[:1], prefix[1:]
 		}
 
+		// A column that --columns names already is not offered again: the
+		// line would then name it twice, which is a mistake.
+		taken := map[string]bool{}
+
+		if mark[0] == columnsMark[1] {
+			for w := range strings.SplitSeq(before, ",") {
+				taken[strings.TrimLeft(w, "+-")] = true
+			}
+		}
+
 		for _, n := range cmdline.Words(prefix, names...) {
-			b.WriteString(before + sign + n + "\n")
+			if !taken[n] {
+				b.WriteString(before + sign + n + "\n")
+			}
 		}
 	}
 

@@ -62,6 +62,9 @@ func (src *Node) Clone() *Node {
 	if dst.User != nil {
 		dst.User = new(*src.User)
 	}
+	if dst.CreatedByUserID != nil {
+		dst.CreatedByUserID = new(*src.CreatedByUserID)
+	}
 	dst.Tags = append(src.Tags[:0:0], src.Tags...)
 	if dst.AuthKeyID != nil {
 		dst.AuthKeyID = new(*src.AuthKeyID)
@@ -100,6 +103,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	UserID             *uint
 	User               *User
 	RegisterMethod     string
+	CreatedByUserID    *uint
 	Tags               Strings
 	AuthKeyID          *uint64
 	AuthKey            *Credential
@@ -186,6 +190,9 @@ func (src *Credential) Clone() *Credential {
 	if dst.LastSeen != nil {
 		dst.LastSeen = new(*src.LastSeen)
 	}
+	if dst.CreatedByUserID != nil {
+		dst.CreatedByUserID = new(*src.CreatedByUserID)
+	}
 	if dst.CreatedAt != nil {
 		dst.CreatedAt = new(*src.CreatedAt)
 	}
@@ -200,22 +207,23 @@ func (src *Credential) Clone() *Credential {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _CredentialCloneNeedsRegeneration = Credential(struct {
-	ID             uint64
-	Kind           CredentialKind
-	Identifier     string
-	Hash           []byte
-	UserID         *uint
-	User           *User
-	Description    string
-	Scopes         []string
-	Tags           []string
-	Reusable       bool
-	Ephemeral      bool
-	Used           bool
-	LastSeen       *time.Time
-	ClientID       string
-	CreatedByToken bool
-	CreatedAt      *time.Time
-	Expiration     *time.Time
-	Revoked        *time.Time
+	ID              uint64
+	Kind            CredentialKind
+	Identifier      string
+	Hash            []byte
+	UserID          *uint
+	User            *User
+	Description     string
+	Scopes          []string
+	Tags            []string
+	Reusable        bool
+	Ephemeral       bool
+	Used            bool
+	LastSeen        *time.Time
+	ClientID        string
+	CreatedByToken  bool
+	CreatedByUserID *uint
+	CreatedAt       *time.Time
+	Expiration      *time.Time
+	Revoked         *time.Time
 }{})

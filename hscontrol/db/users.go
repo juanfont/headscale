@@ -147,6 +147,14 @@ func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 		}
 	}
 
+	// The nodes and keys this user made stay; they no longer know by whom.
+	for _, table := range []string{"nodes", "credentials"} {
+		err = tx.Exec(`UPDATE `+table+` SET created_by_user_id = NULL WHERE created_by_user_id = ?`, uid).Error
+		if err != nil {
+			return fmt.Errorf("forgetting the user in %s.created_by_user_id: %w", table, err)
+		}
+	}
+
 	if result := tx.Unscoped().Delete(&user); result.Error != nil {
 		return result.Error
 	}
@@ -208,6 +216,21 @@ func GetUserByOIDCIdentifier(tx *gorm.DB, id string) (*types.User, error) {
 
 func (hsdb *HSDatabase) ListUsers(filter *types.User) ([]types.User, error) {
 	return ListUsers(hsdb.DB, filter)
+}
+
+// GetUsersByIDs reads the users with ids in one query.
+func (hsdb *HSDatabase) GetUsersByIDs(ids []types.UserID) ([]types.User, error) {
+	users := []types.User{}
+	if len(ids) == 0 {
+		return users, nil
+	}
+
+	err := hsdb.DB.Where("id IN ?", ids).Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
 
 // ListUsers gets all the existing users, optionally filtered by a non-nil filter.

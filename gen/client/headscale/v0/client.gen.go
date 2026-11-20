@@ -78,6 +78,30 @@ func (e MessageCode) Valid() bool {
 	}
 }
 
+// Defines values for NodeRegisterMethod.
+const (
+	NodeRegisterMethodAuthKey NodeRegisterMethod = "authKey"
+	NodeRegisterMethodCli     NodeRegisterMethod = "cli"
+	NodeRegisterMethodEmpty   NodeRegisterMethod = ""
+	NodeRegisterMethodOidc    NodeRegisterMethod = "oidc"
+)
+
+// Valid indicates whether the value is a known member of the NodeRegisterMethod enum.
+func (e NodeRegisterMethod) Valid() bool {
+	switch e {
+	case NodeRegisterMethodAuthKey:
+		return true
+	case NodeRegisterMethodCli:
+		return true
+	case NodeRegisterMethodEmpty:
+		return true
+	case NodeRegisterMethodOidc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PrincipalKind.
 const (
 	PrincipalKindApiKey      PrincipalKind = "apiKey"
@@ -109,6 +133,7 @@ func (e PrincipalKind) Valid() bool {
 const (
 	EmailTaken           ProblemCode = "email_taken"
 	EmptyPatch           ProblemCode = "empty_patch"
+	ExpiryInPast         ProblemCode = "expiry_in_past"
 	Forbidden            ProblemCode = "forbidden"
 	Internal             ProblemCode = "internal"
 	InvalidField         ProblemCode = "invalid_field"
@@ -118,11 +143,15 @@ const (
 	NameTaken            ProblemCode = "name_taken"
 	NotAcceptable        ProblemCode = "not_acceptable"
 	NotFound             ProblemCode = "not_found"
+	PreconditionFailed   ProblemCode = "precondition_failed"
 	RequestTimeout       ProblemCode = "request_timeout"
+	TagsNotPermitted     ProblemCode = "tags_not_permitted"
+	TagsRequired         ProblemCode = "tags_required"
 	TooLarge             ProblemCode = "too_large"
 	Unauthorized         ProblemCode = "unauthorized"
 	Unhealthy            ProblemCode = "unhealthy"
 	UnsupportedMediaType ProblemCode = "unsupported_media_type"
+	UpdateRefused        ProblemCode = "update_refused"
 	UserManagedByOidc    ProblemCode = "user_managed_by_oidc"
 )
 
@@ -132,6 +161,8 @@ func (e ProblemCode) Valid() bool {
 	case EmailTaken:
 		return true
 	case EmptyPatch:
+		return true
+	case ExpiryInPast:
 		return true
 	case Forbidden:
 		return true
@@ -151,7 +182,13 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case NotFound:
 		return true
+	case PreconditionFailed:
+		return true
 	case RequestTimeout:
+		return true
+	case TagsNotPermitted:
+		return true
+	case TagsRequired:
 		return true
 	case TooLarge:
 		return true
@@ -160,6 +197,8 @@ func (e ProblemCode) Valid() bool {
 	case Unhealthy:
 		return true
 	case UnsupportedMediaType:
+		return true
+	case UpdateRefused:
 		return true
 	case UserManagedByOidc:
 		return true
@@ -317,6 +356,90 @@ type Message struct {
 // MessageCode defines model for Message.Code.
 type MessageCode string
 
+// Node defines model for Node.
+type Node struct {
+	// Addresses IPv4 first.
+	Addresses []string `json:"addresses"`
+
+	// AdvertisedRoutes Routes the node offers.
+	AdvertisedRoutes []string `json:"advertisedRoutes"`
+
+	// Attributes Node attributes, by name.
+	Attributes map[string]string `json:"attributes"`
+
+	// AuthKeyId The ID of the auth key the node joined with.
+	AuthKeyId nullable.Nullable[string] `json:"authKeyId"`
+
+	// ClientVersion The short version of the Tailscale client; "" when unknown.
+	ClientVersion string `json:"clientVersion"`
+
+	// ConnectedToControl The node holds a session with the server, expired or not. A node that is not expired stays connected for 15 seconds after its session ends; an expired node is released at once.
+	ConnectedToControl bool      `json:"connectedToControl"`
+	Created            time.Time `json:"created"`
+
+	// CreatedBy The user who registered the node; null when the server does not know. Not the owner of a tagged node.
+	CreatedBy nullable.Nullable[UserReference] `json:"createdBy"`
+	DiscoKey  string                           `json:"discoKey"`
+
+	// EnabledRoutes Routes an admin or the policy approved.
+	EnabledRoutes []string `json:"enabledRoutes"`
+
+	// Expired The expiry has passed, by the server's clock.
+	Expired bool `json:"expired"`
+
+	// Expiry null: the node never expires, or its stored expiry is out of range (problems names it).
+	Expiry nullable.Nullable[time.Time] `json:"expiry"`
+
+	// Fqdn name and the base domain, without a trailing dot; "" when no base domain is set.
+	Fqdn string `json:"fqdn"`
+
+	// Hostname What the node reports. Read-only.
+	Hostname string `json:"hostname"`
+	Id       string `json:"id"`
+
+	// IsEphemeral The node is removed some time after it disconnects.
+	IsEphemeral bool `json:"isEphemeral"`
+
+	// LastSeen Now while the node is connected; null if it never connected.
+	LastSeen   nullable.Nullable[time.Time] `json:"lastSeen"`
+	MachineKey string                       `json:"machineKey"`
+
+	// Name The name in Headscale, which can be changed.
+	Name    string `json:"name"`
+	NodeKey string `json:"nodeKey"`
+
+	// Os As the node reports it; "" when unknown.
+	Os string `json:"os"`
+
+	// Owner One user, or tags.
+	Owner nullable.Nullable[Owner] `json:"owner"`
+
+	// Problems The codes of the health checks the node fails, as in the warnings of GET /health; [] for a good node.
+	Problems []string `json:"problems"`
+
+	// RegisterMethod How the node registered; "" for a node that does not record it, as os and clientVersion are "" when unknown. A client must accept a value it does not know.
+	RegisterMethod NodeRegisterMethod `json:"registerMethod"`
+
+	// Revision Changes when the owner, the tags, the enabled routes, the name or the expiry change. Send it back in If-Match.
+	Revision string `json:"revision"`
+
+	// ServingRoutes Routes the node serves to others now: approved, offered, and with this node chosen to serve them; exit routes too.
+	ServingRoutes []string `json:"servingRoutes"`
+
+	// UpdateAvailable A newer stable Tailscale client exists; false also when the server does not know.
+	UpdateAvailable bool `json:"updateAvailable"`
+}
+
+// NodeRegisterMethod How the node registered; "" for a node that does not record it, as os and clientVersion are "" when unknown. A client must accept a value it does not know.
+type NodeRegisterMethod string
+
+// NodeList defines model for NodeList.
+type NodeList struct {
+	// NextPageToken Present when more rows can follow; send it back as pageToken. Missing on the last page.
+	NextPageToken *string `json:"nextPageToken,omitempty"`
+	Nodes         []Node  `json:"nodes"`
+}
+
 // NodeReference defines model for NodeReference.
 type NodeReference struct {
 	Id   string `json:"id"`
@@ -396,6 +519,47 @@ type ProblemObject struct {
 // ProblemObjectKind defines model for ProblemObject.Kind.
 type ProblemObjectKind string
 
+// SetNodeRoutesBody defines model for SetNodeRoutesBody.
+type SetNodeRoutesBody struct {
+	// Routes IP prefixes; [] removes them all. One exit prefix approves both.
+	Routes []string `json:"routes"`
+}
+
+// SetNodeTagsBody defines model for SetNodeTagsBody.
+type SetNodeTagsBody struct {
+	// Tags At least one tag, each in tagOwners of the policy.
+	Tags []string `json:"tags"`
+}
+
+// Tag defines model for Tag.
+type Tag struct {
+	// InPolicy The tag is in tagOwners of the policy; false for a tag nodes still have that the policy no longer names.
+	InPolicy bool `json:"inPolicy"`
+
+	// NodeCount Every node that has the tag, also with the node filter.
+	NodeCount int64 `json:"nodeCount"`
+
+	// Nodes The same nodes, in ID order.
+	Nodes []NodeReference `json:"nodes"`
+	Tag   string          `json:"tag"`
+}
+
+// TagList defines model for TagList.
+type TagList struct {
+	// NextPageToken Present when more rows can follow; send it back as pageToken. Missing on the last page.
+	NextPageToken *string `json:"nextPageToken,omitempty"`
+	Tags          []Tag   `json:"tags"`
+}
+
+// UpdateNodeBody defines model for UpdateNodeBody.
+type UpdateNodeBody struct {
+	// Expiry An RFC 3339 time in the future, "now" for the server's clock, or null for never. A time turns key expiry on.
+	Expiry nullable.Nullable[string] `json:"expiry,omitempty"`
+
+	// Name A DNS label; "" resets it to the name made from the hostname.
+	Name *string `json:"name,omitempty"`
+}
+
 // UpdateUserBody defines model for UpdateUserBody.
 type UpdateUserBody struct {
 	// DisplayName "" clears it.
@@ -463,6 +627,63 @@ type VersionInfo struct {
 	Version   string `json:"version"`
 }
 
+// ListNodesParams defines parameters for ListNodes.
+type ListNodesParams struct {
+	// PageSize Rows on one page.
+	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+
+	// PageToken nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+	PageToken *string `form:"pageToken,omitempty" json:"pageToken,omitempty"`
+
+	// User Only the nodes of the user with this ID; tagged nodes never match.
+	User *string `form:"user,omitempty" json:"user,omitempty"`
+
+	// Tag Only the nodes with this tag.
+	Tag *string `form:"tag,omitempty" json:"tag,omitempty"`
+}
+
+// DeleteNodeParams defines parameters for DeleteNode.
+type DeleteNodeParams struct {
+	// IfMatch The revision of the node, as its ETag: "<revision>". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds.
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// UpdateNodeParams defines parameters for UpdateNode.
+type UpdateNodeParams struct {
+	// IfMatch The revision of the node, as its ETag: "<revision>". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds.
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// ExpireNodeParams defines parameters for ExpireNode.
+type ExpireNodeParams struct {
+	// IfMatch The revision of the node, as its ETag: "<revision>". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds.
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// SetNodeRoutesParams defines parameters for SetNodeRoutes.
+type SetNodeRoutesParams struct {
+	// IfMatch The revision of the node, as its ETag: "<revision>". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds.
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// SetNodeTagsParams defines parameters for SetNodeTags.
+type SetNodeTagsParams struct {
+	// IfMatch The revision of the node, as its ETag: "<revision>". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds.
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// ListTagsParams defines parameters for ListTags.
+type ListTagsParams struct {
+	// PageSize Rows on one page.
+	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+
+	// PageToken nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+	PageToken *string `form:"pageToken,omitempty" json:"pageToken,omitempty"`
+
+	// Node Only the tags of the node with this ID; the counts still cover every node.
+	Node *string `form:"node,omitempty" json:"node,omitempty"`
+}
+
 // ListUsersParams defines parameters for ListUsers.
 type ListUsersParams struct {
 	// PageSize Rows on one page.
@@ -477,6 +698,18 @@ type ListUsersParams struct {
 	// Email Only users with exactly this email.
 	Email *string `form:"email,omitempty" json:"email,omitempty"`
 }
+
+// UpdateNodeJSONRequestBody defines body for UpdateNode for application/json ContentType.
+type UpdateNodeJSONRequestBody = UpdateNodeBody
+
+// UpdateNodeApplicationMergePatchPlusJSONRequestBody defines body for UpdateNode for application/merge-patch+json ContentType.
+type UpdateNodeApplicationMergePatchPlusJSONRequestBody = UpdateNodeBody
+
+// SetNodeRoutesJSONRequestBody defines body for SetNodeRoutes for application/json ContentType.
+type SetNodeRoutesJSONRequestBody = SetNodeRoutesBody
+
+// SetNodeTagsJSONRequestBody defines body for SetNodeTags for application/json ContentType.
+type SetNodeTagsJSONRequestBody = SetNodeTagsBody
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = CreateUserBody
@@ -571,6 +804,111 @@ type ClientInterface interface {
 	// Corresponds with GET /api/headscale/v0/me (the `GetMe` operationId).
 	GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListNodes List nodes
+	//
+	// In ID order. A page and its computed fields show one moment.
+	//
+	// Corresponds with GET /api/headscale/v0/nodes (the `ListNodes` operationId).
+	ListNodes(ctx context.Context, params *ListNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteNode Delete a node
+	//
+	// The node must register again to come back.
+	//
+	// Corresponds with DELETE /api/headscale/v0/nodes/{id} (the `DeleteNode` operationId).
+	DeleteNode(ctx context.Context, id string, params *DeleteNodeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetNode Read one node
+	//
+	// The ETag is the revision, to send back in If-Match.
+	//
+	// Corresponds with GET /api/headscale/v0/nodes/{id} (the `GetNode` operationId).
+	GetNode(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNodeWithBody Change the name or the expiry of a node
+	//
+	// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+	UpdateNodeWithBody(ctx context.Context, id string, params *UpdateNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNode Change the name or the expiry of a node
+	//
+	// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+	UpdateNode(ctx context.Context, id string, params *UpdateNodeParams, body UpdateNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNodeWithApplicationMergePatchPlusJSONBody Change the name or the expiry of a node
+	//
+	// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+	//
+	// Takes a body of the `application/merge-patch+json` content type.
+	//
+	// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+	UpdateNodeWithApplicationMergePatchPlusJSONBody(ctx context.Context, id string, params *UpdateNodeParams, body UpdateNodeApplicationMergePatchPlusJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExpireNode Expire a node now
+	//
+	// Sets the expiry to the server's clock and turns key expiry on, so the node must log in again, tagged or not.
+	//
+	// Corresponds with POST /api/headscale/v0/nodes/{id}/expire (the `ExpireNode` operationId).
+	ExpireNode(ctx context.Context, id string, params *ExpireNodeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetNodeRoutesWithBody Replace the enabled routes of a node
+	//
+	// Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/headscale/v0/nodes/{id}/routes (the `SetNodeRoutes` operationId).
+	SetNodeRoutesWithBody(ctx context.Context, id string, params *SetNodeRoutesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetNodeRoutes Replace the enabled routes of a node
+	//
+	// Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/headscale/v0/nodes/{id}/routes (the `SetNodeRoutes` operationId).
+	SetNodeRoutes(ctx context.Context, id string, params *SetNodeRoutesParams, body SetNodeRoutesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetNodeTagsWithBody Replace the tags of a node
+	//
+	// A user-owned node becomes a tagged node, and the API cannot undo that. Key expiry stays as it was.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/headscale/v0/nodes/{id}/tags (the `SetNodeTags` operationId).
+	SetNodeTagsWithBody(ctx context.Context, id string, params *SetNodeTagsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetNodeTags Replace the tags of a node
+	//
+	// A user-owned node becomes a tagged node, and the API cannot undo that. Key expiry stays as it was.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/headscale/v0/nodes/{id}/tags (the `SetNodeTags` operationId).
+	SetNodeTags(ctx context.Context, id string, params *SetNodeTagsParams, body SetNodeTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNodeClient Ask a node to update its Tailscale client
+	//
+	// Answers once the node started the update, not when it is done. A node that does not start it is update_refused, with the reason.
+	//
+	// Corresponds with POST /api/headscale/v0/nodes/{id}/update-client (the `UpdateNodeClient` operationId).
+	UpdateNodeClient(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTags List tags
+	//
+	// Every tag in tagOwners of the policy and every tag on a node, by name, byte by byte.
+	//
+	// Corresponds with GET /api/headscale/v0/tags (the `ListTags` operationId).
+	ListTags(ctx context.Context, params *ListTagsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListUsers List users
 	//
 	// Corresponds with GET /api/headscale/v0/users (the `ListUsers` operationId).
@@ -652,6 +990,241 @@ func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (
 // Corresponds with GET /api/headscale/v0/me (the `GetMe` operationId).
 func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetMeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListNodes List nodes
+//
+// In ID order. A page and its computed fields show one moment.
+//
+// Corresponds with GET /api/headscale/v0/nodes (the `ListNodes` operationId).
+func (c *Client) ListNodes(ctx context.Context, params *ListNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListNodesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteNode Delete a node
+//
+// The node must register again to come back.
+//
+// Corresponds with DELETE /api/headscale/v0/nodes/{id} (the `DeleteNode` operationId).
+func (c *Client) DeleteNode(ctx context.Context, id string, params *DeleteNodeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteNodeRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetNode Read one node
+//
+// The ETag is the revision, to send back in If-Match.
+//
+// Corresponds with GET /api/headscale/v0/nodes/{id} (the `GetNode` operationId).
+func (c *Client) GetNode(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNodeRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNodeWithBody Change the name or the expiry of a node
+//
+// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+func (c *Client) UpdateNodeWithBody(ctx context.Context, id string, params *UpdateNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNodeRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNode Change the name or the expiry of a node
+//
+// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+func (c *Client) UpdateNode(ctx context.Context, id string, params *UpdateNodeParams, body UpdateNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNodeRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNodeWithApplicationMergePatchPlusJSONBody Change the name or the expiry of a node
+//
+// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+//
+// Takes a body of the `application/merge-patch+json` content type.
+//
+// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+func (c *Client) UpdateNodeWithApplicationMergePatchPlusJSONBody(ctx context.Context, id string, params *UpdateNodeParams, body UpdateNodeApplicationMergePatchPlusJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNodeRequestWithApplicationMergePatchPlusJSONBody(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExpireNode Expire a node now
+//
+// Sets the expiry to the server's clock and turns key expiry on, so the node must log in again, tagged or not.
+//
+// Corresponds with POST /api/headscale/v0/nodes/{id}/expire (the `ExpireNode` operationId).
+func (c *Client) ExpireNode(ctx context.Context, id string, params *ExpireNodeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExpireNodeRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetNodeRoutesWithBody Replace the enabled routes of a node
+//
+// Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/headscale/v0/nodes/{id}/routes (the `SetNodeRoutes` operationId).
+func (c *Client) SetNodeRoutesWithBody(ctx context.Context, id string, params *SetNodeRoutesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetNodeRoutesRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetNodeRoutes Replace the enabled routes of a node
+//
+// Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/headscale/v0/nodes/{id}/routes (the `SetNodeRoutes` operationId).
+func (c *Client) SetNodeRoutes(ctx context.Context, id string, params *SetNodeRoutesParams, body SetNodeRoutesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetNodeRoutesRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetNodeTagsWithBody Replace the tags of a node
+//
+// A user-owned node becomes a tagged node, and the API cannot undo that. Key expiry stays as it was.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/headscale/v0/nodes/{id}/tags (the `SetNodeTags` operationId).
+func (c *Client) SetNodeTagsWithBody(ctx context.Context, id string, params *SetNodeTagsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetNodeTagsRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetNodeTags Replace the tags of a node
+//
+// A user-owned node becomes a tagged node, and the API cannot undo that. Key expiry stays as it was.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/headscale/v0/nodes/{id}/tags (the `SetNodeTags` operationId).
+func (c *Client) SetNodeTags(ctx context.Context, id string, params *SetNodeTagsParams, body SetNodeTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetNodeTagsRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNodeClient Ask a node to update its Tailscale client
+//
+// Answers once the node started the update, not when it is done. A node that does not start it is update_refused, with the reason.
+//
+// Corresponds with POST /api/headscale/v0/nodes/{id}/update-client (the `UpdateNodeClient` operationId).
+func (c *Client) UpdateNodeClient(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNodeClientRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTags List tags
+//
+// Every tag in tagOwners of the policy and every tag on a node, by name, byte by byte.
+//
+// Corresponds with GET /api/headscale/v0/tags (the `ListTags` operationId).
+func (c *Client) ListTags(ctx context.Context, params *ListTagsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTagsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -846,6 +1419,537 @@ func NewGetMeRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListNodesRequest constructs an http.Request for the ListNodes method
+func NewListNodesRequest(server string, params *ListNodesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/nodes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageSize", *params.PageSize, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PageToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageToken", *params.PageToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.User != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "user", *params.User, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Tag != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "tag", *params.Tag, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteNodeRequest constructs an http.Request for the DeleteNode method
+func NewDeleteNodeRequest(server string, id string, params *DeleteNodeParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/nodes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewGetNodeRequest constructs an http.Request for the GetNode method
+func NewGetNodeRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/nodes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateNodeRequest calls the generic UpdateNode builder with application/json body
+func NewUpdateNodeRequest(server string, id string, params *UpdateNodeParams, body UpdateNodeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateNodeRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewUpdateNodeRequestWithApplicationMergePatchPlusJSONBody calls the generic UpdateNode builder with application/merge-patch+json body
+func NewUpdateNodeRequestWithApplicationMergePatchPlusJSONBody(server string, id string, params *UpdateNodeParams, body UpdateNodeApplicationMergePatchPlusJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateNodeRequestWithBody(server, id, params, "application/merge-patch+json", bodyReader)
+}
+
+// NewUpdateNodeRequestWithBody constructs an http.Request for the UpdateNode method, with any body, and a specified content type
+func NewUpdateNodeRequestWithBody(server string, id string, params *UpdateNodeParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/nodes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewExpireNodeRequest constructs an http.Request for the ExpireNode method
+func NewExpireNodeRequest(server string, id string, params *ExpireNodeParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/nodes/%s/expire", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewSetNodeRoutesRequest calls the generic SetNodeRoutes builder with application/json body
+func NewSetNodeRoutesRequest(server string, id string, params *SetNodeRoutesParams, body SetNodeRoutesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetNodeRoutesRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewSetNodeRoutesRequestWithBody constructs an http.Request for the SetNodeRoutes method, with any body, and a specified content type
+func NewSetNodeRoutesRequestWithBody(server string, id string, params *SetNodeRoutesParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/nodes/%s/routes", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewSetNodeTagsRequest calls the generic SetNodeTags builder with application/json body
+func NewSetNodeTagsRequest(server string, id string, params *SetNodeTagsParams, body SetNodeTagsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetNodeTagsRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewSetNodeTagsRequestWithBody constructs an http.Request for the SetNodeTags method, with any body, and a specified content type
+func NewSetNodeTagsRequestWithBody(server string, id string, params *SetNodeTagsParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/nodes/%s/tags", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewUpdateNodeClientRequest constructs an http.Request for the UpdateNodeClient method
+func NewUpdateNodeClientRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/nodes/%s/update-client", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListTagsRequest constructs an http.Request for the ListTags method
+func NewListTagsRequest(server string, params *ListTagsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/tags")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageSize", *params.PageSize, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PageToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageToken", *params.PageToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Node != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "node", *params.Node, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -1163,6 +2267,123 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/headscale/v0/me (the `GetMe` operationId).
 	GetMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMeResponse, error)
 
+	// ListNodesWithResponse List nodes
+	//
+	// In ID order. A page and its computed fields show one moment.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/headscale/v0/nodes (the `ListNodes` operationId).
+	ListNodesWithResponse(ctx context.Context, params *ListNodesParams, reqEditors ...RequestEditorFn) (*ListNodesResponse, error)
+
+	// DeleteNodeWithResponse Delete a node
+	//
+	// The node must register again to come back.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/headscale/v0/nodes/{id} (the `DeleteNode` operationId).
+	DeleteNodeWithResponse(ctx context.Context, id string, params *DeleteNodeParams, reqEditors ...RequestEditorFn) (*DeleteNodeResponse, error)
+
+	// GetNodeWithResponse Read one node
+	//
+	// The ETag is the revision, to send back in If-Match.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/headscale/v0/nodes/{id} (the `GetNode` operationId).
+	GetNodeWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetNodeResponse, error)
+
+	// UpdateNodeWithBodyWithResponse Change the name or the expiry of a node
+	//
+	// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+	UpdateNodeWithBodyWithResponse(ctx context.Context, id string, params *UpdateNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateNodeResponse, error)
+
+	// UpdateNodeWithResponse Change the name or the expiry of a node
+	//
+	// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+	UpdateNodeWithResponse(ctx context.Context, id string, params *UpdateNodeParams, body UpdateNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNodeResponse, error)
+
+	// UpdateNodeWithApplicationMergePatchPlusJSONBodyWithResponse Change the name or the expiry of a node
+	//
+	// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+	//
+	// Takes a body of the `application/merge-patch+json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+	UpdateNodeWithApplicationMergePatchPlusJSONBodyWithResponse(ctx context.Context, id string, params *UpdateNodeParams, body UpdateNodeApplicationMergePatchPlusJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNodeResponse, error)
+
+	// ExpireNodeWithResponse Expire a node now
+	//
+	// Sets the expiry to the server's clock and turns key expiry on, so the node must log in again, tagged or not.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/headscale/v0/nodes/{id}/expire (the `ExpireNode` operationId).
+	ExpireNodeWithResponse(ctx context.Context, id string, params *ExpireNodeParams, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error)
+
+	// SetNodeRoutesWithBodyWithResponse Replace the enabled routes of a node
+	//
+	// Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/headscale/v0/nodes/{id}/routes (the `SetNodeRoutes` operationId).
+	SetNodeRoutesWithBodyWithResponse(ctx context.Context, id string, params *SetNodeRoutesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetNodeRoutesResponse, error)
+
+	// SetNodeRoutesWithResponse Replace the enabled routes of a node
+	//
+	// Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/headscale/v0/nodes/{id}/routes (the `SetNodeRoutes` operationId).
+	SetNodeRoutesWithResponse(ctx context.Context, id string, params *SetNodeRoutesParams, body SetNodeRoutesJSONRequestBody, reqEditors ...RequestEditorFn) (*SetNodeRoutesResponse, error)
+
+	// SetNodeTagsWithBodyWithResponse Replace the tags of a node
+	//
+	// A user-owned node becomes a tagged node, and the API cannot undo that. Key expiry stays as it was.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/headscale/v0/nodes/{id}/tags (the `SetNodeTags` operationId).
+	SetNodeTagsWithBodyWithResponse(ctx context.Context, id string, params *SetNodeTagsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetNodeTagsResponse, error)
+
+	// SetNodeTagsWithResponse Replace the tags of a node
+	//
+	// A user-owned node becomes a tagged node, and the API cannot undo that. Key expiry stays as it was.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/headscale/v0/nodes/{id}/tags (the `SetNodeTags` operationId).
+	SetNodeTagsWithResponse(ctx context.Context, id string, params *SetNodeTagsParams, body SetNodeTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetNodeTagsResponse, error)
+
+	// UpdateNodeClientWithResponse Ask a node to update its Tailscale client
+	//
+	// Answers once the node started the update, not when it is done. A node that does not start it is update_refused, with the reason.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/headscale/v0/nodes/{id}/update-client (the `UpdateNodeClient` operationId).
+	UpdateNodeClientWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*UpdateNodeClientResponse, error)
+
+	// ListTagsWithResponse List tags
+	//
+	// Every tag in tagOwners of the policy and every tag on a node, by name, byte by byte.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/headscale/v0/tags (the `ListTags` operationId).
+	ListTagsWithResponse(ctx context.Context, params *ListTagsParams, reqEditors ...RequestEditorFn) (*ListTagsResponse, error)
+
 	// ListUsersWithResponse List users
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -1442,6 +2663,1511 @@ func (r GetMeResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetMeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListNodesResponse200Headers the declared response headers of an HTTP 200 response for ListNodes
+type ListNodesResponse200Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListNodesResponse401Headers the declared response headers of an HTTP 401 response for ListNodes
+type ListNodesResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListNodesResponse403Headers the declared response headers of an HTTP 403 response for ListNodes
+type ListNodesResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListNodesResponse422Headers the declared response headers of an HTTP 422 response for ListNodes
+type ListNodesResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListNodesResponse500Headers the declared response headers of an HTTP 500 response for ListNodes
+type ListNodesResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListNodesResponse503Headers the declared response headers of an HTTP 503 response for ListNodes
+type ListNodesResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type ListNodesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NodeList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListNodesResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *ListNodesResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *ListNodesResponse403Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *ListNodesResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *ListNodesResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *ListNodesResponse503Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListNodesResponse) GetJSON200() *NodeList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListNodesResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListNodesResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListNodesResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListNodesResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListNodesResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListNodesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListNodesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListNodesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListNodesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// DeleteNodeResponse204Headers the declared response headers of an HTTP 204 response for DeleteNode
+type DeleteNodeResponse204Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteNodeResponse401Headers the declared response headers of an HTTP 401 response for DeleteNode
+type DeleteNodeResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteNodeResponse403Headers the declared response headers of an HTTP 403 response for DeleteNode
+type DeleteNodeResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteNodeResponse404Headers the declared response headers of an HTTP 404 response for DeleteNode
+type DeleteNodeResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteNodeResponse412Headers the declared response headers of an HTTP 412 response for DeleteNode
+type DeleteNodeResponse412Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteNodeResponse422Headers the declared response headers of an HTTP 422 response for DeleteNode
+type DeleteNodeResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteNodeResponse500Headers the declared response headers of an HTTP 500 response for DeleteNode
+type DeleteNodeResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteNodeResponse503Headers the declared response headers of an HTTP 503 response for DeleteNode
+type DeleteNodeResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type DeleteNodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON412 the response for an HTTP 412 `application/problem+json` response
+	ApplicationproblemJSON412 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers204 the parsed response headers for an HTTP 204 response
+	Headers204 *DeleteNodeResponse204Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *DeleteNodeResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *DeleteNodeResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *DeleteNodeResponse404Headers
+	// Headers412 the parsed response headers for an HTTP 412 response
+	Headers412 *DeleteNodeResponse412Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *DeleteNodeResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *DeleteNodeResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *DeleteNodeResponse503Headers
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteNodeResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteNodeResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteNodeResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON412 returns the response for an HTTP 412 `application/problem+json` response
+func (r DeleteNodeResponse) GetApplicationproblemJSON412() *Problem {
+	return r.ApplicationproblemJSON412
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteNodeResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeleteNodeResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteNodeResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteNodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteNodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteNodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteNodeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetNodeResponse200Headers the declared response headers of an HTTP 200 response for GetNode
+type GetNodeResponse200Headers struct {
+	ETag             *string
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetNodeResponse401Headers the declared response headers of an HTTP 401 response for GetNode
+type GetNodeResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetNodeResponse403Headers the declared response headers of an HTTP 403 response for GetNode
+type GetNodeResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetNodeResponse404Headers the declared response headers of an HTTP 404 response for GetNode
+type GetNodeResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetNodeResponse422Headers the declared response headers of an HTTP 422 response for GetNode
+type GetNodeResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetNodeResponse500Headers the declared response headers of an HTTP 500 response for GetNode
+type GetNodeResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetNodeResponse503Headers the declared response headers of an HTTP 503 response for GetNode
+type GetNodeResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type GetNodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Node
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetNodeResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *GetNodeResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *GetNodeResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *GetNodeResponse404Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *GetNodeResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *GetNodeResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *GetNodeResponse503Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetNodeResponse) GetJSON200() *Node {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetNodeResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetNodeResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetNodeResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetNodeResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetNodeResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetNodeResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetNodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetNodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetNodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetNodeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateNodeResponse200Headers the declared response headers of an HTTP 200 response for UpdateNode
+type UpdateNodeResponse200Headers struct {
+	ETag             *string
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse400Headers the declared response headers of an HTTP 400 response for UpdateNode
+type UpdateNodeResponse400Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse401Headers the declared response headers of an HTTP 401 response for UpdateNode
+type UpdateNodeResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse403Headers the declared response headers of an HTTP 403 response for UpdateNode
+type UpdateNodeResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse404Headers the declared response headers of an HTTP 404 response for UpdateNode
+type UpdateNodeResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse408Headers the declared response headers of an HTTP 408 response for UpdateNode
+type UpdateNodeResponse408Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse409Headers the declared response headers of an HTTP 409 response for UpdateNode
+type UpdateNodeResponse409Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse412Headers the declared response headers of an HTTP 412 response for UpdateNode
+type UpdateNodeResponse412Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse413Headers the declared response headers of an HTTP 413 response for UpdateNode
+type UpdateNodeResponse413Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse415Headers the declared response headers of an HTTP 415 response for UpdateNode
+type UpdateNodeResponse415Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse422Headers the declared response headers of an HTTP 422 response for UpdateNode
+type UpdateNodeResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse500Headers the declared response headers of an HTTP 500 response for UpdateNode
+type UpdateNodeResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeResponse503Headers the declared response headers of an HTTP 503 response for UpdateNode
+type UpdateNodeResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type UpdateNodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Node
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON408 the response for an HTTP 408 `application/problem+json` response
+	ApplicationproblemJSON408 *Problem
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Problem
+	// ApplicationproblemJSON412 the response for an HTTP 412 `application/problem+json` response
+	ApplicationproblemJSON412 *Problem
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *Problem
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateNodeResponse200Headers
+	// Headers400 the parsed response headers for an HTTP 400 response
+	Headers400 *UpdateNodeResponse400Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *UpdateNodeResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *UpdateNodeResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *UpdateNodeResponse404Headers
+	// Headers408 the parsed response headers for an HTTP 408 response
+	Headers408 *UpdateNodeResponse408Headers
+	// Headers409 the parsed response headers for an HTTP 409 response
+	Headers409 *UpdateNodeResponse409Headers
+	// Headers412 the parsed response headers for an HTTP 412 response
+	Headers412 *UpdateNodeResponse412Headers
+	// Headers413 the parsed response headers for an HTTP 413 response
+	Headers413 *UpdateNodeResponse413Headers
+	// Headers415 the parsed response headers for an HTTP 415 response
+	Headers415 *UpdateNodeResponse415Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *UpdateNodeResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *UpdateNodeResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *UpdateNodeResponse503Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateNodeResponse) GetJSON200() *Node {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON408 returns the response for an HTTP 408 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON408() *Problem {
+	return r.ApplicationproblemJSON408
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON409() *Problem {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON412 returns the response for an HTTP 412 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON412() *Problem {
+	return r.ApplicationproblemJSON412
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON413() *Problem {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON415() *Problem {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UpdateNodeResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateNodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateNodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateNodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateNodeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ExpireNodeResponse200Headers the declared response headers of an HTTP 200 response for ExpireNode
+type ExpireNodeResponse200Headers struct {
+	ETag             *string
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ExpireNodeResponse401Headers the declared response headers of an HTTP 401 response for ExpireNode
+type ExpireNodeResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ExpireNodeResponse403Headers the declared response headers of an HTTP 403 response for ExpireNode
+type ExpireNodeResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ExpireNodeResponse404Headers the declared response headers of an HTTP 404 response for ExpireNode
+type ExpireNodeResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ExpireNodeResponse412Headers the declared response headers of an HTTP 412 response for ExpireNode
+type ExpireNodeResponse412Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ExpireNodeResponse422Headers the declared response headers of an HTTP 422 response for ExpireNode
+type ExpireNodeResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ExpireNodeResponse500Headers the declared response headers of an HTTP 500 response for ExpireNode
+type ExpireNodeResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ExpireNodeResponse503Headers the declared response headers of an HTTP 503 response for ExpireNode
+type ExpireNodeResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type ExpireNodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Node
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON412 the response for an HTTP 412 `application/problem+json` response
+	ApplicationproblemJSON412 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ExpireNodeResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *ExpireNodeResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *ExpireNodeResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *ExpireNodeResponse404Headers
+	// Headers412 the parsed response headers for an HTTP 412 response
+	Headers412 *ExpireNodeResponse412Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *ExpireNodeResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *ExpireNodeResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *ExpireNodeResponse503Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExpireNodeResponse) GetJSON200() *Node {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ExpireNodeResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ExpireNodeResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ExpireNodeResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON412 returns the response for an HTTP 412 `application/problem+json` response
+func (r ExpireNodeResponse) GetApplicationproblemJSON412() *Problem {
+	return r.ApplicationproblemJSON412
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ExpireNodeResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ExpireNodeResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ExpireNodeResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ExpireNodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExpireNodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExpireNodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExpireNodeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SetNodeRoutesResponse200Headers the declared response headers of an HTTP 200 response for SetNodeRoutes
+type SetNodeRoutesResponse200Headers struct {
+	ETag             *string
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse400Headers the declared response headers of an HTTP 400 response for SetNodeRoutes
+type SetNodeRoutesResponse400Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse401Headers the declared response headers of an HTTP 401 response for SetNodeRoutes
+type SetNodeRoutesResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse403Headers the declared response headers of an HTTP 403 response for SetNodeRoutes
+type SetNodeRoutesResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse404Headers the declared response headers of an HTTP 404 response for SetNodeRoutes
+type SetNodeRoutesResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse408Headers the declared response headers of an HTTP 408 response for SetNodeRoutes
+type SetNodeRoutesResponse408Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse412Headers the declared response headers of an HTTP 412 response for SetNodeRoutes
+type SetNodeRoutesResponse412Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse413Headers the declared response headers of an HTTP 413 response for SetNodeRoutes
+type SetNodeRoutesResponse413Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse415Headers the declared response headers of an HTTP 415 response for SetNodeRoutes
+type SetNodeRoutesResponse415Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse422Headers the declared response headers of an HTTP 422 response for SetNodeRoutes
+type SetNodeRoutesResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse500Headers the declared response headers of an HTTP 500 response for SetNodeRoutes
+type SetNodeRoutesResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeRoutesResponse503Headers the declared response headers of an HTTP 503 response for SetNodeRoutes
+type SetNodeRoutesResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type SetNodeRoutesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Node
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON408 the response for an HTTP 408 `application/problem+json` response
+	ApplicationproblemJSON408 *Problem
+	// ApplicationproblemJSON412 the response for an HTTP 412 `application/problem+json` response
+	ApplicationproblemJSON412 *Problem
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *Problem
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *SetNodeRoutesResponse200Headers
+	// Headers400 the parsed response headers for an HTTP 400 response
+	Headers400 *SetNodeRoutesResponse400Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *SetNodeRoutesResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *SetNodeRoutesResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *SetNodeRoutesResponse404Headers
+	// Headers408 the parsed response headers for an HTTP 408 response
+	Headers408 *SetNodeRoutesResponse408Headers
+	// Headers412 the parsed response headers for an HTTP 412 response
+	Headers412 *SetNodeRoutesResponse412Headers
+	// Headers413 the parsed response headers for an HTTP 413 response
+	Headers413 *SetNodeRoutesResponse413Headers
+	// Headers415 the parsed response headers for an HTTP 415 response
+	Headers415 *SetNodeRoutesResponse415Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *SetNodeRoutesResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *SetNodeRoutesResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *SetNodeRoutesResponse503Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetNodeRoutesResponse) GetJSON200() *Node {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON408 returns the response for an HTTP 408 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON408() *Problem {
+	return r.ApplicationproblemJSON408
+}
+
+// GetApplicationproblemJSON412 returns the response for an HTTP 412 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON412() *Problem {
+	return r.ApplicationproblemJSON412
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON413() *Problem {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON415() *Problem {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r SetNodeRoutesResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r SetNodeRoutesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetNodeRoutesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetNodeRoutesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetNodeRoutesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SetNodeTagsResponse200Headers the declared response headers of an HTTP 200 response for SetNodeTags
+type SetNodeTagsResponse200Headers struct {
+	ETag             *string
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse400Headers the declared response headers of an HTTP 400 response for SetNodeTags
+type SetNodeTagsResponse400Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse401Headers the declared response headers of an HTTP 401 response for SetNodeTags
+type SetNodeTagsResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse403Headers the declared response headers of an HTTP 403 response for SetNodeTags
+type SetNodeTagsResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse404Headers the declared response headers of an HTTP 404 response for SetNodeTags
+type SetNodeTagsResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse408Headers the declared response headers of an HTTP 408 response for SetNodeTags
+type SetNodeTagsResponse408Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse412Headers the declared response headers of an HTTP 412 response for SetNodeTags
+type SetNodeTagsResponse412Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse413Headers the declared response headers of an HTTP 413 response for SetNodeTags
+type SetNodeTagsResponse413Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse415Headers the declared response headers of an HTTP 415 response for SetNodeTags
+type SetNodeTagsResponse415Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse422Headers the declared response headers of an HTTP 422 response for SetNodeTags
+type SetNodeTagsResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse500Headers the declared response headers of an HTTP 500 response for SetNodeTags
+type SetNodeTagsResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetNodeTagsResponse503Headers the declared response headers of an HTTP 503 response for SetNodeTags
+type SetNodeTagsResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type SetNodeTagsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Node
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON408 the response for an HTTP 408 `application/problem+json` response
+	ApplicationproblemJSON408 *Problem
+	// ApplicationproblemJSON412 the response for an HTTP 412 `application/problem+json` response
+	ApplicationproblemJSON412 *Problem
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *Problem
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *SetNodeTagsResponse200Headers
+	// Headers400 the parsed response headers for an HTTP 400 response
+	Headers400 *SetNodeTagsResponse400Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *SetNodeTagsResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *SetNodeTagsResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *SetNodeTagsResponse404Headers
+	// Headers408 the parsed response headers for an HTTP 408 response
+	Headers408 *SetNodeTagsResponse408Headers
+	// Headers412 the parsed response headers for an HTTP 412 response
+	Headers412 *SetNodeTagsResponse412Headers
+	// Headers413 the parsed response headers for an HTTP 413 response
+	Headers413 *SetNodeTagsResponse413Headers
+	// Headers415 the parsed response headers for an HTTP 415 response
+	Headers415 *SetNodeTagsResponse415Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *SetNodeTagsResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *SetNodeTagsResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *SetNodeTagsResponse503Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetNodeTagsResponse) GetJSON200() *Node {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON408 returns the response for an HTTP 408 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON408() *Problem {
+	return r.ApplicationproblemJSON408
+}
+
+// GetApplicationproblemJSON412 returns the response for an HTTP 412 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON412() *Problem {
+	return r.ApplicationproblemJSON412
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON413() *Problem {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON415() *Problem {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r SetNodeTagsResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r SetNodeTagsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetNodeTagsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetNodeTagsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetNodeTagsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateNodeClientResponse200Headers the declared response headers of an HTTP 200 response for UpdateNodeClient
+type UpdateNodeClientResponse200Headers struct {
+	ETag             *string
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeClientResponse401Headers the declared response headers of an HTTP 401 response for UpdateNodeClient
+type UpdateNodeClientResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeClientResponse403Headers the declared response headers of an HTTP 403 response for UpdateNodeClient
+type UpdateNodeClientResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeClientResponse404Headers the declared response headers of an HTTP 404 response for UpdateNodeClient
+type UpdateNodeClientResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeClientResponse409Headers the declared response headers of an HTTP 409 response for UpdateNodeClient
+type UpdateNodeClientResponse409Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeClientResponse422Headers the declared response headers of an HTTP 422 response for UpdateNodeClient
+type UpdateNodeClientResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeClientResponse500Headers the declared response headers of an HTTP 500 response for UpdateNodeClient
+type UpdateNodeClientResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// UpdateNodeClientResponse503Headers the declared response headers of an HTTP 503 response for UpdateNodeClient
+type UpdateNodeClientResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type UpdateNodeClientResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Node
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateNodeClientResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *UpdateNodeClientResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *UpdateNodeClientResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *UpdateNodeClientResponse404Headers
+	// Headers409 the parsed response headers for an HTTP 409 response
+	Headers409 *UpdateNodeClientResponse409Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *UpdateNodeClientResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *UpdateNodeClientResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *UpdateNodeClientResponse503Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateNodeClientResponse) GetJSON200() *Node {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateNodeClientResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateNodeClientResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateNodeClientResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UpdateNodeClientResponse) GetApplicationproblemJSON409() *Problem {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateNodeClientResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r UpdateNodeClientResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UpdateNodeClientResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateNodeClientResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateNodeClientResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateNodeClientResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateNodeClientResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListTagsResponse200Headers the declared response headers of an HTTP 200 response for ListTags
+type ListTagsResponse200Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListTagsResponse401Headers the declared response headers of an HTTP 401 response for ListTags
+type ListTagsResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListTagsResponse403Headers the declared response headers of an HTTP 403 response for ListTags
+type ListTagsResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListTagsResponse422Headers the declared response headers of an HTTP 422 response for ListTags
+type ListTagsResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListTagsResponse500Headers the declared response headers of an HTTP 500 response for ListTags
+type ListTagsResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListTagsResponse503Headers the declared response headers of an HTTP 503 response for ListTags
+type ListTagsResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type ListTagsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TagList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListTagsResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *ListTagsResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *ListTagsResponse403Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *ListTagsResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *ListTagsResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *ListTagsResponse503Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTagsResponse) GetJSON200() *TagList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListTagsResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListTagsResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListTagsResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListTagsResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListTagsResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTagsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTagsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTagsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTagsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2230,6 +4956,201 @@ func (c *ClientWithResponses) GetMeWithResponse(ctx context.Context, reqEditors 
 	return ParseGetMeResponse(rsp)
 }
 
+// ListNodesWithResponse List nodes
+//
+// In ID order. A page and its computed fields show one moment.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/headscale/v0/nodes (the `ListNodes` operationId).
+func (c *ClientWithResponses) ListNodesWithResponse(ctx context.Context, params *ListNodesParams, reqEditors ...RequestEditorFn) (*ListNodesResponse, error) {
+	rsp, err := c.ListNodes(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListNodesResponse(rsp)
+}
+
+// DeleteNodeWithResponse Delete a node
+//
+// The node must register again to come back.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/headscale/v0/nodes/{id} (the `DeleteNode` operationId).
+func (c *ClientWithResponses) DeleteNodeWithResponse(ctx context.Context, id string, params *DeleteNodeParams, reqEditors ...RequestEditorFn) (*DeleteNodeResponse, error) {
+	rsp, err := c.DeleteNode(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteNodeResponse(rsp)
+}
+
+// GetNodeWithResponse Read one node
+//
+// The ETag is the revision, to send back in If-Match.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/headscale/v0/nodes/{id} (the `GetNode` operationId).
+func (c *ClientWithResponses) GetNodeWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetNodeResponse, error) {
+	rsp, err := c.GetNode(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetNodeResponse(rsp)
+}
+
+// UpdateNodeWithBodyWithResponse Change the name or the expiry of a node
+//
+// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+func (c *ClientWithResponses) UpdateNodeWithBodyWithResponse(ctx context.Context, id string, params *UpdateNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateNodeResponse, error) {
+	rsp, err := c.UpdateNodeWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNodeResponse(rsp)
+}
+
+// UpdateNodeWithResponse Change the name or the expiry of a node
+//
+// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+func (c *ClientWithResponses) UpdateNodeWithResponse(ctx context.Context, id string, params *UpdateNodeParams, body UpdateNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNodeResponse, error) {
+	rsp, err := c.UpdateNode(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNodeResponse(rsp)
+}
+
+// UpdateNodeWithApplicationMergePatchPlusJSONBodyWithResponse Change the name or the expiry of a node
+//
+// Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+//
+// Takes a body of the `application/merge-patch+json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/headscale/v0/nodes/{id} (the `UpdateNode` operationId).
+func (c *ClientWithResponses) UpdateNodeWithApplicationMergePatchPlusJSONBodyWithResponse(ctx context.Context, id string, params *UpdateNodeParams, body UpdateNodeApplicationMergePatchPlusJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNodeResponse, error) {
+	rsp, err := c.UpdateNodeWithApplicationMergePatchPlusJSONBody(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNodeResponse(rsp)
+}
+
+// ExpireNodeWithResponse Expire a node now
+//
+// Sets the expiry to the server's clock and turns key expiry on, so the node must log in again, tagged or not.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/headscale/v0/nodes/{id}/expire (the `ExpireNode` operationId).
+func (c *ClientWithResponses) ExpireNodeWithResponse(ctx context.Context, id string, params *ExpireNodeParams, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error) {
+	rsp, err := c.ExpireNode(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExpireNodeResponse(rsp)
+}
+
+// SetNodeRoutesWithBodyWithResponse Replace the enabled routes of a node
+//
+// Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/headscale/v0/nodes/{id}/routes (the `SetNodeRoutes` operationId).
+func (c *ClientWithResponses) SetNodeRoutesWithBodyWithResponse(ctx context.Context, id string, params *SetNodeRoutesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetNodeRoutesResponse, error) {
+	rsp, err := c.SetNodeRoutesWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetNodeRoutesResponse(rsp)
+}
+
+// SetNodeRoutesWithResponse Replace the enabled routes of a node
+//
+// Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/headscale/v0/nodes/{id}/routes (the `SetNodeRoutes` operationId).
+func (c *ClientWithResponses) SetNodeRoutesWithResponse(ctx context.Context, id string, params *SetNodeRoutesParams, body SetNodeRoutesJSONRequestBody, reqEditors ...RequestEditorFn) (*SetNodeRoutesResponse, error) {
+	rsp, err := c.SetNodeRoutes(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetNodeRoutesResponse(rsp)
+}
+
+// SetNodeTagsWithBodyWithResponse Replace the tags of a node
+//
+// A user-owned node becomes a tagged node, and the API cannot undo that. Key expiry stays as it was.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/headscale/v0/nodes/{id}/tags (the `SetNodeTags` operationId).
+func (c *ClientWithResponses) SetNodeTagsWithBodyWithResponse(ctx context.Context, id string, params *SetNodeTagsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetNodeTagsResponse, error) {
+	rsp, err := c.SetNodeTagsWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetNodeTagsResponse(rsp)
+}
+
+// SetNodeTagsWithResponse Replace the tags of a node
+//
+// A user-owned node becomes a tagged node, and the API cannot undo that. Key expiry stays as it was.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/headscale/v0/nodes/{id}/tags (the `SetNodeTags` operationId).
+func (c *ClientWithResponses) SetNodeTagsWithResponse(ctx context.Context, id string, params *SetNodeTagsParams, body SetNodeTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetNodeTagsResponse, error) {
+	rsp, err := c.SetNodeTags(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetNodeTagsResponse(rsp)
+}
+
+// UpdateNodeClientWithResponse Ask a node to update its Tailscale client
+//
+// Answers once the node started the update, not when it is done. A node that does not start it is update_refused, with the reason.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/headscale/v0/nodes/{id}/update-client (the `UpdateNodeClient` operationId).
+func (c *ClientWithResponses) UpdateNodeClientWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*UpdateNodeClientResponse, error) {
+	rsp, err := c.UpdateNodeClient(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNodeClientResponse(rsp)
+}
+
+// ListTagsWithResponse List tags
+//
+// Every tag in tagOwners of the policy and every tag on a node, by name, byte by byte.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/headscale/v0/tags (the `ListTags` operationId).
+func (c *ClientWithResponses) ListTagsWithResponse(ctx context.Context, params *ListTagsParams, reqEditors ...RequestEditorFn) (*ListTagsResponse, error) {
+	rsp, err := c.ListTags(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTagsResponse(rsp)
+}
+
 // ListUsersWithResponse List users
 //
 // Returns a wrapper object for the known response body format(s).
@@ -2608,6 +5529,2162 @@ func ParseGetMeResponse(rsp *http.Response) (*GetMeResponse, error) {
 		response.Headers500 = &headers
 	case rsp.StatusCode == 503:
 		var headers GetMeResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListNodesResponse parses an HTTP response from a ListNodesWithResponse call
+func ParseListNodesResponse(rsp *http.Response) (*ListNodesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListNodesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListNodesResponse200Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers ListNodesResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers ListNodesResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 422:
+		var headers ListNodesResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers ListNodesResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers ListNodesResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseDeleteNodeResponse parses an HTTP response from a DeleteNodeWithResponse call
+func ParseDeleteNodeResponse(rsp *http.Response) (*DeleteNodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteNodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		var headers DeleteNodeResponse204Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers204 = &headers
+	case rsp.StatusCode == 401:
+		var headers DeleteNodeResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers DeleteNodeResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers DeleteNodeResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 412:
+		var headers DeleteNodeResponse412Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers412 = &headers
+	case rsp.StatusCode == 422:
+		var headers DeleteNodeResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers DeleteNodeResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers DeleteNodeResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetNodeResponse parses an HTTP response from a GetNodeWithResponse call
+func ParseGetNodeResponse(rsp *http.Response) (*GetNodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetNodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Node
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetNodeResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers GetNodeResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers GetNodeResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers GetNodeResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 422:
+		var headers GetNodeResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers GetNodeResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers GetNodeResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUpdateNodeResponse parses an HTTP response from a UpdateNodeWithResponse call
+func ParseUpdateNodeResponse(rsp *http.Response) (*UpdateNodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateNodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Node
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 408:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON408 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateNodeResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 400:
+		var headers UpdateNodeResponse400Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers400 = &headers
+	case rsp.StatusCode == 401:
+		var headers UpdateNodeResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers UpdateNodeResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers UpdateNodeResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 408:
+		var headers UpdateNodeResponse408Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers408 = &headers
+	case rsp.StatusCode == 409:
+		var headers UpdateNodeResponse409Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers409 = &headers
+	case rsp.StatusCode == 412:
+		var headers UpdateNodeResponse412Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers412 = &headers
+	case rsp.StatusCode == 413:
+		var headers UpdateNodeResponse413Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers413 = &headers
+	case rsp.StatusCode == 415:
+		var headers UpdateNodeResponse415Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers415 = &headers
+	case rsp.StatusCode == 422:
+		var headers UpdateNodeResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers UpdateNodeResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers UpdateNodeResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseExpireNodeResponse parses an HTTP response from a ExpireNodeWithResponse call
+func ParseExpireNodeResponse(rsp *http.Response) (*ExpireNodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExpireNodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Node
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ExpireNodeResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers ExpireNodeResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers ExpireNodeResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers ExpireNodeResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 412:
+		var headers ExpireNodeResponse412Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers412 = &headers
+	case rsp.StatusCode == 422:
+		var headers ExpireNodeResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers ExpireNodeResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers ExpireNodeResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSetNodeRoutesResponse parses an HTTP response from a SetNodeRoutesWithResponse call
+func ParseSetNodeRoutesResponse(rsp *http.Response) (*SetNodeRoutesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetNodeRoutesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Node
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 408:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON408 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers SetNodeRoutesResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 400:
+		var headers SetNodeRoutesResponse400Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers400 = &headers
+	case rsp.StatusCode == 401:
+		var headers SetNodeRoutesResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers SetNodeRoutesResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers SetNodeRoutesResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 408:
+		var headers SetNodeRoutesResponse408Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers408 = &headers
+	case rsp.StatusCode == 412:
+		var headers SetNodeRoutesResponse412Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers412 = &headers
+	case rsp.StatusCode == 413:
+		var headers SetNodeRoutesResponse413Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers413 = &headers
+	case rsp.StatusCode == 415:
+		var headers SetNodeRoutesResponse415Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers415 = &headers
+	case rsp.StatusCode == 422:
+		var headers SetNodeRoutesResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers SetNodeRoutesResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers SetNodeRoutesResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSetNodeTagsResponse parses an HTTP response from a SetNodeTagsWithResponse call
+func ParseSetNodeTagsResponse(rsp *http.Response) (*SetNodeTagsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetNodeTagsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Node
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 408:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON408 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers SetNodeTagsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 400:
+		var headers SetNodeTagsResponse400Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers400 = &headers
+	case rsp.StatusCode == 401:
+		var headers SetNodeTagsResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers SetNodeTagsResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers SetNodeTagsResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 408:
+		var headers SetNodeTagsResponse408Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers408 = &headers
+	case rsp.StatusCode == 412:
+		var headers SetNodeTagsResponse412Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers412 = &headers
+	case rsp.StatusCode == 413:
+		var headers SetNodeTagsResponse413Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers413 = &headers
+	case rsp.StatusCode == 415:
+		var headers SetNodeTagsResponse415Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers415 = &headers
+	case rsp.StatusCode == 422:
+		var headers SetNodeTagsResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers SetNodeTagsResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers SetNodeTagsResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUpdateNodeClientResponse parses an HTTP response from a UpdateNodeClientWithResponse call
+func ParseUpdateNodeClientResponse(rsp *http.Response) (*UpdateNodeClientResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateNodeClientResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Node
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateNodeClientResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers UpdateNodeClientResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers UpdateNodeClientResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers UpdateNodeClientResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 409:
+		var headers UpdateNodeClientResponse409Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers409 = &headers
+	case rsp.StatusCode == 422:
+		var headers UpdateNodeClientResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers UpdateNodeClientResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers UpdateNodeClientResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListTagsResponse parses an HTTP response from a ListTagsWithResponse call
+func ParseListTagsResponse(rsp *http.Response) (*ListTagsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTagsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TagList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListTagsResponse200Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers ListTagsResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers ListTagsResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 422:
+		var headers ListTagsResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers ListTagsResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers ListTagsResponse503Headers
 		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {

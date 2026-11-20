@@ -48,6 +48,17 @@ type leaf struct {
 	// set is a command that changes the fields its Opt flags name, so a
 	// line gives at least one of them: NeedsChange.
 	set bool
+	// force is a command that can ask, and so takes --force.
+	force bool
+	// hint follows a wrong argument count or an empty list argument;
+	// emptyList follows the sentence of an empty list argument.
+	hint      func(args []string) string
+	emptyList string
+	// valid checks the line, read but not looked up, before any call.
+	valid func(*cmdline.Line) error
+	// target is the type of the command's target: the first argument that
+	// is an entity; nil for none.
+	target reflect.Type
 	// server reports whether this line talks to the server.
 	server func(*cmdline.Line) bool
 	check  func() error
@@ -74,6 +85,9 @@ type (
 	configFlags struct {
 		Config Path `flag:"config" help:"Config file" short:"c"`
 	}
+	forceFlags struct {
+		Force bool `flag:"force" help:"Do not ask"`
+	}
 )
 
 var (
@@ -84,6 +98,10 @@ var (
 	errBoth      = errors.New("both Columns and Done; Done is printed in place of the sheet")
 	errNoDefault = errors.New("a list with no Default column")
 	errNoRows    = errors.New("a list with no NoRows sentence")
+	errBlocks    = errors.New("blocks and no Columns: a block follows the lines of a sheet")
+	errNoAsk     = errors.New("a delete with no Confirm: every delete asks first")
+	errNoRead    = errors.New("has a revision and no read: a write the server refuses because the target changed would not run again")
+	errNoSay     = errors.New("is cut to the width of the terminal, and Long does not say so")
 )
 
 // specError is a spec that is wrong, named by its path.
@@ -130,24 +148,83 @@ func New[In, Out any](s Spec[In, Out]) Node {
 			errs = append(errs, errBoth)
 		}
 
-		return errors.Join(append(errs, s.Columns.Check())...)
+		if s.Blocks != nil && s.Columns == nil {
+			errs = append(errs, errBlocks)
+		}
+
+		return errors.Join(append(errs, s.Columns.Check(), s.Blocks.Check())...)
 	}
 	l.set = s.NeedsChange
+	l.force = s.Confirm != nil
+	l.hint = s.Hint
+	l.emptyList = s.EmptyList
+	l.target, _ = targetType(reflect.TypeFor[In]())
+
+	if s.Valid != nil {
+		l.valid = func(line *cmdline.Line) error {
+			in, _ := cmdline.Get[In](line)
+
+			return s.Valid(in)
+		}
+	}
 
 	l.cmd = func(flags []any) cmdline.Node {
 		return cmdline.Command[In]{Name: s.Name, Aliases: s.Aliases, Help: s.Short, Flags: flags, Run: func(ctx context.Context, in In) error {
 			c := ctxOf(ctx)
 
-			if c.API != nil {
-				c.API.guard.Store(guardOf(in))
+			// The prompt is about the target as it is, so it is asked again
+			// when the target changed and is read again, after a line that
+			// says why the same question comes twice.
+			asked := false
+
+			attempt := func(in In, again string) (Out, error) {
+				if c.API != nil {
+					c.API.guard.Store(guardOf(in))
+				}
+
+				if s.Confirm != nil {
+					p, err := s.Confirm(c, in)
+					if err == nil {
+						if !asked {
+							again = ""
+						}
+
+						asked, err = c.confirm(p, again)
+					}
+
+					if err != nil {
+						var zero Out
+
+						return zero, err
+					}
+				}
+
+				return s.Run(c, in)
 			}
 
-			out, err := s.Run(c, in)
+			out, err := attempt(in, "")
+
+			// A write refused because its target changed runs once more on
+			// the target read again; a second refusal is the error.
+			if changed(err) {
+				again, ok, rerr := reread(c, in)
+
+				switch {
+				case rerr != nil:
+					err = rerr
+				case ok:
+					was := c.named(in)
+					in = again
+
+					out, err = attempt(in, was+" changed while the question was open.")
+				}
+			}
+
 			if err != nil {
-				return flagsOf[In](err)
+				return flagsOf[In](c.about(err, in))
 			}
 
-			return printOne(c, out, s.Columns, func() string {
+			return printOne(c, out, s.Columns, s.Blocks, func() string {
 				if s.Done == nil {
 					return ""
 				}
@@ -185,6 +262,13 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 
 		if s.NoRows == "" {
 			errs = append(errs, errNoRows)
+		}
+
+		// A list cut to the terminal says so, and how to read all of it.
+		for _, c := range s.Columns {
+			if says := c.Heading() + " is truncated to fit your terminal"; c.List == table.Cut && !strings.Contains(s.Long, says) {
+				errs = append(errs, fmt.Errorf("column %q %w: %q, with the way to read all of it", c.Name, errNoSay, says))
+			}
 		}
 
 		return errors.Join(append(errs, s.Columns.Check())...)
@@ -258,6 +342,10 @@ func (l *leaf) flags() []any {
 		f = append(f, configFlags{})
 	}
 
+	if l.force {
+		f = append(f, forceFlags{})
+	}
+
 	return append(f, helpFlags{})
 }
 
@@ -271,6 +359,8 @@ type Tree struct {
 	groups map[string]Group
 	// oldNames leads an old path to the path of today.
 	oldNames map[string]string
+	// entities are the types of target the tree looks up, by type.
+	entities map[reflect.Type]entity
 	// spellings leads every flag of the tree, as it can be typed ("--force",
 	// "-o"), to its long name, which messages use. --version is not one:
 	// on a command line it is an unknown flag.
@@ -280,25 +370,40 @@ type Tree struct {
 // rootOnly is the flag that only the root takes.
 const rootOnly = "version"
 
-var allowedAliases = []string{"ls", "rm", "approve"}
+// allowedAliases are the aliases a command may have.
+func allowedAliases() []string { return []string{"ls", "rm", "approve"} }
 
 // Build checks every spec and makes the tree. The error names every
 // command and field that is wrong.
 func Build(name, short string, nodes ...Node) (*Tree, error) {
-	return build(name, short, allowedAliases, lookups, nodes...)
+	return build(name, short, allowedAliases(), entities(), nodes...)
 }
 
-// build is Build with the aliases a tree may use and the parser's options
-// (the lookups): the tests of the grammar need trees with other aliases
-// than Headscale's.
-func build(name, short string, aliases []string, opts []cmdline.Option, nodes ...Node) (*Tree, error) {
+// build is Build with the aliases a tree may use and the entities it looks
+// up: the tests of the grammar need trees with other aliases than
+// Headscale's, and a test of the retry a type of its own. A test tree is
+// checked as the real one is.
+func build(name, short string, aliases []string, ents []entity, nodes ...Node) (*Tree, error) {
 	t := &Tree{
 		name: name, short: short,
 		leaves: map[string]*leaf{}, groups: map[string]Group{},
 		oldNames: map[string]string{}, spellings: map[string]string{},
+		entities: map[reflect.Type]entity{},
 	}
 
 	var errs []error
+
+	opts := make([]cmdline.Option, 0, len(ents))
+
+	for _, e := range ents {
+		t.entities[e.t] = e
+		opts = append(opts, e.lookup)
+
+		err := e.check()
+		if err != nil {
+			errs = append(errs, specError("the candidates of a lookup: "+err.Error()))
+		}
+	}
 
 	var build func(path []string, n Node) cmdline.Node
 
@@ -352,6 +457,14 @@ func build(name, short string, aliases []string, opts []cmdline.Option, nodes ..
 				bad("%v", err)
 			}
 
+			if n.name == "delete" && !n.force {
+				bad("%v", errNoAsk)
+			}
+
+			if e, ok := t.entities[n.target]; n.target != nil && hasJSON(n.target, "revision") && (!ok || e.read == nil) {
+				bad("target %v %v", n.target, errNoRead)
+			}
+
 			t.leaves[at] = n
 
 			return n.cmd(n.flags())
@@ -382,13 +495,6 @@ func build(name, short string, aliases []string, opts []cmdline.Option, nodes ..
 	}
 
 	errs = append(errs, t.checkFlags()...)
-
-	for _, c := range candidates {
-		err := c.Check()
-		if err != nil {
-			errs = append(errs, specError("the candidates of a lookup: "+err.Error()))
-		}
-	}
 
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)

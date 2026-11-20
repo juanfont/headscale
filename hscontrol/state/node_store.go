@@ -35,6 +35,12 @@ const fallbackGivenName = "node"
 var (
 	ErrGivenNameTaken   = errors.New("given name already in use by another node")
 	ErrGivenNameInvalid = errors.New("given name is not a valid DNS label")
+	// ErrNodeRevisionChanged refuses a write whose revision is no longer
+	// the node's: someone changed the node since it was read.
+	ErrNodeRevisionChanged = errors.New("node changed since its revision was read")
+	// ErrNodeStoreStopped is a guarded write that the stopped store did not
+	// take.
+	ErrNodeStoreStopped = errors.New("node store is stopped")
 )
 
 const (
@@ -43,6 +49,9 @@ const (
 	rebuildPeerMaps = 4
 	setName         = 5
 	updateMulti     = 6
+	updateIf        = 7
+	beginDelIf      = 8
+	cancelDel       = 9
 )
 
 const prometheusNamespace = "headscale"
@@ -130,6 +139,10 @@ type NodeStore struct {
 
 	batchSize    int
 	batchTimeout time.Duration
+
+	// deleting holds the nodes a guarded delete has claimed while their
+	// rows are deleted; only the writer goroutine touches it.
+	deleting map[types.NodeID]struct{}
 }
 
 func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batchTimeout time.Duration) *NodeStore {
@@ -142,8 +155,9 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 		batchSize:    batchSize,
 		batchTimeout: batchTimeout,
 		stopped:      make(chan struct{}),
+		deleting:     map[types.NodeID]struct{}{},
 	}
-	store.data.Store(&snap)
+	store.data.Store(snap)
 
 	// Initialize node count gauge
 	nodeStoreNodesCount.Set(float64(len(nodes)))
@@ -218,6 +232,10 @@ type Snapshot struct {
 	// router is available.
 	routes         map[netip.Prefix]types.NodeID
 	isPrimaryRoute map[types.NodeID]bool
+
+	// index is built by the first list of this snapshot; see
+	// [NodeStore.Index]. It lives and dies with the snapshot.
+	index atomic.Pointer[SnapshotIndex]
 }
 
 // PeersFunc is a function that takes a list of nodes and returns a map
@@ -248,6 +266,15 @@ type work struct {
 	// pre, when non-nil, receives each updated node as it was before its
 	// update function ran.
 	pre map[types.NodeID]types.NodeView
+	// For updateIf and beginDelIf: the revision the node must still have;
+	// "" guards nothing.
+	revision string
+	// For updateIf: refuses the write when it returns an error, else its
+	// changes to the copy it is given are stored.
+	check func(*types.Node) error
+	// For updateIf: a name the check sets is bumped when taken, as a
+	// registration's is, rather than refused.
+	bumpName bool
 }
 
 // updateChanges reports whether an in-place update moved a peer-visibility
@@ -481,7 +508,109 @@ func (s *NodeStore) SetGivenName(id types.NodeID, name string) (types.NodeView, 
 		return types.NodeView{}, err
 	}
 
-	return <-w.nodeResult, nil
+	// The view is the node at the end of the batch: a delete later in the
+	// batch, after this write or claim was applied, removed it.
+	nv := <-w.nodeResult
+	if !nv.Valid() && w.op != cancelDel {
+		return types.NodeView{}, ErrNodeNotFound
+	}
+
+	return nv, nil
+}
+
+// UpdateNodeIf runs update on the node inside the writer and stores the
+// result, or writes nothing when update returns an error, which it returns.
+// No other write can come between what update reads and what it stores.
+// When revision is not "", the node must still have it, or the write is
+// [ErrNodeRevisionChanged] and update does not run. A name that update
+// changes is refused with [ErrGivenNameTaken] when another node holds it,
+// unless bumpName, which bumps it as a registration does.
+//
+// Returns [ErrNodeNotFound] when no node has id, a delete has claimed it, or
+// a delete later in the same batch removed it.
+func (s *NodeStore) UpdateNodeIf(
+	id types.NodeID,
+	revision string,
+	bumpName bool,
+	update func(*types.Node) error,
+) (types.NodeView, error) {
+	return s.writeIf(work{op: updateIf, nodeID: id, revision: revision, check: update, bumpName: bumpName})
+}
+
+// BeginDeleteIf claims the node for a delete when it still has revision
+// ("" guards nothing), and returns it. While claimed, every guarded or admin
+// write to it is [ErrNodeNotFound], so the check stays true while the row is
+// deleted; what the node reports about itself still lands. Finish with
+// [NodeStore.DeleteNode], or give it back with [NodeStore.CancelDelete].
+//
+// Returns [ErrNodeNotFound] when no node has id, it is claimed already, or a
+// delete later in the same batch removed it.
+func (s *NodeStore) BeginDeleteIf(id types.NodeID, revision string) (types.NodeView, error) {
+	return s.writeIf(work{op: beginDelIf, nodeID: id, revision: revision})
+}
+
+// CancelDelete gives back a node that [NodeStore.BeginDeleteIf] claimed,
+// unchanged.
+func (s *NodeStore) CancelDelete(id types.NodeID) {
+	_, _ = s.writeIf(work{op: cancelDel, nodeID: id})
+}
+
+// writeIfLabel is the operation label of w in the metrics. An unguarded
+// write keeps the label it had before guards existed, so dashboards keep
+// their series.
+func writeIfLabel(w work) string {
+	switch {
+	case w.op == cancelDel:
+		return "delete_cancel"
+	case w.op == beginDelIf:
+		return "delete_if"
+	case w.revision != "":
+		return "update_if"
+	default:
+		return "update"
+	}
+}
+
+// writeIf queues w, an updateIf, beginDelIf or cancelDel, and waits for its
+// result.
+func (s *NodeStore) writeIf(w work) (types.NodeView, error) {
+	label := writeIfLabel(w)
+
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues(label))
+	defer timer.ObserveDuration()
+
+	w.result = make(chan struct{})
+	w.nodeResult = make(chan types.NodeView, 1)
+	w.errResult = make(chan error, 1)
+
+	nodeStoreQueueDepth.Inc()
+
+	select {
+	case s.writeQueue <- w:
+	case <-s.stopped:
+		nodeStoreQueueDepth.Dec()
+
+		return types.NodeView{}, ErrNodeStoreStopped
+	}
+
+	<-w.result
+	nodeStoreQueueDepth.Dec()
+
+	nodeStoreOperations.WithLabelValues(label).Inc()
+
+	err := <-w.errResult
+	if err != nil {
+		return types.NodeView{}, err
+	}
+
+	// The view is the node at the end of the batch: a delete later in the
+	// batch, after this write or claim was applied, removed it.
+	nv := <-w.nodeResult
+	if !nv.Valid() && w.op != cancelDel {
+		return types.NodeView{}, ErrNodeNotFound
+	}
+
+	return nv, nil
 }
 
 // Start initializes the [NodeStore] and starts processing the write queue.
@@ -615,6 +744,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 			}
 		case del:
 			delete(nodes, w.nodeID)
+			delete(s.deleting, w.nodeID)
 
 			if w.peers != nil {
 				*w.peers = slices.Clone(prev.peersByNode[w.nodeID])
@@ -628,7 +758,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 			electionChanged = true
 		case setName:
 			n, exists := nodes[w.nodeID]
-			if !exists {
+			if _, claimed := s.deleting[w.nodeID]; !exists || claimed {
 				setErrResults[w] = ErrNodeNotFound
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 
@@ -654,6 +784,10 @@ func (s *NodeStore) applyBatch(batch []work) {
 			nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			relationChanged = true
 			electionChanged = true
+		case updateIf, beginDelIf, cancelDel:
+			nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+
+			setErrResults[w] = s.applyGuarded(w, nodes, &relationChanged, &electionChanged)
 		case rebuildPeerMaps:
 			// rebuildPeerMaps doesn't modify nodes, it just forces the snapshot rebuild
 			// below to recalculate peer relationships using the current peersFunc
@@ -672,7 +806,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 	}
 
 	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev, !relationChanged, !electionChanged)
-	s.data.Store(&newSnap)
+	s.data.Store(newSnap)
 
 	// Update node count gauge
 	nodeStoreNodesCount.Set(float64(len(nodes)))
@@ -710,6 +844,67 @@ func (s *NodeStore) applyBatch(batch []work) {
 			close(w.result)
 		}
 	}
+}
+
+// applyGuarded applies w, an updateIf, beginDelIf or cancelDel, to nodes in
+// the writer, and marks what it moved in relation and election; an error
+// writes nothing.
+func (s *NodeStore) applyGuarded(w *work, nodes map[types.NodeID]types.Node, relation, election *bool) error {
+	if w.op == cancelDel {
+		delete(s.deleting, w.nodeID)
+
+		return nil
+	}
+
+	n, exists := nodes[w.nodeID]
+	if _, claimed := s.deleting[w.nodeID]; !exists || claimed {
+		return ErrNodeNotFound
+	}
+
+	err := revisionIs(&n, w.revision)
+	if err != nil {
+		return err
+	}
+
+	if w.op == beginDelIf {
+		s.deleting[w.nodeID] = struct{}{}
+
+		return nil
+	}
+
+	pre := n
+
+	err = w.check(&n)
+	if err != nil {
+		return err
+	}
+
+	if n.GivenName != pre.GivenName {
+		resolved := resolveGivenName(nodes, n.ID, n.GivenName, s.reservedLabel)
+		if resolved != n.GivenName && !w.bumpName {
+			return ErrGivenNameTaken
+		}
+
+		n.GivenName = resolved
+	}
+
+	nodes[w.nodeID] = n
+
+	moved, elect := updateChanges(&pre, &n)
+	*relation = *relation || moved
+	*election = *election || elect
+
+	return nil
+}
+
+// revisionIs refuses with [ErrNodeRevisionChanged] when n no longer has
+// revision; "" guards nothing.
+func revisionIs(n *types.Node, revision string) error {
+	if revision != "" && n.View().Revision() != revision {
+		return ErrNodeRevisionChanged
+	}
+
+	return nil
 }
 
 // resolveGivenName returns a unique DNS label for the node identified
@@ -778,7 +973,7 @@ func snapshotFromNodes(
 	peersFunc PeersFunc,
 	prev *Snapshot,
 	reusePeers, reuseRoutes bool,
-) Snapshot {
+) *Snapshot {
 	timer := prometheus.NewTimer(nodeStoreSnapshotBuildDuration)
 	defer timer.ObserveDuration()
 
@@ -820,7 +1015,7 @@ func snapshotFromNodes(
 		peersTimer.ObserveDuration()
 	}
 
-	newSnap := Snapshot{
+	newSnap := &Snapshot{
 		nodesByID:         nodes,
 		nodeViewsByID:     nodeViewsByID,
 		allNodes:          allNodes,
@@ -1115,7 +1310,80 @@ func (s *NodeStore) PrimaryRouteFor(prefix netip.Prefix) (types.NodeID, bool) {
 // PrimaryRoutesForNode returns the prefixes for which id is the current
 // primary advertiser, sorted so an unchanged node renders identically.
 func (s *NodeStore) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
+	return s.data.Load().PrimaryRoutesForNode(id)
+}
+
+// Snapshot is the newest snapshot, for a read that must show one moment.
+// It is immutable; later writes publish a new one.
+func (s *NodeStore) Snapshot() *Snapshot {
+	return s.data.Load()
+}
+
+// SnapshotIndex is a snapshot with its nodes in ID order and by tag. The
+// first list of a snapshot builds it and later lists of that snapshot share
+// it, so neither the snapshot build nor each page of a walk pays for it. It
+// is read-only, its slices too.
+type SnapshotIndex struct {
+	*Snapshot
+
+	byID  []types.NodeView
+	byTag map[string][]types.NodeView
+	tags  []string
+}
+
+// Index is the newest snapshot with its index.
+func (s *NodeStore) Index() *SnapshotIndex {
 	snap := s.data.Load()
+	if idx := snap.index.Load(); idx != nil {
+		return idx
+	}
+
+	idx := &SnapshotIndex{Snapshot: snap, byID: slices.Clone(snap.allNodes), byTag: map[string][]types.NodeView{}}
+	slices.SortFunc(idx.byID, func(a, b types.NodeView) int { return cmp.Compare(a.ID(), b.ID()) })
+
+	for _, nv := range idx.byID {
+		for _, t := range nv.Tags().All() {
+			idx.byTag[t] = append(idx.byTag[t], nv)
+		}
+	}
+
+	idx.tags = slices.Sorted(maps.Keys(idx.byTag))
+
+	// Two lists that race build it twice; either result is right.
+	snap.index.Store(idx)
+
+	return idx
+}
+
+// NodesAfter is the nodes with an ID above after, in ID order.
+func (idx *SnapshotIndex) NodesAfter(after types.NodeID) []types.NodeView {
+	i, _ := slices.BinarySearchFunc(idx.byID, after+1, func(nv types.NodeView, id types.NodeID) int {
+		return cmp.Compare(nv.ID(), id)
+	})
+
+	return idx.byID[i:]
+}
+
+// NodesWithTag is the nodes that have tag, in ID order.
+func (idx *SnapshotIndex) NodesWithTag(tag string) []types.NodeView {
+	return idx.byTag[tag]
+}
+
+// Tags is every tag a node of the snapshot has, sorted.
+func (idx *SnapshotIndex) Tags() []string {
+	return idx.tags
+}
+
+// Node is the node with id in the snapshot.
+func (snap *Snapshot) Node(id types.NodeID) (types.NodeView, bool) {
+	nv, ok := snap.nodeViewsByID[id]
+
+	return nv, ok
+}
+
+// PrimaryRoutesForNode is [NodeStore.PrimaryRoutesForNode] in this
+// snapshot.
+func (snap *Snapshot) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
 	if !snap.isPrimaryRoute[id] {
 		return nil
 	}

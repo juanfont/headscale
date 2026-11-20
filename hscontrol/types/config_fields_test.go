@@ -133,6 +133,7 @@ func TestConfigFields(t *testing.T) {
 		"logtail.enabled",
 		"taildrop.enabled",
 		"auto_update.enabled",
+		"auto_update.check_versions",
 		"tailsql.enabled",
 		"tailsql.state_dir",
 		"cli.address",

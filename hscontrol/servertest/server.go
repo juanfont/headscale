@@ -185,6 +185,8 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 	cfg.Database.Type = types.DatabaseSqlite
 	cfg.Database.Sqlite.Path = tmpDir + "/headscale_test.db"
 	cfg.Policy.Mode = types.PolicyModeDB
+	// Tests never reach pkgs.tailscale.com.
+	cfg.AutoUpdate.CheckVersions = false
 	cfg.Taildrop.Enabled = sc.taildropEnabled
 	cfg.LogTail.Enabled = sc.logTailEnabled
 	cfg.Tuning.BatchChangeDelay = sc.batchDelay

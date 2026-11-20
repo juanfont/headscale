@@ -37,6 +37,11 @@ const (
 	CodeNameTaken            Code = "name_taken"
 	CodeEmailTaken           Code = "email_taken"
 	CodeUserManagedByOIDC    Code = "user_managed_by_oidc"
+	CodeTagsRequired         Code = "tags_required"
+	CodeTagsNotPermitted     Code = "tags_not_permitted"
+	CodeExpiryInPast         Code = "expiry_in_past"
+	CodeUpdateRefused        Code = "update_refused"
+	CodePreconditionFailed   Code = "precondition_failed"
 	CodeUnhealthy            Code = "unhealthy"
 	CodeInternal             Code = "internal"
 )
@@ -102,6 +107,25 @@ var codes = map[Code]codeInfo{
 	CodeUserManagedByOIDC: {
 		http.StatusConflict, "The identity provider owns this user",
 		"A change to a user from OIDC, whose fields the identity provider owns. `object` is the user.", nil,
+	},
+	CodeTagsRequired: {http.StatusUnprocessableEntity, "Tags are required", "An empty tag list where one is needed, such as the tags of a node.", nil},
+	CodeTagsNotPermitted: {
+		http.StatusUnprocessableEntity, "The tags are not in the policy",
+		"Tags that are not in `tagOwners` of the policy.",
+		[]string{"`tags`: every tag of the request that the policy does not name"},
+	},
+	CodeExpiryInPast: {http.StatusUnprocessableEntity, "The expiry is in the past", "An expiry before now. Send `\"now\"` to expire at the server's clock.", nil},
+	CodeUpdateRefused: {
+		http.StatusConflict, "The node did not start the update",
+		"The node did not start an update of its Tailscale client.",
+		[]string{
+			"`reason`: `notConnected`, `updatesNotAllowed`, `clientRefused` or `timeout`; a client must accept a reason it does not know",
+			"`clientError`: with `clientRefused`, the text the Tailscale client sent; `\"\"` when it sent none",
+		},
+	},
+	CodePreconditionFailed: {
+		http.StatusPreconditionFailed, "The resource changed",
+		"`If-Match` does not match: the resource changed since it was read, such as a node since its `revision` was read. Nothing was written; read it again.", nil,
 	},
 	CodeUnhealthy: {
 		http.StatusServiceUnavailable, "The server is not healthy",
