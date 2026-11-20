@@ -284,7 +284,6 @@ func TestDeclaration(t *testing.T) {
 
 	var b bytes.Buffer
 	require.NoError(t, Declaration(&b, listCols[:4].Info()))
-	//nolint:dupword // a column is often named as its field
 	require.Equal(t, `COLUMN   FIELD          KIND     DEFAULT  DESCRIPTION
 version  clientVersion  version  no       Client version
 nodes    nodes          list     no       Nodes

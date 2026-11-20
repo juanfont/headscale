@@ -75,7 +75,6 @@ func TestOnly(t *testing.T) {
 		{line: "keys", screen: true, rows: rows[1:3], stdout: "No keys. --all shows 2 more.\n"},
 		{line: "keys --filter id=2", screen: true, stdout: "No keys. --all shows 1 more.\n"},
 		{line: "keys --all", screen: true, rows: []stated{}, stdout: "No keys.\n"},
-		//nolint:dupword // a column is often named as its field
 		{line: "keys --list-columns", stdout: "COLUMN  FIELD  KIND  DEFAULT  DESCRIPTION\nid      id     id    yes\nname    name   text  yes\nstate   state  text  no       the list shows only state=valid, --all every row and this column\n"},
 		{line: "keys --all=maybe", stderr: "Error: --all takes true or false, not \"maybe\".\n", code: 1},
 		{line: "all --all", stderr: "Error: --all does not apply to `all`.\nRun `prog all --help`.\n", code: 1},

@@ -70,7 +70,6 @@ const authKeysPath = "/api/headscale/v0/auth-keys"
 
 var authKeys = listAt{authKeysPath, "authKeys"}
 
-//nolint:dupword // a table repeats no and yes
 const allKeysTable = `ID  PREFIX  OWNER   STATE    REUSABLE  EPHEMERAL  EXPIRY  CREATED
 3   zz91aa  alice   revoked  no        no         in 5d   2d ago
 5   kk20bb  bob     expired  yes       no         3d ago  33d ago
@@ -122,14 +121,12 @@ var authKeysListCases = []cliCase{
 	{name: "a filter on state as JSON", args: "auth keys list --filter state=used -o json", want: authKeys.rows(onlyID("6"))},
 	{name: "the columns named, without --all", args: "auth keys list --columns id,state,description", stdout: "ID  STATE  DESCRIPTION\n7   valid  -\n9   valid  CI runners\n"},
 	{name: "the columns named, with --all", args: "auth keys list --all --columns id,prefix", stdout: "ID  PREFIX\n3   zz91aa\n5   kk20bb\n6   mm77cc\n7   ab12cd\n9   ef34gh\n"},
-	//nolint:dupword // a table repeats no and yes
 	{name: "a column added to --all", args: "auth keys list --all --columns +description,-created --filter id>5", stdout: "ID  PREFIX  OWNER   STATE  REUSABLE  EPHEMERAL  EXPIRY  DESCRIPTION\n6   mm77cc  bob     used   no        no         in 2d   -\n7   ab12cd  alice   valid  yes       no         in 23h  -\n9   ef34gh  tag:ci  valid  no        yes        in 6d   CI runners\n"},
 	{name: "the next expiry first", args: "auth keys list --all --sort expiry --columns id,expiry", stdout: "ID  EXPIRY\n5   3d ago\n7   in 23h\n6   in 2d\n3   in 5d\n9   in 6d\n"},
 	{name: "expiring within a week", args: "auth keys ls --filter 'expiry<7d' -o json", want: authKeys.rows(onlyID("7", "9"))},
 	{name: "the state filter of the proposal", args: "auth keys list --filter state=expired --columns id", stdout: "ID\n5\n"},
 	{name: "nothing valid, on a terminal", args: "auth keys list --filter owner=bob", terminal: true, stdout: "No auth keys. --all shows 2 more.\n"},
 	{name: "nothing at all, on a terminal", args: "auth keys list --all --filter owner=tag:build", terminal: true, stdout: "No auth keys.\n"},
-	//nolint:dupword // a column is often named as its field
 	{
 		name: "the columns", args: "auth keys list --list-columns",
 		stdout: `COLUMN       FIELD        KIND   DEFAULT  DESCRIPTION

@@ -321,7 +321,7 @@ var runCases = []runCase{
 	{"R06", Must, "D15 D3", sh("--config=/a -c /b version"), usage(FlagRepeated, "version", "config")},
 
 	// v2: globals before the subcommand, the decided spellings.
-	{"G12", Must, "D3", sh("-c nodes nodes list"), ran("nodes list", nil, "config", "nodes")}, //nolint:dupword // the value is a command word
+	{"G12", Must, "D3", sh("-c nodes nodes list"), ran("nodes list", nil, "config", "nodes")},
 	{"G13", Must, "D3 D11", sh("-o=json nodes list"), ran("nodes list", nil, "output", "json")},
 	{"G14", Must, "D3 D11", sh("-c=/x nodes list"), ran("nodes list", nil, "config", "/x")},
 	{"G15", Must, "D3 R23", sh("-c '' nodes list"), ran("nodes list", nil, "config", "")},

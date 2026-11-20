@@ -710,17 +710,17 @@ func TestNodesUpdateClient(t *testing.T) {
 var routesCases = []cliCase{
 	{
 		name: "only nodes with routes, exit as a word", args: "nodes routes list",
-		stdout: "ID  NAME     ENABLED     ADVERTISED                  SERVING\n12  mynode   10.0.0.0/8  10.0.0.0/8, 192.168.0.0/24  10.0.0.0/8\n14  gateway  exit        exit                        exit\n", //nolint:dupword // exit in three columns
+		stdout: "ID  NAME     ENABLED     ADVERTISED                  SERVING\n12  mynode   10.0.0.0/8  10.0.0.0/8, 192.168.0.0/24  10.0.0.0/8\n14  gateway  exit        exit                        exit\n",
 	},
 	{
 		name: "a terminal stacks the routes", args: "nodes routes list", terminal: true, width: 80, env: []string{"NO_COLOR=1"},
-		stdout: "ID  NAME     ENABLED     ADVERTISED      SERVING\n12  mynode   10.0.0.0/8  10.0.0.0/8      10.0.0.0/8\n                         192.168.0.0/24\n14  gateway  exit        exit            exit\n", //nolint:dupword // exit in three columns
+		stdout: "ID  NAME     ENABLED     ADVERTISED      SERVING\n12  mynode   10.0.0.0/8  10.0.0.0/8      10.0.0.0/8\n                         192.168.0.0/24\n14  gateway  exit        exit            exit\n",
 	},
 	{name: "one node", args: "nodes routes list mynode", stdout: "ID  NAME    ENABLED     ADVERTISED                  SERVING\n12  mynode  10.0.0.0/8  10.0.0.0/8, 192.168.0.0/24  10.0.0.0/8\n"},
 	{name: "one node as JSON", args: "nodes routes list mynode -o json", want: nodes.rows(onlyID("12"))},
 	{name: "JSON is the nodes with routes", args: "nodes routes list -o json", want: nodes.rows(onlyID("12", "14"))},
 	{name: "an unknown node is an error", args: "nodes routes list nope", stderr: "Error: no node matches \"nope\".\n", code: 1},
-	{name: "a filter on exit", args: "nodes routes ls --filter enabled-routes=exit", stdout: "ID  NAME     ENABLED  ADVERTISED  SERVING\n14  gateway  exit     exit        exit\n"}, //nolint:dupword // exit in three columns
+	{name: "a filter on exit", args: "nodes routes ls --filter enabled-routes=exit", stdout: "ID  NAME     ENABLED  ADVERTISED  SERVING\n14  gateway  exit     exit        exit\n"},
 	{name: "the real prefix in a filter", args: "nodes routes list --filter enabled-routes=::/0 --columns id", stdout: "ID\n14\n"},
 	{name: "two arguments", args: "nodes routes list 12 13", stderr: "Error: `nodes routes list` takes at most 1 argument, got 2.\n\n  headscale nodes routes list [node]\n", code: 1},
 	{

@@ -69,7 +69,6 @@ func TestResolve(t *testing.T) {
 
 	// A word that is a provider identifier says so in the list.
 	_, err = find2(append(slices.Clone(users), clientv0.User{Id: "14", Name: "sub-13", Provider: "local"}), "sub-13")
-	//nolint:dupword // the provider and its identifier are two columns
 	require.EqualError(t, err, `"sub-13" matches 2 users. Use the ID to select one:
 
   ID  NAME    EMAIL  PROVIDER  PROVIDER ID
