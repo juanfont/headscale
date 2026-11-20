@@ -540,9 +540,29 @@ func (e *env) enterAuthKey(t *testing.T, key string) {
 	t.Helper()
 
 	e.openAccountMenu(t)
+	e.submitAuthKey(t, key)
+}
+
+// submitAuthKey fills in the auth key dialog from the open account menu.
+func (e *env) submitAuthKey(t *testing.T, key string) {
+	t.Helper()
+
 	require.NoError(t, e.android.Tap("Use an auth key"))
 	require.NoError(t, e.android.EnterText(key))
 	require.NoError(t, e.android.Tap("Add account"))
+}
+
+// openProfile navigates a logged-in app to its Accounts screen. A profile
+// replaces the settings icon with the avatar and the Accounts row with the
+// login; hsic gives every user this email.
+func (e *env) openProfile(t *testing.T) {
+	t.Helper()
+
+	const login = user + "@test.no"
+
+	require.NoError(t, e.android.Launch())
+	e.tapPast(t, "Settings", "DNS settings")
+	e.tapPast(t, login, "Log out")
 }
 
 // useControlURL points the app at headscale and backs out of the browser
@@ -622,11 +642,7 @@ func TestAndroidReloginAuthKey(t *testing.T) {
 
 	before := e.loginInteractive(t)
 
-	// A logged-in app replaces the settings icon with the avatar and the
-	// Accounts row with the login; hsic gives every user this email.
-	require.NoError(t, e.android.Launch())
-	e.tapPast(t, "Settings", "DNS settings")
-	e.tapPast(t, user+"@test.no", "Log out")
+	e.openProfile(t)
 	require.NoError(t, e.android.Tap("Log out"))
 
 	_, err := e.android.WaitForAny("Log in")
@@ -634,6 +650,39 @@ func TestAndroidReloginAuthKey(t *testing.T) {
 
 	after := e.loginAuthKey(t)
 	assert.Equal(t, before.Id, after.Id, "re-login registered a new node")
+}
+
+// TestAndroidExpiredAuthKey re-authenticates a device whose node key expired
+// with a single-use auth key, as a user whose device dropped off does. The
+// app keeps its profile, so starting the backend with the key already logs
+// in, and the interactive login the app always starts next rotates the node
+// key and presents the key again. Control refuses a spent key, so the key
+// must be sent once.
+func TestAndroidExpiredAuthKey(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, noTLS)
+
+	before := e.loginInteractive(t)
+
+	_, err := e.headscale.Execute([]string{"headscale", "nodes", "expire", "--identifier", before.Id})
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Error(c, e.peer.Ping(before.IpAddresses[0], tsic.WithPingTimeout(3*time.Second)))
+	}, time.Minute, 3*time.Second, "expired device still reachable")
+
+	e.openProfile(t)
+	require.NoError(t, e.android.Tap("menu"))
+	e.submitAuthKey(t, e.authKey(t))
+
+	after := e.androidNode(t)
+	e.assertReachable(t, after)
+	assert.Equal(t, before.Id, after.Id, "re-authentication registered a new node")
+
+	stdout, stderr, err := e.headscale.ReadLog()
+	require.NoError(t, err)
+	assert.Zero(t, strings.Count(stdout+stderr, "authkey already used"),
+		"app presented its auth key again after spending it")
 }
 
 func TestAndroidLoginMDM(t *testing.T) {
