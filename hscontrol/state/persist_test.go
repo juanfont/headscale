@@ -2334,6 +2334,41 @@ func TestCreateAuthKeyIfHoldsThePolicy(t *testing.T) {
 	require.ErrorIs(t, err, errRefused, "the new policy holds for the next key")
 }
 
+// TestCredentialCreatesHoldThePolicy: the check of each credential that
+// reads the policy runs under the lock every policy write takes, and the
+// write follows before the lock is let go. TryLock shows it without timing;
+// TestCreateAuthKeyIfHoldsThePolicy shows a policy write waiting.
+func TestCredentialCreatesHoldThePolicy(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": []}}`))
+	require.NoError(t, err)
+
+	held := func() error {
+		if s.policyMu.TryLock() {
+			s.policyMu.Unlock()
+
+			return errors.New("the check ran without the policy lock") //nolint:err113
+		}
+
+		return nil
+	}
+
+	_, _, err = s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}}, held)
+	require.NoError(t, err, "auth key")
+
+	_, _, err = s.CreateOAuthClientIf(db.NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}}, held)
+	require.NoError(t, err, "OAuth client")
+
+	_, _, err = s.CreateOAuthClientIf(db.NewOAuthClient{Scopes: []string{"auth_keys"}}, func() error { return errRefused })
+	require.ErrorIs(t, err, errRefused, "a refused check writes nothing")
+
+	clients, err := s.ListOAuthClients()
+	require.NoError(t, err)
+	require.Len(t, clients, 1)
+}
+
 // TestLoadedExpiryIsUTC proves an expiry the database returns in another zone is
 // served in UTC. PostgreSQL returns the server's zone, where the latest accepted
 // expiry is in the year 10000 and cannot be encoded.

@@ -1,11 +1,13 @@
 package db
 
 import (
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // TestCredentialsEndAlike: auth keys, API keys and OAuth clients end the same
@@ -151,4 +153,302 @@ func findCredential(t *testing.T, db *HSDatabase, id uint64) *types.Credential {
 	}
 
 	return &cs[0]
+}
+
+// makers are the credentials that can ask for a new one, each ended as its
+// kind ends: an API key by its revoke, an access token by its client's.
+func makers(t *testing.T, db *HSDatabase) []struct {
+	name string
+	id   uint64
+	end  func() error
+} {
+	t.Helper()
+
+	_, key, err := db.CreateAPIKey(new(time.Now().Add(time.Hour)))
+	require.NoError(t, err)
+
+	_, client, err := db.CreateOAuthClient([]string{"all"}, nil, "", nil)
+	require.NoError(t, err)
+
+	_, token, err := db.MintAccessToken(client.ClientID, []string{"all"}, nil, new(time.Now().Add(time.Hour)))
+	require.NoError(t, err)
+
+	_, orphanClient, err := db.CreateOAuthClient([]string{"all"}, nil, "", nil)
+	require.NoError(t, err)
+
+	_, orphan, err := db.MintAccessToken(orphanClient.ClientID, []string{"all"}, nil, new(time.Now().Add(time.Hour)))
+	require.NoError(t, err)
+
+	return []struct {
+		name string
+		id   uint64
+		end  func() error
+	}{
+		{"API key", key.ID, func() error { return db.RevokeAPIKey(key.ID) }},
+		{"access token", token.ID, func() error { return db.RevokeOAuthClient(client.ClientID) }},
+		// A token that its client's revoke did not delete, as a mint that
+		// raced the revoke once left: its client's end ends it.
+		{"access token left by its client's revoke", orphan.ID, func() error {
+			var row types.Credential
+			require.NoError(t, db.DB.Take(&row, "id = ?", orphan.ID).Error)
+			require.NoError(t, db.RevokeOAuthClient(orphanClient.ClientID))
+
+			return db.DB.Create(&row).Error
+		}},
+	}
+}
+
+// creates makes each kind of credential for the maker with id, in its own
+// transaction.
+func creates(db *HSDatabase) map[string]func(maker uint64) error {
+	return map[string]func(uint64) error{
+		"auth key": func(maker uint64) error {
+			return db.Write(func(tx *gorm.DB) error {
+				_, _, err := CreatePreAuthKeyFrom(tx, NewPreAuthKey{Tags: []string{"tag:ci"}, Maker: maker})
+
+				return err
+			})
+		},
+		"API key": func(maker uint64) error {
+			return db.Write(func(tx *gorm.DB) error {
+				_, _, err := CreateAPIKeyFrom(tx, NewAPIKey{Maker: maker})
+
+				return err
+			})
+		},
+		"OAuth client": func(maker uint64) error {
+			return db.Write(func(tx *gorm.DB) error {
+				_, _, err := CreateOAuthClientFrom(tx, NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}, Maker: maker})
+
+				return err
+			})
+		},
+	}
+}
+
+func countCredentials(t *testing.T, db *HSDatabase) int64 {
+	t.Helper()
+
+	var n int64
+	require.NoError(t, db.DB.Model(&types.Credential{}).Count(&n).Error)
+
+	return n
+}
+
+// TestCredentialMadeByAnEndedCredential: a request authenticated before its
+// credential ended makes no credential after the end answered. The write
+// checks its maker in its own transaction.
+func TestCredentialMadeByAnEndedCredential(t *testing.T) {
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		for _, m := range makers(t, db) {
+			for kind, create := range creates(db) {
+				require.NoError(t, create(m.id), "%s makes an %s while it is valid", m.name, kind)
+			}
+
+			require.NoError(t, m.end())
+
+			before := countCredentials(t, db)
+
+			for kind, create := range creates(db) {
+				require.ErrorIs(t, create(m.id), ErrCredentialEnded, "%s ended, then an %s", m.name, kind)
+			}
+
+			require.Equal(t, before, countCredentials(t, db), "nothing was made")
+		}
+
+		for kind, create := range creates(db) {
+			require.NoError(t, create(0), "the socket makes an %s", kind)
+		}
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
+}
+
+// TestCredentialMakeWaitsForAnEnd: an end that has not committed holds the
+// make that its credential asks for, which then refuses. The sequential case
+// is TestCredentialMadeByAnEndedCredential.
+func TestCredentialMakeWaitsForAnEnd(t *testing.T) {
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		_, key, err := db.CreateAPIKey(new(time.Now().Add(time.Hour)))
+		require.NoError(t, err)
+
+		_, client, err := db.CreateOAuthClient([]string{"all"}, nil, "", nil)
+		require.NoError(t, err)
+
+		_, token, err := db.MintAccessToken(client.ClientID, []string{"all"}, nil, new(time.Now().Add(time.Hour)))
+		require.NoError(t, err)
+
+		err = whileHeld(t, db,
+			func(tx *gorm.DB) error {
+				return revokeCredential(tx, types.CredentialAPIKey, "id = ?", key.ID, ErrAPIKeyNotFound)
+			},
+			func() error { return creates(db)["API key"](key.ID) })
+		require.ErrorIs(t, err, ErrCredentialEnded, "an API key")
+
+		err = whileHeld(t, db,
+			func(tx *gorm.DB) error { return revokeOAuthClient(tx, client.ClientID) },
+			func() error { return creates(db)["OAuth client"](token.ID) })
+		require.ErrorIs(t, err, ErrCredentialEnded, "an access token")
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
+}
+
+// TestMintWaitsForARevoke: a revoke of a client that has not committed holds
+// a mint for that client, which then refuses, so no token is minted after
+// the revoke answered; and a credential that a token minted just before asks
+// for is refused too.
+func TestMintWaitsForARevoke(t *testing.T) {
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		_, client, err := db.CreateOAuthClient([]string{"all"}, nil, "", nil)
+		require.NoError(t, err)
+
+		err = whileHeld(t, db,
+			func(tx *gorm.DB) error { return revokeOAuthClient(tx, client.ClientID) },
+			func() error {
+				_, _, err := db.MintAccessToken(client.ClientID, []string{"all"}, nil, new(time.Now().Add(time.Hour)))
+
+				return err
+			})
+		require.ErrorIs(t, err, ErrOAuthClientRevoked)
+
+		var tokens int64
+		require.NoError(t, db.DB.Model(&types.Credential{}).Where("kind = ?", types.CredentialOAuthToken).Count(&tokens).Error)
+		require.Zero(t, tokens, "no token outlives the revoke")
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
+}
+
+// whileHeld runs op while a transaction that hold wrote is open, and returns
+// what op answers once the transaction committed. op must wait for it: on
+// PostgreSQL for a row lock, on SQLite for its one connection. That is seen
+// in the database, not timed, and an op that answers before is a failure.
+func whileHeld(t *testing.T, db *HSDatabase, hold func(tx *gorm.DB) error, op func() error) error {
+	t.Helper()
+
+	sqlDB, err := db.DB.DB()
+	require.NoError(t, err)
+
+	tx := db.DB.Begin()
+	require.NoError(t, tx.Error)
+	require.NoError(t, hold(tx))
+
+	waitsBefore := sqlDB.Stats().WaitCount
+	waiting := func() bool {
+		if db.cfg.Database.Type != types.DatabasePostgres {
+			return sqlDB.Stats().WaitCount > waitsBefore
+		}
+
+		var n int64
+		require.NoError(t, db.DB.Raw(
+			"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+		).Scan(&n).Error)
+
+		return n > 0
+	}
+
+	done := make(chan error, 1)
+
+	go func() { done <- op() }()
+
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+
+	deadline := time.After(30 * time.Second)
+
+	for !waiting() {
+		select {
+		case err := <-done:
+			tx.Rollback()
+			t.Fatalf("answered while the transaction was open: %v", err)
+		case <-deadline:
+			tx.Rollback()
+			t.Fatal("neither waited nor answered")
+		case <-tick.C:
+		}
+	}
+
+	require.NoError(t, tx.Commit().Error)
+
+	return <-done
+}
+
+// TestCredentialLockOrder: every write that locks a client and its tokens
+// takes the client first, so a revoke, a mint, the holds of a token and the
+// two removal jobs at once never deadlock. Only PostgreSQL locks rows;
+// SQLite runs one writer at a time.
+func TestCredentialLockOrder(t *testing.T) {
+	db := newPostgresTestDB(t)
+
+	hour := new(time.Now().Add(time.Hour))
+
+	for round := range 30 {
+		_, client, err := db.CreateOAuthClient([]string{"all"}, nil, "", nil)
+		require.NoError(t, err)
+
+		_, token, err := db.MintAccessToken(client.ClientID, []string{"all"}, nil, hour)
+		require.NoError(t, err)
+
+		ops := make([]func() error, 0, 11)
+		ops = append(ops,
+			func() error { return db.RevokeOAuthClient(client.ClientID) },
+			func() error {
+				_, err := db.DestroyRevokedCredentialsBefore(time.Now().Add(time.Hour))
+
+				return err
+			},
+			func() error {
+				_, err := db.DeleteExpiredAccessTokens(time.Now().Add(2 * time.Hour))
+
+				return err
+			})
+
+		for range 4 {
+			ops = append(ops,
+				func() error { return creates(db)["OAuth client"](token.ID) },
+				func() error {
+					_, _, err := db.MintAccessToken(client.ClientID, []string{"all"}, nil, hour)
+
+					return err
+				})
+		}
+
+		errs := make(chan error, len(ops))
+
+		var wg sync.WaitGroup
+		for _, op := range ops {
+			wg.Go(func() { errs <- op() })
+		}
+
+		wg.Wait()
+		close(errs)
+
+		for err := range errs {
+			if err != nil {
+				require.NotContains(t, err.Error(), "deadlock", "round %d", round)
+			}
+		}
+	}
 }

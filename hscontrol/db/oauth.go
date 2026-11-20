@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -47,6 +48,18 @@ func validateScopes(scopes []string) error {
 	return multierr.New(errs...)
 }
 
+// NewOAuthClient is what an OAuth client is made from.
+type NewOAuthClient struct {
+	Scopes, Tags []string
+	Description  string
+	// CreatedBy is the user who made the client (informational), or nil.
+	CreatedBy *types.UserID
+	// Created is when the client was made; zero is now.
+	Created time.Time
+	// Maker is the credential that asks for the client; see [holdCredential].
+	Maker uint64
+}
+
 // CreateOAuthClient creates a new [types.OAuthClient] and returns the plaintext
 // secret (shown ONCE) alongside the stored client. creatorUserID is the user who
 // created it (informational), or nil.
@@ -55,41 +68,106 @@ func (hsdb *HSDatabase) CreateOAuthClient(
 	description string,
 	creatorUserID *uint,
 ) (string, *types.OAuthClient, error) {
-	tags, err := validateACLTags(tags)
+	c := NewOAuthClient{Scopes: scopes, Tags: tags, Description: description}
+	if creatorUserID != nil {
+		c.CreatedBy = new(types.UserID(*creatorUserID))
+	}
+
+	made, err := Write(hsdb.DB, func(tx *gorm.DB) (createdOAuthClient, error) {
+		cred, secret, err := CreateOAuthClientFrom(tx, c)
+
+		return createdOAuthClient{cred, secret}, err
+	})
 	if err != nil {
 		return "", nil, err
 	}
 
-	err = validateScopes(scopes)
+	return made.secret, OAuthClientFromCredential(made.cred), nil
+}
+
+type createdOAuthClient struct {
+	cred   *types.Credential
+	secret string
+}
+
+// CreateOAuthClientFrom makes the client c describes: its tags spelled as
+// tags and its scopes known, each folded and sorted. It returns the client as
+// stored, with its maker, and once its secret.
+func CreateOAuthClientFrom(tx *gorm.DB, c NewOAuthClient) (*types.Credential, string, error) {
+	tags, err := validateACLTags(c.Tags)
 	if err != nil {
-		return "", nil, err
+		return nil, "", err
 	}
 
-	scopes = set.SetOf(scopes).Slice()
+	err = validateScopes(c.Scopes)
+	if err != nil {
+		return nil, "", err
+	}
+
+	err = holdCredential(tx, c.Maker)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var maker *types.User
+
+	// A maker deleted while the request ran leaves createdBy null, as its
+	// delete does to every client it made.
+	if c.CreatedBy != nil {
+		maker, err = GetUserByID(tx, *c.CreatedBy)
+		if errors.Is(err, ErrUserNotFound) {
+			maker, err = nil, nil
+		}
+
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
+	scopes := set.SetOf(c.Scopes).Slice()
 	slices.Sort(scopes)
 
 	secretStr, clientID, hash := generateSecret(types.OAuthClientPrefix)
 
-	now := time.Now().UTC()
+	now := c.Created
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
 	cred := types.Credential{
 		Kind:        types.CredentialOAuthClient,
 		Identifier:  clientID,
 		Hash:        hash,
 		Scopes:      scopes,
 		Tags:        tags,
-		Description: description,
-		UserID:      creatorUserID,
+		Description: c.Description,
 		CreatedAt:   &now,
 	}
 
-	err = hsdb.Write(func(tx *gorm.DB) error {
-		return tx.Save(&cred).Error
-	})
-	if err != nil {
-		return "", nil, fmt.Errorf("saving oauth client: %w", err)
+	if maker != nil {
+		cred.UserID = &maker.ID
 	}
 
-	return secretStr, credentialToOAuthClient(&cred), nil
+	err = tx.Create(&cred).Error
+	if err != nil {
+		return nil, "", fmt.Errorf("saving oauth client: %w", err)
+	}
+
+	cred.User = maker
+
+	return &cred, secretStr, nil
+}
+
+// ListOAuthClientsPage is up to limit OAuth clients made after the one with
+// the row ID after, in the order they were made, revoked ones too.
+func (hsdb *HSDatabase) ListOAuthClientsPage(ctx context.Context, after uint64, limit int) ([]types.Credential, error) {
+	return hsdb.listCredentialsPage(ctx, types.CredentialOAuthClient, after, limit, func(q *gorm.DB) *gorm.DB { return q })
+}
+
+// GetOAuthClientCredential is the OAuth client with clientID, revoked or not,
+// with its maker.
+func (hsdb *HSDatabase) GetOAuthClientCredential(clientID string) (*types.Credential, error) {
+	return hsdb.getCredential(types.CredentialOAuthClient, "identifier = ?", clientID, ErrOAuthClientNotFound)
 }
 
 // AuthenticateOAuthClient validates a presented client secret and returns the
@@ -132,7 +210,7 @@ func (hsdb *HSDatabase) AuthenticateOAuthClient(secretStr string) (*types.OAuthC
 		return nil, ErrOAuthClientRevoked
 	}
 
-	return credentialToOAuthClient(cred), nil
+	return OAuthClientFromCredential(cred), nil
 }
 
 // GetOAuthClientByClientID returns a [types.OAuthClient] by its public client id.
@@ -142,7 +220,7 @@ func (hsdb *HSDatabase) GetOAuthClientByClientID(clientID string) (*types.OAuthC
 		return nil, result.Error
 	}
 
-	return credentialToOAuthClient(&cred), nil
+	return OAuthClientFromCredential(&cred), nil
 }
 
 // ListOAuthClients returns every [types.OAuthClient].
@@ -156,7 +234,7 @@ func (hsdb *HSDatabase) ListOAuthClients() ([]types.OAuthClient, error) {
 
 	clients := make([]types.OAuthClient, 0, len(creds))
 	for i := range creds {
-		clients = append(clients, *credentialToOAuthClient(&creds[i]))
+		clients = append(clients, *OAuthClientFromCredential(&creds[i]))
 	}
 
 	return clients, nil
@@ -168,15 +246,25 @@ func (hsdb *HSDatabase) ListOAuthClients() ([]types.OAuthClient, error) {
 // revoke answers. See [revokeCredential]; an unknown client id returns
 // [ErrOAuthClientNotFound].
 func (hsdb *HSDatabase) RevokeOAuthClient(clientID string) error {
-	return hsdb.Write(func(tx *gorm.DB) error {
-		err := tx.Where("kind = ? AND client_id = ?", types.CredentialOAuthToken, clientID).
-			Delete(&types.Credential{}).Error
-		if err != nil {
-			return fmt.Errorf("deleting oauth access tokens: %w", err)
-		}
+	return hsdb.Write(func(tx *gorm.DB) error { return revokeOAuthClient(tx, clientID) })
+}
 
-		return revokeCredential(tx, types.CredentialOAuthClient, "identifier = ?", clientID, ErrOAuthClientNotFound)
-	})
+// revokeOAuthClient is [HSDatabase.RevokeOAuthClient] in tx. The client's row
+// is locked first, then its tokens', the order of every write that holds a
+// client and a token.
+func revokeOAuthClient(tx *gorm.DB, clientID string) error {
+	err := revokeCredential(tx, types.CredentialOAuthClient, "identifier = ?", clientID, ErrOAuthClientNotFound)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Where("kind = ? AND client_id = ?", types.CredentialOAuthToken, clientID).
+		Delete(&types.Credential{}).Error
+	if err != nil {
+		return fmt.Errorf("deleting oauth access tokens: %w", err)
+	}
+
+	return nil
 }
 
 // MintAccessToken stores a new [types.OAuthAccessToken] for clientID with the
@@ -207,22 +295,29 @@ func (hsdb *HSDatabase) MintAccessToken(
 		CreatedAt:  &now,
 	}
 
-	// Mint inside a transaction that re-checks the client still exists and is
-	// not revoked, so a mint cannot complete against a client being deleted.
+	// The mint locks the client's row while it is not revoked: a revoke that
+	// is open holds the mint until it commits, and the mint then refuses, so
+	// no token is minted after the revoke answered.
 	err := hsdb.Write(func(tx *gorm.DB) error {
-		var client types.Credential
+		err := holdRow(tx, "kind = ? AND identifier = ?", types.CredentialOAuthClient, clientID)
+		if errors.Is(err, ErrCredentialEnded) {
+			var n int64
 
-		err := tx.First(&client, "kind = ? AND identifier = ?", types.CredentialOAuthClient, clientID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrOAuthClientNotFound
+			err = tx.Model(&types.Credential{}).
+				Where("kind = ? AND identifier = ?", types.CredentialOAuthClient, clientID).Count(&n).Error
+			if err != nil {
+				return err
+			}
+
+			if n == 0 {
+				return ErrOAuthClientNotFound
+			}
+
+			return ErrOAuthClientRevoked
 		}
 
 		if err != nil {
 			return err
-		}
-
-		if client.Revoked != nil {
-			return ErrOAuthClientRevoked
 		}
 
 		err = tx.Save(&cred).Error

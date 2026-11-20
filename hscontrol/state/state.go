@@ -2538,33 +2538,94 @@ func (s *State) CreatePreAuthKey(userID *types.UserID, reusable bool, ephemeral 
 }
 
 // CreateAuthKeyIf makes the key k describes when check passes, and returns
-// it as stored and once with its secret. check runs under the lock that
-// every policy write takes, so a key is stored under the policy check read:
-// a policy that took a tag from the caller has either not been installed
-// yet, or the check already sees it.
+// it as stored and once with its secret. See [underPolicy].
 func (s *State) CreateAuthKeyIf(k hsdb.NewPreAuthKey, check func() error) (*types.PreAuthKey, *types.PreAuthKeyNew, error) {
+	type made struct {
+		stored *types.PreAuthKey
+		new    *types.PreAuthKeyNew
+	}
+
+	m, err := underPolicy(s, check, func(tx *gorm.DB) (made, error) {
+		stored, secret, err := hsdb.CreatePreAuthKeyFrom(tx, k)
+
+		return made{stored, secret}, err
+	})
+
+	return m.stored, m.new, err
+}
+
+// CreateOAuthClientIf makes the client c describes when check passes, and
+// returns it as stored and once its secret. See [underPolicy].
+func (s *State) CreateOAuthClientIf(c hsdb.NewOAuthClient, check func() error) (*types.Credential, string, error) {
+	type made struct {
+		stored *types.Credential
+		secret string
+	}
+
+	m, err := underPolicy(s, check, func(tx *gorm.DB) (made, error) {
+		stored, secret, err := hsdb.CreateOAuthClientFrom(tx, c)
+
+		return made{stored, secret}, err
+	})
+
+	return m.stored, m.secret, err
+}
+
+// underPolicy runs check, then write in one transaction, under the lock that
+// every policy write takes. A check that reads the policy, such as which
+// tags a token may give, then holds for the write: a policy that took a tag
+// from the caller has either not been installed yet, or the check sees it.
+func underPolicy[T any](s *State, check func() error, write func(tx *gorm.DB) (T, error)) (T, error) {
 	s.policyMu.Lock()
 	defer s.policyMu.Unlock()
 
 	err := check()
 	if err != nil {
-		return nil, nil, err
+		var none T
+
+		return none, err
 	}
 
-	var stored *types.PreAuthKey
+	return hsdb.Write(s.db.DB, write)
+}
 
-	made, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.PreAuthKeyNew, error) {
-		var (
-			made *types.PreAuthKeyNew
-			err  error
-		)
+// CreateAPIKeyFrom makes the API key k describes, and returns it as stored
+// and once its secret.
+func (s *State) CreateAPIKeyFrom(k hsdb.NewAPIKey) (*types.Credential, string, error) {
+	type made struct {
+		stored *types.Credential
+		secret string
+	}
 
-		stored, made, err = hsdb.CreatePreAuthKeyFrom(tx, k)
+	m, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (made, error) {
+		stored, secret, err := hsdb.CreateAPIKeyFrom(tx, k)
 
-		return made, err
+		return made{stored, secret}, err
 	})
 
-	return stored, made, err
+	return m.stored, m.secret, err
+}
+
+// ListAPIKeysPage is up to limit API keys with an ID above after, in ID
+// order, expired and revoked too; owner 0 is every owner.
+func (s *State) ListAPIKeysPage(ctx context.Context, after uint64, limit int, owner types.UserID) ([]types.Credential, error) {
+	return s.db.ListAPIKeysPage(ctx, after, limit, owner)
+}
+
+// GetAPIKeyCredential is the API key with id, revoked or not.
+func (s *State) GetAPIKeyCredential(id uint64) (*types.Credential, error) {
+	return s.db.GetAPIKeyCredential(id)
+}
+
+// ListOAuthClientsPage is up to limit OAuth clients made after the one with
+// the row ID after, in the order they were made, revoked too.
+func (s *State) ListOAuthClientsPage(ctx context.Context, after uint64, limit int) ([]types.Credential, error) {
+	return s.db.ListOAuthClientsPage(ctx, after, limit)
+}
+
+// GetOAuthClientCredential is the OAuth client with clientID, revoked or not.
+func (s *State) GetOAuthClientCredential(clientID string) (*types.Credential, error) {
+	return s.db.GetOAuthClientCredential(clientID)
 }
 
 // ListAuthKeysPage is up to limit auth keys with an ID above after, in ID

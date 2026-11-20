@@ -77,6 +77,8 @@ type NewPreAuthKey struct {
 	ByToken bool
 	// Created is when the key was made; zero is now.
 	Created time.Time
+	// Maker is the credential that asks for the key; see [holdCredential].
+	Maker uint64
 }
 
 // CreatePreAuthKey creates a new [types.PreAuthKey] in a user, and returns it.
@@ -106,14 +108,17 @@ func CreatePreAuthKeyFrom(tx *gorm.DB, k NewPreAuthKey) (*types.PreAuthKey, *typ
 		return nil, nil, ErrPreAuthKeyNotTaggedOrOwned
 	}
 
+	err := holdCredential(tx, k.Maker)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	var (
 		user   *types.User
 		userID *uint
 	)
 
 	if k.User != nil {
-		var err error
-
 		user, err = GetUserByID(tx, *k.User)
 		if err != nil {
 			return nil, nil, err
