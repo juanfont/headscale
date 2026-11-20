@@ -41,6 +41,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -217,6 +218,9 @@ type State struct {
 
 	// nodeStore provides an in-memory cache for nodes.
 	nodeStore *NodeStore
+
+	// clientUpdates keeps one client update in flight for a node.
+	clientUpdates singleflight.Group
 
 	// subsystem keeping state
 	// db provides persistent storage and database operations

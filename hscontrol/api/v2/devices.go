@@ -3,7 +3,7 @@ package apiv2
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"errors"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -12,11 +12,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/scope"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
 	"tailscale.com/net/tsaddr"
-	"tailscale.com/tailcfg"
 )
 
 func init() {
@@ -519,34 +518,25 @@ func registerDeviceUpdates(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		// Tailscale answers every device it will not update with the same 404.
-		hi := node.Hostinfo()
-		if !hi.Valid() || !hi.AllowsUpdate() || !b.Connected(node.ID()) {
+		err = b.State.RequestClientUpdate(ctx, node.ID(), b.Connected(node.ID()), b.Change)
+
+		refused, isRefused := errors.AsType[*state.ClientUpdateRefusedError](err)
+
+		switch {
+		case err == nil:
+			return &emptyOutput{}, nil
+		case errors.Is(err, state.ErrC2NBadAnswer):
+			return nil, huma.Error502BadGateway("device answered c2n request with an error")
+		case isRefused && refused.Reason == state.UpdateAnswerNotInTime:
+			return nil, huma.Error504GatewayTimeout("device did not answer in time")
+		case isRefused:
+			// Tailscale answers every device it will not update with the same 404.
 			return nil, huma.Error404NotFound("not found")
+		case errors.Is(err, state.ErrShuttingDown):
+			return nil, huma.Error503ServiceUnavailable("server is shutting down")
+		default:
+			return nil, huma.Error500InternalServerError("requesting client update", err)
 		}
-
-		res, err := sendC2N(ctx, b, node.ID(), "/update")
-		if err != nil {
-			return nil, err
-		}
-		defer res.Body.Close()
-
-		var update tailcfg.C2NUpdateResponse
-
-		err = json.NewDecoder(res.Body).Decode(&update)
-		if err != nil {
-			return nil, huma.Error502BadGateway("decoding client update response", err)
-		}
-
-		if !update.Started {
-			log.Info().EmbedObject(node).Str("reason", update.Err).Msg("node refused client update")
-
-			return nil, huma.Error404NotFound("not found")
-		}
-
-		b.State.ClientUpdateStarted(node.ID(), hi.IPNVersion())
-
-		return &emptyOutput{}, nil
 	})
 
 	huma.Register(api, requireScope(huma.Operation{
