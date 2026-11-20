@@ -140,6 +140,73 @@ func (a *API) UpdateUser(ctx context.Context, id string, body clientv0.UpdateUse
 	})
 }
 
+// ListNodes is every page of GET /nodes.
+func (a *API) ListNodes(ctx context.Context) ([]clientv0.Node, error) {
+	return walk[clientv0.Node](a, "nodes", func(c *clientv0.Client, p page) (*http.Response, error) {
+		return c.ListNodes(ctx, &clientv0.ListNodesParams{PageSize: &p.size, PageToken: p.token})
+	})
+}
+
+// GetNode is GET /nodes/{id}.
+func (a *API) GetNode(ctx context.Context, id string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetNode(ctx, id) })
+}
+
+// UpdateNode is PATCH /nodes/{id}, as a merge patch.
+func (a *API) UpdateNode(ctx context.Context, id string, body clientv0.UpdateNodeBody) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.UpdateNodeWithApplicationMergePatchPlusJSONBody(ctx, id, &clientv0.UpdateNodeParams{IfMatch: a.ifMatch(id)}, body)
+	})
+}
+
+// DeleteNode is DELETE /nodes/{id}.
+func (a *API) DeleteNode(ctx context.Context, id string) error {
+	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.DeleteNode(ctx, id, &clientv0.DeleteNodeParams{IfMatch: a.ifMatch(id)})
+	})
+
+	return err
+}
+
+// ExpireNode is POST /nodes/{id}/expire.
+func (a *API) ExpireNode(ctx context.Context, id string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.ExpireNode(ctx, id, &clientv0.ExpireNodeParams{IfMatch: a.ifMatch(id)})
+	})
+}
+
+// UpdateNodeClient is POST /nodes/{id}/update-client.
+func (a *API) UpdateNodeClient(ctx context.Context, id string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) { return c.UpdateNodeClient(ctx, id) })
+}
+
+// SetNodeTags is PUT /nodes/{id}/tags.
+func (a *API) SetNodeTags(ctx context.Context, id string, tags []string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.SetNodeTags(ctx, id, &clientv0.SetNodeTagsParams{IfMatch: a.ifMatch(id)}, clientv0.SetNodeTagsBody{Tags: tags})
+	})
+}
+
+// SetNodeRoutes is PUT /nodes/{id}/routes.
+func (a *API) SetNodeRoutes(ctx context.Context, id string, routes []string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.SetNodeRoutes(ctx, id, &clientv0.SetNodeRoutesParams{IfMatch: a.ifMatch(id)}, clientv0.SetNodeRoutesBody{Routes: routes})
+	})
+}
+
+// ListTags is every page of GET /tags; with a node ID, of the tags that
+// node has.
+func (a *API) ListTags(ctx context.Context, node string) ([]clientv0.Tag, error) {
+	var of *string
+	if node != "" {
+		of = &node
+	}
+
+	return walk[clientv0.Tag](a, "tags", func(c *clientv0.Client, p page) (*http.Response, error) {
+		return c.ListTags(ctx, &clientv0.ListTagsParams{PageSize: &p.size, PageToken: p.token, Node: of})
+	})
+}
+
 // call makes one request and reads its answer: a 2xx body as T, kept for
 // -o json; no body (a 204) as the zero T; any other status as a problem.
 func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, error) {

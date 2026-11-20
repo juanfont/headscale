@@ -121,6 +121,14 @@ func (t *Tree) run(argv []string, env Env) error {
 	own, _ := cmdline.Get[ownOutputFlags](line)
 	file, _ := cmdline.Get[configFlags](line)
 
+	// A value that the parser takes as any word is checked before any call.
+	if l.valid != nil {
+		err := l.valid(line)
+		if err != nil {
+			return err
+		}
+	}
+
 	stdin := env.Stdin
 	if stdin == nil {
 		stdin = strings.NewReader("")
@@ -212,7 +220,7 @@ func (t *Tree) check(argv []string) (*cmdline.Line, step, error) {
 
 	err = t.mistake(line, ue)
 	if err != nil {
-		return line, stepRun, err
+		return line, stepRun, t.hinted(line, err)
 	}
 
 	help, _ := cmdline.Get[helpFlags](line)
@@ -227,12 +235,34 @@ func (t *Tree) check(argv []string) (*cmdline.Line, step, error) {
 	case l != nil && l.list && slices.ContainsFunc(line.Flags, func(g cmdline.Given) bool { return g.Name == "list-columns" && g.Value == "true" }):
 		return line, stepColumns, nil
 	case ue != nil:
-		return line, stepRun, countError(line)
+		return line, stepRun, t.hinted(line, countError(line))
 	case l != nil && l.set:
 		return line, stepRun, nothingToChange(line)
 	}
 
 	return line, stepRun, nil
+}
+
+// hinted is err with the command's hint, when err is a wrong argument count
+// or an empty list argument.
+func (t *Tree) hinted(line *cmdline.Line, err error) error {
+	l := t.leaves[strings.Join(line.Command.Path, " ")]
+	ue, ok := errors.AsType[*usageError](err)
+
+	if l == nil || l.hint == nil || !ok || ue.kind != cmdline.ArgCount && !ue.empty {
+		return err
+	}
+
+	if h := l.hint(line.Args); h != "" {
+		sep := "\n"
+		if ue.kind == cmdline.ArgCount {
+			sep = "\n\n"
+		}
+
+		ue.text += sep + h
+	}
+
+	return err
 }
 
 // nothingGiven is the builder's own kind: a set with none of the flags
@@ -470,12 +500,41 @@ func (c Ctx) object(in any) (clientv0.ProblemObject, bool) {
 	return clientv0.ProblemObject{Kind: clientv0.ProblemObjectKind(ent.kind), Id: jsonText(e, "id"), Name: ent.name(e.Interface())}, true
 }
 
+// expiry is an [Expiry] of any words.
+type expiry interface {
+	At(now time.Time) time.Time
+	Word() string
+}
+
 // about gives a problem of the server what the command knows of it: the
-// target as the command read it.
+// target as the command read it, and the expiry the command sent.
 func (c Ctx) about(err error, in any) error {
 	p, ok := errors.AsType[*ProblemError](err)
-	if ok {
-		p.target, _ = c.object(in)
+	if !ok {
+		return err
+	}
+
+	p.target, _ = c.object(in)
+
+	v := reflect.ValueOf(in)
+	if v.Kind() != reflect.Struct {
+		return err
+	}
+
+	for _, f := range v.Fields() {
+		// An Opt flag: its value when given.
+		if get := f.MethodByName("Get"); get.IsValid() && get.Type().NumOut() == 2 && get.Type().Out(1).Kind() == reflect.Bool {
+			out := get.Call(nil)
+			if !out[1].Bool() {
+				continue
+			}
+
+			f = out[0]
+		}
+
+		if e, ok := reflect.TypeAssert[expiry](f); ok && e.Word() == "" {
+			p.expiry = e.At(c.Now())
+		}
 	}
 
 	return err
@@ -535,6 +594,8 @@ type usageError struct {
 	// word is what the sentence names: the command word, the flag as
 	// typed, --flag or <arg>, or for a count what the command takes.
 	word string
+	// empty is an empty list argument, which a command's hint follows.
+	empty bool
 }
 
 func (e *usageError) Error() string { return e.text }
@@ -629,7 +690,12 @@ func (t *Tree) usage(e *cmdline.UsageError) error {
 	case errors.Is(e.Err, cmdline.ErrBool):
 		return usagef(e.Kind, e.Path, what, "%s takes true or false, not %q.", what, e.Value)
 	case errors.Is(e.Err, cmdline.ErrEmpty):
-		return usagef(e.Kind, e.Path, what, "the %s list is empty.", name)
+		text := "the " + name + " list is empty."
+		if l := t.leaves[strings.Join(e.Path, " ")]; l != nil && l.emptyList != "" && e.Arg != "" {
+			text += " " + l.emptyList
+		}
+
+		return &usageError{text: text, kind: e.Kind, path: e.Path, word: what, empty: e.Arg != ""}
 	case errors.Is(e.Err, cmdline.ErrEmptyItem):
 		return usagef(e.Kind, e.Path, what, "the %s list has an empty item.", name)
 	}

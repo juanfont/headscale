@@ -50,6 +50,12 @@ type leaf struct {
 	set bool
 	// force is a command that can ask, and so takes --force.
 	force bool
+	// hint follows a wrong argument count or an empty list argument;
+	// emptyList follows the sentence of an empty list argument.
+	hint      func(args []string) string
+	emptyList string
+	// valid checks the line, read but not looked up, before any call.
+	valid func(*cmdline.Line) error
 	// target is the type of the command's target: the first argument that
 	// is an entity; nil for none.
 	target reflect.Type
@@ -150,7 +156,17 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	}
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
+	l.hint = s.Hint
+	l.emptyList = s.EmptyList
 	l.target, _ = targetType(reflect.TypeFor[In]())
+
+	if s.Valid != nil {
+		l.valid = func(line *cmdline.Line) error {
+			in, _ := cmdline.Get[In](line)
+
+			return s.Valid(in)
+		}
+	}
 
 	l.cmd = func(flags []any) cmdline.Node {
 		return cmdline.Command[In]{Name: s.Name, Aliases: s.Aliases, Help: s.Short, Flags: flags, Run: func(ctx context.Context, in In) error {

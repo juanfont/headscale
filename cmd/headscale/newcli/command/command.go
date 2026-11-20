@@ -62,6 +62,16 @@ type Spec[In, Out any] struct {
 	// command with Confirm takes --force, which answers yes. It runs again
 	// after a refused write, on the target as it is then.
 	Confirm func(c Ctx, in In) (Prompt, error)
+	// Hint is a line of what to do after a wrong argument count or an empty
+	// list argument, from the arguments as typed; "" adds nothing.
+	Hint func(args []string) string
+	// EmptyList is why an empty list argument is refused, said after "the
+	// tag list is empty.", so the CLI's refusal reads as the server's.
+	EmptyList string
+	// Valid checks a value that the parser takes as any word, such as a
+	// route, once the line is read and before any call or lookup; its error
+	// is the sentence. The lookups have not run, so it sees no entity.
+	Valid func(in In) error
 	// Run is the one function that does the work.
 	Run func(c Ctx, in In) (Out, error)
 	// Done is the text printed in place of Out, when not -o json. now is

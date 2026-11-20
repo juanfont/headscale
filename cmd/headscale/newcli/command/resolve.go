@@ -3,6 +3,7 @@ package command
 import (
 	"bytes"
 	"context"
+	"net/netip"
 	"reflect"
 	"slices"
 	"strconv"
@@ -56,6 +57,9 @@ func entityOf[T any](kind string, find func(ctx context.Context, word string) (T
 func entities() []entity {
 	return []entity{
 		entityOf("user", findUser, userCandidates(), func(u clientv0.User) string { return u.LoginName }, nil),
+		entityOf("node", findNode, nodeCandidates(), func(n clientv0.Node) string { return n.Name }, func(ctx context.Context, id string) (clientv0.Node, error) {
+			return ctxOf(ctx).API.GetNode(ctx, id)
+		}),
 	}
 }
 
@@ -90,6 +94,45 @@ func userCandidates() table.Columns[clientv0.User] {
 		{Name: "email", Field: "email", Default: true},
 		{Name: "provider", Field: "provider", Default: true},
 		{Name: "provider-id", Field: "providerId", Kind: table.Text},
+	}
+}
+
+// findNode is the node that word names: the node with that ID, else the
+// node with that tailnet IP, else the one node whose name or hostname it is.
+func findNode(ctx context.Context, word string) (clientv0.Node, error) {
+	if word == "" {
+		return clientv0.Node{}, emptyWord("node")
+	}
+
+	nodes, err := ctxOf(ctx).API.ListNodes(ctx)
+	if err != nil {
+		return clientv0.Node{}, err
+	}
+
+	// An IP is compared as an address, so fd7a:0::1 finds fd7a::1. No ID
+	// reads as an address, so an ID still wins.
+	ip, err := netip.ParseAddr(word)
+	if err == nil {
+		for _, n := range nodes {
+			if slices.ContainsFunc(n.Addresses, func(a string) bool { b, err := netip.ParseAddr(a); return err == nil && b == ip }) {
+				return n, nil
+			}
+		}
+	}
+
+	return resolve(nodes, word, "node", nodeCandidates(),
+		func(n clientv0.Node) string { return n.Id },
+		func(n clientv0.Node) []string { return []string{n.Name, n.Hostname} },
+	)
+}
+
+// nodeCandidates are the columns of the nodes an ambiguous word matches.
+func nodeCandidates() table.Columns[clientv0.Node] {
+	return table.Columns[clientv0.Node]{
+		{Name: "id", Field: "id", Default: true},
+		{Name: "name", Field: "name", Default: true},
+		{Name: "hostname", Field: "hostname", Default: true},
+		{Name: "owner", Field: "owner", Default: true},
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
@@ -21,9 +22,11 @@ import (
 type ProblemError struct {
 	Problem clientv0.Problem
 
-	// target is the command's target as it read it, for the sentences
-	// that the problem alone cannot write.
+	// What the builder knows of the command that the problem answers, for
+	// the sentences that the problem alone cannot write: the target as the
+	// command read it, and the expiry it sent, zero when none.
 	target clientv0.ProblemObject
+	expiry time.Time
 }
 
 func problemOf(status int, body []byte) error {
@@ -67,6 +70,26 @@ func (e *ProblemError) Error() string {
 		o, err := p.Object.Get()
 		if err == nil {
 			return table.Entity(string(o.Kind), o.Id, o.Name) + " is managed by OIDC and cannot be edited here."
+		}
+	case clientv0.TagsRequired:
+		return "the tag list is empty. A tagged node needs at least one tag."
+	case clientv0.TagsNotPermitted:
+		return "these tags are not in the policy: " + strings.Join(texts(p.Details["tags"]), ", ")
+	case clientv0.ExpiryInPast:
+		if e.expiry.IsZero() {
+			return "the expiry is in the past."
+		}
+
+		s := e.expiry.UTC().Format("2006-01-02 15:04 UTC") + " is in the past."
+		if e.target.Kind == "node" {
+			s += "\nTo expire the node now: headscale nodes expire " + table.Visible(e.target.Id, "")
+		}
+
+		return s
+	case clientv0.UpdateRefused:
+		o, err := p.Object.Get()
+		if err == nil {
+			return refused(table.Entity(string(o.Kind), o.Id, o.Name), p.Details)
 		}
 	case clientv0.Unhealthy:
 		return "the server is not healthy:" + messages(p.Details["reasons"])
@@ -149,15 +172,44 @@ func flagsOf[In any](err error) error {
 	return err
 }
 
+// refused is the sentence of update_refused, one for each reason.
+func refused(node string, details map[string]any) string {
+	reason, _ := details["reason"].(string)
+	text, _ := details["clientError"].(string)
+
+	switch reason {
+	case "notConnected":
+		return node + " is not connected."
+	case "updatesNotAllowed":
+		return node + ` does not allow remote updates. Run "tailscale set --auto-update" on it.`
+	case "clientRefused":
+		if text == "" {
+			return node + " refused the update."
+		}
+
+		return node + " refused the update: " + table.Visible(text, "")
+	case "timeout":
+		return node + " did not answer in time."
+	}
+
+	return node + " did not start the update (" + table.Visible(reason, "") + ")."
+}
+
+// texts are the entries of a list of the details, each made visible.
+func texts(v any) []string {
+	list, _ := v.([]any)
+
+	out := make([]string, 0, len(list))
+	for _, s := range list {
+		out = append(out, table.Visible(fmt.Sprint(s), ""))
+	}
+
+	return out
+}
+
 // forbidden names what the credential lacks, when the problem says it.
 func forbidden(details map[string]any) string {
-	var scopes []string
-
-	if list, ok := details["scopes"].([]any); ok {
-		for _, s := range list {
-			scopes = append(scopes, table.Visible(fmt.Sprint(s), ""))
-		}
-	}
+	scopes := texts(details["scopes"])
 
 	rule, _ := details["rule"].(string)
 
@@ -177,8 +229,11 @@ func forbidden(details map[string]any) string {
 // forbidden's details.rule; "" for a rule this build does not know, which
 // prints its word.
 func tokenRule(rule string) string {
-	if rule == "token_cannot_change_user_name_or_email" {
+	switch rule {
+	case "token_cannot_change_user_name_or_email":
 		return "An OAuth access token cannot change the name or the email of a user; an API key can."
+	case "token_must_own_tags":
+		return "An OAuth access token gives and takes only tags it holds or owns, and only on a node whose tags are all its own; an API key may give any tag of the policy."
 	}
 
 	return ""

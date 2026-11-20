@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,8 +20,10 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/cmdline"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/require"
 )
 
@@ -688,4 +693,80 @@ func TestRetry(t *testing.T) {
 		_, err := build(t, &server{}, false)
 		require.EqualError(t, err, "rename: target command.guarded has a revision and no read: a write the server refuses because the target changed would not run again")
 	})
+}
+
+// TestAbout: a problem of the server gets what the command knows of it. A
+// target that is gone keeps the name the command read; an expiry in the
+// past is the time sent, with the way to expire a node now.
+func TestAbout(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Node   clientv0.Node         `arg:"node"`
+		Expiry Opt[Expiry[NowNever]] `flag:"expiry" help:"x"`
+	}
+
+	ents := map[reflect.Type]entity{}
+	for _, e := range entities() {
+		ents[e.t] = e
+	}
+
+	c := Ctx{entities: ents, now: func() time.Time { return time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC) }}
+	node := clientv0.Node{Id: "12", Name: "mynode"}
+
+	var e Expiry[NowNever]
+	require.NoError(t, e.UnmarshalText([]byte("2024-01-01")))
+
+	problem := func(code clientv0.ProblemCode, o clientv0.ProblemObject) error {
+		p := clientv0.Problem{Code: code, Title: "T"}
+		if o.Id != "" {
+			p.Object = nullable.NewNullableWithValue(o)
+		}
+
+		return fmt.Errorf("wrapped: %w", &ProblemError{Problem: p})
+	}
+
+	for _, tt := range []struct {
+		name string
+		err  error
+		in   in
+		want string
+	}{
+		{"a target that is gone has the name read", problem(clientv0.NotFound, clientv0.ProblemObject{Kind: "node", Id: "12"}), in{Node: node}, "Node 12 (mynode) no longer exists."},
+		{"another object keeps no name", problem(clientv0.NotFound, clientv0.ProblemObject{Kind: "node", Id: "13"}), in{Node: node}, "Node 13 no longer exists."},
+		{"the expiry sent", problem(clientv0.ExpiryInPast, clientv0.ProblemObject{}), in{Node: node, Expiry: cmdline.Some(e)}, "2024-01-01 00:00 UTC is in the past.\nTo expire the node now: headscale nodes expire 12"},
+		{"no expiry sent", problem(clientv0.ExpiryInPast, clientv0.ProblemObject{}), in{Node: node}, "the expiry is in the past."},
+		{"not a problem", errBroken, in{Node: node}, errBroken.Error()},
+	} {
+		require.Equal(t, tt.want, sentence(c.about(tt.err, tt.in)), tt.name)
+	}
+}
+
+// TestValid: Valid refuses a line before any call or lookup, with its own
+// sentence; a line it takes runs.
+func TestValid(t *testing.T) {
+	t.Parallel()
+
+	ran := false
+	tree, err := Build("prog", "A program", New(Spec[getIn, NoOutput]{
+		Name: "get", Short: "Get", Long: "Get.", Example: []string{"prog get a"}, Local: true,
+		Valid: func(in getIn) error {
+			if in.Name != "a" {
+				return errors.New(strconv.Quote(in.Name) + " is not a.") //nolint:err113 // a sentence of the test
+			}
+
+			return nil
+		},
+		Run: func(Ctx, getIn) (NoOutput, error) { ran = true; return NoOutput{}, nil },
+	}))
+	require.NoError(t, err)
+
+	var stderr bytes.Buffer
+
+	require.Equal(t, 1, Run(tree, []string{"get", "b"}, Env{Stdout: io.Discard, Stderr: &stderr}))
+	require.Equal(t, "Error: \"b\" is not a.\n", stderr.String())
+	require.False(t, ran)
+
+	require.Equal(t, 0, Run(tree, []string{"get", "a"}, Env{Stdout: io.Discard, Stderr: io.Discard}))
+	require.True(t, ran)
 }

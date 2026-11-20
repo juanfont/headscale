@@ -3,6 +3,9 @@ package command
 import (
 	"bytes"
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"net"
 	"net/http"
@@ -10,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -455,6 +459,74 @@ func TestIfMatch(t *testing.T) {
 	}{guarded{ID: "12", Revision: "r2"}}))
 	require.Equal(t, new(`"r2"`), a.ifMatch("12"))
 	require.Nil(t, a.ifMatch("13"), "another entity")
+}
+
+// TestEveryIfMatchIsSent: every call that fills the parameters of an
+// operation that takes If-Match fills it with ifMatch, so a write that
+// the server can guard by the revision always is. An operation that takes
+// none, such as update-client, gets none.
+func TestEveryIfMatchIsSent(t *testing.T) {
+	t.Parallel()
+
+	gen, err := parser.ParseFile(token.NewFileSet(), "../../../../gen/client/headscale/v0/client.gen.go", nil, 0)
+	require.NoError(t, err)
+
+	takes := map[string]bool{}
+
+	ast.Inspect(gen, func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if !ok {
+			return true
+		}
+
+		st, ok := ts.Type.(*ast.StructType)
+		if ok && strings.HasSuffix(ts.Name.Name, "Params") {
+			for _, f := range st.Fields.List {
+				for _, name := range f.Names {
+					takes[ts.Name.Name] = takes[ts.Name.Name] || name.Name == "IfMatch"
+				}
+			}
+		}
+
+		return true
+	})
+
+	src, err := parser.ParseFile(token.NewFileSet(), "api.go", nil, 0)
+	require.NoError(t, err)
+
+	sent := 0
+
+	ast.Inspect(src, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+
+		sel, ok := lit.Type.(*ast.SelectorExpr)
+		if !ok || !takes[sel.Sel.Name] {
+			return true
+		}
+
+		has := slices.ContainsFunc(lit.Elts, func(e ast.Expr) bool {
+			kv, ok := e.(*ast.KeyValueExpr)
+			if !ok {
+				return false
+			}
+
+			key, _ := kv.Key.(*ast.Ident)
+			call, _ := kv.Value.(*ast.CallExpr)
+			fn, _ := call.Fun.(*ast.SelectorExpr)
+
+			return key != nil && key.Name == "IfMatch" && fn != nil && fn.Sel.Name == "ifMatch"
+		})
+		require.True(t, has, "clientv0.%s takes If-Match and api.go does not send a.ifMatch(id)", sel.Sel.Name)
+
+		sent++
+
+		return true
+	})
+
+	require.Positive(t, sent, "no operation that takes If-Match")
 }
 
 // TestGuardOf: the target is the first argument that is an entity; one
