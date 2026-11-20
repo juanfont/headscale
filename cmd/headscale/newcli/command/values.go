@@ -59,11 +59,23 @@ type NowNever struct{}
 
 func (NowNever) Words() []string { return []string{"now", "never"} }
 
-// NoWords are the words of an expiry that takes a time alone, such as a
-// key's: never and now are words it refuses, as any other word.
+// NoWords are the words of an expiry that takes a time alone, a key's:
+// never and now are words it refuses, with the rule that it breaks.
 type NoWords struct{}
 
 func (NoWords) Words() []string { return nil }
+
+// Noun is what must expire. shortcut: every expiry with no words is a
+// key's; another thing that must expire gets a W of its own with its noun.
+func (NoWords) Noun() string { return "key" }
+
+// mustExpireError is now or never given to an expiry that takes neither: the
+// sentence names the rule and what to give, so it is the whole error.
+type mustExpireError struct{ noun string }
+
+func (e *mustExpireError) Error() string {
+	return "a " + e.noun + " must have an expiry: a time, a date or a duration such as 90d."
+}
 
 // Expiry is the value of an expiry flag, read by the one time parser of
 // the CLI: a time, a date at midnight UTC, a duration from now, or one of
@@ -87,6 +99,10 @@ func (e *Expiry[W]) UnmarshalText(b []byte) error {
 		*e = Expiry[W]{word: s}
 
 		return nil
+	}
+
+	if n, ok := any(w).(interface{ Noun() string }); ok && slices.Contains(NowNever{}.Words(), s) {
+		return &mustExpireError{n.Noun()}
 	}
 
 	d, t, ahead, err := table.ReadTime(s)
@@ -208,7 +224,7 @@ func findOwner(ctx context.Context, word string) (Owner, error) {
 
 	switch {
 	case len(users) > 0 && len(tags) > 0:
-		return Owner{}, &lookupError{text: "a key is owned by one user or by tags, not both."}
+		return Owner{}, &lookupError{text: "a key needs one owner: one user, or tags, not both."}
 	case len(users) > 1:
 		return Owner{}, &lookupError{text: "a key is owned by one user. Got " + strconv.Itoa(len(users)) + ": " + strings.Join(users, ", ") + "."}
 	case len(tags) > 0:

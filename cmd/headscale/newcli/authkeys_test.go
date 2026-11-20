@@ -260,16 +260,16 @@ var authKeysCreateCases = []cliCase{
 	},
 	{name: "as JSON, the secret in key and no note", args: "auth keys create tag:ci -o json", want: answer(authKeysPath)},
 	{name: "a user by ID, an expiry as a time", args: "auth keys create 4 -e 2999-08-27T10:00:00Z -o json", want: answer(authKeysPath)},
-	{name: "a user and tags", args: "auth keys create alice,tag:ci", stderr: "Error: a key is owned by one user or by tags, not both.\n", code: 1},
+	{name: "a user and tags", args: "auth keys create alice,tag:ci", stderr: "Error: a key needs one owner: one user, or tags, not both.\n", code: 1},
 	{name: "two users", args: "auth keys create alice,bob", stderr: "Error: a key is owned by one user. Got 2: alice, bob.\n", code: 1},
-	{name: "a tag that is not in the policy", args: "auth keys create tag:serverr --reusable", stderr: "Error: these tags are not in the policy: tag:serverr\n", code: 1},
+	{name: "a tag that is not in the policy", args: "auth keys create tag:serverr --reusable", stderr: "Error: these tags are not in the policy: tag:serverr.\n", code: 1},
 	{name: "a user nobody is", args: "auth keys create alcie", stderr: "Error: no user matches \"alcie\".\n", code: 1},
-	{name: "never", args: "auth keys create alice --expiry never", stderr: "Error: \"never\" is not a valid --expiry: it is a time, a date or a duration such as 90d.\n", code: 1},
+	{name: "never", args: "auth keys create alice --expiry never", stderr: "Error: a key must have an expiry: a time, a date or a duration such as 90d.\n", code: 1},
 	{
 		name: "no upper limit, but a duration has one", args: "auth keys create alice -e 300y",
 		stderr: "Error: \"300y\" is not a valid --expiry: a duration from now is at most 292y; a later time is written as a date, such as 2999-08-27.\n", code: 1,
 	},
-	{name: "now", args: "auth keys create alice --expiry now", stderr: "Error: \"now\" is not a valid --expiry: it is a time, a date or a duration such as 90d.\n", code: 1},
+	{name: "now", args: "auth keys create alice --expiry now", stderr: "Error: a key must have an expiry: a time, a date or a duration such as 90d.\n", code: 1},
 	{name: "no time ahead", args: "auth keys create alice -e 0s", stderr: "Error: \"0s\" is not a valid --expiry: a duration from now is longer than 0.\n", code: 1},
 	{name: "a time in the past", args: "auth keys create alice --expiry 2024-01-01", stderr: "Error: 2024-01-01 00:00 UTC is in the past.\n", code: 1},
 	{
@@ -300,8 +300,8 @@ var authKeysCreateCases = []cliCase{
 	},
 	{
 		name: "a token and a tag it does not own", args: "auth keys create tag:build", setup: withToken([]string{"tag:ci"}, "auth_keys"), env: tokenEnv,
-		stderr: "Error: this credential may not do that.\nAn OAuth access token gives, takes and makes keys for only tags it holds or owns, " +
-			"and changes only a node whose tags are all its own; an API key may give any tag of the policy.\n", code: 1,
+		stderr: "Error: this credential may not do that.\nAn OAuth access token gives a key or an OAuth client only tags it holds or owns; " +
+			"an API key may give any tag of the policy.\n", code: 1,
 	},
 	{
 		name: "a token and a user", args: "auth keys create alice", setup: withToken([]string{"tag:ci"}, "auth_keys", "users:read"), env: tokenEnv,

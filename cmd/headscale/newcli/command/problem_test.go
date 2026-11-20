@@ -55,7 +55,7 @@ func TestProblemSentence(t *testing.T) {
 		{
 			"tags not permitted names them, escaped",
 			clientv0.Problem{Code: clientv0.ProblemCodeTagsNotPermitted, Details: map[string]any{"tags": []any{"tag:serverr", "tag:x\nError: fake"}}},
-			"these tags are not in the policy: tag:serverr, " + `tag:x\x0aError: fake`,
+			"these tags are not in the policy: tag:serverr, " + `tag:x\x0aError: fake.`,
 		},
 		{"expiry in past", clientv0.Problem{Code: clientv0.ProblemCodeExpiryInPast}, "the expiry is in the past."},
 		{"update refused: not connected", refusal("notConnected", ""), "Node 12 (mynode) is not connected."},
@@ -67,14 +67,28 @@ func TestProblemSentence(t *testing.T) {
 		{
 			"forbidden by the rule on tags",
 			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_must_own_tags"}},
-			"this credential may not do that.\nAn OAuth access token gives, takes and makes keys for only tags it holds or owns, and changes only a node whose tags are all its own; an API key may give any tag of the policy.",
+			"this credential may not do that.\nAn OAuth access token gives a key or an OAuth client only tags it holds or owns; an API key may give any tag of the policy.",
 		},
 		{
 			"forbidden by the rule on keys for a user",
 			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_cannot_create_key_for_user"}},
 			"this credential may not do that.\nAn OAuth access token makes only tagged keys; an API key may make a key for a user.",
 		},
-		{"owner conflict", clientv0.Problem{Code: clientv0.ProblemCodeOwnerConflict}, "a key is owned by one user or by tags, not both."},
+		{"owner conflict, both or none", clientv0.Problem{Code: clientv0.ProblemCodeOwnerConflict}, "a key needs one owner: one user, or tags, not both."},
+		{"an unknown scope", clientv0.Problem{Code: clientv0.ProblemCodeInvalidScope, Details: map[string]any{"scopes": []any{"devices:cor"}}}, "unknown scope: devices:cor."},
+		{"unknown scopes", clientv0.Problem{Code: clientv0.ProblemCodeInvalidScope, Details: map[string]any{"scopes": []any{"a", "b\nError: fake"}}}, "unknown scopes: a, " + `b\x0aError: fake.`},
+		{"a scope that needs tags", clientv0.Problem{Code: clientv0.ProblemCodeScopeRequiresTags, Details: map[string]any{"scopes": []any{"auth_keys"}}}, "scope auth_keys needs at least one tag (--tags)."},
+		{"scopes that need tags", clientv0.Problem{Code: clientv0.ProblemCodeScopeRequiresTags, Details: map[string]any{"scopes": []any{"auth_keys", "devices:core"}}}, "scopes auth_keys, devices:core need at least one tag (--tags)."},
+		{
+			"a token makes no API key",
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_cannot_create_api_key"}},
+			"this credential may not do that.\nAn OAuth access token cannot make an API key: an API key may do everything, so only an API key or the socket makes one.",
+		},
+		{
+			"a token gives a client only its own scopes",
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_must_hold_scopes"}},
+			"this credential may not do that.\nAn OAuth access token makes an OAuth client with only scopes it holds itself.",
+		},
 		{"expiry required", clientv0.Problem{Code: clientv0.ProblemCodeExpiryRequired}, "a key must have an expiry."},
 		{"not found with no object", clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Title: "Not found"}, "Not found (not_found)."},
 		{

@@ -58,6 +58,8 @@ func entities() []entity {
 	return []entity{
 		entityOf("user", findUser, userCandidates(), func(u clientv0.User) string { return u.LoginName }, nil),
 		entityOf("authKey", findAuthKey, authKeyCandidates(), func(k clientv0.AuthKey) string { return k.Prefix }, nil),
+		entityOf("apiKey", findAPIKey, apiKeyCandidates(), func(k clientv0.ApiKey) string { return k.Prefix }, nil),
+		entityOf("oauthClient", findOAuthClient, oauthClientCandidates(), func(clientv0.OAuthClient) string { return "" }, nil),
 		entityOf("node", findNode, nodeCandidates(), func(n clientv0.Node) string { return n.Name }, func(ctx context.Context, id string) (clientv0.Node, error) {
 			return ctxOf(ctx).API.GetNode(ctx, id)
 		}),
@@ -159,11 +161,14 @@ type typed struct {
 }
 
 func authKeyTyped() typed {
-	return typed{"auth", "a key is named by its ID or its prefix, never by the whole key.", "prefix", true}
+	return typed{"auth", "a key is named by its ID or its prefix, never by the whole key.", "prefix", true} //nolint:goconst // the word of a sentence
 }
 
 func apiKeyTyped() typed {
-	return typed{"api", "a key is named by its ID or its prefix, never by the whole key.", "prefix", true}
+	t := authKeyTyped()
+	t.kind = "api"
+
+	return t
 }
 
 func oauthClientTyped() typed {
@@ -223,6 +228,72 @@ func authKeyCandidates() table.Columns[clientv0.AuthKey] {
 		{Name: "prefix", Field: "prefix", Default: true},
 		{Name: "owner", Field: "owner", Default: true},
 		{Name: "state", Field: "state", Default: true},
+	}
+}
+
+// findAPIKey is the API key that word names: the key with that ID, else
+// the one whose prefix it is, as findAuthKey.
+func findAPIKey(ctx context.Context, word string) (clientv0.ApiKey, error) {
+	if word == "" {
+		return clientv0.ApiKey{}, emptyWord("API key")
+	}
+
+	part, err := credentialWord(apiKeyTyped(), word)
+	if err != nil {
+		return clientv0.ApiKey{}, err
+	}
+
+	keys, err := ctxOf(ctx).API.ListAPIKeys(ctx)
+	if err != nil {
+		return clientv0.ApiKey{}, err
+	}
+
+	return resolve(keys, part, word, "API key", apiKeyCandidates(),
+		func(k clientv0.ApiKey) string { return k.Id },
+		func(k clientv0.ApiKey) []string { return []string{k.Prefix} },
+	)
+}
+
+// apiKeyCandidates are the columns of the keys an ambiguous word matches.
+func apiKeyCandidates() table.Columns[clientv0.ApiKey] {
+	return table.Columns[clientv0.ApiKey]{
+		{Name: "id", Field: "id", Default: true},
+		{Name: "prefix", Field: "prefix", Default: true},
+		{Name: "owner", Field: "owner", Default: true},
+		{Name: "state", Field: "state", Default: true},
+	}
+}
+
+// findOAuthClient is the OAuth client whose ID word is. The list is walked
+// so that no word, a secret pasted by mistake least of all, is put in a
+// path.
+func findOAuthClient(ctx context.Context, word string) (clientv0.OAuthClient, error) {
+	if word == "" {
+		return clientv0.OAuthClient{}, emptyWord("OAuth client")
+	}
+
+	_, err := credentialWord(oauthClientTyped(), word)
+	if err != nil {
+		return clientv0.OAuthClient{}, err
+	}
+
+	clients, err := ctxOf(ctx).API.ListOAuthClients(ctx)
+	if err != nil {
+		return clientv0.OAuthClient{}, err
+	}
+
+	return resolve(clients, word, word, "OAuth client", oauthClientCandidates(),
+		func(o clientv0.OAuthClient) string { return o.Id },
+		func(clientv0.OAuthClient) []string { return nil },
+	)
+}
+
+// oauthClientCandidates are the columns of a client; an ID matches one
+// client at most, so no list of candidates shows them.
+func oauthClientCandidates() table.Columns[clientv0.OAuthClient] {
+	return table.Columns[clientv0.OAuthClient]{
+		{Name: "id", Field: "id", Default: true},
+		{Name: "description", Field: "description", Default: true},
 	}
 }
 

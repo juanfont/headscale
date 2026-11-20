@@ -50,8 +50,9 @@ func TestExpiry(t *testing.T) {
 	require.Equal(t, now.Add(292*365*24*time.Hour), node.At(now))
 
 	var key Expiry[NoWords]
-	require.EqualError(t, key.UnmarshalText([]byte("never")), "it is a time, a date or a duration such as 90d")
-	require.EqualError(t, key.UnmarshalText([]byte("now")), "it is a time, a date or a duration such as 90d")
+	require.EqualError(t, key.UnmarshalText([]byte("never")), "a key must have an expiry: a time, a date or a duration such as 90d.")
+	require.EqualError(t, key.UnmarshalText([]byte("now")), "a key must have an expiry: a time, a date or a duration such as 90d.")
+	require.EqualError(t, key.UnmarshalText([]byte("soon")), "it is a time, a date or a duration such as 90d")
 	require.NoError(t, key.UnmarshalText([]byte("1h")))
 }
 
@@ -128,7 +129,7 @@ func TestOwner(t *testing.T) {
 		{line: "make 4", stdout: "user 4\n", calls: 1},
 		{line: "make tag:ci,tag:build", stdout: "tags tag:ci tag:build\n"},
 		{line: "make alcie", stderr: "Error: no user matches \"alcie\".\n", calls: 1},
-		{line: "make alice,tag:ci", stderr: "Error: a key is owned by one user or by tags, not both.\n"},
+		{line: "make alice,tag:ci", stderr: "Error: a key needs one owner: one user, or tags, not both.\n"},
 		{line: "make alice,bob", stderr: "Error: a key is owned by one user. Got 2: alice, bob.\n"},
 		{line: "make tag:ci,,tag:b", stderr: "Error: the owner list has an empty item.\n"},
 		{line: "make ''", stderr: "Error: an empty word names no owner.\n"},

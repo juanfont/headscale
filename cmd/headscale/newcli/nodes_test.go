@@ -854,7 +854,7 @@ tag:test     0      yes
 		name: "an empty list", args: "nodes tags set 13 ''",
 		stderr: "Error: the tag list is empty. A tagged node needs at least one tag.\n", code: 1,
 	},
-	{name: "a tag the policy does not name", args: "nodes tags set 13 tag:serverr", stderr: "Error: these tags are not in the policy: tag:serverr\n", code: 1},
+	{name: "a tag the policy does not name", args: "nodes tags set 13 tag:serverr", stderr: "Error: these tags are not in the policy: tag:serverr.\n", code: 1},
 	{name: "-o json", args: "nodes tags set 13 tag:ci -o json", want: answer(nodesPath + "/13/tags")},
 	{
 		name: "a tagged node that became a user's while the CLI read it: asked on the new state", args: "nodes tags set builder tag:ci", terminal: true, stdin: "y\n",
@@ -881,7 +881,7 @@ tag:test     0      yes
 			f.vars["token"] = f.taggedToken(tb, []string{"tag:ci"}, "devices:core")
 		},
 		env: []string{"HEADSCALE_CLI_ADDRESS={url}", "HEADSCALE_CLI_API_KEY={token}"},
-		stderr: "Error: this credential may not do that.\nAn OAuth access token gives, takes and makes keys for only tags it holds or owns, " +
+		stderr: "Error: this credential may not do that.\nAn OAuth access token gives and takes only tags it holds or owns, " +
 			"and changes only a node whose tags are all its own; an API key may give any tag of the policy.\n", code: 1,
 	},
 }

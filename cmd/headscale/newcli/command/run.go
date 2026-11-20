@@ -714,6 +714,10 @@ func (t *Tree) usage(e *cmdline.UsageError) error {
 
 	name := strings.TrimSuffix(cmp.Or(e.Flag, e.Arg), "s")
 
+	if m, ok := errors.AsType[*mustExpireError](e.Err); ok {
+		return usagef(e.Kind, e.Path, what, "%s", m.Error())
+	}
+
 	switch {
 	case errors.Is(e.Err, cmdline.ErrBool):
 		return usagef(e.Kind, e.Path, what, "%s takes true or false, not %q.", what, e.Value)

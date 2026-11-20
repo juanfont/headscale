@@ -48,7 +48,7 @@ func (e *ProblemError) Error() string {
 	case clientv0.ProblemCodeUnauthorized:
 		return "the server did not accept the API key."
 	case clientv0.ProblemCodeForbidden:
-		return "this credential may not do that." + forbidden(p.Details)
+		return "this credential may not do that." + forbidden(p.Details, e.target.Kind == "node")
 	case clientv0.ProblemCodeNotFound:
 		o, err := p.Object.Get()
 		if err == nil {
@@ -73,7 +73,8 @@ func (e *ProblemError) Error() string {
 			return table.Entity(string(o.Kind), o.Id, o.Name) + " is managed by OIDC and cannot be edited here."
 		}
 	case clientv0.ProblemCodeOwnerConflict:
-		return "a key is owned by one user or by tags, not both."
+		// The server answers it for a key with no owner too.
+		return "a key needs one owner: one user, or tags, not both."
 	case clientv0.ProblemCodeExpiryRequired:
 		return "a key must have an expiry."
 	case clientv0.ProblemCodeTagsRequired:
@@ -82,8 +83,14 @@ func (e *ProblemError) Error() string {
 		}
 
 		return "the tag list is empty."
+	case clientv0.ProblemCodeInvalidScope:
+		return listed("unknown scope: ", "unknown scopes: ", texts(p.Details["scopes"])) + "."
+	case clientv0.ProblemCodeScopeRequiresTags:
+		scopes := texts(p.Details["scopes"])
+
+		return listed("scope ", "scopes ", scopes) + map[bool]string{true: " needs", false: " need"}[len(scopes) < 2] + " at least one tag (--tags)."
 	case clientv0.ProblemCodeTagsNotPermitted:
-		return "these tags are not in the policy: " + strings.Join(texts(p.Details["tags"]), ", ")
+		return "these tags are not in the policy: " + strings.Join(texts(p.Details["tags"]), ", ") + "."
 	case clientv0.ProblemCodeExpiryInPast:
 		if e.expiry.IsZero() {
 			return "the expiry is in the past."
@@ -233,8 +240,9 @@ func texts(v any) []string {
 	return out
 }
 
-// forbidden names what the credential lacks, when the problem says it.
-func forbidden(details map[string]any) string {
+// forbidden names what the credential lacks, when the problem says it; node
+// is a command whose target is a node.
+func forbidden(details map[string]any, node bool) string {
 	scopes := texts(details["scopes"])
 
 	rule, _ := details["rule"].(string)
@@ -242,8 +250,8 @@ func forbidden(details map[string]any) string {
 	switch {
 	case len(scopes) > 0:
 		return "\nIt lacks the scope " + strings.Join(scopes, ", ") + "."
-	case tokenRule(rule) != "":
-		return "\n" + tokenRule(rule)
+	case tokenRule(rule, node) != "":
+		return "\n" + tokenRule(rule, node)
 	case rule != "":
 		return "\nA token rule refuses it: " + table.Visible(rule, "") + "."
 	}
@@ -253,18 +261,37 @@ func forbidden(details map[string]any) string {
 
 // tokenRule is the sentence of a token rule the server names in
 // forbidden's details.rule; "" for a rule this build does not know, which
-// prints its word.
-func tokenRule(rule string) string {
+// prints its word. A rule that covers more than one command says what the
+// command at hand does: node is a change of a node.
+func tokenRule(rule string, node bool) string {
+	switch {
+	case rule == "token_must_own_tags" && node:
+		return "An OAuth access token gives and takes only tags it holds or owns, and changes only a node whose tags are all its own; an API key may give any tag of the policy."
+	case rule == "token_must_own_tags":
+		return "An OAuth access token gives a key or an OAuth client only tags it holds or owns; an API key may give any tag of the policy."
+	}
+
 	switch rule {
 	case "token_cannot_change_user_name_or_email":
 		return "An OAuth access token cannot change the name or the email of a user; an API key can."
-	case "token_must_own_tags":
-		return "An OAuth access token gives, takes and makes keys for only tags it holds or owns, and changes only a node whose tags are all its own; an API key may give any tag of the policy."
+	case "token_must_hold_scopes":
+		return "An OAuth access token makes an OAuth client with only scopes it holds itself."
+	case "token_cannot_create_api_key":
+		return "An OAuth access token cannot make an API key: an API key may do everything, so only an API key or the socket makes one."
 	case "token_cannot_create_key_for_user":
 		return "An OAuth access token makes only tagged keys; an API key may make a key for a user."
 	}
 
 	return ""
+}
+
+// listed is the list after one or many: "scope a", "scopes a, b".
+func listed(one, many string, list []string) string {
+	if len(list) == 1 {
+		return one + list[0]
+	}
+
+	return many + strings.Join(list, ", ")
 }
 
 // taken is the sentence of name_taken or email_taken, whose details hold

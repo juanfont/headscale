@@ -232,6 +232,58 @@ func (a *API) DeleteAuthKey(ctx context.Context, id string) error {
 	return err
 }
 
+// ListAPIKeys is every page of GET /api-keys, revoked keys included.
+func (a *API) ListAPIKeys(ctx context.Context) ([]clientv0.ApiKey, error) {
+	return walk[clientv0.ApiKey](a, "apiKeys", func(c *clientv0.Client, p page) (*http.Response, error) {
+		return c.ListApiKeys(ctx, &clientv0.ListApiKeysParams{PageSize: &p.size, PageToken: p.token})
+	})
+}
+
+// GetAPIKey is GET /api-keys/{id}.
+func (a *API) GetAPIKey(ctx context.Context, id string) (clientv0.ApiKey, error) {
+	return call[clientv0.ApiKey](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetApiKey(ctx, id) })
+}
+
+// CreateAPIKey is POST /api-keys. Its answer is the one that holds the
+// secret.
+func (a *API) CreateAPIKey(ctx context.Context, body clientv0.CreateApiKeyBody) (clientv0.CreatedApiKey, error) {
+	return call[clientv0.CreatedApiKey](a, func(c *clientv0.Client) (*http.Response, error) { return c.CreateApiKey(ctx, body) })
+}
+
+// DeleteAPIKey is DELETE /api-keys/{id}: it revokes the key.
+func (a *API) DeleteAPIKey(ctx context.Context, id string) error {
+	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) { return c.DeleteApiKey(ctx, id) })
+
+	return err
+}
+
+// ListOAuthClients is every page of GET /oauth-clients, revoked clients
+// included.
+func (a *API) ListOAuthClients(ctx context.Context) ([]clientv0.OAuthClient, error) {
+	return walk[clientv0.OAuthClient](a, "oauthClients", func(c *clientv0.Client, p page) (*http.Response, error) {
+		return c.ListOAuthClients(ctx, &clientv0.ListOAuthClientsParams{PageSize: &p.size, PageToken: p.token})
+	})
+}
+
+// GetOAuthClient is GET /oauth-clients/{id}.
+func (a *API) GetOAuthClient(ctx context.Context, id string) (clientv0.OAuthClient, error) {
+	return call[clientv0.OAuthClient](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetOAuthClient(ctx, id) })
+}
+
+// CreateOAuthClient is POST /oauth-clients. Its answer is the one that
+// holds the secret.
+func (a *API) CreateOAuthClient(ctx context.Context, body clientv0.CreateOAuthClientBody) (clientv0.CreatedOAuthClient, error) {
+	return call[clientv0.CreatedOAuthClient](a, func(c *clientv0.Client) (*http.Response, error) { return c.CreateOAuthClient(ctx, body) })
+}
+
+// DeleteOAuthClient is DELETE /oauth-clients/{id}: it revokes the client
+// and every token of it.
+func (a *API) DeleteOAuthClient(ctx context.Context, id string) error {
+	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) { return c.DeleteOAuthClient(ctx, id) })
+
+	return err
+}
+
 // call makes one request and reads its answer: a 2xx body as T, kept for
 // -o json; no body (a 204) as the zero T; any other status as a problem.
 func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, error) {
