@@ -50,3 +50,19 @@ func TestWrite(t *testing.T) {
 		t.Error("tcsh: no error")
 	}
 }
+
+// TestFishSplit: the fish script splits a candidate after "--", so one that
+// starts with "-" is not read as an option; a cobra that changes the line
+// fails here rather than shipping the hole again.
+func TestFishSplit(t *testing.T) {
+	var b bytes.Buffer
+
+	err := Write(&b, "fish", "prog")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Contains(b.Bytes(), fishSplitFixed) || bytes.Contains(b.Bytes(), fishSplit) {
+		t.Errorf("fish script splits a candidate without --:\n%s", b.String())
+	}
+}
