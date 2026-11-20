@@ -3373,11 +3373,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 	rejectedTags := s.validateRequestTagsForReauth(params.ExistingNode, authUser, requestTags)
 	if len(rejectedTags) > 0 {
-		return types.NodeView{}, types.NodeView{}, fmt.Errorf(
-			"%w %v are invalid or not permitted",
-			ErrRequestedTagsInvalidOrNotPermitted,
-			rejectedTags,
-		)
+		return types.NodeView{}, types.NodeView{}, &TagsNotPermittedError{Tags: rejectedTags}
 	}
 
 	// Re-auth rotates the NodeKey to the client-supplied value. Enforce the
@@ -3599,7 +3595,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		// Validate all tags before applying - reject if any tag is not permitted
 		rejectedTags := s.validateRequestTags(nodeToRegister.View(), params.Hostinfo.RequestTags)
 		if len(rejectedTags) > 0 {
-			return types.NodeView{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, rejectedTags)
+			return types.NodeView{}, &TagsNotPermittedError{Tags: rejectedTags}
 		}
 
 		// All tags are approved - apply them

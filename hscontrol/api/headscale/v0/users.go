@@ -369,7 +369,7 @@ func checkUserFields(fields map[string]*string) []FieldError {
 
 		switch {
 		case types.ValidateUserText(*fields[name]) != nil:
-			errs = append(errs, FieldError{Location: "body." + name, Message: "has a control character or a bidirectional formatting character"})
+			errs = append(errs, FieldError{Location: "body." + name, Message: hasControlCharacter})
 		case c.check(*fields[name]) != nil:
 			errs = append(errs, FieldError{Location: "body." + name, Message: c.message})
 		}

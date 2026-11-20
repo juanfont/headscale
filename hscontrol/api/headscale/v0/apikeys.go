@@ -79,7 +79,7 @@ func (b *CreateApiKeyBody) fieldErrors() []FieldError {
 	if b.UserID.Set {
 		_, err := pathID[types.UserID](b.UserID.Value)
 		if err != nil {
-			errs = append(errs, FieldError{Location: "body.userId", Message: notUserID})
+			errs = append(errs, FieldError{Location: userIDField, Message: notUserID})
 		}
 	}
 
@@ -225,7 +225,7 @@ func registerApiKeys(api huma.API, b Backend) {
 		switch {
 		case errors.Is(err, db.ErrUserNotFound):
 			p := newProblem(CodeInvalidField, "A field is not valid.")
-			p.Errors = []FieldError{{Location: "body.userId", Message: "no user has this ID"}}
+			p.Errors = []FieldError{{Location: userIDField, Message: "no user has this ID"}}
 
 			return nil, p
 		case err != nil:

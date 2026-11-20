@@ -98,7 +98,7 @@ func (b *CreateAuthKeyBody) fieldErrors() []FieldError {
 	if b.UserID.Set {
 		_, err := pathID[types.UserID](b.UserID.Value)
 		if err != nil {
-			errs = append(errs, FieldError{Location: "body.userId", Message: notUserID})
+			errs = append(errs, FieldError{Location: userIDField, Message: notUserID})
 		}
 	}
 
@@ -110,7 +110,7 @@ func (b *CreateAuthKeyBody) fieldErrors() []FieldError {
 	}
 
 	if types.ValidateUserText(b.Description.Value) != nil {
-		errs = append(errs, FieldError{Location: "body.description", Message: "has a control character or a bidirectional formatting character"})
+		errs = append(errs, FieldError{Location: "body.description", Message: hasControlCharacter})
 	}
 
 	return errs
@@ -315,7 +315,7 @@ func (b Backend) createAuthKey(ctx context.Context, body CreateAuthKeyBody) (*cr
 	switch {
 	case errors.Is(err, db.ErrUserNotFound):
 		p := newProblem(CodeInvalidField, "A field is not valid.")
-		p.Errors = []FieldError{{Location: "body.userId", Message: "no user has this ID"}}
+		p.Errors = []FieldError{{Location: userIDField, Message: "no user has this ID"}}
 
 		return nil, p
 	case err != nil:

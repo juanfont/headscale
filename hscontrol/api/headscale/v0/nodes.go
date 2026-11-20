@@ -106,7 +106,7 @@ func (b *UpdateNodeBody) fieldErrors() []FieldError {
 	if n := b.Name.Value; b.Name.Set && n != "" {
 		switch {
 		case types.ValidateUserText(n) != nil:
-			errs = append(errs, FieldError{Location: "body.name", Message: "has a control character or a bidirectional formatting character"})
+			errs = append(errs, FieldError{Location: "body.name", Message: hasControlCharacter})
 		case n != strings.ToLower(n):
 			errs = append(errs, FieldError{Location: "body.name", Message: "has a capital letter; a name is lower case"})
 		case dnsname.ValidLabel(n) != nil:
