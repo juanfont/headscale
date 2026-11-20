@@ -26,7 +26,7 @@ import (
 )
 
 // newBackend is a real State on a fresh SQLite database.
-func newBackend(tb testing.TB) Backend {
+func newBackend(tb testing.TB, opts ...func(*types.Config)) Backend {
 	tb.Helper()
 
 	cfg := config.Default()
@@ -36,6 +36,10 @@ func newBackend(tb testing.TB) Backend {
 	cfg.AutoUpdate.CheckVersions = false
 	// A node write waits for the NodeStore batch; tests write one at a time.
 	cfg.Tuning.NodeStoreBatchTimeout = time.Millisecond
+
+	for _, o := range opts {
+		o(&cfg)
+	}
 
 	st, err := state.NewState(&cfg)
 	require.NoError(tb, err)
