@@ -237,6 +237,30 @@ func run(t *testing.T, line string) (any, *lookups, error) {
 	return r.in, look, err
 }
 
+// TestListSpace: space around an item of a list is dropped, so a list
+// copied from a table, "a, b", reads as "a,b"; an item of space alone is
+// empty (Y5, Y6).
+func TestListSpace(t *testing.T) {
+	l, err := testTree().Parse([]string{"peers", "set", "7", "10.0.0.0/8, fd00::/8", "--colors", " red ,\tblue "})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in, _ := Get[setIn](l)
+	if want := []color{"red", "blue"}; !reflect.DeepEqual(in.Colors, want) || len(in.Routes) != 2 {
+		t.Errorf("Y5: %q %v", in.Colors, in.Routes)
+	}
+
+	for value, want := range map[string]error{" ": ErrEmpty, "red, ,blue": ErrEmptyItem, "red, ": ErrEmptyItem} {
+		_, err := testTree().Parse([]string{"peers", "set", "7", "::/0", "--colors", value})
+
+		var ue *UsageError
+		if !errors.As(err, &ue) || !errors.Is(ue.Err, want) {
+			t.Errorf("Y6: %q: %v, want %v", value, err, want)
+		}
+	}
+}
+
 // TestValues: how each type of field is read (rules Y1–Y12).
 func TestValues(t *testing.T) {
 	in, _, err := run(t, "peers set 7 10.0.0.0/8,fd00::/8 --name= --count=-12 --ratio 1.5 --size 255 --wait 90s --level L4 --upper abc --colors red,blue --tag a,b --tag '' --rule red --rule green,blue --force --dry=false")
