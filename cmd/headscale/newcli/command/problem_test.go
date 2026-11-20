@@ -28,7 +28,7 @@ func TestProblemSentence(t *testing.T) {
 		{
 			"a field message with a line break",
 			clientv0.Problem{Code: clientv0.ProblemCodeInvalidField, Errors: []clientv0.FieldError{{Location: "body.x", Message: "bad\nError: fake"}}},
-			"the server refused a value:\n  body.x: " + `bad\x0aError: fake`,
+			"the server refused a value:\n  body.x (as the server names it): " + `bad\x0aError: fake`,
 		},
 		{"forbidden", clientv0.Problem{Code: clientv0.ProblemCodeForbidden}, "this credential may not do that."},
 		{
@@ -87,7 +87,7 @@ func TestProblemSentence(t *testing.T) {
 		{
 			"invalid field names each field",
 			clientv0.Problem{Code: clientv0.ProblemCodeInvalidField, Errors: []clientv0.FieldError{{Location: "body.name", Message: "is too long"}}},
-			"the server refused a value:\n  body.name: is too long",
+			"the server refused a value:\n  body.name (as the server names it): is too long",
 		},
 		{
 			"name taken names the holder and the name",
@@ -149,6 +149,12 @@ func TestFlagsOf(t *testing.T) {
 		Owner         Owner       `arg:"owner"`
 	}
 
+	type entities struct {
+		Scopes []string           `arg:"scopes"`
+		User   Opt[clientv0.User] `flag:"user"  help:"x"`
+		Tags   []string           `flag:"tags"  help:"x"`
+	}
+
 	p := &ProblemError{Problem: clientv0.Problem{Code: clientv0.ProblemCodeInvalidField, Errors: []clientv0.FieldError{
 		{Location: "body.name", Message: "a"},
 		{Location: "body.displayName", Message: "b"},
@@ -160,9 +166,18 @@ func TestFlagsOf(t *testing.T) {
 	}}}
 
 	require.Equal(t, "the server refused a value:\n"+
-		"  <name>: a\n  --display-name: b\n  --picture-url: c\n  body.other: d\n  query.pageSize: e\n  <owner>: f\n  <owner>: g",
+		"  <name>: a\n  --display-name: b\n  --picture-url: c\n  body.other (as the server names it): d\n  query.pageSize (as the server names it): e\n  <owner>: f\n  <owner>: g",
 		sentence(flagsOf[in](fmt.Errorf("wrapped: %w", p))))
 	require.Equal(t, errBroken, flagsOf[in](errBroken))
+
+	p = &ProblemError{Problem: clientv0.Problem{Code: clientv0.ProblemCodeInvalidField, Errors: []clientv0.FieldError{
+		{Location: "body.userId", Message: "a"},
+		{Location: "body.tags[1]", Message: "b"},
+		{Location: "body.scopes", Message: "c"},
+		{Location: "body.scopes[0]", Message: "d"},
+	}}}
+
+	require.Equal(t, "the server refused a value:\n  --user: a\n  --tags: b\n  <scopes>: c\n  <scopes>: d", sentence(flagsOf[entities](p)))
 }
 
 // refusal is an update_refused of Node 12 (mynode) for reason.

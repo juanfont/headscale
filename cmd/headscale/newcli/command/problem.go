@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -102,15 +103,7 @@ func (e *ProblemError) Error() string {
 	case clientv0.ProblemCodeUnhealthy:
 		return "the server is not healthy:" + messages(p.Details["reasons"])
 	case clientv0.ProblemCodeInvalidField:
-		var b strings.Builder
-
-		b.WriteString("the server refused a value:")
-
-		for _, f := range p.Errors {
-			b.WriteString("\n  " + table.Visible(f.Location, "") + ": " + table.Visible(f.Message, ""))
-		}
-
-		return b.String()
+		return "the server refused a value:" + fieldErrors(p.Errors)
 	case clientv0.ProblemCodeTooLarge:
 		return "the file is too large for the server."
 	case clientv0.ProblemCodeInternal:
@@ -133,10 +126,11 @@ func (e *ProblemError) entity(o clientv0.ProblemObject) string {
 }
 
 // flagsOf names, in each entry of an invalid_field problem, the flag or the
-// argument of In that filled the body field: body.email is --email, and
-// body.profilePicUrl is the flag whose Go field is ProfilePicURL. A field
-// matches by its Go name or by its flag or argument name without dashes,
-// in any case. A location that no field of In fills stays as the server
+// argument of In that filled the body field: body.email is --email,
+// body.profilePicUrl the flag whose Go field is ProfilePicURL, body.userId
+// --user, and body.tags[1] --tags. A field matches by its Go name or by
+// its flag or argument name without dashes, with or without Id, in any
+// case. A location that no field of In fills stays as the server
 // wrote it.
 func flagsOf[In any](err error) error {
 	p, ok := errors.AsType[*ProblemError](err)
@@ -169,11 +163,13 @@ func flagsOf[In any](err error) error {
 				continue
 			}
 
-			// An owner fills the user or the tags.
+			// An owner fills the user or the tags; an entity, such as
+			// --user, its ID; an item of a list, tags[1], the list.
 			root, _, _ := strings.Cut(key, "[")
 			owner := sf.Type == reflect.TypeFor[Owner]() && (root == "userId" || root == "tags")
+			bare := strings.ReplaceAll(name, "-", "")
 
-			if owner || strings.EqualFold(sf.Name, key) || strings.EqualFold(strings.ReplaceAll(name, "-", ""), key) {
+			if owner || slices.ContainsFunc([]string{sf.Name, bare, sf.Name + "Id", bare + "Id"}, func(n string) bool { return strings.EqualFold(n, root) }) {
 				p.Problem.Errors[i].Location = word
 
 				break
@@ -182,6 +178,24 @@ func flagsOf[In any](err error) error {
 	}
 
 	return err
+}
+
+// fieldErrors are the lines of invalid_field, one for each field. flagsOf
+// names a field as the flag that filled it; any other is the API's name,
+// and the line says so.
+func fieldErrors(errs []clientv0.FieldError) string {
+	var b strings.Builder
+
+	for _, f := range errs {
+		at := table.Visible(f.Location, "")
+		if !strings.HasPrefix(at, "--") && !strings.HasPrefix(at, "<") {
+			at += " (as the server names it)"
+		}
+
+		b.WriteString("\n  " + at + ": " + table.Visible(f.Message, ""))
+	}
+
+	return b.String()
 }
 
 // refused is the sentence of update_refused, one for each reason.
