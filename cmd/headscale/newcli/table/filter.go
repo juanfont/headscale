@@ -114,6 +114,17 @@ func (cs Columns[R]) Showing(rows []R, word string) Columns[R] {
 	return out
 }
 
+// Shown is the declaration with the column of that name among the
+// defaults; the declaration itself does not change.
+func (cs Columns[R]) Shown(name string) Columns[R] {
+	out := slices.Clone(cs)
+	for i := range out {
+		out[i].Default = out[i].Default || out[i].Name == name
+	}
+
+	return out
+}
+
 func (cs Columns[R]) defaults() Columns[R] {
 	var out Columns[R]
 
@@ -287,6 +298,9 @@ func (f *Filter[R]) read() error {
 
 	return nil
 }
+
+// Column is the name of the column the condition reads.
+func (f Filter[R]) Column() string { return f.col.Name }
 
 // User is the word of an owner=<user> condition, which the caller resolves
 // to a user ID like a target; false for every other condition.

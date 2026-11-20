@@ -96,7 +96,13 @@ type ListSpec[In, Row any] struct {
 	Columns table.Columns[Row]
 	// NoRows is what a terminal shows when no row is left: "No users.".
 	NoRows string
-	Run    func(c Ctx, in In) ([]Row, error)
+	// Only is the filter the list applies unless told otherwise, such as
+	// state=valid: the API gives every row, and the list hides the ones a
+	// person rarely wants. --all, or a --filter on its column, removes it,
+	// and --all adds its column to the default columns. A list with Only
+	// takes --all, and its Long says what --all shows.
+	Only string
+	Run  func(c Ctx, in In) ([]Row, error)
 }
 
 // Prompt is what a command asks: the Question, to which the builder adds
