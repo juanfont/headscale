@@ -17,6 +17,7 @@ import (
 	"maps"
 	"mime"
 	"net/http"
+	"net/url"
 	"reflect"
 	"slices"
 	"strconv"
@@ -180,6 +181,9 @@ type access struct {
 	scopes []scope.Scope
 	// rules refuse an OAuth access token what scopes allow.
 	rules []*tokenRule
+	// paramScopes are the scopes a boolean query parameter needs as well
+	// when it is true, by the parameter's name.
+	paramScopes map[string][]scope.Scope
 }
 
 // withTokenRules is a with rules that refuse an OAuth access token.
@@ -187,6 +191,38 @@ func (a access) withTokenRules(r ...*tokenRule) access {
 	a.rules = append(slices.Clone(a.rules), r...)
 
 	return a
+}
+
+// withParamScopes is a that also needs s when the boolean query parameter
+// param is true. The scopes are checked with the others, before the request
+// is read, so a forbidden answer lists every scope the call lacks.
+func (a access) withParamScopes(param string, s ...scope.Scope) access {
+	a.paramScopes = maps.Clone(a.paramScopes)
+	if a.paramScopes == nil {
+		a.paramScopes = map[string][]scope.Scope{}
+	}
+
+	a.paramScopes[param] = s
+
+	return a
+}
+
+// wants is every scope a needs for a request with query.
+func (a access) wants(query url.Values) []scope.Scope {
+	want := slices.Clone(a.scopes)
+
+	for _, param := range slices.Sorted(maps.Keys(a.paramScopes)) {
+		// Only the form requestChecks lets through is true.
+		if query.Get(param) == "true" {
+			for _, s := range a.paramScopes[param] {
+				if !slices.Contains(want, s) {
+					want = append(want, s)
+				}
+			}
+		}
+	}
+
+	return want
 }
 
 func (a access) kind() accessKind {
@@ -220,7 +256,8 @@ const (
 	codesMetaKey   = "headscale.v0.codes"
 	maxBodyMetaKey = "headscale.v0.maxBody"
 
-	tokenRulesExtension = "x-token-rules"
+	tokenRulesExtension  = "x-token-rules"
+	paramScopesExtension = "x-parameter-scopes"
 
 	mergePatchContentType = "application/merge-patch+json"
 
@@ -295,6 +332,13 @@ func register[I, O any](
 	})
 
 	describeRegistered(api, &op, isPatch)
+
+	registered := operations(api.OpenAPI().Paths[op.Path])[op.Method]
+	for param := range a.paramScopes {
+		if !booleanQuery(registered, param) {
+			panic("apiv0: " + op.OperationID + " has scopes for " + param + ", which is not a boolean query parameter")
+		}
+	}
 }
 
 // accessCodes sets the security and token rules of op from a, and returns
@@ -337,6 +381,30 @@ func accessCodes(op *huma.Operation, a access) []Code {
 		}
 
 		op.Extensions[tokenRulesExtension] = names
+	}
+
+	if len(a.paramScopes) > 0 {
+		if a.kind() != scopedAccess {
+			panic("apiv0: " + op.OperationID + " has parameter scopes but no scopes")
+		}
+
+		byParam := map[string][]string{}
+
+		for param, ss := range a.paramScopes {
+			for _, s := range ss {
+				if !s.Valid() {
+					panic("apiv0: " + op.OperationID + " has unknown scope " + string(s))
+				}
+
+				byParam[param] = append(byParam[param], string(s))
+			}
+		}
+
+		if op.Extensions == nil {
+			op.Extensions = map[string]any{}
+		}
+
+		op.Extensions[paramScopesExtension] = byParam
 	}
 
 	return all
@@ -482,11 +550,14 @@ func pathID[T ~uint64](s string) (T, error) {
 // requestChecks refuses, after the credential is checked, what the request
 // alone shows and huma lets through. A query parameter given twice or with
 // an empty value is invalid_field: either would make a filter fall away and
-// a list return every row. A body not sent as JSON is unsupported_media_type:
-// huma reads a body with no media type, and any +json one, as JSON.
+// a list return every row. A boolean is true or false: huma would also take
+// 1, t or TRUE, which a later version could not refuse. A body not sent as
+// JSON is unsupported_media_type: huma reads a body with no media type, and
+// any +json one, as JSON.
 func requestChecks(ctx huma.Context, next func(huma.Context)) {
 	u := ctx.URL()
 	query := u.Query()
+	op := ctx.Operation()
 	p := newProblem(CodeInvalidField, "A query parameter is not valid.")
 
 	for _, name := range slices.Sorted(maps.Keys(query)) {
@@ -495,6 +566,8 @@ func requestChecks(ctx huma.Context, next func(huma.Context)) {
 			p.Errors = append(p.Errors, FieldError{Location: fieldLocation("query." + name), Message: "is given more than once"})
 		case query[name][0] == "":
 			p.Errors = append(p.Errors, FieldError{Location: fieldLocation("query." + name), Message: "is empty; leave the parameter out"})
+		case booleanQuery(op, name) && query[name][0] != "true" && query[name][0] != "false":
+			p.Errors = append(p.Errors, FieldError{Location: fieldLocation("query." + name), Message: "is not true or false"})
 		}
 	}
 
@@ -504,7 +577,6 @@ func requestChecks(ctx huma.Context, next func(huma.Context)) {
 		return
 	}
 
-	op := ctx.Operation()
 	if op.RequestBody != nil && !jsonMediaType(ctx.Header("Content-Type"), op.Method == http.MethodPatch) {
 		writeHumaProblem(ctx, newProblem(CodeUnsupportedMediaType, "Send the body as application/json, or a PATCH as application/merge-patch+json."))
 
@@ -512,6 +584,14 @@ func requestChecks(ctx huma.Context, next func(huma.Context)) {
 	}
 
 	next(ctx)
+}
+
+// booleanQuery reports whether op takes the query parameter name as a
+// boolean.
+func booleanQuery(op *huma.Operation, name string) bool {
+	return slices.ContainsFunc(op.Parameters, func(p *huma.Param) bool {
+		return p.In == "query" && p.Name == name && p.Schema != nil && p.Schema.Type == huma.TypeBoolean
+	})
 }
 
 // jsonMediaType reports whether a body sent as contentType is v0's JSON:

@@ -392,6 +392,16 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 	return ret, err
 }
 
+// InUseForTesting reports whether ip is handed out.
+func (i *IPAllocator) InUseForTesting(ip netip.Addr) bool {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	set, err := i.usedIPs.IPSet()
+
+	return err == nil && set.Contains(ip)
+}
+
 func (i *IPAllocator) FreeIPs(ips []netip.Addr) {
 	i.mu.Lock()
 	defer i.mu.Unlock()

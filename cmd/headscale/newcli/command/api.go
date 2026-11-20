@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -53,9 +54,13 @@ type API struct {
 	// answered before and whether a write is out; timeout is cli.timeout.
 	check   *versionCheck
 	timeout time.Duration
-	// guard is the revision of the target, which every write on it that
-	// takes If-Match sends; see guardOf and ifMatch.
+	// guard is the guard of the target, which every write on it sends;
+	// see revision.
 	guard atomic.Pointer[revision]
+	// me is GET /me, read once a run: see whoAmI.
+	meOnce sync.Once
+	me     clientv0.Me
+	meErr  error
 
 	mu      sync.Mutex
 	answers map[answerKey]json.RawMessage
@@ -116,6 +121,13 @@ func (a *API) Me(ctx context.Context) (clientv0.Me, error) {
 	return call[clientv0.Me](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetMe(ctx) })
 }
 
+// whoAmI is Me, read once a run: a question asked again asks the same.
+func (a *API) whoAmI(ctx context.Context) (clientv0.Me, error) {
+	a.meOnce.Do(func() { a.me, a.meErr = a.Me(ctx) })
+
+	return a.me, a.meErr
+}
+
 // Health is GET /health.
 func (a *API) Health(ctx context.Context) (clientv0.Health, error) {
 	return call[clientv0.Health](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetHealth(ctx) })
@@ -137,6 +149,14 @@ func (a *API) CreateUser(ctx context.Context, body clientv0.CreateUserBody) (cli
 func (a *API) UpdateUser(ctx context.Context, id string, body clientv0.UpdateUserBody) (clientv0.User, error) {
 	return call[clientv0.User](a, func(c *clientv0.Client) (*http.Response, error) {
 		return c.UpdateUserWithApplicationMergePatchPlusJSONBody(ctx, id, body)
+	})
+}
+
+// DeleteUser is DELETE /users/{id}: with dryRun what it would remove, and
+// otherwise the removal, which sends the token the question showed.
+func (a *API) DeleteUser(ctx context.Context, id string, withNodes, dryRun bool) (clientv0.DeletedUser, error) {
+	return call[clientv0.DeletedUser](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.DeleteUser(ctx, id, &clientv0.DeleteUserParams{WithNodes: &withNodes, DryRun: &dryRun, Expect: a.expect(id)})
 	})
 }
 
@@ -452,14 +472,19 @@ func (a *API) callError(err error) error {
 	}
 
 	deadline := errors.Is(err, context.DeadlineExceeded)
+	u, sent := errors.AsType[*unanswered](err)
 
 	switch {
-	// A write that was sent may have been made, whatever went wrong after.
-	case a.check != nil && a.check.writing.Load():
-		return &writeError{target: a.target, err: err}
-	// A server that answered before is reached: it is slow, not gone.
-	case deadline && a.check != nil && a.check.checked.Load():
-		return &slowError{target: a.target, timeout: a.timeout}
+	// A write that was sent may have been made, whatever went wrong after,
+	// until its answer is read whole.
+	case sent && u.write:
+		return &writeError{target: a.target, err: u.err}
+	// A server that answered before, or that has the request, is reached:
+	// it is slow, or it hung up, not gone.
+	case deadline && (sent || a.check != nil && a.check.checked.Load()):
+		return &slowError{target: a.target, timeout: a.timeout, dryRun: sent && u.dryRun}
+	case sent:
+		return &slowError{target: a.target, cause: u.err, dryRun: u.dryRun}
 	// A request that ran out of time while the socket was not there says
 	// why the dial failed, not that the time was up.
 	case deadline && a.socket != nil:
@@ -469,13 +494,15 @@ func (a *API) callError(err error) error {
 	return &connectError{target: a.target, err: err}
 }
 
-// slowError is a server that answered before, and not this request in
-// time.
+// slowError is a server that was reached and did not answer a request
+// that changes nothing: not in time, or, with a cause, not whole.
 type slowError struct {
 	target  string
 	timeout time.Duration
-	// list is a page of a walk.
-	list bool
+	cause   error
+	// list is a page of a walk; dryRun the dry run of a write, which a
+	// person may take for the write.
+	list, dryRun bool
 }
 
 func (e *slowError) Error() string {
@@ -484,8 +511,17 @@ func (e *slowError) Error() string {
 		what = "send the next page of the list"
 	}
 
+	again := "Run the command again"
+	if e.dryRun {
+		again = "Nothing was changed: run the command again"
+	}
+
+	if e.cause != nil {
+		return "the server at " + e.target + " did not " + what + ": " + causeOf(e.cause) + ".\n" + again + "."
+	}
+
 	return "the server at " + e.target + " did not " + what + " in " + e.timeout.String() + ".\n" +
-		"Run the command again, or wait longer with HEADSCALE_CLI_TIMEOUT or cli.timeout."
+		again + ", or wait longer with HEADSCALE_CLI_TIMEOUT or cli.timeout."
 }
 
 // writeError is a write that was sent and got no answer: the server may
@@ -501,6 +537,17 @@ func (e *writeError) Error() string {
 }
 
 func (e *writeError) Unwrap() error { return e.err }
+
+// MayBeMade is err with look after it when err is a write whose answer
+// was lost: what a person runs to see whether the change was made. Any
+// other error is err.
+func MayBeMade(err error, look string) error {
+	if _, ok := errors.AsType[*writeError](err); !ok {
+		return err
+	}
+
+	return fmt.Errorf("%s\n%s", sentence(err), look) //nolint:err113 // a sentence of the CLI
+}
 
 // each is what every request of a run gets, whichever method made it:
 // cli.timeout bounds the dial, the answer and its body. The time of a
@@ -583,6 +630,9 @@ func cause(err error) string {
 		return errno.Error()
 	case errors.Is(err, context.DeadlineExceeded):
 		return "no answer in time"
+	// The server, or something on the way, ended the connection.
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return "the connection was closed"
 	case errors.As(err, &uerr):
 		return uerr.Err.Error()
 	}
@@ -672,23 +722,43 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 	return a, nil
 }
 
-// revision is the target of a command and its revision, which a write on
-// the target sends back in If-Match: a server that holds another revision
-// refuses the write with precondition_failed, so a change made in between
-// is not lost.
-type revision struct{ id, rev string }
+// revision is the guard of a write on the target of a command: what the
+// CLI read or showed of it, which the server compares before it writes,
+// so a change made in between is not lost. One kind per run: the target's
+// revision, sent in If-Match and refused with precondition_failed, or the
+// token a question handed over (Prompt.Guard), sent as expect and refused
+// with the spec's Changed. The builder refuses a spec that would need both.
+type revision struct {
+	id, rev string
+	token   bool
+}
 
 // ifMatch is the If-Match of a write on the entity id: the revision the
 // builder read for the target, when id is the target; nil, which sends
 // none, for another. Every call whose operation takes If-Match passes it
-// (TestEveryIfMatchIsSent); a command never does.
+// (TestEveryGuardIsSent); a command never does.
 func (a *API) ifMatch(id string) *string {
 	g := a.guard.Load()
-	if g == nil || g.id != id {
+	if g == nil || g.token || g.id != id {
 		return nil
 	}
 
 	return new(strconv.Quote(g.rev))
+}
+
+// expect is the token of a dry run that a write on the entity id sends
+// back, so the server refuses it when what the question showed changed:
+// the Guard of the Prompt, which the builder keeps as it keeps a revision;
+// nil for another entity, and for the dry run itself, which the builder
+// asks before any Guard is set. Every call whose operation takes expect
+// passes it (TestEveryGuardIsSent).
+func (a *API) expect(id string) *string {
+	g := a.guard.Load()
+	if g == nil || !g.token || g.id != id {
+		return nil
+	}
+
+	return &g.rev
 }
 
 // guardOf is the revision of the target of in: its first argument that is
@@ -824,9 +894,6 @@ type versionCheck struct {
 	server string
 	// checked is set once an answer has passed the check.
 	checked atomic.Bool
-	// writing is set while a write is out: sent, and its answer not yet
-	// come.
-	writing atomic.Bool
 	// warn is stderr, also with -o json, unlike Ctx.Note: the warning says
 	// whether what is read can be trusted, so a script must see it too.
 	warn   io.Writer
@@ -848,18 +915,22 @@ func (v *versionCheck) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp.Body.Close()
 	}
 
-	write := req.Method != http.MethodGet
-	if write {
-		v.writing.Store(true)
-	}
+	// A dry run asks what a write would do, and does nothing.
+	write := req.Method != http.MethodGet && req.URL.Query().Get("dryRun") != "true"
 
-	resp, err := v.next.RoundTrip(req)
+	// A request may reach the server once a connection is in hand; before
+	// that, nothing was sent.
+	var sent atomic.Bool
+
+	trace := &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) { sent.Store(true) }}
+
+	resp, err := v.next.RoundTrip(req.WithContext(httptrace.WithClientTrace(req.Context(), trace)))
 	if err != nil {
-		return nil, err
-	}
+		if sent.Load() {
+			return nil, &unanswered{err: err, write: write, dryRun: req.Method != http.MethodGet && !write}
+		}
 
-	if write {
-		v.writing.Store(false)
+		return nil, err
 	}
 
 	server := resp.Header.Get("Headscale-Version")
@@ -887,7 +958,37 @@ func (v *versionCheck) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	v.checked.Store(true)
 
+	// The answer is not in until its body is read whole.
+	resp.Body = &answerBody{ReadCloser: resp.Body, write: write, dryRun: req.Method != http.MethodGet && !write}
+
 	return resp, nil
+}
+
+// unanswered is a request that was sent and whose answer did not come
+// whole: a write may have been made, a dry run and a read changed nothing.
+type unanswered struct {
+	err           error
+	write, dryRun bool
+}
+
+func (e *unanswered) Error() string { return e.err.Error() }
+func (e *unanswered) Unwrap() error { return e.err }
+
+// answerBody is the body of an answer: an error while it is read is an
+// answer that did not come whole.
+type answerBody struct {
+	io.ReadCloser
+
+	write, dryRun bool
+}
+
+func (b *answerBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		err = &unanswered{err: err, write: b.write, dryRun: b.dryRun}
+	}
+
+	return n, err
 }
 
 // versionError is a server that this CLI must not talk to.

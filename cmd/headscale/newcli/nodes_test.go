@@ -580,7 +580,7 @@ var nodesExpireDeleteCases = []cliCase{
 	{
 		name: "the node changed while the question was open: asked again", args: "nodes delete mynode", terminal: true, stdin: "y\nyes\n",
 		answered: renamed(1),
-		stderr:   "Delete Node 12 (mynode), owned by User 3 (alice)? [y/N] Node 12 (mynode) changed while the question was open.\nDelete Node 12 (renamed-1), owned by User 3 (alice)? [y/N] ",
+		stderr:   "Delete Node 12 (mynode), owned by User 3 (alice)? [y/N] Node 12 (mynode) changed while you decided.\nDelete Node 12 (renamed-1), owned by User 3 (alice)? [y/N] ",
 		stdout:   "Node 12 (renamed-1) deleted.\n",
 	},
 	{

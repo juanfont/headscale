@@ -162,6 +162,24 @@ func accessFaults(key string, op *huma.Operation, fault func(string, string, ...
 			fault(key, "unknown scope %q", s)
 		}
 	}
+
+	// The scopes a parameter adds are in the document, under its name.
+	documented, _ := op.Extensions[paramScopesExtension].(map[string][]string)
+	if len(documented) != len(a.paramScopes) {
+		fault(key, "%s %v does not match access %v", paramScopesExtension, documented, a.paramScopes)
+	}
+
+	for param, ss := range a.paramScopes {
+		if !booleanQuery(op, param) {
+			fault(key, "scopes for %s, which is not a boolean query parameter", param)
+		}
+
+		for i, s := range ss {
+			if !s.Valid() || i >= len(documented[param]) || documented[param][i] != string(s) {
+				fault(key, "%s of %s does not match access %v", paramScopesExtension, param, ss)
+			}
+		}
+	}
 }
 
 // codeFaults reports an operation with no problem codes, or one whose code

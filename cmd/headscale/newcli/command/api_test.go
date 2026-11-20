@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	gotypes "go/types"
 	"io"
 	"net"
 	"net/http"
@@ -439,6 +440,94 @@ func TestTimeout(t *testing.T) {
 		"The change may have been made: look before you run the command again.")
 }
 
+// TestLostAnswer: a request whose answer the server cuts says what the
+// CLI knows. A write may have been made from the moment it was sent until
+// its answer is read whole, so an answer cut after its headers is a write
+// that may have been made too; a dry run and a read changed nothing, and
+// none of them is a server the CLI cannot connect to.
+func TestLostAnswer(t *testing.T) {
+	t.Parallel()
+
+	// start is a server that hangs up on every request but the version:
+	// before the headers, or after them and half of the body.
+	start := func(t *testing.T, where string) string {
+		t.Helper()
+
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Headscale-Version", "dev")
+
+			if r.URL.Path == "/api/headscale/v0/version" {
+				return
+			}
+
+			rc := http.NewResponseController(w)
+
+			if where == "after the headers" {
+				w.Header().Set("Content-Length", "100")
+				_, _ = w.Write([]byte(`{"id": "3", `))
+				_ = rc.Flush()
+			}
+
+			conn, _, err := rc.Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+		}))
+		t.Cleanup(s.Close)
+
+		return s.URL
+	}
+
+	for _, tt := range []struct {
+		name string
+		call func(ctx context.Context, a *API) error
+		want string
+	}{
+		{
+			name: "a write",
+			call: func(ctx context.Context, a *API) error {
+				_, err := a.UpdateUser(ctx, "3", clientv0.UpdateUserBody{})
+
+				return err
+			},
+			want: "the server at {host} did not answer the change: the connection was closed.\n" +
+				"The change may have been made: look before you run the command again.",
+		},
+		{
+			name: "a dry run",
+			call: func(ctx context.Context, a *API) error {
+				_, err := a.DeleteUser(ctx, "3", false, true)
+
+				return err
+			},
+			want: "the server at {host} did not answer: the connection was closed.\nNothing was changed: run the command again.",
+		},
+		{
+			name: "a read",
+			call: func(ctx context.Context, a *API) error {
+				_, err := a.Me(ctx)
+
+				return err
+			},
+			want: "the server at {host} did not answer: the connection was closed.\nRun the command again.",
+		},
+	} {
+		for _, where := range []string{"before the headers", "after the headers"} {
+			t.Run(tt.name+" cut "+where, func(t *testing.T) {
+				t.Parallel()
+
+				url := start(t, where)
+
+				a, err := connect(&types.Config{CLI: types.CLIConfig{Address: url, APIKey: "key", Timeout: time.Minute}},
+					Env{Stderr: io.Discard, Version: types.GetVersionInfo()})
+				require.NoError(t, err)
+
+				require.EqualError(t, tt.call(t.Context(), a), strings.ReplaceAll(tt.want, "{host}", strings.TrimPrefix(url, "http://")))
+			})
+		}
+	}
+}
+
 // guarded is an entity with a revision, as a node is.
 type guarded struct {
 	ID       string `json:"id"`
@@ -459,19 +548,42 @@ func TestIfMatch(t *testing.T) {
 	}{guarded{ID: "12", Revision: "r2"}}))
 	require.Equal(t, new(`"r2"`), a.ifMatch("12"))
 	require.Nil(t, a.ifMatch("13"), "another entity")
+	require.Nil(t, a.expect("12"), "a revision is no token")
+
+	a.guard.Store(&revision{id: "12", rev: "tok", token: true})
+	require.Nil(t, a.ifMatch("12"), "a token is no revision")
 }
 
-// TestEveryIfMatchIsSent: every call that fills the parameters of an
-// operation that takes If-Match fills it with ifMatch, so a write that
-// the server can guard by the revision always is. An operation that takes
-// none, such as update-client, gets none.
-func TestEveryIfMatchIsSent(t *testing.T) {
+// TestExpect: a write on the target sends the token the question gave, in
+// place of a revision; another entity, and a run before any question, none.
+func TestExpect(t *testing.T) {
 	t.Parallel()
+
+	a := &API{}
+	require.Nil(t, a.expect("3"), "no question yet")
+
+	a.guard.Store(&revision{id: "3", rev: "0123456789abcdef", token: true})
+	require.Equal(t, new("0123456789abcdef"), a.expect("3"))
+	require.Nil(t, a.expect("4"), "another entity")
+}
+
+// TestEveryGuardIsSent: every call of an operation that takes a guard is
+// given its parameters, written out in the call, with the guard filled
+// from the builder's guard for the entity the call is made on: If-Match
+// with ifMatch, expect with expect, each asked for the very ID of the
+// path. So a write that the server can guard always is, on the target it
+// was asked for. An operation that takes none, such as update-client, gets
+// none.
+func TestEveryGuardIsSent(t *testing.T) {
+	t.Parallel()
+
+	guards := map[string]string{"IfMatch": "ifMatch", "Expect": "expect"}
 
 	gen, err := parser.ParseFile(token.NewFileSet(), "../../../../gen/client/headscale/v0/client.gen.go", nil, 0)
 	require.NoError(t, err)
 
-	takes := map[string]bool{}
+	// takes is the guard field of each Params type that has one.
+	takes := map[string]string{}
 
 	ast.Inspect(gen, func(n ast.Node) bool {
 		ts, ok := n.(*ast.TypeSpec)
@@ -483,7 +595,9 @@ func TestEveryIfMatchIsSent(t *testing.T) {
 		if ok && strings.HasSuffix(ts.Name.Name, "Params") {
 			for _, f := range st.Fields.List {
 				for _, name := range f.Names {
-					takes[ts.Name.Name] = takes[ts.Name.Name] || name.Name == "IfMatch"
+					if _, ok := guards[name.Name]; ok {
+						takes[ts.Name.Name] = name.Name
+					}
 				}
 			}
 		}
@@ -491,42 +605,107 @@ func TestEveryIfMatchIsSent(t *testing.T) {
 		return true
 	})
 
+	// op is a method of the client that takes a guard: where its id and
+	// its parameters are among the arguments, and their type.
+	type op struct {
+		id, params int
+		typ        string
+	}
+
+	ops := map[string]op{}
+
+	for _, d := range gen.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Recv == nil || gotypes.ExprString(fn.Recv.List[0].Type) != "*Client" {
+			continue
+		}
+
+		o, i := op{id: -1, params: -1}, 0
+
+		for _, f := range fn.Type.Params.List {
+			for _, name := range f.Names {
+				if star, ok := f.Type.(*ast.StarExpr); ok && takes[gotypes.ExprString(star.X)] != "" {
+					o.params, o.typ = i, gotypes.ExprString(star.X)
+				}
+
+				if name.Name == "id" {
+					o.id = i
+				}
+
+				i++
+			}
+		}
+
+		if o.params >= 0 {
+			require.GreaterOrEqual(t, o.id, 0, "%s takes a guard and no id to ask it for", fn.Name.Name)
+			ops[fn.Name.Name] = o
+		}
+	}
+
 	src, err := parser.ParseFile(token.NewFileSet(), "api.go", nil, 0)
 	require.NoError(t, err)
 
-	sent := 0
+	sent, calls, lits := map[string]int{}, 0, 0
 
 	ast.Inspect(src, func(n ast.Node) bool {
-		lit, ok := n.(*ast.CompositeLit)
+		if lit, ok := n.(*ast.CompositeLit); ok {
+			if sel, ok := lit.Type.(*ast.SelectorExpr); ok && takes[sel.Sel.Name] != "" {
+				lits++
+			}
+		}
+
+		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
 
-		sel, ok := lit.Type.(*ast.SelectorExpr)
-		if !ok || !takes[sel.Sel.Name] {
+		fn, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || gotypes.ExprString(fn.X) != "c" {
 			return true
 		}
 
+		o, ok := ops[fn.Sel.Name]
+		if !ok {
+			return true
+		}
+
+		calls++
+
+		field := takes[o.typ]
+		where := gotypes.ExprString(call)
+
+		un, _ := call.Args[o.params].(*ast.UnaryExpr)
+		require.NotNil(t, un, "%s: the parameters, which take %s, are not written out in the call", where, field)
+
+		lit, _ := un.X.(*ast.CompositeLit)
+		require.NotNil(t, lit, "%s: the parameters, which take %s, are not written out in the call", where, field)
+
 		has := slices.ContainsFunc(lit.Elts, func(e ast.Expr) bool {
 			kv, ok := e.(*ast.KeyValueExpr)
-			if !ok {
+			if !ok || gotypes.ExprString(kv.Key) != field {
 				return false
 			}
 
-			key, _ := kv.Key.(*ast.Ident)
-			call, _ := kv.Value.(*ast.CallExpr)
-			fn, _ := call.Fun.(*ast.SelectorExpr)
+			g, _ := kv.Value.(*ast.CallExpr)
+			if g == nil || len(g.Args) != 1 {
+				return false
+			}
 
-			return key != nil && key.Name == "IfMatch" && fn != nil && fn.Sel.Name == "ifMatch"
+			return gotypes.ExprString(g.Fun) == "a."+guards[field] && gotypes.ExprString(g.Args[0]) == gotypes.ExprString(call.Args[o.id])
 		})
-		require.True(t, has, "clientv0.%s takes If-Match and api.go does not send a.ifMatch(id)", sel.Sel.Name)
+		require.True(t, has, "%s takes %s and does not send a.%s(%s), the guard of the entity it is made on",
+			where, field, guards[field], gotypes.ExprString(call.Args[o.id]))
 
-		sent++
+		sent[field]++
 
 		return true
 	})
 
-	require.Positive(t, sent, "no operation that takes If-Match")
+	require.Equal(t, lits, calls, "parameters that take a guard are made outside the call that sends them")
+
+	for field := range guards {
+		require.Positive(t, sent[field], "no operation that takes %s", field)
+	}
 }
 
 // TestGuardOf: the target is the first argument that is an entity; one
@@ -545,5 +724,5 @@ func TestGuardOf(t *testing.T) {
 	require.Nil(t, guardOf(struct {
 		User clientv0.User `arg:"user"`
 	}{User: clientv0.User{Id: "3"}}))
-	require.Nil(t, guardOf(NoInput{}))
+	require.Nil(t, guardOf(NoInput{}), "no target, no guard")
 }

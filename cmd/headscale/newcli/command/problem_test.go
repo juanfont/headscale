@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
@@ -34,7 +35,12 @@ func TestProblemSentence(t *testing.T) {
 		{
 			"forbidden for scopes",
 			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{"users", "devices:core"}, "rule": nil}},
-			"this credential may not do that.\nIt lacks the scope users, devices:core.",
+			"this credential may not do that.\nIt lacks the scopes users and devices:core.",
+		},
+		{
+			"forbidden for three scopes",
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{"users", "devices:core", "auth_keys"}}},
+			"this credential may not do that.\nIt lacks the scopes users, devices:core and auth_keys.",
 		},
 		{
 			"forbidden by a rule",
@@ -200,5 +206,55 @@ func refusal(reason, clientError string) clientv0.Problem {
 		Code:    clientv0.ProblemCodeUpdateRefused,
 		Object:  nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "node", Id: "12", Name: "mynode"}),
 		Details: map[string]any{"reason": reason, "clientError": clientError},
+	}
+}
+
+// hasNodesOf is a problem about User 3 named name, with details.nodes of
+// the names given.
+// TestHasNodes: user_has_nodes names every node, and the line to delete
+// them together names the user by the word typed when it can be typed
+// again and finds this user alone, which the lookup that it came through
+// knows; by the ID otherwise.
+func TestHasNodes(t *testing.T) {
+	t.Parallel()
+
+	const line = "\nDelete or tag them first, or delete them together:\n  headscale users delete "
+
+	for _, tt := range []struct {
+		name, login, word string
+		nodes             []any
+		want              string
+	}{
+		{"the name typed", "alice", "alice", []any{"web", "db"}, "User 3 (alice) still owns 2 nodes: web, db." + line + "alice --with-nodes"},
+		{"one node", "alice", "alice", []any{"web"}, "User 3 (alice) still owns 1 node: web." + line + "alice --with-nodes"},
+		{"an email typed", "carol", "carol@example.com", []any{"web"}, "User 3 (carol) still owns 1 node: web." + line + "carol@example.com --with-nodes"},
+		{"the ID typed", "alice", "3", []any{"web"}, "User 3 (alice) still owns 1 node: web." + line + "3 --with-nodes"},
+		// The login name may be another user's email or name: only the word
+		// the lookup found this user by is known to find it alone.
+		{"not the login name, which may match another user too", "bob@example.com", "3", []any{"web"}, "User 3 (bob@example.com) still owns 1 node: web." + line + "3 --with-nodes"},
+		{"a word of digits that is not the ID would be read as one", "42", "42", []any{"web"}, "User 3 (42) still owns 1 node: web." + line + "3 --with-nodes"},
+		{"a word with a dash first would be read as a flag", "-alice", "-alice", []any{"web"}, "User 3 (-alice) still owns 1 node: web." + line + "3 --with-nodes"},
+		{"a word a shell would split", "a b;rm", "a b;rm", []any{"web\nError: fake"}, "User 3 (a b;rm) still owns 1 node: " + `web\x0aError: fake` + "." + line + "3 --with-nodes"},
+		{"no word typed", "alice", "", []any{"web"}, "User 3 (alice) still owns 1 node: web." + line + "3 --with-nodes"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := &ProblemError{Problem: hasNodesOf(tt.login, tt.nodes), word: tt.word}
+			require.Equal(t, tt.want, e.Error())
+		})
+	}
+}
+
+func hasNodesOf(name string, nodes []any) clientv0.Problem {
+	list := make([]any, 0, len(nodes))
+	for i, n := range nodes {
+		list = append(list, map[string]any{"id": strconv.Itoa(i + 1), "name": n})
+	}
+
+	return clientv0.Problem{
+		Code:    clientv0.ProblemCodeUserHasNodes,
+		Object:  nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "user", Id: "3", Name: name}),
+		Details: map[string]any{"nodes": list},
 	}
 }

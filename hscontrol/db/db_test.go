@@ -1269,7 +1269,7 @@ func TestCreatedByUserMigration(t *testing.T) {
 				Update("created_by_user_id", alice.ID).Error)
 
 			require.NoError(t, hsdb.DB.Delete(old).Error)
-			require.NoError(t, hsdb.DestroyUser(types.UserID(alice.ID)))
+			require.NoError(t, destroyUser(hsdb, types.UserID(alice.ID)))
 
 			got, err = GetNodeByID(hsdb.DB, made.ID)
 			require.NoError(t, err)

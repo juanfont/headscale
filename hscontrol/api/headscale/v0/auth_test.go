@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-chi/chi/v5"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/stretchr/testify/require"
@@ -93,6 +94,46 @@ func TestAuth(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a parameter that is true adds its scopes, listed with the others", func(t *testing.T) {
+		register(api, huma.Operation{OperationID: "deleteWidget", Method: http.MethodDelete, Path: Prefix + "/widget"},
+			needs(scope.UsersRead).withParamScopes("deep", scope.DevicesCore), nil,
+			func(context.Context, *struct {
+				Deep bool   `query:"deep"`
+				N    string `pattern:"^[0-9]$" query:"n"`
+			},
+			) (*struct{}, error) {
+				return &struct{}{}, nil
+			})
+
+		for _, tt := range []struct {
+			header, query string
+			want          int
+			missing       []any
+		}{
+			{header: noScope, query: "?deep=true", want: http.StatusForbidden, missing: []any{"users:read", "devices:core"}},
+			{header: token, query: "?deep=true", want: http.StatusForbidden, missing: []any{"users:read", "devices:core"}},
+			{header: noScope, query: "?deep=false", want: http.StatusForbidden, missing: []any{"users:read"}},
+			// Before the query is read: a bad parameter does not hide the scope.
+			{header: noScope, query: "?deep=true&n=x", want: http.StatusForbidden, missing: []any{"users:read", "devices:core"}},
+			{header: writer, query: "?deep=true&n=x", want: http.StatusForbidden, missing: []any{"users:read"}},
+			{header: writer, query: "?deep=yes", want: http.StatusForbidden, missing: []any{"users:read"}},
+			{header: apiKey, query: "?deep=true", want: http.StatusNoContent},
+		} {
+			rec := api.Delete(Prefix+"/widget"+tt.query, "Authorization: Bearer "+tt.header)
+			require.Equal(t, tt.want, rec.Code, "%s: %s", tt.query, rec.Body.String())
+
+			if tt.missing != nil {
+				p := decodeProblem(t, rec, CodeForbidden)
+				require.Equal(t, map[string]any{"scopes": tt.missing, "rule": nil}, p.Details, tt.query)
+			}
+		}
+
+		require.Panics(t, func() {
+			register(NewAPI(chi.NewMux(), Backend{}, "test"), huma.Operation{OperationID: "x", Method: http.MethodGet, Path: Prefix + "/x"},
+				needs(scope.UsersRead).withParamScopes("deep", scope.DevicesCore), nil, func(context.Context, *struct{}) (*struct{}, error) { return nil, nil }) //nolint:nilnil
+		}, "a parameter the operation does not take")
+	})
 
 	t.Run("no scope is an empty list", func(t *testing.T) {
 		rec := api.Get(Prefix+"/me", "Authorization: Bearer "+noScope)

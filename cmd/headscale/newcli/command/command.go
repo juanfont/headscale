@@ -21,6 +21,7 @@ import (
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
 	"github.com/juanfont/headscale/cmdline"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"golang.org/x/term"
 )
@@ -60,8 +61,18 @@ type Spec[In, Out any] struct {
 	// Confirm is the question asked before Run, for a command whose change
 	// cannot be undone; a Prompt with no Question asks nothing this time. A
 	// command with Confirm takes --force, which answers yes. It runs again
-	// after a refused write, on the target as it is then.
+	// after the server refused the guard the builder stored, on the target
+	// as it is then, also under --force, so a question made from a call to
+	// the server is made anew.
 	Confirm func(c Ctx, in In) (Prompt, error)
+	// Changed is the code with which the server refuses the Guard that
+	// Confirm hands over, when what the question showed is no longer true:
+	// the builder then asks again and runs once more. A spec with Changed
+	// hands over a Guard every time, on a target that is an entity with no
+	// revision. A target's revision needs no Changed: precondition_failed
+	// refuses it. The builder tries again only a refusal of a guard it
+	// stored, never one a command sends itself.
+	Changed clientv0.ProblemCode
 	// Hint is a line of what to do after a wrong argument count or an empty
 	// list argument, from the arguments as typed; "" adds nothing.
 	Hint func(args []string) string
@@ -117,11 +128,21 @@ type ListSpec[In, Row any] struct {
 // " [y/N]", and the Action that --force would take, for the error when no
 // terminal can answer: "delete Node 12 (mynode)". Warning, when there is
 // one, is a sentence that follows both; the builder reads it only when a
-// person will read it, after --force, so it may cost a call.
+// person will read it, after --force, so it may cost a call. List is shown
+// under the question, on one line cut to the terminal, and [y/N] then
+// stands on a line of its own.
+//
+// Guard stands for what the question showed, such as the token of a dry
+// run: the builder hands it to the write on the target (API.expect). It
+// needs Spec.Changed, and a spec with Changed always gives one: a guard is
+// never dropped. It is never kept in a variable of the spec: a spec is
+// shared by every run.
 type Prompt struct {
 	Question string
 	Action   string
 	Warning  func() string
+	List     []string
+	Guard    string
 }
 
 // NoInput is the input of a command that takes nothing.
@@ -167,6 +188,9 @@ type Ctx struct {
 	screen bool
 	width  int
 	colour bool
+	// askWidth is the width of stderr's terminal, which a question is
+	// written to; 0 when unknown.
+	askWidth int
 	// answers reads the replies to prompts from stdin.
 	answers *bufio.Reader
 	// entities are the tree's types of target: the retry of a write the
@@ -220,6 +244,9 @@ type Env struct {
 	StdoutTerminal bool
 	// Width is the width of the terminal in cells; 0 cuts nothing.
 	Width int
+	// StderrWidth is the width of stderr's terminal, which the list under a
+	// question is cut to, so a question still fits when stdout is a file.
+	StderrWidth int
 	// PageSize is the rows of one page of a list walk; 0 is 1000, the most
 	// v0 takes. A test sets it small, to walk many pages.
 	PageSize int
@@ -245,9 +272,13 @@ func OSEnv() Env {
 	}
 
 	// No terminal, or one that cannot say, is 0, which cuts nothing.
-	width, _, err := term.GetSize(int(os.Stdout.Fd())) //nolint:gosec // a file descriptor fits an int
-	if err != nil {
-		width = 0
+	width := func(f *os.File) int {
+		w, _, err := term.GetSize(int(f.Fd())) //nolint:gosec // a file descriptor fits an int
+		if err != nil {
+			return 0
+		}
+
+		return w
 	}
 
 	return Env{
@@ -257,6 +288,7 @@ func OSEnv() Env {
 		Environ:        os.Environ(),
 		Terminal:       terminal(os.Stdin),
 		StdoutTerminal: terminal(os.Stdout),
-		Width:          width,
+		Width:          width(os.Stdout),
+		StderrWidth:    width(os.Stderr),
 	}
 }

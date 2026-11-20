@@ -3,7 +3,11 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -11,6 +15,23 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+// destroyUser deletes a user as State.DeleteUser does in the database: it
+// refuses a user that owns nodes.
+func destroyUser(hsdb *HSDatabase, uid types.UserID) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		c, err := LockUserContents(tx, uid)
+		if err != nil {
+			return err
+		}
+
+		if len(c.Nodes) > 0 {
+			return &UserHasNodesError{Nodes: c.Nodes}
+		}
+
+		return DestroyUserContents(tx, c)
+	})
+}
 
 func TestDestroyUserKeepsTaggedNodeEphemeral(t *testing.T) {
 	db, err := newSQLiteTestDB()
@@ -33,7 +54,7 @@ func TestDestroyUserKeepsTaggedNodeEphemeral(t *testing.T) {
 		Ephemeral: true,
 	}
 	require.NoError(t, db.DB.Create(node).Error)
-	require.NoError(t, db.DestroyUser(types.UserID(user.ID)))
+	require.NoError(t, destroyUser(db, types.UserID(user.ID)))
 	nodes, err := db.ListNodes()
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
@@ -57,7 +78,7 @@ func TestCreateAndDestroyUser(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, users, 1)
 
-	err = db.DestroyUser(types.UserID(user.ID))
+	err = destroyUser(db, types.UserID(user.ID))
 	require.NoError(t, err)
 
 	_, err = db.GetUserByID(types.UserID(user.ID))
@@ -74,7 +95,7 @@ func TestDestroyUserErrors(t *testing.T) {
 			test: func(t *testing.T, db *HSDatabase) {
 				t.Helper()
 
-				err := db.DestroyUser(9998)
+				err := destroyUser(db, 9998)
 				assert.ErrorIs(t, err, ErrUserNotFound)
 			},
 		},
@@ -88,7 +109,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
-				err = db.DestroyUser(types.UserID(user.ID))
+				err = destroyUser(db, types.UserID(user.ID))
 				require.NoError(t, err)
 
 				// Verify preauth key credential was deleted.
@@ -110,7 +131,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				tagged, err := db.CreatePreAuthKey(user.TypedID(), true, false, nil, []string{"tag:ci"})
 				require.NoError(t, err)
 
-				err = db.DestroyUser(types.UserID(user.ID))
+				err = destroyUser(db, types.UserID(user.ID))
 				require.NoError(t, err)
 
 				got, err := db.GetPreAuthKeyByID(tagged.ID)
@@ -142,7 +163,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				trx := db.DB.Save(&node)
 				require.NoError(t, trx.Error)
 
-				err = db.DestroyUser(types.UserID(user.ID))
+				err = destroyUser(db, types.UserID(user.ID))
 				require.ErrorIs(t, err, ErrUserStillHasNodes)
 				// The error names the blocking node so it can be found.
 				require.ErrorContains(t, err, fmt.Sprintf("%d (testnode)", node.ID))
@@ -169,7 +190,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				trx := db.DB.Save(&node)
 				require.NoError(t, trx.Error)
 
-				err = db.DestroyUser(types.UserID(user.ID))
+				err = destroyUser(db, types.UserID(user.ID))
 				require.NoError(t, err)
 
 				// User is gone.
@@ -215,7 +236,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				trx = db.DB.Save(&ownedNode)
 				require.NoError(t, trx.Error)
 
-				err = db.DestroyUser(types.UserID(user.ID))
+				err = destroyUser(db, types.UserID(user.ID))
 				require.ErrorIs(t, err, ErrUserStillHasNodes)
 			},
 		},
@@ -244,7 +265,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				require.Len(t, allKeys, 3)
 
 				// Delete userB.
-				err = db.DestroyUser(types.UserID(userB.ID))
+				err = destroyUser(db, types.UserID(userB.ID))
 				require.NoError(t, err)
 
 				// Only userA's 2 keys should remain.
@@ -469,4 +490,378 @@ func TestListUsersPage(t *testing.T) {
 	got, err = ListUsersPage(db.DB, &types.User{Name: "page-1"}, types.UserID(users[1].ID), 10)
 	require.NoError(t, err)
 	assert.Len(t, got, 1)
+}
+
+// eachDB runs test on SQLite and on PostgreSQL.
+func eachDB(t *testing.T, test func(t *testing.T, db *HSDatabase)) {
+	t.Helper()
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
+}
+
+// TestDestroyUserContents: the delete of a user takes its nodes, its auth
+// keys and its API keys, revoked ones too, and nothing of another user;
+// what it made and what it owned before tags stay and forget it.
+func TestDestroyUserContents(t *testing.T) {
+	eachDB(t, func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		alice := db.CreateUserForTest("alice")
+		bob := db.CreateUserForTest("bob")
+		aliceID := types.UserID(alice.ID)
+
+		authKey, err := db.CreatePreAuthKey(alice.TypedID(), true, false, nil, nil)
+		require.NoError(t, err)
+		revokedKey, err := db.CreatePreAuthKey(alice.TypedID(), false, false, nil, nil)
+		require.NoError(t, err)
+		require.NoError(t, db.RevokePreAuthKey(revokedKey.ID))
+		legacyTagged, err := db.CreatePreAuthKey(alice.TypedID(), true, false, nil, []string{"tag:ci"})
+		require.NoError(t, err)
+		bobKey, err := db.CreatePreAuthKey(bob.TypedID(), true, false, nil, nil)
+		require.NoError(t, err)
+
+		var madeTagged, apiKey, revokedAPIKey *types.Credential
+
+		require.NoError(t, db.Write(func(tx *gorm.DB) error {
+			k, _, err := CreatePreAuthKeyFrom(tx, NewPreAuthKey{Tags: []string{"tag:ci"}, CreatedBy: &aliceID})
+			require.NoError(t, err)
+
+			madeTagged = &types.Credential{ID: k.ID}
+
+			apiKey, _, err = CreateAPIKeyFrom(tx, NewAPIKey{Owner: &aliceID})
+			require.NoError(t, err)
+
+			revokedAPIKey, _, err = CreateAPIKeyFrom(tx, NewAPIKey{Owner: &aliceID})
+
+			return err
+		}))
+		require.NoError(t, db.RevokeAPIKey(revokedAPIKey.ID))
+
+		_, client, err := db.CreateOAuthClient([]string{"auth_keys"}, []string{"tag:ci"}, "", &alice.ID)
+		require.NoError(t, err)
+
+		owned := &types.Node{Hostname: "owned", UserID: &alice.ID, AuthKeyID: &authKey.ID}
+		// A node alice registered that has tags since: it keeps her key.
+		tagged := &types.Node{Hostname: "tagged", Tags: []string{"tag:ci"}, AuthKeyID: &authKey.ID, CreatedByUserID: &alice.ID}
+		bobs := &types.Node{Hostname: "bobs", UserID: &bob.ID, AuthKeyID: &bobKey.ID}
+
+		for _, n := range []*types.Node{owned, tagged, bobs} {
+			require.NoError(t, db.DB.Save(n).Error)
+		}
+
+		var c *UserContents
+
+		require.NoError(t, db.Write(func(tx *gorm.DB) error {
+			var err error
+
+			c, err = LockUserContents(tx, aliceID)
+			if err != nil {
+				return err
+			}
+
+			return DestroyUserContents(tx, c)
+		}))
+
+		assert.Equal(t, []types.NodeID{owned.ID}, []types.NodeID{c.Nodes[0].ID})
+		assert.Len(t, c.Nodes, 1)
+		assert.Equal(t, []uint64{authKey.ID, revokedKey.ID}, c.AuthKeys)
+		assert.Equal(t, []uint64{apiKey.ID, revokedAPIKey.ID}, c.APIKeys)
+
+		_, err = db.GetUserByID(aliceID)
+		require.ErrorIs(t, err, ErrUserNotFound)
+
+		var left int64
+
+		require.NoError(t, db.DB.Model(&types.Credential{}).Where("user_id = ? OR created_by_user_id = ?", alice.ID, alice.ID).Count(&left).Error)
+		assert.Zero(t, left, "no credential names alice")
+		require.NoError(t, db.DB.Model(&types.Node{}).Where("user_id = ? OR created_by_user_id = ?", alice.ID, alice.ID).Count(&left).Error)
+		assert.Zero(t, left, "no node names alice")
+
+		for _, id := range []uint64{legacyTagged.ID, madeTagged.ID} {
+			k, err := db.GetPreAuthKeyByID(id)
+			require.NoError(t, err, "a tagged key she made stays")
+			assert.Nil(t, k.Revoked)
+		}
+
+		got, err := db.GetOAuthClientCredential(client.ClientID)
+		require.NoError(t, err, "a client she made stays")
+		assert.Nil(t, got.UserID)
+
+		stays, err := GetNodeByID(db.DB, tagged.ID)
+		require.NoError(t, err, "a tagged node stays")
+		assert.Nil(t, stays.AuthKeyID, "and loses her key")
+
+		bobsNode, err := GetNodeByID(db.DB, bobs.ID)
+		require.NoError(t, err)
+		assert.Equal(t, bobKey.ID, *bobsNode.AuthKeyID, "bob keeps his")
+	})
+}
+
+// TestUserWritesWaitForADelete: a write that names a user, as its owner or
+// as its maker, while a delete of the user holds what it read, waits for
+// the delete and then finds the user gone: an owned key is refused and a
+// made one forgets its maker, so nothing names a user that is gone and the
+// delete removed all it read. On PostgreSQL the wait is on the user's row;
+// SQLite has one connection.
+func TestUserWritesWaitForADelete(t *testing.T) {
+	writes := map[string]struct {
+		write func(tx *gorm.DB, uid types.UserID) error
+		err   error
+	}{
+		"auth key of the user": {func(tx *gorm.DB, uid types.UserID) error {
+			_, _, err := CreatePreAuthKeyFrom(tx, NewPreAuthKey{User: &uid})
+
+			return err
+		}, ErrUserNotFound},
+		"tagged key the legacy APIs file under its maker": {func(tx *gorm.DB, uid types.UserID) error {
+			_, _, err := CreatePreAuthKeyFrom(tx, NewPreAuthKey{User: &uid, Tags: []string{"tag:ci"}})
+
+			return err
+		}, ErrUserNotFound},
+		"tagged key the user made": {func(tx *gorm.DB, uid types.UserID) error {
+			_, _, err := CreatePreAuthKeyFrom(tx, NewPreAuthKey{Tags: []string{"tag:ci"}, CreatedBy: &uid})
+
+			return err
+		}, nil},
+		"API key of the user": {func(tx *gorm.DB, uid types.UserID) error {
+			_, _, err := CreateAPIKeyFrom(tx, NewAPIKey{Owner: &uid})
+
+			return err
+		}, ErrUserNotFound},
+		"OAuth client the user made": {func(tx *gorm.DB, uid types.UserID) error {
+			_, _, err := CreateOAuthClientFrom(tx, NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}, CreatedBy: &uid})
+
+			return err
+		}, nil},
+	}
+
+	eachDB(t, func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		for name, w := range writes {
+			user := db.CreateUserForTest(strings.ReplaceAll(name, " ", "-"))
+			uid := types.UserID(user.ID)
+
+			var c *UserContents
+
+			err := whileHeldThen(t, db,
+				func(tx *gorm.DB) error {
+					var err error
+
+					c, err = LockUserContents(tx, uid)
+
+					return err
+				},
+				func() error { return db.Write(func(tx *gorm.DB) error { return w.write(tx, uid) }) },
+				func(tx *gorm.DB) error { return DestroyUserContents(tx, c) })
+			if w.err != nil {
+				require.ErrorIs(t, err, w.err, name)
+			} else {
+				require.NoError(t, err, name)
+			}
+
+			var left int64
+
+			require.NoError(t, db.DB.Model(&types.Credential{}).Where("user_id = ? OR created_by_user_id = ?", user.ID, user.ID).Count(&left).Error)
+			require.Zero(t, left, "%s: nothing names the user it was made for", name)
+		}
+	})
+}
+
+// TestUserDeleteLockOrder: a delete of a user and the credentials its own
+// API key makes for it at once never deadlock: both lock the user before a
+// credential. Only PostgreSQL locks rows; SQLite runs one writer at a time.
+func TestUserDeleteLockOrder(t *testing.T) {
+	db := newPostgresTestDB(t)
+
+	for round := range 30 {
+		user := db.CreateUserForTest("u" + strconv.Itoa(round))
+		uid := types.UserID(user.ID)
+
+		var key *types.Credential
+
+		require.NoError(t, db.Write(func(tx *gorm.DB) error {
+			var err error
+
+			key, _, err = CreateAPIKeyFrom(tx, NewAPIKey{Owner: &uid})
+
+			return err
+		}))
+
+		ops := make([]func() error, 0, 9)
+		ops = append(ops, func() error { return destroyUser(db, uid) })
+
+		for range 4 {
+			ops = append(ops,
+				func() error {
+					return db.Write(func(tx *gorm.DB) error {
+						_, _, err := CreatePreAuthKeyFrom(tx, NewPreAuthKey{User: &uid, Maker: key.ID})
+
+						return err
+					})
+				},
+				func() error {
+					return db.Write(func(tx *gorm.DB) error {
+						_, _, err := CreateOAuthClientFrom(tx, NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}, CreatedBy: &uid, Maker: key.ID})
+
+						return err
+					})
+				})
+		}
+
+		errs := make(chan error, len(ops))
+
+		var wg sync.WaitGroup
+		for _, op := range ops {
+			wg.Go(func() { errs <- op() })
+		}
+
+		wg.Wait()
+		close(errs)
+
+		for err := range errs {
+			if err != nil {
+				require.NotContains(t, err.Error(), "deadlock", "round %d", round)
+			}
+		}
+	}
+}
+
+// TestUserDeleteStorm: on PostgreSQL, the delete of a user runs at once with
+// the hourly removal, creates by the user's own key, a mint from a client the
+// user made, the revoke of such a client and the revoke of a key of the
+// user, while revoked rows the user made and owns wait for the removal. No
+// statement may be aborted as a deadlock.
+func TestUserDeleteStorm(t *testing.T) {
+	db := newPostgresTestDB(t)
+
+	for round := range 40 {
+		user := db.CreateUserForTest("s" + strconv.Itoa(round))
+		uid := types.UserID(user.ID)
+
+		var key, spare, minting, revoking, made, owned *types.Credential
+
+		require.NoError(t, db.Write(func(tx *gorm.DB) error {
+			var err error
+
+			made, _, err = CreateOAuthClientFrom(tx, NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}, CreatedBy: &uid})
+			if err != nil {
+				return err
+			}
+
+			owned, _, err = CreateAPIKeyFrom(tx, NewAPIKey{Owner: &uid})
+			if err != nil {
+				return err
+			}
+
+			key, _, err = CreateAPIKeyFrom(tx, NewAPIKey{Owner: &uid})
+			if err != nil {
+				return err
+			}
+
+			spare, _, err = CreateAPIKeyFrom(tx, NewAPIKey{Owner: &uid})
+			if err != nil {
+				return err
+			}
+
+			minting, _, err = CreateOAuthClientFrom(tx, NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}, CreatedBy: &uid, Maker: key.ID})
+			if err != nil {
+				return err
+			}
+
+			revoking, _, err = CreateOAuthClientFrom(tx, NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}, CreatedBy: &uid, Maker: key.ID})
+
+			return err
+		}))
+		require.NoError(t, db.DB.Model(&types.Credential{}).Where("id IN ?", []uint64{made.ID, owned.ID}).
+			Update("revoked", time.Now().Add(-48*time.Hour).UTC()).Error)
+
+		ops := make([]func() error, 0, 9)
+		ops = append(ops,
+			func() error { return destroyUser(db, uid) },
+			func() error { _, err := db.DestroyRevokedCredentialsBefore(time.Now()); return err },
+			func() error {
+				_, _, err := db.MintAccessToken(minting.Identifier, []string{"auth_keys"}, []string{"tag:ci"}, new(time.Now().Add(time.Hour)))
+
+				return err
+			},
+			func() error { return db.RevokeOAuthClient(revoking.Identifier) },
+			func() error { return db.RevokeAPIKey(spare.ID) },
+		)
+
+		for range 2 {
+			ops = append(ops,
+				func() error {
+					return db.Write(func(tx *gorm.DB) error {
+						_, _, err := CreatePreAuthKeyFrom(tx, NewPreAuthKey{User: &uid, Maker: key.ID})
+
+						return err
+					})
+				},
+				func() error {
+					return db.Write(func(tx *gorm.DB) error {
+						_, _, err := CreateOAuthClientFrom(tx, NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}, CreatedBy: &uid, Maker: key.ID})
+
+						return err
+					})
+				})
+		}
+
+		errs := make(chan error, len(ops))
+
+		var wg sync.WaitGroup
+		for _, op := range ops {
+			wg.Go(func() { errs <- op() })
+		}
+
+		wg.Wait()
+		close(errs)
+
+		for err := range errs {
+			if err != nil {
+				require.NotContains(t, err.Error(), "deadlock", "round %d", round)
+			}
+		}
+	}
+}
+
+// TestUserContentsTokenInAnyZone: the token holds the user's creation
+// time, read back from the database; a server east or west of UTC, or in
+// another zone than when the user was made, gives the same token.
+func TestUserContentsTokenInAnyZone(t *testing.T) {
+	zones := []*time.Location{
+		time.UTC, time.FixedZone("east", 9*60*60), time.FixedZone("west", -5*60*60), time.FixedZone("south", -(3*60+30)*60),
+	}
+
+	local := time.Local //nolint:gosmopolitan // the server's zone is what the test varies
+
+	t.Cleanup(func() { time.Local = local }) //nolint:gosmopolitan // the server's zone is what the test varies
+
+	eachDB(t, func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		token := func(uid types.UserID) string {
+			c, err := Read(db.DB, func(rx *gorm.DB) (*UserContents, error) { return LockUserContents(rx, uid) })
+			require.NoError(t, err)
+
+			return c.Token()
+		}
+
+		for i, made := range zones {
+			time.Local = made //nolint:gosmopolitan // the server's zone is what the test varies
+			uid := types.UserID(db.CreateUserForTest("zone" + strconv.Itoa(i)).ID)
+
+			want := token(uid)
+
+			for _, at := range zones {
+				time.Local = at //nolint:gosmopolitan // the server's zone is what the test varies
+				require.Equal(t, want, token(uid), "made in %s, read in %s", made, at)
+			}
+		}
+	})
 }

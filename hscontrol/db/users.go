@@ -1,8 +1,12 @@
 package db
 
 import (
+	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -10,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -97,69 +102,168 @@ func CreateUser(tx *gorm.DB, user types.User) (*types.User, error) {
 	return &user, nil
 }
 
-func (hsdb *HSDatabase) DestroyUser(uid types.UserID) error {
-	return hsdb.Write(func(tx *gorm.DB) error {
-		return DestroyUser(tx, uid)
-	})
+// UserHasNodesError is [ErrUserStillHasNodes] with the nodes the user owns.
+type UserHasNodesError struct {
+	Nodes types.Nodes
 }
 
-// DestroyUser destroys a [types.User]. Returns error if the [types.User] does
-// not exist or if there are user-owned nodes associated with it.
-// Tagged nodes have user_id = NULL so they do not block deletion.
-func DestroyUser(tx *gorm.DB, uid types.UserID) error {
-	user, err := GetUserByID(tx, uid)
+func (e *UserHasNodesError) Error() string {
+	blocking := make([]string, len(e.Nodes))
+	for i, node := range e.Nodes {
+		blocking[i] = fmt.Sprintf("%d (%s)", node.ID.Uint64(), node.Hostname)
+	}
+
+	return fmt.Sprintf("%s: %d node(s) must be deleted first: %s",
+		ErrUserStillHasNodes, len(e.Nodes), strings.Join(blocking, ", "))
+}
+
+func (e *UserHasNodesError) Unwrap() error { return ErrUserStillHasNodes }
+
+// UserContents is a user and what its delete removes with it: the nodes and
+// the keys it owns. Tagged keys and nodes are owned by their tags, and the
+// ones it made stay.
+type UserContents struct {
+	User types.User
+	// Nodes, AuthKeys (the IDs of its auth keys) and APIKeys (of its API
+	// keys) are in ID order, revoked and expired keys included.
+	Nodes    types.Nodes
+	AuthKeys []uint64
+	APIKeys  []uint64
+}
+
+// LockUserContents reads the user with uid and what its delete removes,
+// and holds them until tx ends. On PostgreSQL the user's row is locked for
+// update, so a write that names the user, in a foreign key or through
+// [holdUser], waits for tx and then finds the user gone. Its keys' rows are
+// locked too, so the hourly removal of revoked credentials, which skips a
+// held row, leaves them to this delete: what it reports is what it removed.
+// SQLite has one writer. Nodes
+// come and go only through State, which orders them against the delete
+// itself.
+func LockUserContents(tx *gorm.DB, uid types.UserID) (*UserContents, error) {
+	return userContents(tx, uid, true)
+}
+
+// ReadUserContents reads what [LockUserContents] does, and locks nothing.
+func ReadUserContents(rx *gorm.DB, uid types.UserID) (*UserContents, error) {
+	return userContents(rx, uid, false)
+}
+
+// userContents reads the user and what its delete removes; with lock, the
+// rows of the user and its keys are locked for update.
+func userContents(tx *gorm.DB, uid types.UserID, lock bool) (*UserContents, error) {
+	q := func() *gorm.DB {
+		if lock {
+			return tx.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate})
+		}
+
+		return tx
+	}
+
+	user, err := firstUser(q(), "id = ?", uid)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	nodes, err := ListNodesByUser(tx, uid)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if len(nodes) > 0 {
-		blocking := make([]string, len(nodes))
-		for i, node := range nodes {
-			blocking[i] = fmt.Sprintf("%d (%s)", node.ID.Uint64(), node.Hostname)
-		}
+	slices.SortFunc(nodes, func(a, b *types.Node) int { return cmp.Compare(a.ID, b.ID) })
 
-		return fmt.Errorf(
-			"%w: %d node(s) must be deleted first: %s",
-			ErrUserStillHasNodes, len(nodes), strings.Join(blocking, ", "),
-		)
-	}
+	var keys []types.Credential
 
-	keys, err := ListPreAuthKeysByUser(tx, uid)
+	err = q().Where("user_id = ? AND kind IN ?", uid, []types.CredentialKind{types.CredentialPreAuthKey, types.CredentialAPIKey}).
+		Order("id").Find(&keys).Error
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("reading the keys of the user: %w", err)
 	}
 
-	for _, key := range keys {
-		// A tagged key belongs to its tags: deleting the user that made it
-		// only nulls the key's user.
-		if key.IsTagged() {
-			continue
+	c := &UserContents{User: *user, Nodes: nodes, AuthKeys: []uint64{}, APIKeys: []uint64{}}
+
+	for _, k := range keys {
+		switch {
+		case k.Kind == types.CredentialAPIKey:
+			c.APIKeys = append(c.APIKeys, k.ID)
+		case !k.IsTagged():
+			c.AuthKeys = append(c.AuthKeys, k.ID)
+		}
+	}
+
+	return c, nil
+}
+
+// Token is a short token of the user and the IDs of the nodes and keys
+// that go with it. A node or a key that comes or goes changes it; a rename,
+// an expiry or a revoke does not, as each leaves what is removed. The
+// user's creation time tells a user from a later one with its ID.
+func (c *UserContents) Token() string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%d@%d", c.User.ID, c.User.CreatedAt.UnixMicro())
+
+	for _, n := range c.Nodes {
+		fmt.Fprintf(h, "|n%d", n.ID)
+	}
+
+	for _, id := range c.AuthKeys {
+		fmt.Fprintf(h, "|a%d", id)
+	}
+
+	for _, id := range c.APIKeys {
+		fmt.Fprintf(h, "|k%d", id)
+	}
+
+	return hex.EncodeToString(h.Sum(nil)[:8])
+}
+
+// DestroyUserContents removes c's user, its nodes and its keys in tx, which
+// must hold them ([LockUserContents]). A node that still refers to one of
+// the auth keys loses the reference; the nodes and keys the user made stay
+// and no longer know by whom.
+func DestroyUserContents(tx *gorm.DB, c *UserContents) error {
+	if len(c.Nodes) > 0 {
+		ids := make([]types.NodeID, len(c.Nodes))
+		for i, n := range c.Nodes {
+			ids[i] = n.ID
 		}
 
-		err = DestroyPreAuthKey(tx, key.ID)
+		err := tx.Unscoped().Delete(&types.Node{}, ids).Error
 		if err != nil {
-			return err
+			return fmt.Errorf("deleting the nodes of the user: %w", err)
 		}
 	}
 
-	// The nodes and keys this user made stay; they no longer know by whom.
+	if len(c.AuthKeys) > 0 {
+		err := tx.Model(&types.Node{}).Where("auth_key_id IN ?", c.AuthKeys).Update("auth_key_id", nil).Error
+		if err != nil {
+			return fmt.Errorf("clearing auth_key_id on nodes: %w", err)
+		}
+	}
+
+	if keys := slices.Concat(c.AuthKeys, c.APIKeys); len(keys) > 0 {
+		err := tx.Unscoped().Delete(&types.Credential{}, keys).Error
+		if err != nil {
+			return fmt.Errorf("deleting the keys of the user: %w", err)
+		}
+	}
+
 	for _, table := range []string{"nodes", "credentials"} {
-		err = tx.Exec(`UPDATE `+table+` SET created_by_user_id = NULL WHERE created_by_user_id = ?`, uid).Error
+		err := tx.Exec(`UPDATE `+table+` SET created_by_user_id = NULL WHERE created_by_user_id = ?`, c.User.ID).Error
 		if err != nil {
 			return fmt.Errorf("forgetting the user in %s.created_by_user_id: %w", table, err)
 		}
 	}
 
-	if result := tx.Unscoped().Delete(&user); result.Error != nil {
-		return result.Error
-	}
+	return tx.Unscoped().Delete(&types.User{}, c.User.ID).Error
+}
 
-	return nil
+// holdUser is the user with id, its row held until tx ends: a delete of
+// the user that has read what it removes ([LockUserContents]) makes tx
+// wait and then find no user, and one that has not waits for tx. On
+// SQLite, which has one writer, it is a plain read.
+func holdUser(tx *gorm.DB, id types.UserID) (*types.User, error) {
+	return firstUser(tx.Clauses(clause.Locking{Strength: "KEY SHARE"}), "id = ?", id)
 }
 
 func (hsdb *HSDatabase) RenameUser(uid types.UserID, newName string) error {

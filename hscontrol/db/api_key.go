@@ -63,18 +63,22 @@ type NewAPIKey struct {
 // with its owner, and once its secret. An owner no user has is
 // [ErrUserNotFound].
 func CreateAPIKeyFrom(tx *gorm.DB, k NewAPIKey) (*types.Credential, string, error) {
-	err := holdCredential(tx, k.Maker)
-	if err != nil {
-		return nil, "", err
-	}
+	var (
+		owner *types.User
+		err   error
+	)
 
-	var owner *types.User
-
+	// The user before the maker, as a delete of the user locks them.
 	if k.Owner != nil {
-		owner, err = GetUserByID(tx, *k.Owner)
+		owner, err = holdUser(tx, *k.Owner)
 		if err != nil {
 			return nil, "", err
 		}
+	}
+
+	err = holdCredential(tx, k.Maker)
+	if err != nil {
+		return nil, "", err
 	}
 
 	keyStr, identifier, hash := generateSecret(apiKeyPrefix)

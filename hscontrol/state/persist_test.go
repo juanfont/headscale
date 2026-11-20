@@ -1530,6 +1530,17 @@ func TestUpdatePolicyStoreFailure(t *testing.T) {
 func newPostgresStateForTest(t *testing.T) *State {
 	t.Helper()
 
+	s, err := NewState(postgresTestConfig(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	return s
+}
+
+// postgresTestConfig is [persistTestConfig] on a fresh PostgreSQL database.
+func postgresTestConfig(t *testing.T) *types.Config {
+	t.Helper()
+
 	srv, err := postgrestest.Start(t.Context())
 	if err != nil {
 		t.Skipf("start postgres: %s", err)
@@ -1560,11 +1571,7 @@ func newPostgresStateForTest(t *testing.T) *State {
 		},
 	}
 
-	s, err := NewState(cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = s.Close() })
-
-	return s
+	return cfg
 }
 
 // TestPostgresUpdatePolicyConcurrentWrites runs a second write while the

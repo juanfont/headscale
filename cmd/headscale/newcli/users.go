@@ -13,7 +13,7 @@ var usersGroup = command.Group{
 	Name:     "users",
 	Short:    "Manage users",
 	OldNames: []string{"user"},
-	Commands: []command.Node{usersList, usersGet, usersCreate, usersSet},
+	Commands: []command.Node{usersList, usersGet, usersCreate, usersSet, usersDelete},
 }
 
 var userColumns = table.Columns[clientv0.User]{
@@ -192,4 +192,114 @@ func set(o command.Opt[string]) *string {
 	}
 
 	return &v
+}
+
+type usersDeleteIn struct {
+	User      clientv0.User `arg:"user"        help:"<user> is an ID, an email, a username or a provider identifier."`
+	WithNodes bool          `flag:"with-nodes" help:"Delete the nodes of the user too"`
+}
+
+// ownUser follows the question when the CLI calls with an API key of the
+// user: the key goes with the user.
+const ownUser = "This CLI calls with an API key of this user: once the user is deleted, the server refuses the CLI."
+
+var usersDelete = command.New(command.Spec[usersDeleteIn, clientv0.DeletedUser]{
+	Name:  "delete",
+	Short: "Delete a user with its keys",
+	Long: `Delete a user together with its auth keys and its API keys, revoked and
+expired ones too, so the counts may be more than the lists show by default.
+Tagged keys and OAuth clients the user made stay.
+
+A user who still owns nodes is refused; --with-nodes deletes the nodes too.
+It is one step on the server: all of it, or nothing.
+
+The command asks the server first what the delete would remove, and shows
+it: the nodes by name, and the keys counted. The delete then removes only
+what was shown. When that changed in between, nothing is removed, and the
+command asks again with what is there now; with --force it tries once more
+without asking. A second change is an error. A node or a key that comes or
+goes is a change; a rename, an expiry or a revoke is not.
+
+With -o json the command prints what was removed.`,
+	Example: []string{
+		"headscale users delete bob",
+		"headscale users delete alice --with-nodes",
+		"headscale users delete alice --with-nodes --force",
+	},
+	Aliases: []string{"rm"},
+	Changed: clientv0.ProblemCodeUserChanged,
+	Confirm: func(c command.Ctx, in usersDeleteIn) (command.Prompt, error) {
+		d, err := c.API.DeleteUser(c, in.User.Id, in.WithNodes, true)
+		if err != nil {
+			return command.Prompt{}, err
+		}
+
+		names := make([]string, 0, len(d.Nodes))
+		for _, n := range d.Nodes {
+			names = append(names, n.Name)
+		}
+
+		q := "Delete " + user(in.User)
+		if r := removed(d); r != "" {
+			q += ", " + r
+		}
+
+		return command.Prompt{
+			Question: q + "?",
+			Action:   "delete " + user(in.User),
+			List:     names,
+			Guard:    d.Expect,
+			Warning: command.OwnWarning(c, ownUser, func(me clientv0.Me) bool {
+				cred, err := me.Credential.Get()
+				if err != nil || cred.Kind != clientv0.CredentialKindApiKey {
+					return false
+				}
+
+				o, err := cred.Owner.Get()
+				if err != nil {
+					return false
+				}
+
+				u, err := o.User.Get()
+
+				return err == nil && u.Id == in.User.Id
+			}),
+		}, nil
+	},
+	Run: func(c command.Ctx, in usersDeleteIn) (clientv0.DeletedUser, error) {
+		out, err := c.API.DeleteUser(c, in.User.Id, in.WithNodes, false)
+
+		// A second try would say no user matches: say how to tell.
+		return out, command.MayBeMade(err, "To look: headscale users get "+in.User.Id+"\n"+
+			"If no user matches, the delete was made.\n"+
+			"The delete removes all of it or nothing: a user that is still there lost nothing.")
+	},
+	Done: func(in usersDeleteIn, out clientv0.DeletedUser, _ time.Time) string {
+		if r := removed(out); r != "" {
+			return user(in.User) + " deleted with " + r + "."
+		}
+
+		return user(in.User) + " deleted."
+	},
+})
+
+// removed is what a delete of a user removes beside it, counted: "3 nodes
+// and 2 auth keys"; a count of zero is left out.
+func removed(d clientv0.DeletedUser) string {
+	var parts []string
+
+	for _, c := range []struct {
+		n    int
+		noun string
+	}{{len(d.Nodes), "node"}, {int(d.AuthKeyCount), "auth key"}, {int(d.ApiKeyCount), "API key"}} {
+		if c.n > 0 {
+			parts = append(parts, table.Count(c.n, c.noun))
+		}
+	}
+
+	if len(parts) < 2 {
+		return strings.Join(parts, "")
+	}
+
+	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
 }
