@@ -4,6 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -922,8 +927,84 @@ var usersDeleteCases = []cliCase{
 		stderr: aliceQuestion + "Aborted.\n", code: 1,
 	},
 
+	{
+		name: "the answer of the delete is lost: what to look at", args: "users delete alice --with-nodes --force", setup: cutOff("delete"),
+		env:    []string{"HEADSCALE_CLI_ADDRESS={proxy}", "HEADSCALE_CLI_API_KEY={nobodykey}"},
+		stderr: "Error: the server at {proxyhost} did not answer the change: the connection was closed.\n" + lookAt,
+		code:   1, check: gone(3, "mynode", "laptop", "phone"),
+	},
+	{
+		name: "the answer of the delete is cut after its headers: it may have been made all the same", args: "users delete alice --with-nodes --force", setup: cutOff("delete body"),
+		env:    []string{"HEADSCALE_CLI_ADDRESS={proxy}", "HEADSCALE_CLI_API_KEY={nobodykey}"},
+		stderr: "Error: the server at {proxyhost} did not answer the change: the connection was closed.\n" + lookAt,
+		code:   1, check: gone(3, "mynode", "laptop", "phone"),
+	},
+	{
+		name: "the answer of the dry run is lost: nothing was deleted", args: "users delete alice --with-nodes --force", setup: cutOff("dry run"),
+		env:    []string{"HEADSCALE_CLI_ADDRESS={proxy}", "HEADSCALE_CLI_API_KEY={nobodykey}"},
+		stderr: "Error: the server at {proxyhost} did not answer: the connection was closed.\nNothing was changed: run the command again.\n",
+		code:   1, check: kept(3, 3),
+	},
 	{name: "no user", args: "users delete nope --force", stderr: "Error: no user matches \"nope\".\n", code: 1},
 	{name: "one user", args: "users delete alice bob", stderr: "Error: `users delete` needs 1 argument, got 2.\n\n  headscale users delete <user>\n", code: 1},
+}
+
+// lookAt is what follows a delete whose answer was lost.
+const lookAt = "The change may have been made: look before you run the command again.\n" +
+	"To look: headscale users get 3\nIf no user matches, the delete was made.\n" +
+	"The delete removes all of it or nothing: a user that is still there lost nothing.\n"
+
+// cutOff is a proxy in front of the case's server that passes the
+// requests of what on to it, and hangs up before the CLI has the whole
+// answer: "delete" before the delete's headers, "delete body" after them
+// and half of its body, "dry run" before the dry run's headers. The
+// server did what was asked, and the CLI does not know. It calls with an
+// API key of nobody's, in the var nobodykey; the proxy is the var proxy.
+func cutOff(what string) func(tb testing.TB, f *fixture) {
+	return func(tb testing.TB, f *fixture) {
+		tb.Helper()
+
+		expiry := f.now.Add(time.Hour)
+		secret, _, err := f.srv.State().CreateAPIKey(&expiry)
+		require.NoError(tb, err)
+
+		target, err := url.Parse(f.vars["url"])
+		require.NoError(tb, err)
+
+		dry := map[string]string{"delete": "false", "delete body": "false", "dry run": "true"}[what]
+
+		proxy := httputil.NewSingleHostReverseProxy(target)
+		hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodDelete || r.URL.Query().Get("dryRun") != dry {
+				proxy.ServeHTTP(w, r)
+
+				return
+			}
+
+			rec := httptest.NewRecorder()
+			proxy.ServeHTTP(rec, r)
+
+			rc := http.NewResponseController(w)
+
+			if what == "delete body" {
+				maps.Copy(w.Header(), rec.Header())
+
+				w.WriteHeader(rec.Code)
+				_, _ = w.Write(rec.Body.Bytes()[:rec.Body.Len()/2])
+				_ = rc.Flush()
+			}
+
+			// A hijack that fails answers, and the case fails on what it
+			// prints.
+			conn, _, err := rc.Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+		}))
+		tb.Cleanup(hs.Close)
+
+		f.vars["proxy"], f.vars["proxyhost"], f.vars["nobodykey"] = hs.URL, strings.TrimPrefix(hs.URL, "http://"), secret
+	}
 }
 
 func TestUsersDelete(t *testing.T) {

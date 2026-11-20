@@ -207,7 +207,8 @@ var usersDelete = command.New(command.Spec[usersDeleteIn, clientv0.DeletedUser]{
 	Name:  "delete",
 	Short: "Delete a user with its keys",
 	Long: `Delete a user together with its auth keys and its API keys, revoked and
-expired ones too. Tagged keys and OAuth clients the user made stay.
+expired ones too, so the counts may be more than the lists show by default.
+Tagged keys and OAuth clients the user made stay.
 
 A user who still owns nodes is refused; --with-nodes deletes the nodes too.
 It is one step on the server: all of it, or nothing.
@@ -216,7 +217,8 @@ The command asks the server first what the delete would remove, and shows
 it: the nodes by name, and the keys counted. The delete then removes only
 what was shown. When that changed in between, nothing is removed, and the
 command asks again with what is there now; with --force it tries once more
-without asking. A second change is an error.
+without asking. A second change is an error. A node or a key that comes or
+goes is a change; a rename, an expiry or a revoke is not.
 
 With -o json the command prints what was removed.`,
 	Example: []string{
@@ -265,7 +267,12 @@ With -o json the command prints what was removed.`,
 		}, nil
 	},
 	Run: func(c command.Ctx, in usersDeleteIn) (clientv0.DeletedUser, error) {
-		return c.API.DeleteUser(c, in.User.Id, in.WithNodes, false)
+		out, err := c.API.DeleteUser(c, in.User.Id, in.WithNodes, false)
+
+		// A second try would say no user matches: say how to tell.
+		return out, command.MayBeMade(err, "To look: headscale users get "+in.User.Id+"\n"+
+			"If no user matches, the delete was made.\n"+
+			"The delete removes all of it or nothing: a user that is still there lost nothing.")
 	},
 	Done: func(in usersDeleteIn, out clientv0.DeletedUser, _ time.Time) string {
 		if r := removed(out); r != "" {

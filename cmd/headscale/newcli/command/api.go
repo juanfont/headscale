@@ -538,6 +538,17 @@ func (e *writeError) Error() string {
 
 func (e *writeError) Unwrap() error { return e.err }
 
+// MayBeMade is err with look after it when err is a write whose answer
+// was lost: what a person runs to see whether the change was made. Any
+// other error is err.
+func MayBeMade(err error, look string) error {
+	if _, ok := errors.AsType[*writeError](err); !ok {
+		return err
+	}
+
+	return fmt.Errorf("%s\n%s", sentence(err), look) //nolint:err113 // a sentence of the CLI
+}
+
 // each is what every request of a run gets, whichever method made it:
 // cli.timeout bounds the dial, the answer and its body. The time of a
 // command is the sum of its requests, so a walk is not cut while its pages
