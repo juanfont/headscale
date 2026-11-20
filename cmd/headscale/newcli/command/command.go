@@ -115,10 +115,13 @@ type ListSpec[In, Row any] struct {
 
 // Prompt is what a command asks: the Question, to which the builder adds
 // " [y/N]", and the Action that --force would take, for the error when no
-// terminal can answer: "delete Node 12 (mynode)".
+// terminal can answer: "delete Node 12 (mynode)". Warning, when there is
+// one, is a sentence that follows both; the builder reads it only when a
+// person will read it, after --force, so it may cost a call.
 type Prompt struct {
 	Question string
 	Action   string
+	Warning  func() string
 }
 
 // NoInput is the input of a command that takes nothing.

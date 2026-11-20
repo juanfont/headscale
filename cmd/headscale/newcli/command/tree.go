@@ -53,6 +53,8 @@ type leaf struct {
 	force bool
 	// secret is a command that prints a secret once: Spec.Secret.
 	secret bool
+	// end is the delete of a credential, made by NewEnd.
+	end bool
 	// hint follows a wrong argument count or an empty list argument;
 	// emptyList follows the sentence of an empty list argument.
 	hint      func(args []string) string
@@ -511,6 +513,10 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 				bad("%v", errNoAsk)
 			}
 
+			if n.name == "delete" && revokable(n.target) && !n.end {
+				bad("%v", errNotEnd)
+			}
+
 			if e, ok := t.entities[n.target]; n.target != nil && hasJSON(n.target, "revision") && (!ok || e.read == nil) {
 				bad("target %v %v", n.target, errNoRead)
 			}
@@ -634,6 +640,9 @@ type Command struct {
 	Path    string
 	Example []string
 	Aliases []string
+	// Secret prints a secret once: it makes a credential, whose group the
+	// tests of every kind of credential run on.
+	Secret bool
 }
 
 // Commands lists every command that runs, in the order of the tree.
@@ -644,7 +653,7 @@ func (t *Tree) Commands() []Command {
 
 	walk = func(c *cmdline.Info) {
 		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && len(c.Commands) == 0 {
-			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases})
+			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret})
 		}
 
 		for _, s := range c.Commands {

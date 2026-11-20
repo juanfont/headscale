@@ -37,10 +37,7 @@ func secretTree(tb testing.TB, made func() (secreted, error)) *Tree {
 			Secret: func(out secreted) string { return out.Key },
 			Done:   func(_ NoInput, out secreted, _ time.Time) string { return "Key " + out.ID + ".\nShown once." },
 		}),
-		New(Spec[getIn, NoOutput]{
-			Name: "delete", Short: "S", Long: "S.", Example: []string{"prog keys delete 7"}, Local: true, Run: noop[getIn, NoOutput],
-			Confirm: func(Ctx, getIn) (Prompt, error) { return Prompt{}, nil },
-		}),
+		endOf(),
 	}})
 	require.NoError(tb, err)
 
@@ -186,10 +183,7 @@ func TestSecretChecks(t *testing.T) {
 		return []Node{Group{Name: "keys", Short: "Keys", Commands: []Node{
 			n,
 			NewList(ListSpec[NoInput, item]{Name: "list", Short: "S", Long: "S.", Example: []string{"prog keys list"}, Local: true, Columns: itemColumns, NoRows: "None.", Run: noop[NoInput, []item]}),
-			New(Spec[getIn, NoOutput]{
-				Name: "delete", Short: "S", Long: "S.", Example: []string{"prog keys delete 7"}, Local: true, Run: noop[getIn, NoOutput],
-				Confirm: func(Ctx, getIn) (Prompt, error) { return Prompt{}, nil },
-			}),
+			endOf(),
 		}}}
 	}
 
@@ -204,7 +198,7 @@ func TestSecretChecks(t *testing.T) {
 		nodes []Node
 		want  string
 	}{
-		{"a secret with no Secret", beside(create(Spec[NoInput, secreted]{Done: note})), "keys create: " + errSecret.Error()},
+		{"a secret with no Secret", beside(create(Spec[NoInput, secreted]{Done: note})), "keys create: " + errSecret.Error() + "\nkeys delete: " + errEndAlone.Error()},
 		{"a Secret with no note", beside(create(Spec[NoInput, secreted]{Secret: key})), "keys create: " + errNoShow.Error() + "\n" + errSecretNote.Error()},
 		{
 			"a Secret and a sheet",

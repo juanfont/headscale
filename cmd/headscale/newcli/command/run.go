@@ -446,15 +446,22 @@ func (c Ctx) confirm(p Prompt, before string) (bool, error) {
 		return false, nil
 	}
 
+	question, action := p.Question, "Run again with --force to "+p.Action+"."
+	if p.Warning != nil {
+		if w := p.Warning(); w != "" {
+			question, action = question+" "+w, action+" "+w
+		}
+	}
+
 	if !c.terminal {
-		return false, fmt.Errorf("confirmation needed, but there is no terminal.\nRun again with --force to %s.", p.Action) //nolint:err113,staticcheck // a sentence of the CLI
+		return false, fmt.Errorf("confirmation needed, but there is no terminal.\n%s", action) //nolint:err113 // a sentence of the CLI
 	}
 
 	if before != "" {
 		_, _ = io.WriteString(c.stderr, before+"\n")
 	}
 
-	_, _ = io.WriteString(c.stderr, p.Question+" [y/N] ")
+	_, _ = io.WriteString(c.stderr, question+" [y/N] ")
 
 	reply, _ := c.answers.ReadString('\n')
 	if r := strings.ToLower(strings.TrimSpace(reply)); r == "y" || r == "yes" {

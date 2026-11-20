@@ -99,19 +99,37 @@ func checkRows(row reflect.Type) []error {
 	return nil
 }
 
-// secretEnds is a Secret command among nodes, the commands of the group at
-// path, that has no list or no delete beside it.
+// secretEnds is what is wrong with the ends of a credential among nodes,
+// the commands of the group at path: a Secret command makes a credential,
+// so list and delete stand beside it and the delete is made by NewEnd; and
+// NewEnd stands only beside a Secret.
 func secretEnds(path []string, nodes []Node) []error {
 	names := make([]string, 0, len(nodes))
+	secret := false
+
 	for _, n := range nodes {
 		names = append(names, nameOf(n))
+
+		if l, ok := n.(*leaf); ok && l.secret {
+			secret = true
+		}
 	}
+
+	at := func(name string) string { return strings.Join(append(slices.Clone(path), name), " ") }
 
 	var errs []error
 
 	for _, n := range nodes {
-		if l, ok := n.(*leaf); ok && l.secret && (!slices.Contains(names, "list") || !slices.Contains(names, "delete")) {
-			errs = append(errs, specError(strings.Join(append(slices.Clone(path), l.name), " ")+": "+errSecretEnds.Error()))
+		l, ok := n.(*leaf)
+
+		switch {
+		case !ok:
+		case l.secret && (!slices.Contains(names, "list") || !slices.Contains(names, "delete")):
+			errs = append(errs, specError(at(l.name)+": "+errSecretEnds.Error()))
+		case secret && l.name == "delete" && !l.end:
+			errs = append(errs, specError(at(l.name)+": "+errNotEnd.Error()))
+		case !secret && l.end:
+			errs = append(errs, specError(at(l.name)+": "+errEndAlone.Error()))
 		}
 	}
 
