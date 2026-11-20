@@ -2,7 +2,8 @@
 # is generated from the 3.1 document in the tree; nullable-type lets it send
 # and read an explicit null. always-prefix-enum-values names every enum
 # constant after its type; without it a constant is renamed when a later
-# enum gains the same value.
+# enum gains the same value. skip-prune keeps the schemas of problem details,
+# which only x-problem-details names.
 package: clientv0
 generate:
   models: true
@@ -10,5 +11,6 @@ generate:
 output: gen/client/headscale/v0/client.gen.go
 output-options:
   nullable-type: true
+  skip-prune: true
 compatibility:
   always-prefix-enum-values: true
