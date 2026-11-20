@@ -156,8 +156,8 @@ func authMiddleware(b Backend) func(huma.Context, func(huma.Context)) {
 }
 
 // tokenRule refuses an OAuth access token a call that its scopes allow. An
-// operation states its rules with [access.withTokenRules]; they run after
-// the body is read and before the handler. An API key and the socket may do
+// operation states its rules with [access.withTokenRules]; they run once
+// the body is right in itself, and before the handler. An API key and the socket may do
 // everything, so no rule holds them.
 type tokenRule struct {
 	// name is stable: details.rule of forbidden, and a heading of the page

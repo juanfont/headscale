@@ -81,6 +81,14 @@ type SetNodeTagsBody struct {
 	Tags []string `doc:"At least one tag, each in tagOwners of the policy." json:"tags" maxItems:"256" nullable:"false"`
 }
 
+func (b *SetNodeTagsBody) problem() *Problem {
+	if len(b.Tags) == 0 {
+		return newProblem(CodeTagsRequired, "A node needs at least one tag; the API cannot give a tagged node back to a user.")
+	}
+
+	return nil
+}
+
 // SetNodeRoutesBody is the body of PUT /nodes/{id}/routes.
 type SetNodeRoutesBody struct {
 	Routes []string `doc:"IP prefixes; [] removes them all. One exit prefix approves both." json:"routes" maxItems:"4096" nullable:"false"`
@@ -449,8 +457,8 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 	}, nodeNotFound...), func(ctx context.Context, in *setTagsInput) (*nodeOutput, error) {
 		want := in.Body.Tags
 
-		// What the request alone shows comes first: the tags it names,
-		// then the node.
+		// What the request shows comes first: the tags it names, then
+		// the node.
 		var owned []string
 
 		token := isToken(ctx)
@@ -460,10 +468,6 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 			if !ownsAll(owned, want) {
 				return nil, ruleForbidden(&tokenMustOwnTags)
 			}
-		}
-
-		if len(want) == 0 {
-			return nil, newProblem(CodeTagsRequired, "A node needs at least one tag; the API cannot give a tagged node back to a user.")
 		}
 
 		refused := tagsNotPermitted(b.State, want)

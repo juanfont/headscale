@@ -80,6 +80,23 @@ type CreateAuthKeyBody struct {
 	Description Optional[string]    `doc:"Free text for people, such as what the key is for."                                                             json:"description,omitzero" maxLength:"50"`
 }
 
+func (b *CreateAuthKeyBody) problem() *Problem {
+	switch {
+	case b.UserID.Set && b.Tags.Set:
+		return newProblem(CodeOwnerConflict, "Send userId or tags, not both.")
+	case !b.UserID.Set && !b.Tags.Set:
+		return newProblem(CodeOwnerConflict, "Send userId, or at least one tag.")
+	case b.Tags.Set && len(b.Tags.Value) == 0:
+		return newProblem(CodeTagsRequired, "A key for tags needs at least one tag.")
+	case !b.Expiry.Set:
+		return newProblem(CodeExpiryRequired, "Send an expiry; a key has one.")
+	case !b.Expiry.Value.After(time.Now()):
+		return newProblem(CodeExpiryInPast, "The expiry must be in the future.")
+	}
+
+	return nil
+}
+
 func (b *CreateAuthKeyBody) fieldErrors() []FieldError {
 	var errs []FieldError
 
@@ -258,23 +275,10 @@ func registerAuthKeys(api huma.API, b Backend) {
 	})
 }
 
-// createAuthKey checks what the request alone shows, then makes the key
-// with the checks that read the policy and the user under the lock of
+// createAuthKey makes the key of a body that is right in itself
+// ([CreateAuthKeyBody.problem]), with the checks that read the policy and the user under the lock of
 // every policy write, so the key is made under the policy that allowed it.
 func (b Backend) createAuthKey(ctx context.Context, body CreateAuthKeyBody) (*createdAuthKeyOutput, error) {
-	switch {
-	case body.UserID.Set && body.Tags.Set:
-		return nil, newProblem(CodeOwnerConflict, "Send userId or tags, not both.")
-	case !body.UserID.Set && !body.Tags.Set:
-		return nil, newProblem(CodeOwnerConflict, "Send userId, or at least one tag.")
-	case body.Tags.Set && len(body.Tags.Value) == 0:
-		return nil, newProblem(CodeTagsRequired, "A key for tags needs at least one tag.")
-	case !body.Expiry.Set:
-		return nil, newProblem(CodeExpiryRequired, "Send an expiry; a key has one.")
-	case !body.Expiry.Value.After(time.Now()):
-		return nil, newProblem(CodeExpiryInPast, "The expiry must be in the future.")
-	}
-
 	c := callerFrom(ctx)
 	token := isToken(ctx)
 	want := slices.Compact(slices.Sorted(slices.Values(body.Tags.Value)))

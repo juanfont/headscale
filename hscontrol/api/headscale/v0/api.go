@@ -238,9 +238,12 @@ var versionHeaders = map[string]*huma.Header{
 // does not answer is internal.
 //
 // Before the handler runs, register answers what the request alone shows,
-// in this order: a token rule, a null or a PATCH with no field, then a body
-// that checks its own fields ([fieldChecker]). The handler then looks up the
-// resource of the path, so a bad field is never hidden by not_found.
+// in this order: a null or a PATCH with no field, a body that checks its own
+// fields ([fieldChecker]) and its own codes ([problemChecker]), then a token
+// rule. A rule is checked on a body that is right in itself, so a request
+// answers the same error for a token as for an API key. The handler then
+// looks up the resource of the path, so a bad field is never hidden by
+// not_found.
 func register[I, O any](
 	api huma.API,
 	op huma.Operation,
@@ -268,9 +271,13 @@ func register[I, O any](
 	describeCodes(api, &op, a, all)
 
 	huma.Register(api, op, func(ctx context.Context, in *I) (*O, error) {
-		p := ruleRefusal(ctx, a, in)
-		if p == nil && hasBody {
+		var p *Problem
+		if hasBody {
 			p = bodyProblem(in, isPatch)
+		}
+
+		if p == nil {
+			p = ruleRefusal(ctx, a, in)
 		}
 
 		if p != nil {
@@ -644,10 +651,17 @@ func decodesItself(t reflect.Type) bool {
 		p.Implements(reflect.TypeFor[jsonv2.UnmarshalerFrom]())
 }
 
+// problemChecker is a body that the body alone shows wrong with a code of
+// its operation, such as owner_conflict. register runs it after
+// [fieldChecker], before a token rule.
+type problemChecker interface {
+	problem() *Problem
+}
+
 // bodyProblem refuses null for a field not tagged nullable:"true", at any
 // depth, and reads it as left out for one tagged null:"absent"; then a
-// PATCH body that sends no field; and then the fields that the body checks
-// itself.
+// PATCH body that sends no field; then the fields that the body checks
+// itself; and then its own codes.
 func bodyProblem(in any, patch bool) *Problem {
 	body := reflect.ValueOf(in).Elem().FieldByName("Body")
 	p := newProblem(CodeInvalidField, "A field cannot be null.")
@@ -668,6 +682,10 @@ func bodyProblem(in any, patch bool) *Problem {
 		if len(p.Errors) > 0 {
 			return p
 		}
+	}
+
+	if c, ok := reflect.TypeAssert[problemChecker](body.Addr()); ok {
+		return c.problem()
 	}
 
 	return nil

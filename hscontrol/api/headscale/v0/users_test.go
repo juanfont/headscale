@@ -578,6 +578,11 @@ func TestUpdateUserTokenRule(t *testing.T) {
 		})
 	}
 
+	t.Run("token, a field wrong in itself before the rule", func(t *testing.T) {
+		p := decodeProblem(t, patch(t.Context(), alice, `{"email": "x"}`, token), CodeInvalidField)
+		require.Equal(t, []string{"body.email"}, locations(p))
+	})
+
 	t.Run("token may change the display name and the picture", func(t *testing.T) {
 		rec := patch(t.Context(), alice, `{"displayName": "Alice", "profilePicUrl": "https://example.com/a.png"}`, token)
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
