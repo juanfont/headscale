@@ -169,6 +169,7 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer, whole *[]wholeWord) er
 		colour:     env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
 		answers:    bufio.NewReader(stdin),
 		stdinFile:  fromStdin(line),
+		local:      &API{},
 		entities:   t.entities,
 		line:       line,
 		json:       output.Output != "" || own.Output != "",
@@ -385,6 +386,12 @@ var errNotAnswer = errors.New("this command returned an object that the server d
 // on a line that talks to no server, the CLI's own object encoded.
 func jsonOf(c Ctx, v any) (json.RawMessage, error) {
 	if c.API == nil {
+		if c.local != nil {
+			if raw, ok := c.local.answerOf(v); ok {
+				return raw, nil
+			}
+		}
+
 		return json.Marshal(v)
 	}
 
@@ -421,6 +428,35 @@ func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], blocks table.Blo
 	}
 
 	return table.Sheet(c.stdout, out, cols, blocks, c.Now())
+}
+
+// printVerbatim prints text, a text of the server's answer out, with
+// writeVerbatim; -o json prints out.
+func printVerbatim[Out any](c Ctx, out Out, text string) error {
+	raw, err := jsonOf(c, out)
+
+	switch {
+	case err != nil:
+		return err
+	case c.json:
+		return writeJSON(c.raw, raw)
+	}
+
+	return writeVerbatim(c, text)
+}
+
+// writeVerbatim writes text, which a file must hold as it is: into a pipe
+// or a file the bytes, past the rule at the edge; on a terminal as every
+// text of the CLI, its controls visible and a credential as its kind, since
+// a terminal acts on what a text holds and a person reads it.
+func writeVerbatim(c Ctx, text string) error {
+	if c.screen {
+		return writeText(c.stdout, text)
+	}
+
+	_, err := io.WriteString(c.raw, text)
+
+	return err
 }
 
 // printList prints the rows of a ListSpec: the array of their bodies as

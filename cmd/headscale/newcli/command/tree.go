@@ -58,6 +58,8 @@ type leaf struct {
 	secret bool
 	// noJSON is a test tool with no --output: Spec.NoJSON.
 	noJSON bool
+	// verbatim prints a text of the server byte for byte: Spec.Verbatim.
+	verbatim bool
 	// end is the delete of a credential, made by NewEnd.
 	end bool
 	// hint follows a wrong argument count or an empty list argument;
@@ -125,6 +127,7 @@ var (
 	errNoSay         = errors.New("is cut to the width of the terminal, and Long does not say so")
 	errSaid          = errors.New("a result Said needs Done, which prints it, and no Columns")
 	errNoJSON        = errors.New("NoJSON is a test tool that prints one sentence: it needs Done and no Columns")
+	errVerbatim      = errors.New("a Verbatim text is printed as it is, so the spec needs a result, and neither Columns, Done nor Secret")
 )
 
 // specError is a spec that is wrong, named by its path.
@@ -166,6 +169,7 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	l.changed = s.Changed != ""
 	l.secret = s.Secret != nil
 	l.noJSON = s.NoJSON
+	l.verbatim = s.Verbatim != nil
 	l.hint = s.Hint
 	l.emptyList = s.EmptyList
 	l.target, _ = targetType(reflect.TypeFor[In]())
@@ -198,6 +202,8 @@ func New[In, Out any](s Spec[In, Out]) Node {
 				return flagsOf[In](c.about(err, in))
 			case s.Secret != nil:
 				return printSecret(c, out, s.Secret(out), func() string { return s.Done(in, out, c.Now()) })
+			case s.Verbatim != nil && !notRead:
+				return printVerbatim(c, out, s.Verbatim(out))
 			}
 
 			done := func() string {
@@ -272,6 +278,10 @@ func checkSpec[In, Out any](s Spec[In, Out]) error {
 	}
 
 	switch {
+	case s.Verbatim != nil:
+		if noOut || s.Columns != nil || s.Done != nil || s.Secret != nil {
+			errs = append(errs, errVerbatim)
+		}
 	case !noOut && s.Columns == nil && s.Done == nil:
 		errs = append(errs, errNoShow)
 	case s.Columns != nil && s.Done != nil:
@@ -672,6 +682,9 @@ type Command struct {
 	// NoJSON is a test tool that takes no --output: a test lists each, with
 	// why.
 	NoJSON bool
+	// Verbatim prints a text of the server byte for byte, past the rule
+	// that masks a credential: a test lists each, with why.
+	Verbatim bool
 	// Whole are the arguments and flags that take a secret typed whole, such
 	// as <auth-id>: the tests that it leaves in one request and comes back
 	// in nothing run on each.
@@ -686,7 +699,7 @@ func (t *Tree) Commands() []Command {
 
 	walk = func(c *cmdline.Info) {
 		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && len(c.Commands) == 0 {
-			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret, NoJSON: l.noJSON, Whole: wholeArgs(c)})
+			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret, NoJSON: l.noJSON, Verbatim: l.verbatim, Whole: wholeArgs(c)})
 		}
 
 		for _, s := range c.Commands {

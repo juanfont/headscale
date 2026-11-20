@@ -101,6 +101,45 @@ func TestBuildChecks(t *testing.T) {
 			"get: both Columns and Done; Done is printed in place of the sheet",
 		},
 		{
+			"Verbatim with Columns",
+			[]Node{New(func() Spec[NoInput, item] { s := spec(); s.Verbatim = func(o item) string { return o.Name }; return s }())},
+			"get: " + errVerbatim.Error(),
+		},
+		{
+			"Verbatim with Done",
+			[]Node{New(func() Spec[NoInput, item] {
+				s := spec()
+				s.Columns, s.Done = nil, func(NoInput, item, time.Time) string { return "done" }
+				s.Verbatim = func(o item) string { return o.Name }
+
+				return s
+			}())},
+			"get: " + errVerbatim.Error(),
+		},
+		{
+			"Verbatim with Secret",
+			[]Node{New(func() Spec[NoInput, item] {
+				s := spec()
+				s.Columns = nil
+				s.Verbatim = func(o item) string { return o.Name }
+				s.Secret = func(o item) string { return o.Name }
+
+				return s
+			}())},
+			// The checks of Secret say their own besides.
+			"get: " + errVerbatim.Error() + "\n" +
+				"a result that holds a secret, a field key or secret at any depth, is printed by Secret, and only such a result has Secret\n" +
+				"get: a Secret needs list and delete beside it, which the sentence of a lost secret names",
+		},
+		{
+			"Verbatim of no result",
+			[]Node{New(Spec[NoInput, NoOutput]{
+				Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, NoOutput],
+				Verbatim: func(NoOutput) string { return "" },
+			})},
+			"get: " + errVerbatim.Error(),
+		},
+		{
 			"a list with no default column",
 			[]Node{NewList(ListSpec[NoInput, item]{
 				Name: "list", Short: "List", Long: "List.", Example: []string{"prog list"}, Local: true,

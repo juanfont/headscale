@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -106,6 +107,13 @@ type Spec[In, Out any] struct {
 	// at any depth, needs Secret, and no other may have it; the command
 	// needs list and delete beside it, which a lost secret names.
 	Secret func(out Out) string
+	// Verbatim is a text of the result that the server keeps, such as the
+	// policy, printed to stdout byte for byte: not trimmed, not made
+	// visible, past the rule that shows a credential as its kind, so a file
+	// it is written to holds what the server holds. -o json prints the
+	// result. It takes neither Columns nor Done, and a test lists each
+	// command that has it, with why.
+	Verbatim func(out Out) string
 }
 
 // ListSpec is a command that gives back rows, printed as a table.
@@ -210,6 +218,8 @@ type Ctx struct {
 	// that gives - for a Path, so stdin is that file and answers nothing.
 	answers   *bufio.Reader
 	stdinFile bool
+	// local keeps the JSON of a result that a Local command made: Answer.
+	local *API
 	// entities are the tree's types of target: the retry of a write the
 	// server refused because the target changed reads one again by its ID.
 	entities map[reflect.Type]entity
@@ -227,6 +237,16 @@ type Ctx struct {
 func (c Ctx) Note(line string) {
 	if !c.json {
 		_, _ = io.WriteString(c.stderr, line+"\n")
+	}
+}
+
+// Answer makes as the JSON that -o json prints for v, a result that a
+// Local command makes as the server would answer it: a type of the client
+// writes its keys in another order than the server.
+func (c Ctx) Answer(v, as any) {
+	b, err := json.Marshal(as)
+	if err == nil && c.local != nil {
+		c.local.keep(v, b)
 	}
 }
 
