@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -158,6 +159,124 @@ func (m *masking) Flush() error {
 // such as the ID of an auth request: Credential is the word after hskey-.
 type TakesCredential interface{ Credential() string }
 
+// TakesWhole is a TakesCredential that is typed whole, as the ID of an
+// auth request is: Whole is why s is not one, nil when it is. The input
+// rule refuses such a value before any call and quotes none of it: it may
+// be the secret, mistyped.
+type TakesWhole interface {
+	TakesCredential
+	Whole(s string) error
+}
+
+// AuthID is the ID of an auth request, typed whole: a secret that lets
+// whoever holds it put a machine into the tailnet. It is no entity, so no
+// lookup reads it and Tab offers nothing; it goes to the server in the path
+// of the request it names and in no other.
+type AuthID string
+
+func (AuthID) Credential() string { return "authreq" }
+
+// UnmarshalText takes any word; the input rule checks it whole, so that a
+// word of another kind gets that rule's sentence. The URL the node shows
+// ends in the ID, and a person pastes it whole: the ID is taken from it, and
+// nothing else of it is kept, so no request or message carries the rest.
+func (a *AuthID) UnmarshalText(b []byte) error {
+	s := string(b)
+	if i := strings.LastIndex(s, "/"+authIDPrefix); i >= 0 {
+		s = s[i+1:]
+	}
+
+	*a = AuthID(s)
+
+	return nil
+}
+
+// errNotAuthID: the form of an auth ID is not part of the API, which calls
+// it opaque. The CLI takes only a word the edge masks whole.
+var errNotAuthID = errors.New("is not an auth ID: it starts with hskey-authreq-, as the end of the URL the node shows")
+
+// maxAuthID is the longest auth ID the CLI takes. One of today is 38
+// characters; the bound leaves room for a longer random part and refuses
+// what is plainly more than one ID, such as two pasted together.
+const maxAuthID = 100
+
+func (AuthID) Whole(s string) error {
+	rest, ok := strings.CutPrefix(s, authIDPrefix)
+	if !ok || len(s) > maxAuthID || !maskedWhole(rest) {
+		return errNotAuthID
+	}
+
+	return nil
+}
+
+const authIDPrefix = hskey + "authreq-"
+
+// maskedWhole reports whether rest, what follows the kind of a secret typed
+// whole, is one the edge masks whole, so the CLI can promise never to print
+// it: one character or more, each one eachCredential reads as part of the
+// word, and no second hskey-, which the edge would read as a credential
+// of another kind. The input rule and the edge share credentialRune, so
+// they cannot drift apart (FuzzWhole).
+func maskedWhole(rest string) bool {
+	return rest != "" && !strings.ContainsFunc(rest, func(r rune) bool { return !credentialRune(r) }) && indexFold(rest, hskey) < 0
+}
+
+var errWholeKind = errors.New("takes a credential typed whole and is not text: the input rule reads only text")
+
+// wholeWord is a word a run took as a secret typed whole, and the argument
+// or flag it was typed for.
+type wholeWord struct{ word, field string }
+
+// withheld is an output of a run: a write that repeats a secret the run
+// took whole is not made. It stands under the edge and under the JSON that
+// is written past it, so it holds for what the server sent too. words are
+// set once the line is read and checked.
+type withheld struct {
+	w     io.Writer
+	words *[]wholeWord
+}
+
+func (h withheld) Write(p []byte) (int, error) {
+	for _, w := range *h.words {
+		if repeats(p, w.word) {
+			return 0, &repeatedError{field: w.field}
+		}
+	}
+
+	return h.w.Write(p)
+}
+
+// repeats reports whether p holds word in any case, or, when p is JSON, a
+// value or key that does once its escapes are read: a consumer of -o json
+// reads them.
+func repeats(p []byte, word string) bool {
+	if indexFold(string(p), word) >= 0 {
+		return true
+	}
+
+	d := json.NewDecoder(bytes.NewReader(p))
+	d.UseNumber()
+
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return false
+		}
+
+		if s, ok := tok.(string); ok && indexFold(s, word) >= 0 {
+			return true
+		}
+	}
+}
+
+// repeatedError is an output that would repeat a secret the run took whole:
+// only the server's answer can, so the command was done.
+type repeatedError struct{ field string }
+
+func (e *repeatedError) Error() string {
+	return "the command was done, but the server's answer repeats " + e.field + ", a secret, so it is not printed. This is a fault of the server."
+}
+
 var errCredentialKind = errors.New("takes a kind of credential that is none of credentialKinds")
 
 // textField is a field of an input struct that holds text a request may
@@ -166,13 +285,15 @@ var errCredentialKind = errors.New("takes a kind of credential that is none of c
 type textField struct {
 	index      int
 	word, kind string
+	whole      func(string) error
 }
 
-// inputRule is the check of the rule on the way in for In.
-func inputRule[In any]() (func(*cmdline.Line) error, error) {
+// inputRule is the check of the rule on the way in for In, and the words of
+// a line, once checked, that it takes as secrets typed whole.
+func inputRule[In any]() (func(*cmdline.Line) error, func(*cmdline.Line) []wholeWord, error) {
 	t := reflect.TypeFor[In]()
 	if t.Kind() != reflect.Struct {
-		return func(*cmdline.Line) error { return nil }, nil
+		return func(*cmdline.Line) error { return nil }, func(*cmdline.Line) []wholeWord { return nil }, nil
 	}
 
 	var (
@@ -195,6 +316,10 @@ func inputRule[In any]() (func(*cmdline.Line) error, error) {
 			ft = ft.Elem()
 		}
 
+		if _, ok := reflect.TypeAssert[TakesCredential](reflect.Zero(ft)); ok && ft.Kind() != reflect.String {
+			errs = append(errs, fmt.Errorf("%s %w", word, errWholeKind))
+		}
+
 		if ft.Kind() != reflect.String || ft == reflect.TypeFor[Path]() {
 			continue
 		}
@@ -208,10 +333,14 @@ func inputRule[In any]() (func(*cmdline.Line) error, error) {
 			}
 		}
 
+		if w, ok := reflect.TypeAssert[TakesWhole](reflect.Zero(ft)); ok {
+			f.whole = w.Whole
+		}
+
 		fields = append(fields, f)
 	}
 
-	return func(line *cmdline.Line) error {
+	check := func(line *cmdline.Line) error {
 		in, _ := cmdline.Get[In](line)
 		v := reflect.ValueOf(in)
 
@@ -221,11 +350,39 @@ func inputRule[In any]() (func(*cmdline.Line) error, error) {
 				if err != nil {
 					return err
 				}
+
+				if f.whole != nil {
+					err = f.whole(s)
+					if err != nil {
+						return fmt.Errorf("%s %w.", f.word, err) //nolint:staticcheck // a sentence of the CLI
+					}
+				}
 			}
 		}
 
 		return nil
-	}, errors.Join(errs...)
+	}
+
+	whole := func(line *cmdline.Line) []wholeWord {
+		in, _ := cmdline.Get[In](line)
+		v := reflect.ValueOf(in)
+
+		var out []wholeWord
+
+		for _, f := range fields {
+			if f.whole == nil {
+				continue
+			}
+
+			for _, s := range valuesOf(v.Field(f.index)) {
+				out = append(out, wholeWord{word: s, field: f.word})
+			}
+		}
+
+		return out
+	}
+
+	return check, whole, errors.Join(errs...)
 }
 
 // valuesOf are the words of a text field: none for an Opt not given, each

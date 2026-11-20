@@ -65,6 +65,9 @@ type leaf struct {
 	// valid checks the line, read but not looked up, before any call: the
 	// rule on the way in, then Spec.Valid.
 	valid func(*cmdline.Line) error
+	// whole are the words of a checked line that it takes as secrets typed
+	// whole, which no output of the run may repeat.
+	whole func(*cmdline.Line) []wholeWord
 	// target is the type of the command's target: the first argument that
 	// is an entity; nil for none.
 	target reflect.Type
@@ -150,8 +153,9 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
 	l.output = !noOut || !s.Local || s.NeedsServer != nil
 	l.own = !noOut && s.Local && s.NeedsServer == nil
-	rule, ruleErr := inputRule[In]()
+	rule, whole, ruleErr := inputRule[In]()
 	l.valid = rule
+	l.whole = whole
 	l.check = func() error { return errors.Join(checkSpec(s), ruleErr) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
@@ -274,8 +278,9 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 	l.only = s.Only
 	l.filter = filterExample(s.Example)
 	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
-	rule, ruleErr := inputRule[In]()
+	rule, whole, ruleErr := inputRule[In]()
 	l.valid = rule
+	l.whole = whole
 	l.check = func() error {
 		errs := []error{ruleErr}
 
@@ -641,6 +646,10 @@ type Command struct {
 	// Secret prints a secret once: it makes a credential, whose group the
 	// tests of every kind of credential run on.
 	Secret bool
+	// Whole are the arguments and flags that take a secret typed whole, such
+	// as <auth-id>: the tests that it leaves in one request and comes back
+	// in nothing run on each.
+	Whole []string
 }
 
 // Commands lists every command that runs, in the order of the tree.
@@ -651,7 +660,7 @@ func (t *Tree) Commands() []Command {
 
 	walk = func(c *cmdline.Info) {
 		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && len(c.Commands) == 0 {
-			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret})
+			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret, Whole: wholeArgs(c)})
 		}
 
 		for _, s := range c.Commands {
@@ -659,6 +668,36 @@ func (t *Tree) Commands() []Command {
 		}
 	}
 	walk(t.parser.Root())
+
+	return out
+}
+
+// wholeArgs are the arguments and flags of c whose type, or the type of
+// whose items, is a [TakesWhole].
+func wholeArgs(c *cmdline.Info) []string {
+	var out []string
+
+	takes := func(t reflect.Type) bool {
+		if t.Kind() == reflect.Slice {
+			t = t.Elem()
+		}
+
+		_, ok := reflect.TypeAssert[TakesWhole](reflect.Zero(t))
+
+		return ok
+	}
+
+	for _, a := range c.Args {
+		if takes(a.Type) {
+			out = append(out, "<"+a.Name+">")
+		}
+	}
+
+	for _, f := range c.Flags {
+		if takes(f.Type) {
+			out = append(out, "--"+f.Name)
+		}
+	}
 
 	return out
 }
