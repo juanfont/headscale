@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"maps"
 	"net/netip"
 	"slices"
@@ -136,38 +137,40 @@ type filterAndPolicy struct {
 // Missing-user tokens stay tolerant. Empty users → no-op for
 // syntax-only checks.
 func validateUserReferences(pol *Policy, users types.Users) error {
-	if pol == nil || len(users) == 0 {
-		return nil
-	}
-
 	var errs []error
 
-	check := func(u *Username) {
-		if u == nil {
+	for u, matches := range ambiguousUsers(pol, users) {
+		_, err := u.resolveUser(users)
+		errs = append(errs, &ambiguousUserError{err: err, token: string(*u), users: matches})
+	}
+
+	return multierr.New(errs...)
+}
+
+// ambiguousUsers yields every place pol names a user that more than one of
+// users matches, with those users.
+func ambiguousUsers(pol *Policy, users types.Users) iter.Seq2[*Username, types.Users] {
+	return func(yield func(*Username, types.Users) bool) {
+		if pol == nil || len(users) == 0 {
 			return
 		}
 
-		_, err := u.resolveUser(users)
-		if err != nil && errors.Is(err, ErrMultipleUsersFound) {
-			errs = append(errs, err)
-		}
-	}
+		pol.walkUsernames(func(u *Username) bool {
+			matches := u.matches(users)
 
-	checkAlias := func(a Alias) {
-		if u, ok := a.(*Username); ok {
-			check(u)
-		}
+			return len(matches) < 2 || yield(u, matches)
+		})
 	}
+}
 
-	checkOwner := func(o Owner) {
-		if u, ok := o.(*Username); ok {
-			check(u)
-		}
-	}
+// walkUsernames calls fn with every user token in pol that names users,
+// until fn returns false.
+func (pol *Policy) walkUsernames(fn func(*Username) bool) {
+	ok := true
 
-	checkAutoApprover := func(aa AutoApprover) {
-		if u, ok := aa.(*Username); ok {
-			check(u)
+	check := func(v any) {
+		if u, isUser := v.(*Username); ok && isUser && u != nil {
+			ok = fn(u)
 		}
 	}
 
@@ -179,57 +182,76 @@ func validateUserReferences(pol *Policy, users types.Users) error {
 
 	for _, owners := range pol.TagOwners {
 		for _, o := range owners {
-			checkOwner(o)
+			check(o)
 		}
 	}
 
 	for _, approvers := range pol.AutoApprovers.Routes {
 		for _, aa := range approvers {
-			checkAutoApprover(aa)
+			check(aa)
 		}
 	}
 
 	for _, aa := range pol.AutoApprovers.ExitNode {
-		checkAutoApprover(aa)
+		check(aa)
 	}
 
 	for _, acl := range pol.ACLs {
 		for _, src := range acl.Sources {
-			checkAlias(src)
+			check(src)
 		}
 
 		for _, dst := range acl.Destinations {
-			checkAlias(dst.Alias)
+			check(dst.Alias)
 		}
 	}
 
 	for _, grant := range pol.Grants {
 		for _, src := range grant.Sources {
-			checkAlias(src)
+			check(src)
 		}
 
 		for _, dst := range grant.Destinations {
-			checkAlias(dst)
+			check(dst)
 		}
 	}
 
 	for _, attr := range pol.NodeAttrs {
 		for _, target := range attr.Targets {
-			checkAlias(target)
+			check(target)
 		}
 	}
 
 	for _, ssh := range pol.SSHs {
 		for _, src := range ssh.Sources {
-			checkAlias(src)
+			check(src)
 		}
 
 		for _, dst := range ssh.Destinations {
-			checkAlias(dst)
+			check(dst)
 		}
 	}
+}
 
-	return multierr.New(errs...)
+// AmbiguousUsers is every user token of the policy in force that more than
+// one user matches, sorted. Such a token matches nobody.
+func (pm *PolicyManager) AmbiguousUsers() []string {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	var tokens []string
+
+	for u := range ambiguousUsers(pm.pol, pm.users) {
+		tokens = append(tokens, string(*u))
+	}
+
+	slices.Sort(tokens)
+
+	return slices.Compact(tokens)
 }
 
 // NewPolicyManager creates a new [PolicyManager] from a policy file and a list of users and nodes.
@@ -708,7 +730,7 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 
 	pol, err := unmarshalPolicy(polB)
 	if err != nil {
-		return false, fmt.Errorf("parsing policy: %w", err)
+		return false, &contextError{context: "parsing policy", err: err, beforeTests: true}
 	}
 
 	pm.mu.RLock()
@@ -717,7 +739,7 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 
 	err = validateUserReferences(pol, users)
 	if err != nil {
-		return false, fmt.Errorf("validating policy user references: %w", err)
+		return false, &contextError{context: "validating policy user references", err: err, beforeTests: true}
 	}
 
 	// SetPolicy is the user-write boundary. Tests evaluate against a

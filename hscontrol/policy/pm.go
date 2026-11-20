@@ -112,6 +112,10 @@ type PolicyManager interface {
 	// drain cannot lose the policy-reload diff.
 	NodesWithChangedCapMap() []types.NodeID
 
+	// AmbiguousUsers returns every user token of the policy that more than
+	// one user matches, sorted. Such a token matches nobody.
+	AmbiguousUsers() []string
+
 	Version() int
 	DebugString() string
 }

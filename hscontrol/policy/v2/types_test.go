@@ -2343,6 +2343,8 @@ func TestUnmarshalPolicy(t *testing.T) {
 					t.Fatalf("unmarshalling: got err %v; want error %q", err, tt.wantErr)
 				}
 
+				requireSentences(t, []byte(tt.input), err)
+
 				return // Skip the rest of the test if we expected an error
 			}
 
@@ -2462,6 +2464,8 @@ func TestUnmarshalPolicyCommentsMatchPlainJSON(t *testing.T) {
 			got, err := unmarshalPolicy([]byte(tt.input))
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
+				requireSentences(t, []byte(tt.input), err)
+
 				return
 			}
 
@@ -5726,6 +5730,8 @@ func TestUnmarshalGrants(t *testing.T) {
 					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
 				}
 
+				requireSentences(t, []byte(tt.input), err)
+
 				if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
 				}
@@ -6482,6 +6488,7 @@ func TestUnmarshalPolicySSHTests(t *testing.T) {
 			}
 
 			require.Error(t, err)
+			requireSentences(t, []byte(tc.input), err)
 			require.ErrorIs(
 				t,
 				err, tc.wantErr,
@@ -6643,6 +6650,8 @@ func TestPolicyMetadataFields(t *testing.T) {
 
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
+				requireSentences(t, []byte(tt.policy), err)
+
 				return
 			}
 
@@ -6737,6 +6746,7 @@ func TestUnmarshalPolicyMaxDstPorts(t *testing.T) {
 
 			if tt.wantErr {
 				require.ErrorIs(t, err, ErrTooManyDstPorts)
+				requireSentences(t, []byte(tt.policy), err)
 
 				return
 			}
