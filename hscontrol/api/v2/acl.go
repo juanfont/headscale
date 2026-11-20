@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"slices"
@@ -125,21 +126,44 @@ func registerACL(api huma.API, b Backend) {
 			)
 		}
 
-		// Checked under the policy lock, so two writers holding the same ETag
-		// cannot both pass.
-		var match func(string) bool
+		// Checked first, tests included, so an invalid policy is refused
+		// before a stale ETag, as this API always answered.
+		prep, err := b.State.PreparePolicy(in.RawBody)
+		if err != nil {
+			return nil, mapError("setting policy", err)
+		}
+
+		// Compared under the policy lock, so two writers holding the same
+		// ETag cannot both pass, with the stored policy GET hands out.
+		var (
+			match   func(state.PolicyDocument) bool
+			loadErr error
+		)
+
 		if in.IfMatch != "" {
-			match = func(stored string) bool {
-				if stored == "" {
-					stored = defaultPolicy
+			match = func(state.PolicyDocument) bool {
+				stored, err := b.State.GetPolicy()
+				if err != nil && !errors.Is(err, types.ErrPolicyNotFound) {
+					loadErr = err
+
+					return false
 				}
 
-				return etagMatches(in.IfMatch, []byte(stored))
+				data := defaultPolicy
+				if stored != nil && stored.Data != "" {
+					data = stored.Data
+				}
+
+				return etagMatches(in.IfMatch, []byte(data))
 			}
 		}
 
-		updated, cs, err := b.State.UpdatePolicyIf(in.RawBody, match)
+		updated, cs, err := b.State.WritePolicyIf(prep, match) //nolint:contextcheck // the policy store has a deadline of its own, under the policy lock
 		b.Change(cs...)
+
+		if loadErr != nil {
+			return nil, mapError("setting policy", fmt.Errorf("loading policy: %w", loadErr))
+		}
 
 		if errors.Is(err, state.ErrPolicyPrecondition) {
 			return nil, huma.Error412PreconditionFailed("precondition failed, invalid old hash")

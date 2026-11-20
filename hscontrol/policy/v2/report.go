@@ -73,7 +73,7 @@ func Explain(b []byte, err error) Explanation {
 		problems []PolicyError
 		failed   []FailedTest
 		ast      *hujson.Value
-		notRun   = errors.Is(err, ErrPolicyEmpty)
+		notRun   = errors.Is(err, ErrPolicyEmpty) || errors.Is(err, ErrPolicyNotObject) || errors.Is(err, ErrPolicyNUL)
 	)
 
 	if err == nil {

@@ -848,26 +848,9 @@ func CheckPolicy(b []byte) error {
 // against users and nodes. It runs the [PolicyManager.SetPolicy] write
 // boundary, `tests` and `sshTests` included, on a throwaway manager.
 func ValidatePolicy(b []byte, users types.Users, nodes views.Slice[types.NodeView]) error {
-	pm, err := NewPolicyManager(nil, users, nodes)
-	if err != nil {
-		return fmt.Errorf("creating policy manager: %w", err)
-	}
+	_, err := PreparePolicy(b, users, nodes)
 
-	_, err = pm.SetPolicy(b)
-	if err != nil {
-		return err
-	}
-
-	// SSH rules compile per node, so without nodes this cannot catch every
-	// case. The base URL only fills check-action URLs, which nothing reads.
-	if nodes.Len() > 0 {
-		_, err = pm.SSHPolicy("", nodes.At(0))
-		if err != nil {
-			return fmt.Errorf("verifying SSH rules: %w", err)
-		}
-	}
-
-	return nil
+	return err
 }
 
 // standIns returns the users and nodes [CheckPolicy] evaluates pol

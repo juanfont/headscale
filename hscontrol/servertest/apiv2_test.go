@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -697,7 +698,7 @@ func TestAPIv2AuthKeyHoldsThePolicy(t *testing.T) {
 	installed := make(chan error, 1)
 
 	go func() {
-		_, _, err := srv.State().UpdatePolicyIf([]byte(`{"tagOwners": {"tag:ci": []}}`), func(string) bool {
+		_, _, err := srv.State().UpdatePolicyIf([]byte(`{"tagOwners": {"tag:ci": []}}`), func(state.PolicyDocument) bool {
 			close(parked)
 			<-release
 
