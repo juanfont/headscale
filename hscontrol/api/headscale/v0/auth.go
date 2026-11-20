@@ -137,6 +137,13 @@ func authMiddleware(b Backend) func(huma.Context, func(huma.Context)) {
 			return
 		}
 
+		p = everyTokenRefusal(c, a)
+		if p != nil {
+			writeHumaProblem(ctx, p)
+
+			return
+		}
+
 		var missing []string
 
 		for _, want := range a.scopes {
@@ -165,15 +172,21 @@ type tokenRule struct {
 	name string
 	// why is the detail of the problem and the text on the page.
 	why string
-	// refuses reports whether the rule refuses the input of the call. A
-	// rule that reads the resource leaves it nil, and its handler checks
-	// it once the resource is found.
-	refuses func(in any) bool
+	// refuses reports whether the rule refuses the caller c the input of
+	// the call. A rule that reads the resource or the policy leaves it nil,
+	// and its handler checks it there.
+	refuses func(c *caller, in any) bool
+	// everyToken refuses every token, before its scopes are read: no scope
+	// is enough, so a lacking scope would send the client the wrong way.
+	everyToken bool
 }
 
 // tokenRules is every rule. The page of codes lists them, and register
 // refuses a rule that is not here.
-var tokenRules = []*tokenRule{&tokenCannotChangeUserNameOrEmail, &tokenMustOwnTags, &tokenCannotCreateKeyForUser}
+var tokenRules = []*tokenRule{
+	&tokenCannotChangeUserNameOrEmail, &tokenMustOwnTags, &tokenCannotCreateKeyForUser,
+	&tokenCannotCreateAPIKey, &tokenMustHoldScopes,
+}
 
 // ruleRefusal is the problem of the first rule of a that refuses in, when
 // the caller is an OAuth access token.
@@ -184,7 +197,23 @@ func ruleRefusal(ctx context.Context, a access, in any) *Problem {
 	}
 
 	for _, r := range a.rules {
-		if r.refuses != nil && r.refuses(in) {
+		if r.refuses != nil && r.refuses(c, in) {
+			return ruleForbidden(r)
+		}
+	}
+
+	return nil
+}
+
+// everyTokenRefusal is the problem of a rule of a that refuses every token,
+// when c is one.
+func everyTokenRefusal(c *caller, a access) *Problem {
+	if c.credential == nil || c.credential.kind != CredentialOAuthToken {
+		return nil
+	}
+
+	for _, r := range a.rules {
+		if r.everyToken {
 			return ruleForbidden(r)
 		}
 	}

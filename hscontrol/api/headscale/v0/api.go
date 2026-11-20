@@ -90,6 +90,8 @@ func newAPI(router chi.Router, b Backend, config huma.Config) huma.API {
 	registerNodes(api, b)
 	registerTags(api, b)
 	registerAuthKeys(api, b)
+	registerApiKeys(api, b)
+	registerOAuthClients(api, b)
 
 	return api
 }
@@ -459,6 +461,9 @@ func operations(item *huma.PathItem) map[string]*huma.Operation {
 
 	return all
 }
+
+// notUserID is the message of a userId, or a user query, that is not an ID.
+const notUserID = "is not a user ID"
 
 // pathID reads the ID of a resource in a path. Only the form a server
 // writes names a resource: decimal digits with no sign and no leading zero,

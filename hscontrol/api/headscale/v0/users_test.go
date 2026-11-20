@@ -244,7 +244,7 @@ func TestGetUser(t *testing.T) {
 			{ID: strconv.FormatUint(uint64(nodes[0].ID), 10), Name: stored[0].GivenName()},
 			{ID: strconv.FormatUint(uint64(nodes[1].ID), 10), Name: stored[1].GivenName()},
 		},
-		Created: alice.CreatedAt.UTC(),
+		Created: micro(alice.CreatedAt),
 	}, got)
 
 	for _, path := range []string{"999", "abc", "-1", "1.0", "0", "007", "+7", "9223372036854775808", "18446744073709551616"} {

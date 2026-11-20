@@ -46,15 +46,9 @@ const (
 // Schema is registered once and referred to, so a client has one type for
 // it, not one for each object that holds it.
 func (AuthKeyState) Schema(r huma.Registry) *huma.Schema {
-	const name = "AuthKeyState"
-
-	r.Map()[name] = &huma.Schema{
-		Type:        huma.TypeString,
-		Enum:        []any{string(AuthKeyValid), string(AuthKeyUsed), string(AuthKeyExpired), string(AuthKeyRevoked)},
-		Description: "revoked wins over used, which wins over expired; used is a single-use key that a node took. A client must accept a value it does not know.",
-	}
-
-	return &huma.Schema{Ref: "#/components/schemas/" + name}
+	return stateSchema(r, "AuthKeyState",
+		"revoked wins over used, which wins over expired; used is a single-use key that a node took. A client must accept a value it does not know.",
+		string(AuthKeyValid), string(AuthKeyUsed), string(AuthKeyExpired), string(AuthKeyRevoked))
 }
 
 // CreatedAuthKey is the answer to a create: the key and its secret.
@@ -103,7 +97,7 @@ func (b *CreateAuthKeyBody) fieldErrors() []FieldError {
 	if b.UserID.Set {
 		_, err := pathID[types.UserID](b.UserID.Value)
 		if err != nil {
-			errs = append(errs, FieldError{Location: "body.userId", Message: "is not a user ID"})
+			errs = append(errs, FieldError{Location: "body.userId", Message: notUserID})
 		}
 	}
 
@@ -130,7 +124,7 @@ const maxAuthKeyBody = 64 << 10
 var tokenCannotCreateKeyForUser = tokenRule{
 	name: "token_cannot_create_key_for_user",
 	why:  "An OAuth access token can make an auth key for tags only, never for a user (userId). Use an API key.",
-	refuses: func(in any) bool {
+	refuses: func(_ *caller, in any) bool {
 		k, ok := in.(*createAuthKeyInput)
 
 		return ok && k.Body.UserID.Set
@@ -178,7 +172,7 @@ func registerAuthKeys(api huma.API, b Backend) {
 			id, err := pathID[types.UserID](in.User)
 			if err != nil {
 				p := newProblem(CodeInvalidField, "A query parameter is not valid.")
-				p.Errors = []FieldError{{Location: "query.user", Message: "is not a user ID"}}
+				p.Errors = []FieldError{{Location: "query.user", Message: notUserID}}
 
 				return nil, p
 			}
@@ -287,11 +281,11 @@ func (b Backend) createAuthKey(ctx context.Context, body CreateAuthKeyBody) (*cr
 		Tags:        want,
 		Reusable:    body.Reusable.Value,
 		Ephemeral:   body.Ephemeral.Value,
-		Expiration:  new(body.Expiry.Value.UTC().Truncate(time.Microsecond)),
+		Expiration:  new(micro(body.Expiry.Value)),
 		Description: body.Description.Value,
 		ByToken:     token,
-		// PostgreSQL keeps microseconds; the create answers what a get will.
-		Created: time.Now().UTC().Truncate(time.Microsecond),
+		Created:     micro(time.Now()),
+		Maker:       maker(ctx),
 	}
 
 	if c.credential != nil && c.credential.owner != nil {
@@ -304,11 +298,12 @@ func (b Backend) createAuthKey(ctx context.Context, body CreateAuthKeyBody) (*cr
 	}
 
 	stored, made, err := b.State.CreateAuthKeyIf(k, func() error {
-		if token && !ownsAll(b.State.TagsOwnedByTags(c.tags), want) {
-			return ruleForbidden(&tokenMustOwnTags)
+		p := b.tokenMayGive(ctx, want)
+		if p != nil {
+			return p
 		}
 
-		p := tagsNotPermitted(b.State, want)
+		p = tagsNotPermitted(b.State, want)
 		if p != nil {
 			return p
 		}
@@ -418,9 +413,7 @@ func authKeyFromView(k types.PreAuthKeyView, referenced bool, now time.Time, ret
 		a.State = AuthKeyValid
 	}
 
-	if a.Revoked != nil && retention > 0 && !referenced {
-		a.Removal = new(a.Revoked.Add(retention))
-	}
+	a.Removal = removal(a.Revoked, retention, referenced)
 
 	return a
 }
@@ -432,5 +425,5 @@ func utcOrNil(p interface{ GetOk() (time.Time, bool) }) *time.Time {
 		return nil
 	}
 
-	return new(t.UTC())
+	return new(micro(t))
 }

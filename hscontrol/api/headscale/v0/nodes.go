@@ -146,12 +146,13 @@ func (b *SetNodeRoutesBody) fieldErrors() []FieldError {
 }
 
 // tokenMustOwnTags keeps a token from putting a tag on a node, or taking
-// one off, or making an auth key for one, that its grant does not reach.
+// one off, or making an auth key or an OAuth client for one, that its grant
+// does not reach.
 // The tags of a node are its owner and decide what it may reach. Its check
 // is the function GET /me shows as authorization.tags.
 var tokenMustOwnTags = tokenRule{
 	name: "token_must_own_tags",
-	why:  "An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives: to a node, where it must also own every tag the node has now, and to an auth key. GET /me lists these tags as authorization.tags. An API key may give any tag of the policy.",
+	why:  "An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives: to a node, where it must also own every tag the node has now, and to an auth key or an OAuth client. GET /me lists these tags as authorization.tags. An API key may give any tag of the policy.",
 }
 
 type (
@@ -232,7 +233,7 @@ func registerNodes(api huma.API, b Backend) {
 			id, err := pathID[types.UserID](in.User)
 			if err != nil {
 				p := newProblem(CodeInvalidField, "A query parameter is not valid.")
-				p.Errors = []FieldError{{Location: "query.user", Message: "is not a user ID"}}
+				p.Errors = []FieldError{{Location: "query.user", Message: notUserID}}
 
 				return nil, p
 			}
@@ -459,15 +460,9 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 
 		// What the request shows comes first: the tags it names, then
 		// the node.
-		var owned []string
-
-		token := isToken(ctx)
-		if token {
-			owned = b.State.TagsOwnedByTags(callerFrom(ctx).tags)
-
-			if !ownsAll(owned, want) {
-				return nil, ruleForbidden(&tokenMustOwnTags)
-			}
+		p := b.tokenMayGive(ctx, want)
+		if p != nil {
+			return nil, p
 		}
 
 		refused := tagsNotPermitted(b.State, want)
@@ -480,7 +475,7 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 			return nil, err
 		}
 
-		if token {
+		if isToken(ctx) {
 			nv, ok := b.State.GetNodeByID(id)
 			if !ok {
 				return nil, about(state.ErrNodeNotInNodeStore, ProblemObject{Kind: "node", ID: in.ID})
@@ -494,8 +489,9 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 				return nil, about(err, nodeObject(id, b.State))
 			}
 
-			if !ownsAll(owned, nv.Tags().AsSlice()) {
-				return nil, ruleForbidden(&tokenMustOwnTags)
+			p = b.tokenMayGive(ctx, nv.Tags().AsSlice())
+			if p != nil {
+				return nil, p
 			}
 		}
 
@@ -569,9 +565,22 @@ func isToken(ctx context.Context) bool {
 	return c != nil && c.credential != nil && c.credential.kind == CredentialOAuthToken
 }
 
-// ownsAll reports whether owned has every tag of tags.
-func ownsAll(owned, tags []string) bool {
-	return !slices.ContainsFunc(tags, func(t string) bool { return !slices.Contains(owned, t) })
+// tokenMayGive is the rule token_must_own_tags for tags, which a token may
+// give only when it holds each, or owns it in the policy: the tags GET /me
+// lists as authorization.tags. Nil for an API key and the socket. A check
+// before a write that the policy must still allow runs under the policy's
+// lock, in the check of a State …If call.
+func (b Backend) tokenMayGive(ctx context.Context, tags []string) *Problem {
+	if !isToken(ctx) {
+		return nil
+	}
+
+	owned := b.State.TagsOwnedByTags(callerFrom(ctx).tags)
+	if slices.ContainsFunc(tags, func(t string) bool { return !slices.Contains(owned, t) }) {
+		return ruleForbidden(&tokenMustOwnTags)
+	}
+
+	return nil
 }
 
 // tagsNotPermitted is tags_not_permitted naming each tag of want that the
@@ -781,7 +790,7 @@ func nodeFromView(nv types.NodeView, primaries []netip.Prefix, now time.Time, ba
 		Addresses:          emptyIfNil(nv.IPsAsString()),
 		ConnectedToControl: nv.ActiveSessions() > 0,
 		Expired:            nv.IsExpiredAt(now),
-		Created:            nv.CreatedAt().UTC(),
+		Created:            micro(nv.CreatedAt()),
 		EnabledRoutes:      prefixes(nv.ApprovedRoutes().AsSlice()),
 		AdvertisedRoutes:   prefixes(nv.AnnouncedRoutes()),
 		ServingRoutes:      prefixes(append(slices.Clone(primaries), nv.ExitRoutes()...)),
@@ -806,9 +815,9 @@ func nodeFromView(nv types.NodeView, primaries []netip.Prefix, now time.Time, ba
 
 	switch {
 	case n.ConnectedToControl:
-		n.LastSeen = new(now.UTC())
+		n.LastSeen = new(micro(now))
 	case nv.LastSeen().Valid():
-		n.LastSeen = new(nv.LastSeen().Get().UTC())
+		n.LastSeen = new(micro(nv.LastSeen().Get()))
 	}
 
 	// A stored time out of range cannot be written as RFC 3339; problems
@@ -816,7 +825,7 @@ func nodeFromView(nv types.NodeView, primaries []netip.Prefix, now time.Time, ba
 	if exp, ok := nv.KeyExpiry(); ok {
 		utc, err := types.ValidateExpiry(exp)
 		if err == nil {
-			n.Expiry = &utc
+			n.Expiry = new(micro(utc))
 		}
 	}
 
