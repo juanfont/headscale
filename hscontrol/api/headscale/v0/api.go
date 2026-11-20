@@ -17,6 +17,7 @@ import (
 	"maps"
 	"mime"
 	"net/http"
+	"net/url"
 	"reflect"
 	"slices"
 	"strconv"
@@ -180,6 +181,9 @@ type access struct {
 	scopes []scope.Scope
 	// rules refuse an OAuth access token what scopes allow.
 	rules []*tokenRule
+	// paramScopes are the scopes a boolean query parameter needs as well
+	// when it is true, by the parameter's name.
+	paramScopes map[string][]scope.Scope
 }
 
 // withTokenRules is a with rules that refuse an OAuth access token.
@@ -187,6 +191,38 @@ func (a access) withTokenRules(r ...*tokenRule) access {
 	a.rules = append(slices.Clone(a.rules), r...)
 
 	return a
+}
+
+// withParamScopes is a that also needs s when the boolean query parameter
+// param is true. The scopes are checked with the others, before the request
+// is read, so a forbidden answer lists every scope the call lacks.
+func (a access) withParamScopes(param string, s ...scope.Scope) access {
+	a.paramScopes = maps.Clone(a.paramScopes)
+	if a.paramScopes == nil {
+		a.paramScopes = map[string][]scope.Scope{}
+	}
+
+	a.paramScopes[param] = s
+
+	return a
+}
+
+// wants is every scope a needs for a request with query.
+func (a access) wants(query url.Values) []scope.Scope {
+	want := slices.Clone(a.scopes)
+
+	for _, param := range slices.Sorted(maps.Keys(a.paramScopes)) {
+		// Only the form requestChecks lets through is true.
+		if query.Get(param) == "true" {
+			for _, s := range a.paramScopes[param] {
+				if !slices.Contains(want, s) {
+					want = append(want, s)
+				}
+			}
+		}
+	}
+
+	return want
 }
 
 func (a access) kind() accessKind {
@@ -220,7 +256,8 @@ const (
 	codesMetaKey   = "headscale.v0.codes"
 	maxBodyMetaKey = "headscale.v0.maxBody"
 
-	tokenRulesExtension = "x-token-rules"
+	tokenRulesExtension  = "x-token-rules"
+	paramScopesExtension = "x-parameter-scopes"
 
 	mergePatchContentType = "application/merge-patch+json"
 
@@ -295,6 +332,13 @@ func register[I, O any](
 	})
 
 	describeRegistered(api, &op, isPatch)
+
+	registered := operations(api.OpenAPI().Paths[op.Path])[op.Method]
+	for param := range a.paramScopes {
+		if !booleanQuery(registered, param) {
+			panic("apiv0: " + op.OperationID + " has scopes for " + param + ", which is not a boolean query parameter")
+		}
+	}
 }
 
 // accessCodes sets the security and token rules of op from a, and returns
@@ -337,6 +381,30 @@ func accessCodes(op *huma.Operation, a access) []Code {
 		}
 
 		op.Extensions[tokenRulesExtension] = names
+	}
+
+	if len(a.paramScopes) > 0 {
+		if a.kind() != scopedAccess {
+			panic("apiv0: " + op.OperationID + " has parameter scopes but no scopes")
+		}
+
+		byParam := map[string][]string{}
+
+		for param, ss := range a.paramScopes {
+			for _, s := range ss {
+				if !s.Valid() {
+					panic("apiv0: " + op.OperationID + " has unknown scope " + string(s))
+				}
+
+				byParam[param] = append(byParam[param], string(s))
+			}
+		}
+
+		if op.Extensions == nil {
+			op.Extensions = map[string]any{}
+		}
+
+		op.Extensions[paramScopesExtension] = byParam
 	}
 
 	return all

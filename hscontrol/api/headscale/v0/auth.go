@@ -146,7 +146,8 @@ func authMiddleware(b Backend) func(huma.Context, func(huma.Context)) {
 
 		var missing []string
 
-		for _, want := range a.scopes {
+		u := ctx.URL()
+		for _, want := range a.wants(u.Query()) {
 			if !scope.Grants(c.scopes, want) {
 				missing = append(missing, string(want))
 			}
