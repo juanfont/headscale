@@ -28,6 +28,10 @@ type ProblemError struct {
 	// command read it, and the expiry it sent, zero when none.
 	target clientv0.ProblemObject
 	expiry time.Time
+	// changed is a refusal of the builder's guard on the second try: the
+	// target changed again, whatever code the command's guard is refused
+	// with.
+	changed bool
 }
 
 func problemOf(status int, body []byte) error {
@@ -42,6 +46,20 @@ func problemOf(status int, body []byte) error {
 }
 
 func (e *ProblemError) Error() string {
+	if e.changed {
+		o, err := e.Problem.Object.Get()
+		if err != nil {
+			o = e.target
+		}
+
+		return e.entity(o) + " changed while the command ran. Run it again."
+	}
+
+	return e.text()
+}
+
+// text is the sentence of the problem from its code.
+func (e *ProblemError) text() string {
 	p := e.Problem
 
 	switch p.Code { //nolint:exhaustive // the others print their title

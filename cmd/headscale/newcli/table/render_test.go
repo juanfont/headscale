@@ -119,9 +119,9 @@ func TestFit(t *testing.T) {
 	require.Equal(t, "abc", fit("abc", 3))
 	require.Equal(t, "ab…", fit("abcd", 3))
 	require.Equal(t, "🚀…", fit("🚀🚀", 3), "a wide character is two cells")
-	require.Equal(t, "aa … (+2)", fitList([]string{"aa", "bb", "cccc"}, 11))
-	require.Equal(t, "… (+3)", fitList([]string{"aaaa", "b", "c"}, 6))
-	require.Equal(t, "(+…", fitList([]string{"aaaa", "b", "c"}, 3))
+	require.Equal(t, "aa … (+2)", FitList([]string{"aa", "bb", "cccc"}, 11))
+	require.Equal(t, "… (+3)", FitList([]string{"aaaa", "b", "c"}, 6))
+	require.Equal(t, "(+…", FitList([]string{"aaaa", "b", "c"}, 3))
 }
 
 // TestCutOrder: a table wider than the screen gives way in one order. A

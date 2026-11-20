@@ -53,9 +53,13 @@ type API struct {
 	// answered before and whether a write is out; timeout is cli.timeout.
 	check   *versionCheck
 	timeout time.Duration
-	// guard is the revision of the target, which every write on it that
-	// takes If-Match sends; see guardOf and ifMatch.
+	// guard is the guard of the target, which every write on it sends;
+	// see revision.
 	guard atomic.Pointer[revision]
+	// me is GET /me, read once a run: see whoAmI.
+	meOnce sync.Once
+	me     clientv0.Me
+	meErr  error
 
 	mu      sync.Mutex
 	answers map[answerKey]json.RawMessage
@@ -116,6 +120,13 @@ func (a *API) Me(ctx context.Context) (clientv0.Me, error) {
 	return call[clientv0.Me](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetMe(ctx) })
 }
 
+// whoAmI is Me, read once a run: a question asked again asks the same.
+func (a *API) whoAmI(ctx context.Context) (clientv0.Me, error) {
+	a.meOnce.Do(func() { a.me, a.meErr = a.Me(ctx) })
+
+	return a.me, a.meErr
+}
+
 // Health is GET /health.
 func (a *API) Health(ctx context.Context) (clientv0.Health, error) {
 	return call[clientv0.Health](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetHealth(ctx) })
@@ -137,6 +148,14 @@ func (a *API) CreateUser(ctx context.Context, body clientv0.CreateUserBody) (cli
 func (a *API) UpdateUser(ctx context.Context, id string, body clientv0.UpdateUserBody) (clientv0.User, error) {
 	return call[clientv0.User](a, func(c *clientv0.Client) (*http.Response, error) {
 		return c.UpdateUserWithApplicationMergePatchPlusJSONBody(ctx, id, body)
+	})
+}
+
+// DeleteUser is DELETE /users/{id}: with dryRun what it would remove, and
+// otherwise the removal, which sends the token the question showed.
+func (a *API) DeleteUser(ctx context.Context, id string, withNodes, dryRun bool) (clientv0.DeletedUser, error) {
+	return call[clientv0.DeletedUser](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.DeleteUser(ctx, id, &clientv0.DeleteUserParams{WithNodes: &withNodes, DryRun: &dryRun, Expect: a.expect(id)})
 	})
 }
 
@@ -672,23 +691,43 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 	return a, nil
 }
 
-// revision is the target of a command and its revision, which a write on
-// the target sends back in If-Match: a server that holds another revision
-// refuses the write with precondition_failed, so a change made in between
-// is not lost.
-type revision struct{ id, rev string }
+// revision is the guard of a write on the target of a command: what the
+// CLI read or showed of it, which the server compares before it writes,
+// so a change made in between is not lost. One kind per run: the target's
+// revision, sent in If-Match and refused with precondition_failed, or the
+// token a question handed over (Prompt.Guard), sent as expect and refused
+// with the spec's Changed. The builder refuses a spec that would need both.
+type revision struct {
+	id, rev string
+	token   bool
+}
 
 // ifMatch is the If-Match of a write on the entity id: the revision the
 // builder read for the target, when id is the target; nil, which sends
 // none, for another. Every call whose operation takes If-Match passes it
-// (TestEveryIfMatchIsSent); a command never does.
+// (TestEveryGuardIsSent); a command never does.
 func (a *API) ifMatch(id string) *string {
 	g := a.guard.Load()
-	if g == nil || g.id != id {
+	if g == nil || g.token || g.id != id {
 		return nil
 	}
 
 	return new(strconv.Quote(g.rev))
+}
+
+// expect is the token of a dry run that a write on the entity id sends
+// back, so the server refuses it when what the question showed changed:
+// the Guard of the Prompt, which the builder keeps as it keeps a revision;
+// nil for another entity, and for the dry run itself, which the builder
+// asks before any Guard is set. Every call whose operation takes expect
+// passes it (TestEveryGuardIsSent).
+func (a *API) expect(id string) *string {
+	g := a.guard.Load()
+	if g == nil || !g.token || g.id != id {
+		return nil
+	}
+
+	return &g.rev
 }
 
 // guardOf is the revision of the target of in: its first argument that is

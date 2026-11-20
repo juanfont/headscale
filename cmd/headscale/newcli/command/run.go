@@ -158,6 +158,7 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
 		terminal:   env.Terminal,
 		screen:     env.StdoutTerminal,
 		width:      env.Width,
+		askWidth:   env.StderrWidth,
 		colour:     env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
 		answers:    bufio.NewReader(stdin),
 		entities:   t.entities,
@@ -444,11 +445,14 @@ func (c Ctx) confirm(p Prompt, before string) (bool, error) {
 		return false, nil
 	}
 
-	question, action := p.Question, "Run again with --force to "+p.Action+"."
+	warning := ""
 	if p.Warning != nil {
-		if w := p.Warning(); w != "" {
-			question, action = question+" "+w, action+" "+w
-		}
+		warning = p.Warning()
+	}
+
+	action := "Run again with --force to " + p.Action + "."
+	if warning != "" {
+		action += " " + warning
 	}
 
 	if !c.terminal {
@@ -459,7 +463,36 @@ func (c Ctx) confirm(p Prompt, before string) (bool, error) {
 		_, _ = io.WriteString(c.stderr, before+"\n")
 	}
 
-	_, _ = io.WriteString(c.stderr, question+" [y/N] ")
+	// The question, the warning and [y/N] on one line; with a list, each
+	// on a line of its own after the question and the list, so the answer
+	// comes right after what it answers. A list cut to the terminal the
+	// question is on still says how many it leaves out.
+	lines := []string{p.Question}
+
+	if len(p.List) > 0 {
+		items := make([]string, len(p.List))
+		for i, s := range p.List {
+			items[i] = table.Visible(s, "")
+		}
+
+		list := strings.Join(items, ", ")
+		if c.askWidth > 0 {
+			list = table.FitList(items, c.askWidth-len(listIndent))
+		}
+
+		lines = append(lines, listIndent+list)
+	}
+
+	if warning != "" {
+		lines = append(lines, warning)
+	}
+
+	sep := " "
+	if len(p.List) > 0 {
+		sep = "\n"
+	}
+
+	_, _ = io.WriteString(c.stderr, strings.Join(append(lines, "[y/N] "), sep))
 
 	reply, _ := c.answers.ReadString('\n')
 	if r := strings.ToLower(strings.TrimSpace(reply)); r == "y" || r == "yes" {
@@ -469,17 +502,127 @@ func (c Ctx) confirm(p Prompt, before string) (bool, error) {
 	return true, errAborted
 }
 
-// changed is a write the server refused because its target changed after
-// the CLI read it.
-func changed(err error) bool {
-	p, ok := errors.AsType[*ProblemError](err)
+// listIndent starts the line of a Prompt's List.
+const listIndent = "  "
 
-	return ok && p.Problem.Code == clientv0.ProblemCodePreconditionFailed
+// runGuarded runs s on in: the question, when s has one, and Run, with the
+// guard the builder stores for the write. A write the server refuses
+// because that guard no longer holds runs once more on what is new: the
+// target read again, when its type has a read, and the question made
+// again, which may ask the server itself, after a line that says why the
+// same question comes twice. A second refusal is the error. A refusal of
+// anything else, such as a guard a command sent itself, is the error at
+// once: what the command sends was not made from what the builder reads
+// again, so a second try could overwrite what the guard kept. in is what
+// the last try ran on.
+func runGuarded[In, Out any](c Ctx, s Spec[In, Out], in In) (In, Out, error) {
+	asked := false
+
+	attempt := func(in In, again string) (Out, *revision, error) {
+		var zero Out
+
+		g := guardOf(in)
+		if c.API != nil {
+			c.API.guard.Store(g)
+		}
+
+		if s.Confirm != nil {
+			p, err := s.Confirm(c, in)
+			if err != nil {
+				return zero, nil, err
+			}
+
+			if p.Guard != "" || s.Changed != "" {
+				g, err = c.handOver(in, p.Guard, s.Changed)
+				if err != nil {
+					return zero, nil, err
+				}
+
+				c.API.guard.Store(g)
+			}
+
+			if !asked {
+				again = ""
+			}
+
+			asked, err = c.confirm(p, again)
+			if err != nil {
+				return zero, nil, err
+			}
+		}
+
+		out, err := s.Run(c, in)
+
+		return out, g, err
+	}
+
+	out, g, err := attempt(in, "")
+	if !guardRefused(err, g, s.Changed) {
+		return in, out, err
+	}
+
+	again, _, err := reread(c, in)
+	if err != nil {
+		return in, out, err
+	}
+
+	out, g, err = attempt(again, c.named(in)+" changed while you decided.")
+	if p, ok := errors.AsType[*ProblemError](err); ok && guardRefused(err, g, s.Changed) {
+		p.changed = true
+	}
+
+	return again, out, err
+}
+
+// handOver is the guard of the write on the target of in after a question
+// that handed over token. A guard is never dropped: a token with no target
+// to send it on, or with no Changed to name its refusal, is a fault of the
+// spec, and a question of a spec with Changed that hands over none is a
+// fault of the server, such as a dry run that answered no token. Either
+// way the write is not sent.
+func (c Ctx) handOver(in any, token string, changed clientv0.ProblemCode) (*revision, error) {
+	o, ok := c.object(in)
+
+	switch {
+	case token == "" && c.API != nil:
+		return nil, fmt.Errorf("the server at %s sent no token to guard the change with, so nothing was changed. This is a fault of the server.", c.API.target) //nolint:err113,staticcheck // a sentence of the CLI
+	case token == "":
+		return nil, errNoToken
+	case changed == "":
+		return nil, errGuardNoChanged
+	case !ok || c.API == nil:
+		return nil, errGuardNoTarget
+	}
+
+	return &revision{id: o.Id, rev: token, token: true}, nil
+}
+
+var (
+	errNoToken        = errors.New("the question handed over no guard, so nothing was changed")
+	errGuardNoChanged = errors.New("a question handed over a guard, and the spec names no Changed: its refusal would not be asked again")
+	errGuardNoTarget  = errors.New("a question handed over a guard, and the command has no target on the server to send it with")
+)
+
+// guardRefused is a write the server refused because the guard g, which the
+// builder stored for it, no longer holds: precondition_failed for a
+// revision, the spec's Changed for a token. No guard, no refusal of it.
+func guardRefused(err error, g *revision, changed clientv0.ProblemCode) bool {
+	p, ok := errors.AsType[*ProblemError](err)
+	if !ok || g == nil {
+		return false
+	}
+
+	if g.token {
+		return p.Problem.Code == changed
+	}
+
+	return p.Problem.Code == clientv0.ProblemCodePreconditionFailed
 }
 
 // reread is in with its target read again by its ID: what a write runs on
-// after the server refused it because the target changed. ok is false
-// when the target's type has no read.
+// after the server refused it because the target changed. ok is false when
+// the target's type has no read: in stays as it is, and the question, made
+// again, is what is new.
 func reread[In any](c Ctx, in In) (In, bool, error) {
 	e, ok := target(reflect.ValueOf(&in).Elem())
 	if !ok {

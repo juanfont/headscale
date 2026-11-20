@@ -51,6 +51,9 @@ type leaf struct {
 	set bool
 	// force is a command that can ask, and so takes --force.
 	force bool
+	// changed is a command whose question hands a guard to the write:
+	// Spec.Changed.
+	changed bool
 	// secret is a command that prints a secret once: Spec.Secret.
 	secret bool
 	// end is the delete of a credential, made by NewEnd.
@@ -107,7 +110,14 @@ var (
 	errBlocks    = errors.New("blocks and no Columns: a block follows the lines of a sheet")
 	errNoAsk     = errors.New("a delete with no Confirm: every delete asks first")
 	errNoRead    = errors.New("has a revision and no read: a write the server refuses because the target changed would not run again")
-	errNoSay     = errors.New("is cut to the width of the terminal, and Long does not say so")
+	// errNoQuestion: a refusal that a question answers again needs the
+	// question, which makes what the write sends anew.
+	errNoQuestion = errors.New("a refusal named in Changed and no Confirm: the write would run again on what it sent before")
+	// errNoGuardTarget, errGuardMix: the token of a question is kept for
+	// the target, in the one place its revision would be.
+	errNoGuardTarget = errors.New("a refusal named in Changed and no target that is an entity: the guard of the question would reach no write")
+	errGuardMix      = errors.New("a refusal named in Changed on a target with a revision: the write takes one guard, and the token would drop the revision")
+	errNoSay         = errors.New("is cut to the width of the terminal, and Long does not say so")
 )
 
 // specError is a spec that is wrong, named by its path.
@@ -145,6 +155,7 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	l.check = func() error { return errors.Join(checkSpec(s), ruleErr) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
+	l.changed = s.Changed != ""
 	l.secret = s.Secret != nil
 	l.hint = s.Hint
 	l.emptyList = s.EmptyList
@@ -167,53 +178,7 @@ func New[In, Out any](s Spec[In, Out]) Node {
 		return cmdline.Command[In]{Name: s.Name, Aliases: s.Aliases, Help: s.Short, Flags: flags, Run: func(ctx context.Context, in In) error {
 			c := ctxOf(ctx)
 
-			// The prompt is about the target as it is, so it is asked again
-			// when the target changed and is read again, after a line that
-			// says why the same question comes twice.
-			asked := false
-
-			attempt := func(in In, again string) (Out, error) {
-				if c.API != nil {
-					c.API.guard.Store(guardOf(in))
-				}
-
-				if s.Confirm != nil {
-					p, err := s.Confirm(c, in)
-					if err == nil {
-						if !asked {
-							again = ""
-						}
-
-						asked, err = c.confirm(p, again)
-					}
-
-					if err != nil {
-						var zero Out
-
-						return zero, err
-					}
-				}
-
-				return s.Run(c, in)
-			}
-
-			out, err := attempt(in, "")
-
-			// A write refused because its target changed runs once more on
-			// the target read again; a second refusal is the error.
-			if changed(err) {
-				again, ok, rerr := reread(c, in)
-
-				switch {
-				case rerr != nil:
-					err = rerr
-				case ok:
-					was := c.named(in)
-					in = again
-
-					out, err = attempt(in, was+" changed while the question was open.")
-				}
-			}
+			in, out, err := runGuarded(c, s, in)
 
 			notRead := errors.Is(err, ErrNotRead)
 
@@ -251,6 +216,24 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	return l
 }
 
+// checkTarget reports what the target of n lacks for the guard of its
+// writes.
+func checkTarget(n *leaf, ents map[reflect.Type]entity) error {
+	e, known := ents[n.target]
+	revised := n.target != nil && hasJSON(n.target, "revision")
+
+	switch {
+	case revised && (!known || e.read == nil):
+		return fmt.Errorf("target %v %w", n.target, errNoRead)
+	case n.changed && !known:
+		return errNoGuardTarget
+	case n.changed && revised:
+		return errGuardMix
+	}
+
+	return nil
+}
+
 // checkSpec reports what is wrong with a spec, for the tree to name.
 func checkSpec[In, Out any](s Spec[In, Out]) error {
 	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
@@ -272,6 +255,10 @@ func checkSpec[In, Out any](s Spec[In, Out]) error {
 
 	if s.Blocks != nil && s.Columns == nil {
 		errs = append(errs, errBlocks)
+	}
+
+	if s.Changed != "" && s.Confirm == nil {
+		errs = append(errs, errNoQuestion)
 	}
 
 	return errors.Join(append(errs, s.Columns.Check(), s.Blocks.Check())...)
@@ -527,8 +514,9 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 				bad("%v", errNotEnd)
 			}
 
-			if e, ok := t.entities[n.target]; n.target != nil && hasJSON(n.target, "revision") && (!ok || e.read == nil) {
-				bad("target %v %v", n.target, errNoRead)
+			err = checkTarget(n, t.entities)
+			if err != nil {
+				bad("%v", err)
 			}
 
 			t.leaves[at] = n

@@ -133,7 +133,7 @@ func onScreen[R any](w io.Writer, rows []R, shown Columns[R], now time.Time, scr
 
 			for _, line := range grid {
 				if line[i].cut {
-					shown = max(shown, width(fitList(line[i].entries, widths[i])))
+					shown = max(shown, width(FitList(line[i].entries, widths[i])))
 				} else {
 					shown = max(shown, min(line[i].natural(), widths[i]))
 				}
@@ -157,7 +157,7 @@ func onScreen[R any](w io.Writer, rows []R, shown Columns[R], now time.Time, scr
 			for i, cell := range line {
 				switch {
 				case cell.cut && at == 0:
-					texts[i] = fitList(cell.entries, widths[i])
+					texts[i] = FitList(cell.entries, widths[i])
 				case at < len(cell.lines):
 					texts[i] = fit(cell.lines[at], widths[i])
 				}
@@ -283,9 +283,9 @@ func fit(text string, n int) string {
 	return b.String() + "…"
 }
 
-// fitList is as many entries as fit in n cells, then "… (+K)" for the K
+// FitList is as many entries as fit in n cells, then "… (+K)" for the K
 // left out.
-func fitList(entries []string, n int) string {
+func FitList(entries []string, n int) string {
 	for k := len(entries); k >= 0; k-- {
 		s := strings.Join(entries[:k], ", ")
 

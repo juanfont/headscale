@@ -179,6 +179,7 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		Terminal:       tc.terminal && !tc.piped,
 		StdoutTerminal: tc.terminal,
 		Width:          tc.width,
+		StderrWidth:    tc.width,
 		PageSize:       pageSize,
 		Now:            func() time.Time { return f.now },
 		Version:        build,
