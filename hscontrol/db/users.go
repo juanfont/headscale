@@ -218,6 +218,21 @@ func (hsdb *HSDatabase) ListUsers(filter *types.User) ([]types.User, error) {
 	return ListUsers(hsdb.DB, filter)
 }
 
+// GetUsersByIDs reads the users with ids in one query.
+func (hsdb *HSDatabase) GetUsersByIDs(ids []types.UserID) ([]types.User, error) {
+	users := []types.User{}
+	if len(ids) == 0 {
+		return users, nil
+	}
+
+	err := hsdb.DB.Where("id IN ?", ids).Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
 // ListUsers gets all the existing users, optionally filtered by a non-nil filter.
 func ListUsers(tx *gorm.DB, filter *types.User) ([]types.User, error) {
 	users := []types.User{}

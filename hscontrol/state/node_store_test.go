@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"weak"
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
@@ -30,7 +31,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 	tests := []struct {
 		name      string
 		setupFunc func() (map[types.NodeID]types.Node, PeersFunc)
-		validate  func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot)
+		validate  func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot)
 	}{
 		{
 			name: "empty nodes",
@@ -42,7 +43,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, peersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Empty(t, snapshot.nodesByID)
 				assert.Empty(t, snapshot.allNodes)
 				assert.Empty(t, snapshot.peersByNode)
@@ -58,7 +59,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, allowAllPeersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 1)
 				assert.Len(t, snapshot.allNodes, 1)
 				assert.Len(t, snapshot.peersByNode, 1)
@@ -81,7 +82,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, allowAllPeersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 2)
 				assert.Len(t, snapshot.allNodes, 2)
 				assert.Len(t, snapshot.peersByNode, 2)
@@ -106,7 +107,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, allowAllPeersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 3)
 				assert.Len(t, snapshot.allNodes, 3)
 				assert.Len(t, snapshot.peersByNode, 3)
@@ -135,7 +136,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, peersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 4)
 				assert.Len(t, snapshot.allNodes, 4)
 				assert.Len(t, snapshot.peersByNode, 4)
@@ -1541,7 +1542,7 @@ func BenchmarkSnapshotPayloadDense(b *testing.B) {
 		b.ResetTimer()
 
 		for b.Loop() {
-			next := snapshotFromNodes(nodes, allowAllPeersFunc, &previous, true, true)
+			next := snapshotFromNodes(nodes, allowAllPeersFunc, previous, true, true)
 			previous = next
 		}
 	})
@@ -2923,4 +2924,87 @@ func TestWriteIfLabel(t *testing.T) {
 	assert.Equal(t, "update_if", writeIfLabel(work{op: updateIf, revision: "r"}))
 	assert.Equal(t, "delete_if", writeIfLabel(work{op: beginDelIf}))
 	assert.Equal(t, "delete_cancel", writeIfLabel(work{op: cancelDel}), "a failed delete counts once under delete_if")
+}
+
+// TestSnapshotReadsOneMoment: a snapshot keeps its nodes and primaries
+// while later writes publish new ones, and lists its nodes in ID order.
+func TestSnapshotReadsOneMoment(t *testing.T) {
+	route := netip.MustParsePrefix("10.0.0.0/8")
+
+	nodes := make(types.Nodes, 0, 3)
+
+	for _, id := range []types.NodeID{3, 1, 2} {
+		n := createTestNode(id, 1, "alice", "n"+id.String())
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+		n.ApprovedRoutes = []netip.Prefix{route}
+		n.IsOnline = new(true)
+		nodes = append(nodes, &n)
+	}
+
+	store := NewNodeStore(nodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	idx := store.Index()
+	snap := idx.Snapshot
+
+	ids := func(nvs []types.NodeView) []types.NodeID {
+		out := make([]types.NodeID, 0, len(nvs))
+		for _, nv := range nvs {
+			out = append(out, nv.ID())
+		}
+
+		return out
+	}
+
+	require.Equal(t, []types.NodeID{1, 2, 3}, ids(idx.NodesAfter(0)))
+	require.Equal(t, []types.NodeID{2, 3}, ids(idx.NodesAfter(1)))
+	require.Empty(t, idx.NodesAfter(3))
+	require.Same(t, idx, store.Index(), "one snapshot, one index")
+
+	primary, ok := store.PrimaryRouteFor(route)
+	require.True(t, ok)
+	require.Equal(t, []netip.Prefix{route}, snap.PrimaryRoutesForNode(primary))
+
+	store.UpdateNode(primary, func(n *types.Node) { n.IsOnline = new(false) })
+	store.UpdateNode(1, func(n *types.Node) { n.GivenName = "renamed" })
+
+	require.NotEqual(t, primary, func() types.NodeID { id, _ := store.PrimaryRouteFor(route); return id }(), "the primary moved")
+	require.Equal(t, []netip.Prefix{route}, snap.PrimaryRoutesForNode(primary), "the old snapshot keeps its primary")
+
+	old, ok := snap.Node(1)
+	require.True(t, ok)
+	require.Equal(t, "n1", old.GivenName())
+
+	require.NotSame(t, idx, store.Index(), "a new snapshot, a new index")
+	require.Equal(t, "n1", idx.NodesAfter(0)[0].GivenName(), "the old index keeps its moment")
+
+	store.UpdateNode(2, func(n *types.Node) { n.Tags = []string{"tag:b", "tag:a"} })
+	store.UpdateNode(3, func(n *types.Node) { n.Tags = []string{"tag:a"} })
+
+	idx = store.Index()
+	require.Equal(t, []string{"tag:a", "tag:b"}, idx.Tags())
+	require.Equal(t, []types.NodeID{2, 3}, ids(idx.NodesWithTag("tag:a")))
+}
+
+// TestIndexDoesNotPinOldSnapshot: once a list's snapshot is replaced and
+// nobody reads it, it and its index can be collected; the store keeps no
+// index of a snapshot that is not current.
+func TestIndexDoesNotPinOldSnapshot(t *testing.T) {
+	a := createTestNode(1, 1, "alice", "a")
+	store := NewNodeStore(types.Nodes{&a}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	old := weak.Make(store.Index().Snapshot)
+
+	store.UpdateNode(1, func(n *types.Node) { n.GivenName = "renamed" })
+
+	require.Eventually(t, func() bool {
+		runtime.GC()
+
+		return old.Value() == nil
+	}, 5*time.Second, 10*time.Millisecond)
 }

@@ -48,6 +48,9 @@ type PolicyManager interface {
 	// TagExists reports whether the given tag is defined in the policy.
 	TagExists(tag string) bool
 
+	// PolicyTags returns every tag in tagOwners, sorted.
+	PolicyTags() []string
+
 	// TagOwnedByTags reports whether a credential holding ownerTags may apply
 	// tag: true if tag is one of ownerTags, or tag's tagOwners list one of
 	// them (one hop). Authorises the tags an OAuth access token may set on the

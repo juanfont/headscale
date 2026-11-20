@@ -2693,6 +2693,39 @@ func (s *State) TagsOwnedByTags(ownerTags []string) []string {
 	return s.polMan.TagsOwnedByTags(ownerTags)
 }
 
+// PolicyTags is every tag in the policy's tagOwners, sorted.
+func (s *State) PolicyTags() []string {
+	return s.polMan.PolicyTags()
+}
+
+// NodeSnapshot is the newest NodeStore snapshot, so that a page of nodes and
+// the fields computed for it show one moment.
+func (s *State) NodeSnapshot() *Snapshot {
+	return s.nodeStore.Snapshot()
+}
+
+// NodeIndex is the newest NodeStore snapshot with its nodes in ID order and
+// by tag, for the pages of a list; see [NodeStore.Index].
+func (s *State) NodeIndex() *SnapshotIndex {
+	return s.nodeStore.Index()
+}
+
+// GetUsersByIDs is the users with ids, by ID, read in one query; an ID no
+// user has is missing.
+func (s *State) GetUsersByIDs(ids []types.UserID) (map[types.UserID]types.UserView, error) {
+	users, err := s.db.GetUsersByIDs(ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[types.UserID]types.UserView, len(users))
+	for i := range users {
+		out[types.UserID(users[i].ID)] = users[i].View()
+	}
+
+	return out, nil
+}
+
 // TagExists reports whether tag is defined in the policy's tagOwners. Used to
 // reject OAuth clients and auth keys carrying tags that no policy authorises,
 // matching SetNodeTags.

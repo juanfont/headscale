@@ -157,7 +157,7 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 		stopped:      make(chan struct{}),
 		deleting:     map[types.NodeID]struct{}{},
 	}
-	store.data.Store(&snap)
+	store.data.Store(snap)
 
 	// Initialize node count gauge
 	nodeStoreNodesCount.Set(float64(len(nodes)))
@@ -232,6 +232,10 @@ type Snapshot struct {
 	// router is available.
 	routes         map[netip.Prefix]types.NodeID
 	isPrimaryRoute map[types.NodeID]bool
+
+	// index is built by the first list of this snapshot; see
+	// [NodeStore.Index]. It lives and dies with the snapshot.
+	index atomic.Pointer[SnapshotIndex]
 }
 
 // PeersFunc is a function that takes a list of nodes and returns a map
@@ -802,7 +806,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 	}
 
 	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev, !relationChanged, !electionChanged)
-	s.data.Store(&newSnap)
+	s.data.Store(newSnap)
 
 	// Update node count gauge
 	nodeStoreNodesCount.Set(float64(len(nodes)))
@@ -969,7 +973,7 @@ func snapshotFromNodes(
 	peersFunc PeersFunc,
 	prev *Snapshot,
 	reusePeers, reuseRoutes bool,
-) Snapshot {
+) *Snapshot {
 	timer := prometheus.NewTimer(nodeStoreSnapshotBuildDuration)
 	defer timer.ObserveDuration()
 
@@ -1011,7 +1015,7 @@ func snapshotFromNodes(
 		peersTimer.ObserveDuration()
 	}
 
-	newSnap := Snapshot{
+	newSnap := &Snapshot{
 		nodesByID:         nodes,
 		nodeViewsByID:     nodeViewsByID,
 		allNodes:          allNodes,
@@ -1306,7 +1310,80 @@ func (s *NodeStore) PrimaryRouteFor(prefix netip.Prefix) (types.NodeID, bool) {
 // PrimaryRoutesForNode returns the prefixes for which id is the current
 // primary advertiser, sorted so an unchanged node renders identically.
 func (s *NodeStore) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
+	return s.data.Load().PrimaryRoutesForNode(id)
+}
+
+// Snapshot is the newest snapshot, for a read that must show one moment.
+// It is immutable; later writes publish a new one.
+func (s *NodeStore) Snapshot() *Snapshot {
+	return s.data.Load()
+}
+
+// SnapshotIndex is a snapshot with its nodes in ID order and by tag. The
+// first list of a snapshot builds it and later lists of that snapshot share
+// it, so neither the snapshot build nor each page of a walk pays for it. It
+// is read-only, its slices too.
+type SnapshotIndex struct {
+	*Snapshot
+
+	byID  []types.NodeView
+	byTag map[string][]types.NodeView
+	tags  []string
+}
+
+// Index is the newest snapshot with its index.
+func (s *NodeStore) Index() *SnapshotIndex {
 	snap := s.data.Load()
+	if idx := snap.index.Load(); idx != nil {
+		return idx
+	}
+
+	idx := &SnapshotIndex{Snapshot: snap, byID: slices.Clone(snap.allNodes), byTag: map[string][]types.NodeView{}}
+	slices.SortFunc(idx.byID, func(a, b types.NodeView) int { return cmp.Compare(a.ID(), b.ID()) })
+
+	for _, nv := range idx.byID {
+		for _, t := range nv.Tags().All() {
+			idx.byTag[t] = append(idx.byTag[t], nv)
+		}
+	}
+
+	idx.tags = slices.Sorted(maps.Keys(idx.byTag))
+
+	// Two lists that race build it twice; either result is right.
+	snap.index.Store(idx)
+
+	return idx
+}
+
+// NodesAfter is the nodes with an ID above after, in ID order.
+func (idx *SnapshotIndex) NodesAfter(after types.NodeID) []types.NodeView {
+	i, _ := slices.BinarySearchFunc(idx.byID, after+1, func(nv types.NodeView, id types.NodeID) int {
+		return cmp.Compare(nv.ID(), id)
+	})
+
+	return idx.byID[i:]
+}
+
+// NodesWithTag is the nodes that have tag, in ID order.
+func (idx *SnapshotIndex) NodesWithTag(tag string) []types.NodeView {
+	return idx.byTag[tag]
+}
+
+// Tags is every tag a node of the snapshot has, sorted.
+func (idx *SnapshotIndex) Tags() []string {
+	return idx.tags
+}
+
+// Node is the node with id in the snapshot.
+func (snap *Snapshot) Node(id types.NodeID) (types.NodeView, bool) {
+	nv, ok := snap.nodeViewsByID[id]
+
+	return nv, ok
+}
+
+// PrimaryRoutesForNode is [NodeStore.PrimaryRoutesForNode] in this
+// snapshot.
+func (snap *Snapshot) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
 	if !snap.isPrimaryRoute[id] {
 		return nil
 	}
