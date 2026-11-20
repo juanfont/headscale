@@ -39,6 +39,8 @@ const (
 	CodeNameTaken            Code = "name_taken"
 	CodeEmailTaken           Code = "email_taken"
 	CodeUserManagedByOIDC    Code = "user_managed_by_oidc"
+	CodeUserHasNodes         Code = "user_has_nodes"
+	CodeUserChanged          Code = "user_changed"
 	CodeOwnerConflict        Code = "owner_conflict"
 	CodeTagsRequired         Code = "tags_required"
 	CodeTagsNotPermitted     Code = "tags_not_permitted"
@@ -113,6 +115,15 @@ var codes = map[Code]codeInfo{
 	CodeUserManagedByOIDC: {
 		http.StatusConflict, "The identity provider owns this user",
 		"A change to a user from OIDC, whose fields the identity provider owns. `object` is the user.", nil,
+	},
+	CodeUserHasNodes: {
+		http.StatusConflict, "The user still owns nodes",
+		"A delete of a user that owns nodes, without `withNodes=true`. Nothing is removed. `object` is the user.",
+		[]string{"`nodes`: every node the user owns, `{id, name}`, in ID order"},
+	},
+	CodeUserChanged: {
+		http.StatusConflict, "The user changed",
+		"A delete of a user with `expect`, when a node or a key of the user came or went since the dry run. Nothing is removed; run the dry run again. `object` is the user.", nil,
 	},
 	CodeOwnerConflict: {
 		http.StatusUnprocessableEntity, "The owner is not one user or tags",

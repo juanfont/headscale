@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/require"
@@ -597,5 +600,326 @@ func TestUpdateUserTokenRule(t *testing.T) {
 	t.Run("socket", func(t *testing.T) {
 		rec := patch(context.WithValue(t.Context(), localTrustKey, struct{}{}), bob, `{"name": "alice", "email": "bob@example.com"}`)
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	})
+}
+
+// userDeleteAPI is authKeysAPI, with what deletes of users need.
+func userDeleteAPI(t *testing.T) (Backend, humatest.TestAPI, string) {
+	t.Helper()
+
+	b, api, auth, _, _ := authKeysAPI(t)
+
+	return b, api, auth
+}
+
+// owner is a user with what a delete reads: a node from each of its two
+// auth keys (one revoked after), an API key, a tagged key and an OAuth
+// client it made. It returns the user and its nodes, in ID order.
+func owner(t *testing.T, b Backend, name string) (*types.User, []NodeReference) {
+	t.Helper()
+
+	u := b.State.CreateUserForTest(name)
+	uid := types.UserID(u.ID)
+
+	for i := range 2 {
+		k, err := b.State.CreatePreAuthKey(&uid, false, false, nil, nil)
+		require.NoError(t, err)
+		require.NoError(t, join(t, b, k.Key))
+
+		if i == 1 {
+			require.NoError(t, b.State.RevokePreAuthKey(k.ID))
+		}
+	}
+
+	_, _, err := b.State.CreateAPIKeyFrom(db.NewAPIKey{Owner: &uid})
+	require.NoError(t, err)
+
+	_, _, err = b.State.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, CreatedBy: &uid}, func(state.TagPolicy) error { return nil })
+	require.NoError(t, err)
+
+	_, _, err = b.State.CreateOAuthClient([]string{"auth_keys"}, []string{"tag:ci"}, "", &u.ID)
+	require.NoError(t, err)
+
+	return u, b.user(u.View()).Nodes
+}
+
+// refsJSON is nodes as an answer has them.
+func refsJSON(t *testing.T, nodes []NodeReference) string {
+	t.Helper()
+
+	j, err := json.Marshal(nodes)
+	require.NoError(t, err)
+
+	return string(j)
+}
+
+func userPath(u *types.User, query string) string {
+	return Prefix + "/users/" + strconv.FormatUint(uint64(u.ID), 10) + query
+}
+
+func decodeDeletedUser(t *testing.T, rec *httptest.ResponseRecorder) DeletedUser {
+	t.Helper()
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var d DeletedUser
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &d))
+
+	return d
+}
+
+// sameAnswer holds that a dry run answered exactly what the real call did.
+func sameAnswer(t *testing.T, dry, done *httptest.ResponseRecorder) {
+	t.Helper()
+
+	require.Equal(t, dry.Code, done.Code)
+	requireAnswer(t, dry.Body.String(), done.Body.Bytes())
+}
+
+func TestDeleteUser(t *testing.T) {
+	b, api, auth := userDeleteAPI(t)
+
+	t.Run("a user with nothing", func(t *testing.T) {
+		u := b.State.CreateUserForTest("nothing")
+
+		dry := api.Delete(userPath(u, "?dryRun=true"), auth)
+		d := decodeDeletedUser(t, dry)
+		require.Regexp(t, `^[0-9a-f]{16}$`, d.Expect)
+		requireAnswer(t, `{"nodes": [], "authKeyCount": 0, "apiKeyCount": 0, "expect": "`+d.Expect+`"}`, dry.Body.Bytes())
+
+		sameAnswer(t, dry, api.Delete(userPath(u, ""), auth))
+
+		decodeProblem(t, api.Get(userPath(u, ""), auth), CodeNotFound)
+
+		again := decodeProblem(t, api.Delete(userPath(u, ""), auth), CodeNotFound)
+		require.Equal(t, &ProblemObject{Kind: "user", ID: strconv.FormatUint(uint64(u.ID), 10)}, again.Object, "a repeated delete")
+	})
+
+	t.Run("nodes without withNodes", func(t *testing.T) {
+		u, nodes := owner(t, b, "keeper")
+
+		for _, query := range []string{"", "?dryRun=true"} {
+			p := decodeProblem(t, api.Delete(userPath(u, query), auth), CodeUserHasNodes)
+			require.Equal(t, &ProblemObject{Kind: "user", ID: strconv.FormatUint(uint64(u.ID), 10), Name: "keeper"}, p.Object)
+			got, err := json.Marshal(p.Details["nodes"])
+			require.NoError(t, err)
+			requireAnswer(t, refsJSON(t, nodes), got)
+			require.Len(t, nodes, 2, query)
+		}
+
+		require.Equal(t, 2, b.State.ListNodesByUser(types.UserID(u.ID)).Len(), "nothing is removed")
+	})
+
+	t.Run("withNodes and keys of each kind", func(t *testing.T) {
+		u, nodes := owner(t, b, "owner")
+		uid := types.UserID(u.ID)
+
+		keys, err := b.State.ListPreAuthKeys()
+		require.NoError(t, err)
+
+		taggedBefore := len(slices.DeleteFunc(keys, func(k types.PreAuthKey) bool { return !k.IsTagged() }))
+
+		clients, err := b.State.ListOAuthClients()
+		require.NoError(t, err)
+
+		clientsBefore := len(clients)
+
+		dry := api.Delete(userPath(u, "?withNodes=true&dryRun=true"), auth)
+		d := decodeDeletedUser(t, dry)
+		requireAnswer(t, `{
+			"nodes": `+refsJSON(t, nodes)+`,
+			"authKeyCount": 2, "apiKeyCount": 1, "expect": "`+d.Expect+`"
+		}`, dry.Body.Bytes())
+		require.Equal(t, 2, b.State.ListNodesByUser(uid).Len(), "a dry run removes nothing")
+
+		sameAnswer(t, dry, api.Delete(userPath(u, "?withNodes=true&expect="+d.Expect), auth))
+
+		require.Len(t, nodes, 2)
+
+		for _, n := range nodes {
+			decodeProblem(t, api.Get(Prefix+"/nodes/"+n.ID, auth), CodeNotFound)
+		}
+
+		keys, err = b.State.ListPreAuthKeys()
+		require.NoError(t, err)
+
+		var tagged int
+
+		for _, k := range keys {
+			names := k.UserID != nil && *k.UserID == u.ID || k.CreatedByUserID != nil && *k.CreatedByUserID == u.ID
+			require.False(t, names, "no key names the user")
+
+			if k.IsTagged() {
+				tagged++
+			}
+		}
+
+		require.Equal(t, taggedBefore, tagged, "the tagged key it made stays")
+
+		apiKeys, err := b.State.ListAPIKeys()
+		require.NoError(t, err)
+
+		for _, k := range apiKeys {
+			require.True(t, k.UserID == nil || *k.UserID != u.ID, "its API key is gone")
+		}
+
+		clients, err = b.State.ListOAuthClients()
+		require.NoError(t, err)
+		require.Len(t, clients, clientsBefore, "the client it made stays")
+	})
+
+	t.Run("expect", func(t *testing.T) {
+		// Each change made after a dry run, and whether it changes what the
+		// delete would remove.
+		changes := []struct {
+			name    string
+			change  func(t *testing.T, u *types.User)
+			changes bool
+		}{
+			{"a node registered", func(t *testing.T, u *types.User) {
+				t.Helper()
+
+				// The key goes again, so only the node is new.
+				k, err := b.State.CreatePreAuthKey(u.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+				require.NoError(t, join(t, b, k.Key))
+				require.NoError(t, b.State.DeletePreAuthKey(k.ID))
+			}, true},
+			{"a node deleted", func(t *testing.T, u *types.User) {
+				t.Helper()
+
+				_, err := b.State.DeleteNode(b.State.ListNodesByUser(types.UserID(u.ID)).At(0))
+				require.NoError(t, err)
+			}, true},
+			{"a node tagged", func(t *testing.T, u *types.User) {
+				t.Helper()
+
+				_, _, err := b.State.SetNodeTags(b.State.ListNodesByUser(types.UserID(u.ID)).At(0).ID(), []string{"tag:ci"})
+				require.NoError(t, err)
+			}, true},
+			{"an auth key made", func(t *testing.T, u *types.User) {
+				t.Helper()
+
+				_, err := b.State.CreatePreAuthKey(u.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+			}, true},
+			{"an API key made", func(t *testing.T, u *types.User) {
+				t.Helper()
+
+				_, _, err := b.State.CreateAPIKeyFrom(db.NewAPIKey{Owner: u.TypedID()})
+				require.NoError(t, err)
+			}, true},
+			{"a key revoked", func(t *testing.T, u *types.User) {
+				t.Helper()
+
+				keys, err := b.State.ListPreAuthKeys()
+				require.NoError(t, err)
+
+				for _, k := range keys {
+					if k.UserID != nil && *k.UserID == u.ID && k.Revoked == nil {
+						require.NoError(t, b.State.RevokePreAuthKey(k.ID))
+					}
+				}
+			}, false},
+			{"a node renamed", func(t *testing.T, u *types.User) {
+				t.Helper()
+
+				_, _, err := b.State.RenameNode(b.State.ListNodesByUser(types.UserID(u.ID)).At(0).ID(), "renamed")
+				require.NoError(t, err)
+			}, false},
+		}
+
+		for i, c := range changes {
+			t.Run(c.name, func(t *testing.T) {
+				u, _ := owner(t, b, "expect"+strconv.Itoa(i))
+
+				before := decodeDeletedUser(t, api.Delete(userPath(u, "?withNodes=true&dryRun=true"), auth))
+
+				c.change(t, u)
+
+				after := decodeDeletedUser(t, api.Delete(userPath(u, "?withNodes=true&dryRun=true"), auth))
+				require.Equal(t, c.changes, before.Expect != after.Expect, "the token")
+
+				rec := api.Delete(userPath(u, "?withNodes=true&expect="+before.Expect), auth)
+				if !c.changes {
+					d := decodeDeletedUser(t, rec)
+					require.Equal(t, before.Expect, d.Expect)
+
+					return
+				}
+
+				p := decodeProblem(t, rec, CodeUserChanged)
+				require.Equal(t, "user", p.Object.Kind)
+
+				// Nothing is removed: the dry run still answers as before the
+				// refusal, and the token it gives now is taken.
+				again := decodeDeletedUser(t, api.Delete(userPath(u, "?withNodes=true&dryRun=true"), auth))
+				require.Equal(t, after, again)
+
+				decodeDeletedUser(t, api.Delete(userPath(u, "?withNodes=true&expect="+after.Expect), auth))
+			})
+		}
+	})
+
+	t.Run("a dry run checks expect too", func(t *testing.T) {
+		u := b.State.CreateUserForTest("dry-expect")
+
+		decodeProblem(t, api.Delete(userPath(u, "?dryRun=true&expect=0000000000000000"), auth), CodeUserChanged)
+		decodeProblem(t, api.Delete(userPath(u, "?expect=0000000000000000"), auth), CodeUserChanged)
+
+		_, err := b.State.GetUserByID(types.UserID(u.ID))
+		require.NoError(t, err, "nothing is removed")
+	})
+
+	t.Run("no expect removes what is there", func(t *testing.T) {
+		u, nodes := owner(t, b, "noexpect")
+
+		d := decodeDeletedUser(t, api.Delete(userPath(u, "?withNodes=true"), auth))
+		require.Len(t, d.Nodes, len(nodes))
+	})
+
+	t.Run("expect is sixteen hex digits", func(t *testing.T) {
+		u := b.State.CreateUserForTest("badexpect")
+
+		for _, bad := range []string{"4be19d", "ZZZZZZZZZZZZZZZZ", "0123456789ABCDEF"} {
+			p := decodeProblem(t, api.Delete(userPath(u, "?expect="+bad), auth), CodeInvalidField)
+			require.Equal(t, "query.expect", p.Errors[0].Location, bad)
+		}
+	})
+
+	t.Run("a token", func(t *testing.T) {
+		users := keysToken(t, b, []string{"tag:ci"}, "users")
+		both := keysToken(t, b, []string{"tag:ci"}, "users", "devices:core")
+
+		// Before anything is read: a user that does not exist is refused too.
+		for _, path := range []string{Prefix + "/users/999999?withNodes=true", Prefix + "/users/nobody?withNodes=true"} {
+			p := decodeProblem(t, api.Delete(path, users), CodeForbidden)
+			require.Equal(t, []any{"devices:core"}, p.Details["scopes"])
+			require.Nil(t, p.Details["rule"])
+		}
+
+		empty := b.State.CreateUserForTest("token-empty")
+		decodeDeletedUser(t, api.Delete(userPath(empty, ""), users))
+
+		u, nodes := owner(t, b, "token-owner")
+		decodeProblem(t, api.Delete(userPath(u, "?withNodes=true"), users), CodeForbidden)
+
+		d := decodeDeletedUser(t, api.Delete(userPath(u, "?withNodes=true"), both))
+		require.Len(t, d.Nodes, len(nodes))
+
+		p := decodeProblem(t, api.Delete(userPath(empty, "?withNodes=true"), keysToken(t, b, nil, "devices:core")), CodeForbidden)
+		require.Equal(t, []any{"users"}, p.Details["scopes"])
+
+		// Every scope the token lacks, before the query is read.
+		p = decodeProblem(t, api.Delete(userPath(empty, "?withNodes=true&expect=bad"), keysToken(t, b, []string{"tag:ci"}, "auth_keys")), CodeForbidden)
+		require.Equal(t, []any{"users", "devices:core"}, p.Details["scopes"])
+
+		p = decodeProblem(t, api.Delete(userPath(empty, "?withNodes=true&expect=bad"), users), CodeForbidden)
+		require.Equal(t, []any{"devices:core"}, p.Details["scopes"])
+
+		for _, v := range []string{"1", "TRUE", "t", "yes"} {
+			p = decodeProblem(t, api.Delete(userPath(empty, "?withNodes="+v), both), CodeInvalidField)
+			require.Equal(t, "query.withNodes", p.Errors[0].Location, v)
+		}
 	})
 }

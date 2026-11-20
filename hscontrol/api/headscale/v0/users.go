@@ -13,6 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/scope"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gorm.io/gorm"
@@ -39,6 +40,15 @@ type User struct {
 type NodeReference struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+// DeletedUser is what a delete of a user removed, or in a dry run would
+// remove: the only delete that answers with a body.
+type DeletedUser struct {
+	Nodes        []NodeReference `doc:"The nodes of the user, in ID order."                                                                    json:"nodes"        nullable:"false"`
+	AuthKeyCount int             `doc:"The auth keys the user owns, revoked and expired ones too; tagged keys it made stay."                   json:"authKeyCount"`
+	APIKeyCount  int             `doc:"The API keys the user owns, revoked and expired ones too."                                              json:"apiKeyCount"`
+	Expect       string          `doc:"Stands for the user and every node and key it owns. Send it as expect to remove only what this showed." json:"expect"`
 }
 
 // UserList is a page of users.
@@ -123,6 +133,13 @@ type (
 	updateUserInput struct {
 		ID   string `doc:"The ID of the user." path:"id"`
 		Body UpdateUserBody
+	}
+
+	deleteUserInput struct {
+		ID        string `doc:"The ID of the user."                                                                                                       path:"id"`
+		WithNodes bool   `doc:"Delete the nodes the user owns too. Needs the scope devices:core as well as users."                                        query:"withNodes"`
+		DryRun    bool   `doc:"Answer what the delete would remove, and remove nothing."                                                                  query:"dryRun"`
+		Expect    string `doc:"The expect of a dry run: refuse with user_changed and remove nothing when a node or a key of the user came or went since." pattern:"^[0-9a-f]{16}$" query:"expect"`
 	}
 
 	userOutput struct{ Body User }
@@ -265,6 +282,57 @@ func registerUsers(api huma.API, b Backend) {
 
 		return &userOutput{Body: b.user(u.View())}, nil
 	})
+
+	register(api, huma.Operation{
+		OperationID: "deleteUser",
+		Method:      http.MethodDelete,
+		Path:        Prefix + "/users/{id}",
+		Summary:     "Delete a user",
+		Description: "Removes the user with the auth keys and API keys it owns, and with withNodes=true its nodes, in one step that cannot be undone: all of it or none of it. " +
+			"Tagged nodes and keys the user made stay. The answer is what was removed; with dryRun=true it is what would be, and nothing is removed. " +
+			"Send the expect of a dry run to remove only what it showed. withNodes=true needs the scope devices:core as well as users (x-parameter-scopes); a token without it is forbidden before the request is read. " +
+			"A step after the delete committed that fails, such as a refresh of the policy, is logged, and the answer is still what was removed.",
+		Tags: []string{"Users"},
+	}, needs(scope.Users).withParamScopes("withNodes", scope.DevicesCore), []answer{
+		userNotFound,
+		onError(db.ErrUserStillHasNodes, CodeUserHasNodes, "The user owns nodes; send withNodes=true to delete them with it."),
+		onError(state.ErrUserChanged, CodeUserChanged, "A node or a key of the user came or went since the dry run; run it again."),
+	}, func(_ context.Context, in *deleteUserInput) (*struct{ Body DeletedUser }, error) {
+		id, err := pathID[types.UserID](in.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		obj := userObject(id, b.userView(id))
+
+		del, changes, err := b.State.DeleteUserIf(id, in.WithNodes, in.DryRun, in.Expect)
+		b.Change(changes...)
+
+		if hn, ok := errors.AsType[*db.UserHasNodesError](err); ok {
+			err = &detailsError{err: err, details: map[string]any{"nodes": nodeReferences(hn.Nodes)}}
+		}
+
+		if err != nil {
+			return nil, about(err, obj)
+		}
+
+		return &struct{ Body DeletedUser }{Body: DeletedUser{
+			Nodes:        nodeReferences(del.Nodes),
+			AuthKeyCount: len(del.AuthKeys),
+			APIKeyCount:  len(del.APIKeys),
+			Expect:       del.Expect,
+		}}, nil
+	})
+}
+
+// nodeReferences names nodes as they are stored, in their order.
+func nodeReferences(nodes types.Nodes) []NodeReference {
+	refs := make([]NodeReference, len(nodes))
+	for i, n := range nodes {
+		refs[i] = NodeReference{ID: strconv.FormatUint(uint64(n.ID), 10), Name: n.GivenName}
+	}
+
+	return refs
 }
 
 // set applies a field of a PATCH body that was sent.
