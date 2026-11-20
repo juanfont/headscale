@@ -34,9 +34,11 @@ type row struct {
 	Inner  *struct {
 		Hint string `json:"hint"`
 	} `json:"inner"`
-	Version  string `json:"clientVersion"`
-	AuthKey  string `json:"authKeyId"`
-	Nodes    []ref  `json:"nodes"`
+	Version  string            `json:"clientVersion"`
+	AuthKey  string            `json:"authKeyId"`
+	Nodes    []ref             `json:"nodes"`
+	Routes   []string          `json:"enabledRoutes"`
+	Attrs    map[string]string `json:"attributes"`
 	Untagged string
 }
 
@@ -94,6 +96,13 @@ func TestCheck(t *testing.T) {
 		{"ahead on no time", Column[row]{Name: "x", Field: "name", Ahead: true}, `column "x" is no time, so it cannot look ahead`},
 		{"a version with no kind", Column[row]{Name: "x", Field: "clientVersion"}, `column "x": field "clientVersion" is named like an ID or a version: say its Kind, which may be text`},
 		{"an ID with no kind", Column[row]{Name: "x", Field: "authKeyId"}, `column "x": field "authKeyId" is named like an ID or a version: say its Kind, which may be text`},
+		{"a map with no key", Column[row]{Name: "x", Field: "attributes"}, `column "x": no kind for map[string]string`},
+		{"a key into no map", Column[row]{Name: "x", Field: `name["x"]`}, `column "x": field "name[\"x\"]": string is no map with text keys`},
+		{"a key not closed", Column[row]{Name: "x", Field: `attributes["x"`}, `column "x": "attributes[\"x\"" is no path: write keys with dots, and a map key as name["key"]`},
+		{"a key not quoted", Column[row]{Name: "x", Field: `attributes[x]`}, `column "x": "attributes[x]" is no path: write keys with dots, and a map key as name["key"]`},
+		{"a layout on no list", Column[row]{Name: "x", Field: "name", List: Stacked}, `column "x" is no list, so it has no List layout and no Fold`},
+		{"a fold on no list", Column[row]{Name: "x", Field: "name", Fold: Exit()}, `column "x" is no list, so it has no List layout and no Fold`},
+		{"invalid on no time", Column[row]{Name: "x", Field: "name", Invalid: func(row) bool { return true }}, `column "x" is no time, so it has no Invalid`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -138,11 +147,11 @@ func TestHeader(t *testing.T) {
 	cs := Columns[row]{{Name: "public-ip", Field: "name", Header: "Address", Default: true}}
 
 	var b bytes.Buffer
-	require.NoError(t, Render(&b, rows()[:1], cs, now))
+	require.NoError(t, Render(&b, rows()[:1], cs, now, nil))
 	require.Equal(t, "ADDRESS\nmynode\n", b.String())
 
 	b.Reset()
-	require.NoError(t, Sheet(&b, rows()[0], cs, now))
+	require.NoError(t, Sheet(&b, rows()[0], cs, nil, now))
 	require.Equal(t, "Public IP:  mynode\n", b.String())
 }
 
@@ -203,11 +212,11 @@ func TestVisible(t *testing.T) {
 	r.Name = "evil\x1b]0;owned\x07\u2066"
 
 	var b bytes.Buffer
-	require.NoError(t, Render(&b, []row{r}, cols[1:2], now))
+	require.NoError(t, Render(&b, []row{r}, cols[1:2], now, nil))
 	require.Equal(t, "NAME\n"+`evil\x1b]0;owned\x07\u2066`+"\n", b.String())
 
 	b.Reset()
-	require.NoError(t, Sheet(&b, r, cols[1:2], now))
+	require.NoError(t, Sheet(&b, r, cols[1:2], nil, now))
 	require.Equal(t, `Name:  evil\x1b]0;owned\x07\u2066`+"\n", b.String())
 }
 
@@ -224,4 +233,103 @@ func TestVisibleJSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &a))
 	require.NoError(t, json.Unmarshal(got, &b))
 	require.Equal(t, a, b)
+}
+
+// TestMapKey: a column reads one key of a map; a missing key is null.
+func TestMapKey(t *testing.T) {
+	t.Parallel()
+
+	cs := Columns[row]{
+		{Name: "id", Field: "id", Default: true},
+		{Name: "public-ip", Field: `attributes["ip:publicAddress"]`, Default: true},
+	}
+	require.NoError(t, cs.Check())
+	require.Equal(t, Text, cs.Info()[1].Kind)
+
+	r := []row{{ID: "1", Attrs: map[string]string{"ip:publicAddress": "203.0.113.7"}}, {ID: "2", Attrs: map[string]string{}}, {ID: "3"}}
+
+	var b bytes.Buffer
+	require.NoError(t, Render(&b, r, cs, now, nil))
+	require.Equal(t, "ID  PUBLIC IP\n1   203.0.113.7\n2   -\n3   -\n", b.String())
+
+	f, err := cs.ParseFilter("public-ip=203.0.113.7")
+	require.NoError(t, err)
+
+	for i, want := range []bool{true, false, false} {
+		got, err := f.Match(r[i], now)
+		require.NoError(t, err)
+		require.Equal(t, want, got, r[i].ID)
+	}
+
+	cs.Sort(r, "-public-ip", now)
+	require.Equal(t, "1", r[0].ID)
+}
+
+// TestFold: the two exit prefixes are the word exit, after the other
+// routes whatever the order they came in; one of them alone is shown as it
+// is.
+func TestFold(t *testing.T) {
+	t.Parallel()
+
+	c := Column[row]{Name: "routes", Field: "enabledRoutes", Fold: Exit(), Default: true}
+
+	for _, tt := range []struct {
+		routes []string
+		want   string
+	}{
+		{[]string{"10.0.0.0/8", "0.0.0.0/0", "::/0"}, "10.0.0.0/8, exit"},
+		{[]string{"::/0", "10.0.0.0/8", "0.0.0.0/0"}, "10.0.0.0/8, exit"},
+		{[]string{"0.0.0.0/0", "::/0", "10.0.0.0/8", "192.168.0.0/24"}, "10.0.0.0/8, 192.168.0.0/24, exit"},
+		{[]string{"0.0.0.0/0"}, "0.0.0.0/0"},
+		{nil, ""},
+	} {
+		require.Equal(t, tt.want, c.cell(row{Routes: tt.routes}, now, false), tt.routes)
+	}
+
+	require.Equal(t, "exit", c.cell(row{Routes: []string{"0.0.0.0/0", "::/0"}}, now, true))
+}
+
+// TestInvalid: a null time that the row says is invalid shows as invalid,
+// not never, in a table and a sheet; no time filter finds it, and it sorts
+// with the rows that have no value.
+func TestInvalid(t *testing.T) {
+	t.Parallel()
+
+	cs := Columns[row]{
+		{Name: "id", Field: "id", Default: true},
+		{Name: "expiry", Field: "expiry", Default: true, Ahead: true, Invalid: func(r row) bool { return r.Name == "bad" }},
+	}
+	require.NoError(t, cs.Check())
+
+	rs := []row{
+		{ID: "1", Name: "bad", Expiry: nullable.NewNullNullable[time.Time]()},
+		{ID: "2", Expiry: nullable.NewNullNullable[time.Time]()},
+		{ID: "3", Expiry: nullable.NewNullableWithValue(now.Add(time.Hour))},
+	}
+
+	var b bytes.Buffer
+	require.NoError(t, Render(&b, rs, cs, now, nil))
+	require.Equal(t, "ID  EXPIRY\n1   invalid\n2   never\n3   in 1h\n", b.String())
+
+	b.Reset()
+	require.NoError(t, Sheet(&b, rs[0], cs, nil, now))
+	require.Equal(t, "ID:      1\nExpiry:  invalid\n", b.String())
+
+	for text, want := range map[string][]bool{
+		"expiry=never": {false, true, false},
+		"expiry<7d":    {false, false, true},
+		"expiry>1m":    {false, false, true},
+	} {
+		f, err := cs.ParseFilter(text)
+		require.NoError(t, err)
+
+		for i, r := range rs {
+			got, err := f.Match(r, now)
+			require.NoError(t, err)
+			require.Equal(t, want[i], got, "%s on %s", text, r.ID)
+		}
+	}
+
+	cs.Sort(rs, "-expiry", now)
+	require.Equal(t, []string{"3", "1", "2"}, ids(rs))
 }

@@ -11,7 +11,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -47,10 +49,36 @@ type Column[R any] struct {
 	Kind Kind
 	// Ahead is a time that looks forward from now, such as an expiry: a
 	// duration in a filter is then the time left, not the age.
-	Ahead   bool
+	Ahead bool
+	// List is how a terminal shows a list; a pipe and a sheet always show
+	// it inline.
+	List Layout
+	// Fold shows the entries of a list that are all one value of the map as
+	// its key, in a cell and in a filter: [Exit].
+	Fold map[string][]string
+	// Invalid, on a time column, is a row whose null time is not "never"
+	// but a stored time the API cannot send: the cell says "invalid", and
+	// no filter on the time finds the row.
+	Invalid func(row R) bool
 	Default bool
 	Help    string
 }
+
+// Layout is how a terminal shows a list in a cell.
+type Layout int
+
+const (
+	// Inline joins the entries with commas on one line.
+	Inline Layout = iota
+	// Stacked shows one entry per line.
+	Stacked
+	// Cut shows as many entries as fit, then "… (+K)".
+	Cut
+)
+
+// Exit is the fold of a route column: the word exit for the two prefixes
+// of an exit node. A function, so no caller can change it for another.
+func Exit() map[string][]string { return map[string][]string{"exit": {"0.0.0.0/0", "::/0"}} }
 
 // Columns is the declaration of one row type.
 type Columns[R any] []Column[R]
@@ -63,6 +91,10 @@ var (
 	errWrongKind    = errors.New("cannot show")
 	errAhead        = errors.New("is no time, so it cannot look ahead")
 	errSayKind      = errors.New("is named like an ID or a version: say its Kind, which may be text")
+	errNoList       = errors.New("is no list, so it has no List layout and no Fold")
+	errInvalid      = errors.New("is no time, so it has no Invalid")
+	errNoMap        = errors.New("is no map with text keys")
+	errPath         = errors.New("is no path: write keys with dots, and a map key as name[\"key\"]")
 )
 
 // Check reports a column with no name or a name given twice, a field the
@@ -109,6 +141,14 @@ func (cs Columns[R]) Check() error {
 		if c.Ahead && c.kind(t) != Time {
 			errs = append(errs, fmt.Errorf("column %q %w", c.Name, errAhead))
 		}
+
+		if (c.List != Inline || c.Fold != nil) && c.kind(t) != List {
+			errs = append(errs, fmt.Errorf("column %q %w", c.Name, errNoList))
+		}
+
+		if c.Invalid != nil && c.kind(t) != Time {
+			errs = append(errs, fmt.Errorf("column %q %w", c.Name, errInvalid))
+		}
 	}
 
 	return errors.Join(errs...)
@@ -117,7 +157,12 @@ func (cs Columns[R]) Check() error {
 // namedLikeKind is a key that reads as an ID or a version: authKeyId,
 // clientVersion.
 func namedLikeKind(field string) bool {
-	key := field[strings.LastIndex(field, ".")+1:]
+	ss, _ := steps(field)
+	if len(ss) == 0 || ss[len(ss)-1].keyed {
+		return false
+	}
+
+	key := ss[len(ss)-1].name
 
 	return strings.HasSuffix(key, "Id") || strings.HasSuffix(key, "ID") || strings.EqualFold(key, "version") || strings.HasSuffix(key, "Version")
 }
@@ -154,6 +199,9 @@ func (c Column[R]) kind(t reflect.Type) Kind {
 	return ""
 }
 
+// Heading is the header of the column in a table.
+func (c Column[R]) Heading() string { return c.header() }
+
 func (c Column[R]) header() string {
 	if c.Header != "" {
 		return strings.ToUpper(c.Header)
@@ -172,7 +220,11 @@ func (c Column[R]) text(row R, now time.Time, sheet bool) string {
 	v, ok := field(reflect.ValueOf(row), c.Field)
 	if !ok {
 		t, _ := fieldType(reflect.TypeFor[R](), c.Field)
-		if c.kind(t) == Time {
+
+		switch {
+		case c.kind(t) == Time && c.invalid(row):
+			return "invalid"
+		case c.kind(t) == Time:
 			return "never"
 		}
 
@@ -200,7 +252,7 @@ func (c Column[R]) text(row R, now time.Time, sheet bool) string {
 
 		return Ago(t, now)
 	case List:
-		entries := items(v)
+		entries := c.entries(v)
 		if len(entries) == 0 && sheet {
 			return "-"
 		}
@@ -211,6 +263,25 @@ func (c Column[R]) text(row R, now time.Time, sheet bool) string {
 	default:
 		return fmt.Sprint(v.Interface())
 	}
+}
+
+// invalid is a row whose null time the column says is invalid.
+func (c Column[R]) invalid(row R) bool { return c.Invalid != nil && c.Invalid(row) }
+
+// entries are the entries of a list as a cell shows them: the entries of a
+// Fold word as that word, after the other entries, when all of them are
+// there, whatever order the server sorts.
+func (c Column[R]) entries(v reflect.Value) []string {
+	out := items(v)
+
+	for _, word := range slices.Sorted(maps.Keys(c.Fold)) {
+		all := c.Fold[word]
+		if !slices.ContainsFunc(all, func(e string) bool { return !slices.Contains(out, e) }) {
+			out = append(slices.DeleteFunc(out, func(e string) bool { return slices.Contains(all, e) }), word)
+		}
+	}
+
+	return out
 }
 
 // ownerCell shows a user by its login name in a table, and as an entity in a
@@ -385,24 +456,88 @@ func When(t, now time.Time) string {
 	return Ago(t, now) + " (" + t.UTC().Format("2006-01-02 15:04 UTC") + ")"
 }
 
-// field reads the value at the dotted JSON path of v. ok is false for a
-// null on the way: a nil pointer, or a nullable that holds no value.
+// field reads the value at the JSON path of v. ok is false for a null on
+// the way: a nil pointer, a nullable that holds no value, or a map that has
+// no such key.
 func field(v reflect.Value, path string) (reflect.Value, bool) {
-	for name := range strings.SplitSeq(path, ".") {
+	ss, err := steps(path)
+	if err != nil {
+		return reflect.Value{}, false
+	}
+
+	for _, st := range ss {
 		var ok bool
 		if v, ok = present(v); !ok || v.Kind() != reflect.Struct {
 			return reflect.Value{}, false
 		}
 
-		i := jsonIndex(v.Type(), name)
+		i := jsonIndex(v.Type(), st.name)
 		if i < 0 {
 			return reflect.Value{}, false
 		}
 
 		v = v.Field(i)
+
+		if st.keyed {
+			if v, ok = present(v); !ok || v.Kind() != reflect.Map {
+				return reflect.Value{}, false
+			}
+
+			v = v.MapIndex(reflect.ValueOf(st.key).Convert(v.Type().Key()))
+		}
 	}
 
 	return present(v)
+}
+
+// step is one key of a path: the JSON key of a field, and the key into
+// the map it holds when keyed.
+type step struct {
+	name, key string
+	keyed     bool
+}
+
+// steps reads a path: JSON keys joined by dots, each of which may index a
+// map with a quoted key, as attributes["ip:publicAddress"].
+func steps(path string) ([]step, error) {
+	var out []step
+
+	for rest := path; ; {
+		end := strings.IndexAny(rest, ".[")
+		if end < 0 {
+			end = len(rest)
+		}
+
+		st := step{name: rest[:end]}
+		rest = rest[end:]
+
+		if strings.HasPrefix(rest, "[") {
+			q, err := strconv.QuotedPrefix(rest[1:])
+			if err != nil || !strings.HasPrefix(rest[1+len(q):], "]") {
+				return nil, errPath
+			}
+
+			st.key, _ = strconv.Unquote(q)
+			st.keyed = true
+			rest = rest[len(q)+2:]
+		}
+
+		if st.name == "" {
+			return nil, errPath
+		}
+
+		out = append(out, st)
+
+		if rest == "" {
+			return out, nil
+		}
+
+		if rest[0] != '.' {
+			return nil, errPath
+		}
+
+		rest = rest[1:]
+	}
 }
 
 // present follows pointers and the nullable values of the generated client
@@ -430,25 +565,39 @@ func isNullable(t reflect.Type) bool {
 	return t.Kind() == reflect.Map && t.Key().Kind() == reflect.Bool
 }
 
-// fieldType is the type at the dotted JSON path of t, through pointers and
-// nullables.
+// fieldType is the type at the JSON path of t, through pointers,
+// nullables and map keys.
 func fieldType(t reflect.Type, path string) (reflect.Type, error) {
 	if path == "" {
 		return nil, errUnknownField
 	}
 
-	for name := range strings.SplitSeq(path, ".") {
+	ss, err := steps(path)
+	if err != nil {
+		return nil, fmt.Errorf("%q %w", path, err)
+	}
+
+	for _, st := range ss {
 		t = elem(t)
 		if t.Kind() != reflect.Struct {
 			return nil, fmt.Errorf("%w %q: %v is no object", errUnknownField, path, t)
 		}
 
-		i := jsonIndex(t, name)
+		i := jsonIndex(t, st.name)
 		if i < 0 {
 			return nil, fmt.Errorf("%w %q in %s", errUnknownField, path, t)
 		}
 
 		t = t.Field(i).Type
+
+		if st.keyed {
+			t = elem(t)
+			if t.Kind() != reflect.Map || t.Key().Kind() != reflect.String {
+				return nil, fmt.Errorf("field %q: %v %w", path, t, errNoMap)
+			}
+
+			t = t.Elem()
+		}
 	}
 
 	return elem(t), nil

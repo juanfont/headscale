@@ -49,11 +49,34 @@ Hint:       -
 			t.Parallel()
 
 			var b bytes.Buffer
-			require.NoError(t, Sheet(&b, tt.row, cols, now))
+			require.NoError(t, Sheet(&b, tt.row, cols, nil, now))
 
 			if diff := cmp.Diff(tt.want, b.String()); diff != "" {
 				t.Errorf("sheet (-want +got):\n%s", diff)
 			}
 		})
 	}
+}
+
+// TestSheetBlock: a block follows the lines, its keys in order and made
+// visible; an empty map has none. A block has a title and a field of its
+// own.
+func TestSheetBlock(t *testing.T) {
+	t.Parallel()
+
+	blocks := Blocks[row]{{Title: "Attributes", Field: "attributes"}}
+	require.NoError(t, blocks.Check())
+	require.EqualError(t, Blocks[row]{{Title: "X", Field: "name"}}.Check(), `block "X": field "name": string is no map with text keys`)
+	require.EqualError(t, Blocks[row]{{Title: "X", Field: "nope"}}.Check(), `block "X": unknown field "nope" in table.row`)
+	require.EqualError(t, Blocks[row]{{Field: "attributes"}}.Check(), `field "attributes": a block with no title`)
+	require.EqualError(t, Blocks[row]{{Title: "A", Field: "attributes"}, {Title: "A", Field: "nope"}}.Check(), `block "A" is the title of two blocks`)
+	require.EqualError(t, Blocks[row]{{Title: "A", Field: "attributes"}, {Title: "B", Field: "attributes"}}.Check(), `block "B": field "attributes" is the field of two blocks`)
+
+	var b bytes.Buffer
+	require.NoError(t, Sheet(&b, row{ID: "1", Attrs: map[string]string{"ip:publicAddress": "203.0.113.7", "b\nx": "v\x1b"}}, cols[:1], blocks, now))
+	require.Equal(t, "ID:  1\n\nAttributes:\n  b\\x0ax             v\\x1b\n  ip:publicAddress   203.0.113.7\n", b.String())
+
+	b.Reset()
+	require.NoError(t, Sheet(&b, row{ID: "1"}, cols[:1], blocks, now))
+	require.Equal(t, "ID:  1\n", b.String())
 }

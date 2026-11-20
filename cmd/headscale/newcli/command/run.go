@@ -336,7 +336,7 @@ func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], done func() stri
 		return writeText(c.stdout, text)
 	}
 
-	return table.Sheet(c.stdout, out, cols, c.Now())
+	return table.Sheet(c.stdout, out, cols, nil, c.Now())
 }
 
 // printList prints the rows of a ListSpec: the array of their bodies as
@@ -358,7 +358,7 @@ func printList[Row any](c Ctx, rows []Row, cols table.Columns[Row], noRows strin
 	case !c.json && len(rows) == 0 && c.screen:
 		return writeText(c.stdout, noRows)
 	case !c.json:
-		return table.Render(c.stdout, rows, cols, c.Now())
+		return table.Render(c.stdout, rows, cols, c.Now(), nil)
 	}
 
 	return writeJSON(c.stdout, append(append([]byte("["), bytes.Join(raws, []byte(","))...), ']'))

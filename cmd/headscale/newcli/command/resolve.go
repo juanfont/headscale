@@ -87,7 +87,7 @@ func resolve[T any](rows []T, word, kind string, cols table.Columns[T], id func(
 	var b bytes.Buffer
 
 	// The candidates show no time, so no clock is needed.
-	_ = table.Render(&b, matches, cols.Showing(matches, word), time.Time{})
+	_ = table.Render(&b, matches, cols.Showing(matches, word), time.Time{}, nil)
 
 	var list strings.Builder
 
