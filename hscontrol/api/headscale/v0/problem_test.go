@@ -1,16 +1,49 @@
 package apiv0
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"runtime/debug"
 	"strings"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMapErrorRequestEnded: an error of a request whose client hung up is
+// not logged as a fault; any other error of that request still is.
+func TestMapErrorRequestEnded(t *testing.T) {
+	var logged bytes.Buffer
+
+	old, oldLevel := log.Logger, zerolog.GlobalLevel()
+	log.Logger = zerolog.New(&logged).Level(zerolog.TraceLevel)
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+
+	t.Cleanup(func() {
+		log.Logger = old
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	p, ok := errors.AsType[*Problem](mapError(ctx, fmt.Errorf("listing: %w", context.Canceled), nil, nil))
+	require.True(t, ok)
+	require.Equal(t, CodeInternal, p.Code)
+	require.NotContains(t, logged.String(), `"level":"error"`)
+	require.Contains(t, logged.String(), "request ended")
+
+	_ = mapError(ctx, errors.New("disk full"), nil, nil) //nolint:err113
+
+	require.Contains(t, logged.String(), `"level":"error"`, "an ended request's other faults are still faults")
+}
 
 func TestMapError(t *testing.T) {
 	api := newTestAPI(t, Backend{})
