@@ -471,6 +471,10 @@ func (a *API) callError(err error) error {
 		return v
 	}
 
+	if r, ok := errors.AsType[*redirectError](err); ok {
+		return r
+	}
+
 	deadline := errors.Is(err, context.DeadlineExceeded)
 	u, sent := errors.AsType[*unanswered](err)
 
@@ -933,6 +937,15 @@ func (v *versionCheck) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
+	// v0 answers no redirect. A client that followed one would send the
+	// request again, a secret in its path or its body among it, to wherever
+	// the answer points; and a 301 or 302 would turn a write into a read.
+	if resp.StatusCode/100 == 3 {
+		resp.Body.Close()
+
+		return nil, redirectOf(v.target, req.URL, resp)
+	}
+
 	server := resp.Header.Get("Headscale-Version")
 	if server == "" {
 		resp.Body.Close()
@@ -962,6 +975,31 @@ func (v *versionCheck) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp.Body = &answerBody{ReadCloser: resp.Body, write: write, dryRun: req.Method != http.MethodGet && !write}
 
 	return resp, nil
+}
+
+// redirectError is an answer that points elsewhere, as a proxy answers an
+// address it moved. It names where by scheme and host only: the rest of the
+// Location may hold what was sent.
+type redirectError struct{ target, to string }
+
+func (e *redirectError) Error() string {
+	if e.to == "" {
+		return "the server at " + e.target + " answered with a redirect, which this CLI does not follow."
+	}
+
+	return "the server at " + e.target + " answered with a redirect to " + e.to + ", which this CLI does not follow.\n" +
+		"If that is the server, set it as the address: HEADSCALE_CLI_ADDRESS, or cli.address in the config."
+}
+
+// redirectOf is the error of resp, a redirect of a request to from. A
+// Location on the same scheme and host names no other address.
+func redirectOf(target string, from *url.URL, resp *http.Response) error {
+	to, err := resp.Location()
+	if err != nil || to.Host == "" || to.Scheme == from.Scheme && to.Host == from.Host {
+		return &redirectError{target: target}
+	}
+
+	return &redirectError{target: target, to: table.Visible(to.Scheme+"://"+to.Host, "")}
 }
 
 // unanswered is a request that was sent and whose answer did not come

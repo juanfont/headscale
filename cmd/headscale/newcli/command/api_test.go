@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -438,6 +439,78 @@ func TestTimeout(t *testing.T) {
 	_, err = api(t, 2).UpdateUser(t.Context(), "3", clientv0.UpdateUserBody{})
 	require.EqualError(t, err, "the server at "+target+" did not answer the change: no answer in time.\n"+
 		"The change may have been made: look before you run the command again.")
+}
+
+// TestRedirect: no request follows a redirect, whatever its method and its
+// status, so nothing reaches the host the answer points to; the error names
+// that host by scheme and host only.
+func TestRedirect(t *testing.T) {
+	t.Parallel()
+
+	calls := map[string]func(ctx context.Context, a *API) error{
+		"GET": func(ctx context.Context, a *API) error { _, err := a.Me(ctx); return err },
+		"POST": func(ctx context.Context, a *API) error {
+			_, err := a.CreateUser(ctx, clientv0.CreateUserBody{Name: "u"})
+			return err
+		},
+		"PATCH": func(ctx context.Context, a *API) error {
+			_, err := a.UpdateUser(ctx, "3", clientv0.UpdateUserBody{})
+			return err
+		},
+		"PUT": func(ctx context.Context, a *API) error {
+			_, err := a.SetNodeTags(ctx, "3", []string{"tag:a"})
+			return err
+		},
+		"DELETE": func(ctx context.Context, a *API) error { return a.DeleteNode(ctx, "3") },
+	}
+
+	for method, call := range calls {
+		for _, status := range []int{301, 302, 303, 307, 308} {
+			for _, where := range []string{"another host", "the same host", "no Location", "the version"} {
+				t.Run(method+" "+strconv.Itoa(status)+" to "+where, func(t *testing.T) {
+					t.Parallel()
+
+					var other atomic.Int32
+
+					second := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { other.Add(1) }))
+					t.Cleanup(second.Close)
+
+					first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.Header().Set("Headscale-Version", "dev")
+
+						if r.URL.Path == "/api/headscale/v0/version" && where != "the version" {
+							return
+						}
+
+						switch where {
+						case "another host", "the version":
+							w.Header().Set("Location", second.URL+"/landing"+r.URL.Path)
+						case "the same host":
+							w.Header().Set("Location", "/landing"+r.URL.Path)
+						}
+
+						w.WriteHeader(status)
+					}))
+					t.Cleanup(first.Close)
+
+					a, err := connect(&types.Config{CLI: types.CLIConfig{Address: first.URL, APIKey: "key", Timeout: time.Minute}},
+						Env{Stderr: io.Discard, Version: types.GetVersionInfo()})
+					require.NoError(t, err)
+
+					host := strings.TrimPrefix(first.URL, "http://")
+					want := "the server at " + host + " answered with a redirect, which this CLI does not follow."
+
+					if where == "another host" || where == "the version" {
+						want = "the server at " + host + " answered with a redirect to " + second.URL + ", which this CLI does not follow.\n" +
+							"If that is the server, set it as the address: HEADSCALE_CLI_ADDRESS, or cli.address in the config."
+					}
+
+					require.EqualError(t, call(t.Context(), a), want)
+					require.Zero(t, other.Load(), "a request reached the host the redirect points to")
+				})
+			}
+		}
+	}
 }
 
 // TestLostAnswer: a request whose answer the server cuts says what the
