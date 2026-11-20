@@ -20,6 +20,7 @@ import (
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/hetzner/v2"
 	"github.com/libdns/libdns"
+	"github.com/libdns/ovh"
 	"github.com/libdns/powerdns"
 	"github.com/libdns/rfc2136"
 	"github.com/stretchr/testify/assert"
@@ -197,6 +198,22 @@ func TestNewProvider(t *testing.T) {
 			provider: "hetzner",
 			settings: map[string]any{"api_token": "file:" + secret},
 			want:     &hetzner.Provider{APIToken: "from-file"},
+		},
+		{
+			name:     "ovh",
+			provider: "ovh",
+			settings: map[string]any{
+				"endpoint":           "ovh-eu",
+				"application_key":    "key",
+				"application_secret": "file:" + secret,
+				"consumer_key":       "consumer",
+			},
+			want: &ovh.Provider{
+				Endpoint:          "ovh-eu",
+				ApplicationKey:    "key",
+				ApplicationSecret: "from-file",
+				ConsumerKey:       "consumer",
+			},
 		},
 		{
 			name:     "powerdns",

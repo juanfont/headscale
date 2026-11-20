@@ -34,6 +34,7 @@ require (
 	github.com/libdns/cloudflare v0.2.2
 	github.com/libdns/hetzner/v2 v2.0.1
 	github.com/libdns/libdns v1.1.1
+	github.com/libdns/ovh v1.1.0
 	github.com/libdns/powerdns v0.1.4
 	github.com/libdns/rfc2136 v1.0.1
 	github.com/mholt/acmez/v3 v3.1.7
@@ -207,6 +208,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runc v1.3.2 // indirect
+	github.com/ovh/go-ovh v1.7.0 // indirect
 	github.com/pandatix/go-abnf v0.5.3 // indirect
 	github.com/peterbourgon/ff/v3 v3.4.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260330135022-df67b199bc81 // indirect
@@ -254,6 +256,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/grpc v1.81.1 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
+	gopkg.in/ini.v1 v1.67.0 // indirect
 
 	// NOTE: gvisor must be updated in lockstep with
 	// tailscale.com. The version used here should match

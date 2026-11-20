@@ -2273,14 +2273,15 @@ The servers asked for the zone's nameservers, each an IP or host with an optiona
 
 The DNS provider that writes challenge records: `name` selects it, the other keys are its settings. Keys are lowercased on load, at every depth; two that differ only in case are an error. Any setting may be `file:<path>` to read it from a file; a non-string one, such as acme-dns `config`, is the JSON in it. `headscale generate config --running` and `/debug/config` show `name` and `file:` references; every other setting is `<redacted>`, as any may be a credential. See [DNS-01 challenge provider](dns.md#dns-01-challenge-provider) to set a provider up, acme-dns included, and to set it from environment variables.
 
-| Provider     | Settings                                                    |
-| ------------ | ----------------------------------------------------------- |
-| `acmedns`    | `config`, `password`, `server_url`, `subdomain`, `username` |
-| `cloudflare` | `api_token`, `zone_token`                                   |
-| `gigahost`   | `api_key`                                                   |
-| `hetzner`    | `api_token`                                                 |
-| `powerdns`   | `api_token`, `debug`, `server_id`, `server_url`             |
-| `rfc2136`    | `key`, `key_alg`, `key_name`, `server`                      |
+| Provider     | Settings                                                            |
+| ------------ | ------------------------------------------------------------------- |
+| `acmedns`    | `config`, `password`, `server_url`, `subdomain`, `username`         |
+| `cloudflare` | `api_token`, `zone_token`                                           |
+| `gigahost`   | `api_key`                                                           |
+| `hetzner`    | `api_token`                                                         |
+| `ovh`        | `application_key`, `application_secret`, `consumer_key`, `endpoint` |
+| `powerdns`   | `api_token`, `debug`, `server_id`, `server_url`                     |
+| `rfc2136`    | `key`, `key_alg`, `key_name`, `server`                              |
 
 Each text setting can also be set on its own as `HEADSCALE_DNS_CHALLENGE_PROVIDER_<SETTING>`, e.g. `HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN`, which wins over the same setting in `HEADSCALE_DNS_CHALLENGE_PROVIDER` and in the configuration file. An object setting, such as the `config` of `acmedns`, goes inside the JSON object of `HEADSCALE_DNS_CHALLENGE_PROVIDER`; see [Environment variables](dns.md#environment-variables).
 

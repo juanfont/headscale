@@ -82,7 +82,7 @@ clients, and how to run the same setup without Nix.
 
 `tailscale cert` and HTTPS with `tailscale serve` now work. Headscale publishes
 the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
-`cloudflare`, `gigahost`, `hetzner`, `powerdns` or `rfc2136`. `dns.base_domain` must be a public domain you control. [#3554](https://github.com/juanfont/headscale/pull/3554)
+`cloudflare`, `gigahost`, `hetzner`, `ovh`, `powerdns` or `rfc2136`. `dns.base_domain` must be a public domain you control. [#3554](https://github.com/juanfont/headscale/pull/3554)
 
 ### Update clients remotely
 
