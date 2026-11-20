@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -13,10 +15,6 @@ import (
 func init() {
 	registrations = append(registrations, registerAuth)
 }
-
-// errAuthRejected is the verdict handed to the waiting registration flow when
-// an auth session is rejected.
-var errAuthRejected = errors.New("auth request rejected")
 
 // AuthRegisterRequestBody is the v1.AuthRegisterRequest body.
 type AuthRegisterRequestBody struct {
@@ -110,12 +108,10 @@ func registerAuth(api huma.API, b Backend) {
 		Tags:        []string{"Auth"},
 		Security:    bearerAuth,
 	}, func(ctx context.Context, in *authApproveInput) (*authApproveOutput, error) {
-		authReq, err := pendingAuthRequest(b, in.Body.AuthID)
+		err := answerAuthRequest(b, in.Body.AuthID, types.AuthVerdict{})
 		if err != nil {
 			return nil, err
 		}
-
-		authReq.FinishAuth(types.AuthVerdict{})
 
 		return &authApproveOutput{}, nil
 	})
@@ -128,31 +124,27 @@ func registerAuth(api huma.API, b Backend) {
 		Tags:        []string{"Auth"},
 		Security:    bearerAuth,
 	}, func(ctx context.Context, in *authRejectInput) (*authRejectOutput, error) {
-		authReq, err := pendingAuthRequest(b, in.Body.AuthID)
+		err := answerAuthRequest(b, in.Body.AuthID, types.AuthVerdict{Err: state.ErrAuthRequestRejected})
 		if err != nil {
 			return nil, err
 		}
-
-		authReq.FinishAuth(types.AuthVerdict{
-			Err: errAuthRejected,
-		})
 
 		return &authRejectOutput{}, nil
 	})
 }
 
-// pendingAuthRequest looks up the pending session for auth_id. Malformed
-// auth_id is 400, unknown is 404.
-func pendingAuthRequest(b Backend, rawID string) (*types.AuthRequest, error) {
+// answerAuthRequest gives the pending session for auth_id verdict.
+// Malformed auth_id is 400; unknown, timed out or answered already is 404.
+func answerAuthRequest(b Backend, rawID string, verdict types.AuthVerdict) error {
 	authID, err := types.AuthIDFromString(rawID)
 	if err != nil {
-		return nil, huma.Error400BadRequest("invalid auth_id", err)
+		return huma.Error400BadRequest("invalid auth_id", err)
 	}
 
-	authReq, ok := b.State.GetAuthCacheEntry(authID)
-	if !ok {
-		return nil, huma.Error404NotFound("no pending auth session for auth_id")
+	err = b.State.ResolveAuthRequest(authID, verdict)
+	if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
+		return huma.Error404NotFound("no pending auth session for auth_id")
 	}
 
-	return authReq, nil
+	return err
 }

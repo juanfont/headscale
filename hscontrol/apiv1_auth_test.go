@@ -118,6 +118,29 @@ func TestAPIV1AuthRegister(t *testing.T) {
 	})
 }
 
+// TestAPIV1AuthAnsweredOnce: v1 answers an auth request once. The ID of an
+// SSH check is the caller's mistake on register (it panicked, then 500), and
+// an answered request is gone (it answered 200). A 404 names no ID.
+func TestAPIV1AuthAnsweredOnce(t *testing.T) {
+	h := newAPIV1Harness(t)
+	seedUsers("alice")(t, h.app)
+
+	authID := types.MustAuthID()
+	require.NoError(t, h.app.state.SetAuthCacheEntry(authID, types.NewSSHCheckAuthRequest(1, 2)))
+
+	register := h.callHuma(http.MethodPost, "/api/v1/auth/register", fmt.Appendf(nil, `{"user":"alice","authId":%q}`, authID.Raw()))
+	assertStatus(t, register, http.StatusBadRequest)
+
+	body := fmt.Appendf(nil, `{"authId":%q}`, authID.Raw())
+	require.Equal(t, http.StatusOK, h.callHuma(http.MethodPost, "/api/v1/auth/reject", body).status)
+
+	for _, verb := range []string{"approve", "reject"} {
+		res := h.callHuma(http.MethodPost, "/api/v1/auth/"+verb, body)
+		assertStatus(t, res, http.StatusNotFound)
+		assert.NotContains(t, string(res.body), authID.Raw())
+	}
+}
+
 func TestAPIV1AuthApprove(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		h := newAPIV1Harness(t)

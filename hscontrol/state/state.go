@@ -172,6 +172,13 @@ var ErrAuthCacheClosed = errors.New("authentication cache closed")
 // ErrAuthRequestFinished prevents reusing an already resolved verdict channel.
 var ErrAuthRequestFinished = errors.New("authentication request already finished")
 
+// ErrAuthRequestKind is an answer for the other kind of auth request:
+// register on an SSH check, or approve on a registration.
+var ErrAuthRequestKind = errors.New("auth request is of another kind")
+
+// ErrAuthRequestRejected is the verdict of a rejected auth request.
+var ErrAuthRequestRejected = errors.New("auth request rejected")
+
 // ErrNodeKeyExpired is returned when an expired node logs in again under its
 // old node key; the client answers it by rotating the key.
 var ErrNodeKeyExpired = errors.New("node key expired")
@@ -307,6 +314,11 @@ type State struct {
 	// before the node enters the NodeStore; see
 	// [State.SetNodeInsertedHookForTesting].
 	nodeInserted func()
+
+	// authRequestClaimed, when set, runs in [State.HandleNodeFromAuthPath]
+	// right after it claimed the request; see
+	// [State.SetAuthRequestClaimedHookForTesting].
+	authRequestClaimed func()
 
 	// policyUsersMu orders user-list reads with SetUsers, so a list read
 	// before a commit cannot replace one read after it.
@@ -495,7 +507,9 @@ func NewState(cfg *types.Config) (*State, error) {
 				s.authCacheRegularEntries.Add(-1)
 			}
 
-			rn.FinishAuth(types.AuthVerdict{Err: ErrRegistrationExpired})
+			// Never waits for an answer in progress: that answer gives
+			// this verdict itself if it ends without one.
+			rn.Expire(types.AuthVerdict{Err: ErrRegistrationExpired})
 		},
 		cacheExpiration,
 	)
@@ -3127,6 +3141,72 @@ func (s *State) authCacheFullFor(entry *types.AuthRequest) bool {
 		s.authCache.Len() >= s.authCacheMaxEntries+authCacheSSHReserve
 }
 
+// AuthRequest is the auth request id while it waits for an answer: it did
+// not time out and nothing answered it.
+func (s *State) AuthRequest(id types.AuthID) (*types.AuthRequest, bool) {
+	req, ok := s.authCache.Peek(id)
+	if !ok || req.IsFinished() {
+		return nil, false
+	}
+
+	return req, true
+}
+
+// claimAuthRequest is the auth request id, claimed for one answer until
+// release; see [types.AuthRequest.Claim]. A request that timed out or was
+// answered is [hsdb.ErrNodeNotFoundRegistrationCache].
+func (s *State) claimAuthRequest(id types.AuthID) (*types.AuthRequest, func(), error) {
+	req, ok := s.authCache.Peek(id)
+	if !ok {
+		return nil, nil, hsdb.ErrNodeNotFoundRegistrationCache
+	}
+
+	release, ok := req.Claim()
+	if !ok {
+		return nil, nil, hsdb.ErrNodeNotFoundRegistrationCache
+	}
+
+	return req, release, nil
+}
+
+// AnswerAuthRequest approves an SSH check, or rejects an auth request of
+// either kind. Approve on a registration is [ErrAuthRequestKind]; a
+// registration is answered with [State.HandleNodeFromAuthPath].
+func (s *State) AnswerAuthRequest(id types.AuthID, approve bool) error {
+	if approve {
+		return s.answerAuthRequest(id, types.AuthVerdict{}, (*types.AuthRequest).IsSSHCheck)
+	}
+
+	return s.answerAuthRequest(id, types.AuthVerdict{Err: ErrAuthRequestRejected}, nil)
+}
+
+// ResolveAuthRequest gives the auth request id verdict, whatever its kind.
+// It is /api/v1's: its approve of a registration sends the machine to log
+// in again.
+func (s *State) ResolveAuthRequest(id types.AuthID, verdict types.AuthVerdict) error {
+	return s.answerAuthRequest(id, verdict, nil)
+}
+
+// answerAuthRequest gives id verdict under its claim, if kind is nil or
+// holds for it.
+func (s *State) answerAuthRequest(id types.AuthID, verdict types.AuthVerdict, kind func(*types.AuthRequest) bool) error {
+	req, release, err := s.claimAuthRequest(id)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	if kind != nil && !kind(req) {
+		return ErrAuthRequestKind
+	}
+
+	if !req.FinishAuth(verdict) {
+		return hsdb.ErrNodeNotFoundRegistrationCache
+	}
+
+	return nil
+}
+
 // DeleteAuthCacheEntry releases a consumed authentication transaction.
 func (s *State) DeleteAuthCacheEntry(id types.AuthID) {
 	s.authCache.Remove(id)
@@ -3801,10 +3881,43 @@ func (s *State) HandleNodeFromAuthPath(
 	// Read before any NodeStore write below; see updatePolicyManagerNodes.
 	genBefore := s.polMan.NodesGeneration()
 
-	// Get the registration entry from cache
-	regEntry, ok := s.GetAuthCacheEntry(authID)
-	if !ok {
-		return types.NodeView{}, s.policyChangeSince(genBefore), hsdb.ErrNodeNotFoundRegistrationCache
+	// Held to the verdict: a second answer then finds it answered.
+	regEntry, release, err := s.claimAuthRequest(authID)
+	if err != nil {
+		return types.NodeView{}, s.policyChangeSince(genBefore), err
+	}
+	// A panic gives no verdict: let go, as a failed answer does.
+	defer release()
+
+	if s.authRequestClaimed != nil {
+		s.authRequestClaimed()
+	}
+
+	nv, c, err := s.registerAuthRequest(authID, regEntry, release, userID, expiry, registrationMethod, genBefore)
+	release()
+
+	// It timed out while this answer held it and the answer failed: the
+	// release gave the timeout's verdict, so the request no longer waits.
+	if err != nil && !nv.Valid() && regEntry.IsFinished() {
+		return nv, c, hsdb.ErrNodeNotFoundRegistrationCache
+	}
+
+	return nv, c, err
+}
+
+// registerAuthRequest is [State.HandleNodeFromAuthPath] under the claim of
+// regEntry, which it releases once the machine has its verdict.
+func (s *State) registerAuthRequest(
+	authID types.AuthID,
+	regEntry *types.AuthRequest,
+	release func(),
+	userID types.UserID,
+	expiry *time.Time,
+	registrationMethod string,
+	genBefore uint64,
+) (types.NodeView, change.Change, error) {
+	if !regEntry.IsRegistration() {
+		return types.NodeView{}, s.policyChangeSince(genBefore), ErrAuthRequestKind
 	}
 
 	regData := regEntry.RegistrationData()
@@ -3875,6 +3988,9 @@ func (s *State) HandleNodeFromAuthPath(
 		finalNode types.NodeView
 		before    types.NodeView
 		changed   relogin
+		// committed is a failure after the node's row committed: the node
+		// is made, so the machine is told it and the error comes back with it.
+		committed error
 	)
 
 	if nodeExists && !existingNode.IsTagged() {
@@ -3912,34 +4028,41 @@ func (s *State) HandleNodeFromAuthPath(
 			logger, user, regData, hostname, hostinfo,
 			expiry, registrationMethod, existingNodeOtherUser,
 		)
-		if err != nil {
+		if err != nil && !finalNode.Valid() {
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
+
+		committed = err
 	} else {
 		finalNode, err = s.createNewNodeFromAuth(
 			logger, user, regData, hostname, hostinfo,
 			expiry, registrationMethod, types.NodeView{},
 		)
-		if err != nil {
+		if err != nil && !finalNode.Valid() {
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
+
+		committed = err
 	}
 
-	// Signal to waiting clients
-	regEntry.FinishAuth(types.AuthVerdict{Node: finalNode})
+	// Under the claim no other verdict can come first.
+	if !regEntry.FinishAuth(types.AuthVerdict{Node: finalNode}) {
+		logger.Error().Uint64(zf.NodeID, finalNode.ID().Uint64()).Msg("auth request answered beside its claim")
+	}
 
-	// Remove from registration cache
 	s.authCache.Remove(authID)
+	// What follows waits on the policy, not on this request.
+	release()
 
 	// Update policy managers
 	usersChange, err := s.updatePolicyManagerUsers()
 	if err != nil {
-		return finalNode, change.NodeAdded(finalNode.ID()).Merge(s.policyChangeSince(genBefore)), fmt.Errorf("updating policy manager users: %w", err)
+		return finalNode, change.NodeAdded(finalNode.ID()).Merge(s.policyChangeSince(genBefore)), errors.Join(committed, fmt.Errorf("updating policy manager users: %w", err))
 	}
 
 	nodesChange, err := s.updatePolicyManagerNodes(genBefore)
 	if err != nil {
-		return finalNode, change.NodeAdded(finalNode.ID()).Merge(nodesChange), fmt.Errorf("updating policy manager nodes: %w", err)
+		return finalNode, change.NodeAdded(finalNode.ID()).Merge(nodesChange), errors.Join(committed, fmt.Errorf("updating policy manager nodes: %w", err))
 	}
 
 	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
@@ -3947,7 +4070,9 @@ func (s *State) HandleNodeFromAuthPath(
 	// changed is set only for a same-user relogin; a tag->user conversion is
 	// excluded, as it changes the peer's User — a structural change peers must
 	// see in full, not a key-rotation patch.
-	return s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, changed, policyChanged))
+	nv, c, err := s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, changed, policyChanged))
+
+	return nv, c, errors.Join(committed, err)
 }
 
 func sortedPrefixes(p []netip.Prefix) []netip.Prefix {
@@ -4779,6 +4904,13 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 	}
 
 	return change.Change{}, nil
+}
+
+// SetAuthRequestClaimedHookForTesting runs fn in
+// [State.HandleNodeFromAuthPath] right after it claimed its request; nil
+// removes it.
+func (s *State) SetAuthRequestClaimedHookForTesting(fn func()) {
+	s.authRequestClaimed = fn
 }
 
 // SetNodeInsertedHookForTesting runs fn after each new node's row commits

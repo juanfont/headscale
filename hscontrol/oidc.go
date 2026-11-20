@@ -1063,7 +1063,18 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 			return
 		}
 
-		authReq.FinishAuth(types.AuthVerdict{})
+		// The page says what the machine was told: an answer that came
+		// first leaves this one spent.
+		err = a.h.state.AnswerAuthRequest(authID, true)
+		if err != nil {
+			if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
+				err = errRegistrationLinkSpent
+			}
+
+			httpUserError(writer, err)
+
+			return
+		}
 
 		content = renderAuthSuccessTemplate(user)
 	} else {

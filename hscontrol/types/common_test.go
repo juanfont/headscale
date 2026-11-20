@@ -2,10 +2,12 @@ package types
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -386,4 +388,110 @@ func TestAuthIDPrintsHidden(t *testing.T) {
 
 	require.NoError(t, json.Unmarshal([]byte(`{"ID":"`+raw+`"}`), &back), "a decode keeps the ID")
 	require.Equal(t, id, back.ID)
+}
+
+var errExpiredForTest = errors.New("expired")
+
+// TestAuthRequestClaimAndExpire: a timeout never waits for the answer that
+// holds a request. The answer gives the timeout's verdict if it ends
+// without one, or keeps its own if it gave one; no answer claims after.
+func TestAuthRequestClaimAndExpire(t *testing.T) {
+	expired := AuthVerdict{Err: errExpiredForTest}
+
+	t.Run("unheld", func(t *testing.T) {
+		rn := NewAuthRequest()
+		rn.Expire(expired)
+		require.ErrorIs(t, (<-rn.WaitForAuth()).Err, errExpiredForTest)
+
+		_, ok := rn.Claim()
+		require.False(t, ok)
+	})
+
+	t.Run("the answer ends without a verdict", func(t *testing.T) {
+		rn := NewAuthRequest()
+		release, ok := rn.Claim()
+		require.True(t, ok)
+
+		rn.Expire(expired)
+		require.False(t, rn.IsFinished(), "the timeout did not wait, nor answer")
+
+		release()
+		release()
+		require.ErrorIs(t, (<-rn.WaitForAuth()).Err, errExpiredForTest)
+
+		_, ok = rn.Claim()
+		require.False(t, ok)
+	})
+
+	t.Run("the answer gives a verdict", func(t *testing.T) {
+		rn := NewAuthRequest()
+		release, ok := rn.Claim()
+		require.True(t, ok)
+
+		rn.Expire(expired)
+		require.True(t, rn.FinishAuth(AuthVerdict{}))
+		release()
+
+		require.True(t, (<-rn.WaitForAuth()).Accept())
+		require.False(t, rn.FinishAuth(AuthVerdict{}), "one verdict")
+	})
+
+	// The timeout lands after the release checked for it and before the
+	// unlock: it finds rn held, so the release must still answer.
+	t.Run("a timeout between the release's check and its unlock", func(t *testing.T) {
+		rn := NewAuthRequest()
+		release, ok := rn.Claim()
+		require.True(t, ok)
+
+		rn.beforeUnlock = func() {
+			rn.Expire(expired)
+			require.False(t, rn.IsFinished(), "the timeout found rn held")
+		}
+
+		release()
+		require.True(t, rn.IsFinished(), "the release answered for the timeout")
+		require.ErrorIs(t, (<-rn.WaitForAuth()).Err, errExpiredForTest)
+	})
+
+	// The reviewer's probe: a holder that gives no verdict, a claim that
+	// waits, and the timeout beside the release. Every round ends answered.
+	t.Run("at once", func(t *testing.T) {
+		for range 10000 {
+			rn := NewAuthRequest()
+			release, ok := rn.Claim()
+			require.True(t, ok)
+
+			var wg sync.WaitGroup
+
+			wg.Go(func() {
+				if again, ok := rn.Claim(); ok {
+					again()
+				}
+			})
+			wg.Go(func() { rn.Expire(expired) })
+			wg.Go(release)
+			wg.Wait()
+
+			require.True(t, rn.IsFinished(), "a request ended with no verdict")
+		}
+	})
+
+	t.Run("a waiting claim finds it expired", func(t *testing.T) {
+		rn := NewAuthRequest()
+		release, ok := rn.Claim()
+		require.True(t, ok)
+
+		rn.Expire(expired)
+
+		second := make(chan bool)
+
+		go func() {
+			_, ok := rn.Claim()
+			second <- ok
+		}()
+
+		release()
+		require.False(t, <-second)
+		require.ErrorIs(t, (<-rn.WaitForAuth()).Err, errExpiredForTest)
+	})
 }
