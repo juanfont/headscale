@@ -84,6 +84,8 @@ func (e *Expiry[W]) UnmarshalText(b []byte) error {
 	d, t, ahead, err := table.ReadTime(s)
 
 	switch {
+	case errors.Is(err, table.ErrTooLong):
+		return err
 	case err != nil:
 		return errors.New("it is " + oneOf(append([]string{"a time", "a date", "a duration such as 90d"}, w.Words()...))) //nolint:err113 // the words are W's
 	case ahead && d == 0:

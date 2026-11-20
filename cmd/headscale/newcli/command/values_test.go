@@ -43,6 +43,9 @@ func TestExpiry(t *testing.T) {
 	var node Expiry[NowNever]
 	require.EqualError(t, node.UnmarshalText([]byte("soon")), "it is a time, a date, a duration such as 90d, now or never")
 	require.EqualError(t, node.UnmarshalText([]byte("0s")), "a duration from now is longer than 0")
+	require.EqualError(t, node.UnmarshalText([]byte("300y")), "a duration from now is at most 292y; a later time is written as a date, such as 2999-08-27")
+	require.NoError(t, node.UnmarshalText([]byte("292y")))
+	require.Equal(t, now.Add(292*365*24*time.Hour), node.At(now))
 
 	var key Expiry[timeOnly]
 	require.EqualError(t, key.UnmarshalText([]byte("never")), "it is a time, a date or a duration such as 90d")

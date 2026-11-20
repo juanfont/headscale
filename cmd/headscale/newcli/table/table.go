@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"reflect"
 	"slices"
 	"strconv"
@@ -424,12 +425,24 @@ func Ago(t, now time.Time) string {
 
 	d := t.Sub(now)
 
+	// Sub saturates some 292 years away, such as at an expiry in 2999: such
+	// a time is days away, counted from the seconds.
+	if d == math.MaxInt64 || d == math.MinInt64 {
+		days := strconv.FormatFloat(math.Abs(math.Round(float64(t.Unix()-now.Unix())/(24*3600))), 'f', 0, 64) + "d"
+		if d > 0 {
+			return "in " + days
+		}
+
+		return days + " ago"
+	}
+
 	future := d > 0
 	if !future {
 		d = -d
 	}
 
-	round := func(unit time.Duration) int { return int((d + unit/2) / unit) }
+	// Rounded without d+unit/2, which overflows near the saturation.
+	round := func(unit time.Duration) int { return int(d/unit) + int(d%unit*2/unit) }
 
 	var n string
 
