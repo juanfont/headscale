@@ -64,6 +64,8 @@ type API struct {
 
 	mu      sync.Mutex
 	answers map[answerKey]json.RawMessage
+	// requests are the auth requests read in this run; see GetAuthRequest.
+	requests map[AuthID]clientv0.AuthRequest
 }
 
 // answerKey is a decoded object: its type, and its value in a canonical
@@ -300,6 +302,68 @@ func (a *API) CreateOAuthClient(ctx context.Context, body clientv0.CreateOAuthCl
 // and every token of it.
 func (a *API) DeleteOAuthClient(ctx context.Context, id string) error {
 	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) { return c.DeleteOAuthClient(ctx, id) })
+
+	return err
+}
+
+// GetAuthRequest is GET /auth-requests/{id}, read once a run: the
+// question of a command and its message say the same, and the secret goes
+// out once more only for the answer itself.
+func (a *API) GetAuthRequest(ctx context.Context, id AuthID) (clientv0.AuthRequest, error) {
+	a.mu.Lock()
+	r, ok := a.requests[id]
+	a.mu.Unlock()
+
+	if ok {
+		return r, nil
+	}
+
+	r, err := call[clientv0.AuthRequest](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetAuthRequest(ctx, string(id)) })
+	if err != nil {
+		return r, err
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.requests == nil {
+		a.requests = map[AuthID]clientv0.AuthRequest{}
+	}
+
+	a.requests[id] = r
+
+	return r, nil
+}
+
+// RegisterAuthRequest is POST /auth-requests/{id}/register: the new node.
+func (a *API) RegisterAuthRequest(ctx context.Context, id AuthID, userID string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.RegisterAuthRequest(ctx, string(id), clientv0.RegisterAuthRequestBody{UserId: userID})
+	})
+}
+
+// ApproveAuthRequest is POST /auth-requests/{id}/approve.
+func (a *API) ApproveAuthRequest(ctx context.Context, id AuthID) error {
+	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) { return c.ApproveAuthRequest(ctx, string(id)) })
+
+	return err
+}
+
+// RejectAuthRequest is POST /auth-requests/{id}/reject.
+func (a *API) RejectAuthRequest(ctx context.Context, id AuthID) error {
+	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) { return c.RejectAuthRequest(ctx, string(id)) })
+
+	return err
+}
+
+// CreateDebugNode is POST /debug/nodes: a registration of a made-up node,
+// waiting under id. Its answer, an auth request, holds id and is not
+// returned.
+func (a *API) CreateDebugNode(ctx context.Context, id AuthID, hostname string, routes []string) error {
+	// routes is required, so none is the empty list, not null.
+	body := clientv0.CreateDebugNodeBody{AuthId: string(id), Hostname: hostname, Routes: append([]string{}, routes...)}
+
+	_, err := a.do(func(c *clientv0.Client) (*http.Response, error) { return c.CreateDebugNode(ctx, body) })
 
 	return err
 }
