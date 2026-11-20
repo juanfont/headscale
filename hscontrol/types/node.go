@@ -166,6 +166,11 @@ type Node struct {
 
 	RegisterMethod string
 
+	// CreatedByUserID is the user who registered the node. It stays when the
+	// node is tagged later, and is nil when unknown: the node is older than
+	// the column, or that user was deleted.
+	CreatedByUserID *uint `gorm:"column:created_by_user_id"`
+
 	// Tags is the definitive owner for tagged nodes.
 	// When non-empty, the node is "tagged" and tags define its identity.
 	// Empty for user-owned nodes.

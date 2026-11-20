@@ -1965,7 +1965,7 @@ var nodeFieldImpact = map[string]string{
 	"MachineKey": "payload", "NodeKey": "payload", "DiscoKey": "payload",
 	"Endpoints": "payload", "Hostname": "payload", "GivenName": "payload",
 	"LastControlAddress": "payload",
-	"RegisterMethod":     "payload", "AuthKeyID": "payload", "AuthKey": "payload",
+	"RegisterMethod":     "payload", "AuthKeyID": "payload", "AuthKey": "payload", "CreatedByUserID": "payload",
 	"Ephemeral": "payload",
 	"Expiry":    "election", "KeyExpiryDisabled": "election", "LastSeen": "payload", "CreatedAt": "payload",
 	"UpdatedAt": "payload", "DeletedAt": "payload",
