@@ -57,6 +57,7 @@ func entityOf[T any](kind string, find func(ctx context.Context, word string) (T
 func entities() []entity {
 	return []entity{
 		entityOf("user", findUser, userCandidates(), func(u clientv0.User) string { return u.LoginName }, nil),
+		entityOf("authKey", findAuthKey, authKeyCandidates(), func(k clientv0.AuthKey) string { return k.Prefix }, nil),
 		entityOf("node", findNode, nodeCandidates(), func(n clientv0.Node) string { return n.Name }, func(ctx context.Context, id string) (clientv0.Node, error) {
 			return ctxOf(ctx).API.GetNode(ctx, id)
 		}),
@@ -124,6 +125,79 @@ func findNode(ctx context.Context, word string) (clientv0.Node, error) {
 		func(n clientv0.Node) string { return n.Id },
 		func(n clientv0.Node) []string { return []string{n.Name, n.Hostname} },
 	)
+}
+
+// findAuthKey is the auth key that word names: the key with that ID, else
+// the one whose prefix it is. A key as older output masks it names the key
+// by its prefix; a whole key is refused before any call, so neither a
+// request nor a message carries its secret.
+func findAuthKey(ctx context.Context, word string) (clientv0.AuthKey, error) {
+	if word == "" {
+		return clientv0.AuthKey{}, emptyWord("auth key")
+	}
+
+	word, err := authKeyWord(word)
+	if err != nil {
+		return clientv0.AuthKey{}, err
+	}
+
+	keys, err := ctxOf(ctx).API.ListAuthKeys(ctx)
+	if err != nil {
+		return clientv0.AuthKey{}, err
+	}
+
+	return matchAuthKey(keys, word)
+}
+
+// authKeyWord is the ID or prefix a typed word names: the word, or the
+// prefix of the masked form hskey-auth-<prefix>-***. A whole key is
+// refused: matched by the prefix inside it, a wrong secret behind a right
+// prefix would show a key that works, and delete would revoke it.
+func authKeyWord(word string) (string, error) {
+	const kind = "hskey-auth-"
+
+	if indexFold(word, hskey) != 0 {
+		return word, nil
+	}
+
+	rest, ours := "", len(word) >= len(kind) && strings.EqualFold(word[:len(kind)], kind)
+	if ours {
+		rest = word[len(kind):]
+	}
+
+	if prefix, masked := strings.CutSuffix(rest, "-***"); masked {
+		return prefix, nil
+	}
+
+	text := "a key is named by its ID or its prefix, never by the whole key."
+
+	// A key of today is hskey-auth-<prefix>-<secret>, and its prefix is no
+	// secret.
+	if len(rest) > keyPrefixLength && rest[keyPrefixLength] == '-' {
+		text += " Its prefix is " + rest[:keyPrefixLength] + "."
+	}
+
+	return "", &lookupError{text: text}
+}
+
+// keyPrefixLength is the length of the prefix of a key of today.
+const keyPrefixLength = 12
+
+func matchAuthKey(keys []clientv0.AuthKey, word string) (clientv0.AuthKey, error) {
+	return resolve(keys, word, "auth key", authKeyCandidates(),
+		func(k clientv0.AuthKey) string { return k.Id },
+		func(k clientv0.AuthKey) []string { return []string{k.Prefix} },
+	)
+}
+
+// authKeyCandidates are the columns of the keys an ambiguous word matches.
+func authKeyCandidates() table.Columns[clientv0.AuthKey] {
+	return table.Columns[clientv0.AuthKey]{
+		{Name: "id", Field: "id", Default: true},
+		{Name: "prefix", Field: "prefix", Default: true},
+		{Name: "owner", Field: "owner", Default: true},
+		{Name: "state", Field: "state", Default: true},
+	}
 }
 
 // nodeCandidates are the columns of the nodes an ambiguous word matches.
