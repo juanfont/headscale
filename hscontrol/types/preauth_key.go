@@ -68,6 +68,10 @@ type PreAuthKey struct {
 	// CreatedByToken is set when an OAuth access token made the key.
 	CreatedByToken bool
 
+	// CreatedByUserID is the user who owns the credential that made the key;
+	// see [Credential.CreatedByUserID].
+	CreatedByUserID *uint
+
 	CreatedAt  *time.Time
 	Expiration *time.Time
 

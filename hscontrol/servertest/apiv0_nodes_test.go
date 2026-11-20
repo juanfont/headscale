@@ -92,7 +92,7 @@ func TestAPIv0Nodes(t *testing.T) { //nolint:tparallel // the steps build on eac
 		resp, err := c.ListNodesWithResponse(ctx, &clientv0.ListNodesParams{PageSize: new(int64(2)), PageToken: new("forged")})
 		require.NoError(t, err)
 		require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode())
-		require.Equal(t, clientv0.InvalidPageToken, resp.ApplicationproblemJSON422.Code)
+		require.Equal(t, clientv0.ProblemCodeInvalidPageToken, resp.ApplicationproblemJSON422.Code)
 	})
 
 	node := ids[0]
@@ -119,7 +119,7 @@ func TestAPIv0Nodes(t *testing.T) { //nolint:tparallel // the steps build on eac
 		resp, err = c.UpdateNodeWithResponse(ctx, node, &clientv0.UpdateNodeParams{IfMatch: quoted(old)}, clientv0.UpdateNodeBody{Name: new("web-2")})
 		require.NoError(t, err)
 		require.Equal(t, http.StatusPreconditionFailed, resp.StatusCode(), string(resp.Body))
-		require.Equal(t, clientv0.PreconditionFailed, resp.ApplicationproblemJSON412.Code)
+		require.Equal(t, clientv0.ProblemCodePreconditionFailed, resp.ApplicationproblemJSON412.Code)
 		require.Equal(t, "web-1", get(t).Name)
 	})
 
@@ -160,7 +160,7 @@ func TestAPIv0Nodes(t *testing.T) { //nolint:tparallel // the steps build on eac
 		resp, err := c.UpdateNodeClientWithResponse(ctx, id(updatable))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusConflict, resp.StatusCode(), string(resp.Body))
-		require.Equal(t, clientv0.UpdateRefused, resp.ApplicationproblemJSON409.Code)
+		require.Equal(t, clientv0.ProblemCodeUpdateRefused, resp.ApplicationproblemJSON409.Code)
 		require.Equal(t, map[string]any{"reason": "clientRefused", "clientError": "not supported"}, resp.ApplicationproblemJSON409.Details)
 
 		resp, err = c.UpdateNodeClientWithResponse(ctx, ids[1])

@@ -262,10 +262,21 @@ func TestReadTime(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, time.Date(2027, 8, 27, 10, 0, 0, 0, time.UTC), at)
 
-	for _, s := range []string{"30", "0", "-1h", "1.5d", "soon", ""} {
+	for _, s := range []string{"30", "0", "-1h", "1.5d", "soon", "", "1d1y"} {
 		_, _, _, err := ReadTime(s)
 		require.Error(t, err, s)
+		require.NotErrorIs(t, err, ErrTooLong, s)
 	}
+
+	// No limit on a time, but on a duration: the parser holds some 292 years.
+	for _, s := range []string{"300y", "3000000h"} {
+		_, _, _, err := ReadTime(s)
+		require.ErrorIs(t, err, ErrTooLong, s)
+	}
+
+	d, _, _, err := ReadTime("292y")
+	require.NoError(t, err)
+	require.Equal(t, 292*365*24*time.Hour, d)
 }
 
 func TestDeclaration(t *testing.T) {

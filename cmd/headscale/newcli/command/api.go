@@ -207,6 +207,31 @@ func (a *API) ListTags(ctx context.Context, node string) ([]clientv0.Tag, error)
 	})
 }
 
+// ListAuthKeys is every page of GET /auth-keys, revoked keys included.
+func (a *API) ListAuthKeys(ctx context.Context) ([]clientv0.AuthKey, error) {
+	return walk[clientv0.AuthKey](a, "authKeys", func(c *clientv0.Client, p page) (*http.Response, error) {
+		return c.ListAuthKeys(ctx, &clientv0.ListAuthKeysParams{PageSize: &p.size, PageToken: p.token})
+	})
+}
+
+// GetAuthKey is GET /auth-keys/{id}.
+func (a *API) GetAuthKey(ctx context.Context, id string) (clientv0.AuthKey, error) {
+	return call[clientv0.AuthKey](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetAuthKey(ctx, id) })
+}
+
+// CreateAuthKey is POST /auth-keys. Its answer is the one that holds the
+// secret.
+func (a *API) CreateAuthKey(ctx context.Context, body clientv0.CreateAuthKeyBody) (clientv0.CreatedAuthKey, error) {
+	return call[clientv0.CreatedAuthKey](a, func(c *clientv0.Client) (*http.Response, error) { return c.CreateAuthKey(ctx, body) })
+}
+
+// DeleteAuthKey is DELETE /auth-keys/{id}: it revokes the key.
+func (a *API) DeleteAuthKey(ctx context.Context, id string) error {
+	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) { return c.DeleteAuthKey(ctx, id) })
+
+	return err
+}
+
 // call makes one request and reads its answer: a 2xx body as T, kept for
 // -o json; no body (a 204) as the zero T; any other status as a problem.
 func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, error) {
@@ -246,7 +271,7 @@ func walk[Row any](a *API, items string, get func(c *clientv0.Client, p page) (*
 	refused := func(err error) bool {
 		p, ok := errors.AsType[*ProblemError](err)
 
-		return ok && p.Problem.Code == clientv0.InvalidPageToken
+		return ok && p.Problem.Code == clientv0.ProblemCodeInvalidPageToken
 	}
 
 	rows, err := pages[Row](a, items, get)
@@ -358,8 +383,14 @@ func (a *API) do(do func(*clientv0.Client) (*http.Response, error)) ([]byte, err
 
 func (a *API) unreadable(err error) error {
 	// The decoder quotes what it could not read, which the server wrote.
-	return fmt.Errorf("the server at %s sent an answer this CLI cannot read: %s", a.target, table.Visible(err.Error(), "")) //nolint:err113 // a sentence of the CLI
+	return &unreadableError{text: "the server at " + a.target + " sent an answer this CLI cannot read: " + table.Visible(err.Error(), "")}
 }
+
+// unreadableError is an answer the CLI cannot read: what the server did is
+// not known.
+type unreadableError struct{ text string }
+
+func (e *unreadableError) Error() string { return e.text }
 
 // callError keeps an error of the version check, which already says what
 // to do, and names the server for any other.

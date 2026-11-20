@@ -1,5 +1,5 @@
 LINE: headscale |
-LISTED: [headscale  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             users       (Manage users) / completion  (Print the completion script of a shell)    nodes       (Manage nodes)                              version     (Print the version) / $ headscale ]
+LISTED: [headscale  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             version     (Print the version) / auth        (Authentication of nodes to headscale)      nodes       (Manage nodes)                               / completion  (Print the completion script of a shell)    users       (Manage users)                               / $ headscale ]
 FINAL: [headscale ]
 
 LINE: headscale ve|
@@ -87,7 +87,7 @@ LISTED: [headscale version -o json -- / --config  (Config file)     --help    (S
 FINAL: [headscale version -o json --]
 
 LINE: headscale -c -o |
-LISTED: [headscale -c -o  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             users       (Manage users) / completion  (Print the completion script of a shell)    nodes       (Manage nodes)                              version     (Print the version) / $ headscale -c -o ]
+LISTED: [headscale -c -o  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             version     (Print the version) / auth        (Authentication of nodes to headscale)      nodes       (Manage nodes)                               / completion  (Print the completion script of a shell)    users       (Manage users)                               / $ headscale -c -o ]
 FINAL: [headscale -c -o ]
 
 LINE: headscale -c x ve|
@@ -95,7 +95,7 @@ LISTED: [headscale -c x version ]
 FINAL: [headscale -c x version ]
 
 LINE: headscale nodez |
-LISTED: [headscale nodez  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             users       (Manage users) / completion  (Print the completion script of a shell)    nodes       (Manage nodes)                              version     (Print the version) / $ headscale nodez ]
+LISTED: [headscale nodez  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             version     (Print the version) / auth        (Authentication of nodes to headscale)      nodes       (Manage nodes)                               / completion  (Print the completion script of a shell)    users       (Manage users)                               / $ headscale nodez ]
 FINAL: [headscale nodez ]
 
 LINE: headscale versoin --|
@@ -143,7 +143,7 @@ LISTED: [headscale -h version ]
 FINAL: [headscale -h version ]
 
 LINE: headscale --version |
-LISTED: [headscale --version  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             users       (Manage users) / completion  (Print the completion script of a shell)    nodes       (Manage nodes)                              version     (Print the version) / $ headscale --version ]
+LISTED: [headscale --version  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             version     (Print the version) / auth        (Authentication of nodes to headscale)      nodes       (Manage nodes)                               / completion  (Print the completion script of a shell)    users       (Manage users)                               / $ headscale --version ]
 FINAL: [headscale --version ]
 
 LINE: headscale no|

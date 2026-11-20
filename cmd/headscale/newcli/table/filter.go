@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -108,6 +109,17 @@ func (cs Columns[R]) Showing(rows []R, word string) Columns[R] {
 		}) {
 			out = append(out, c)
 		}
+	}
+
+	return out
+}
+
+// Shown is the declaration with the column of that name among the
+// defaults; the declaration itself does not change.
+func (cs Columns[R]) Shown(name string) Columns[R] {
+	out := slices.Clone(cs)
+	for i := range out {
+		out[i].Default = out[i].Default || out[i].Name == name
 	}
 
 	return out
@@ -287,6 +299,9 @@ func (f *Filter[R]) read() error {
 	return nil
 }
 
+// Column is the name of the column the condition reads.
+func (f Filter[R]) Column() string { return f.col.Name }
+
 // User is the word of an owner=<user> condition, which the caller resolves
 // to a user ID like a target; false for every other condition.
 func (f Filter[R]) User() (string, bool) {
@@ -374,9 +389,10 @@ func (f Filter[R]) matchTime(v reflect.Value, ok bool, now time.Time) bool {
 		return compare(float64(t.Compare(f.at)), 0, f.op)
 	}
 
+	// Sub saturates far away; negating a saturated value would overflow.
 	d := now.Sub(t)
 	if f.col.Ahead {
-		d = -d
+		d = t.Sub(now)
 	}
 
 	return compare(float64(max(d, 0)), float64(f.dur), f.op)
@@ -630,6 +646,10 @@ func ReadTime(s string) (time.Duration, time.Time, bool, error) {
 	d, err := config.ParseDuration(s)
 
 	switch {
+	// A duration in the parser's own form that it refuses is too long for
+	// it; a date has no such limit.
+	case err != nil && s != "" && regexp.MustCompile(`^([0-9]+y)?([0-9]+w)?([0-9]+d)?([0-9]+h)?([0-9]+m)?([0-9]+s)?([0-9]+ms)?$`).MatchString(s):
+		return 0, time.Time{}, false, ErrTooLong
 	case err != nil:
 		return 0, time.Time{}, false, err
 	case d < 0:
@@ -642,6 +662,8 @@ func ReadTime(s string) (time.Duration, time.Time, bool, error) {
 var (
 	errNoUnit   = errors.New("a duration needs a unit")
 	errNegative = errors.New("a duration cannot be negative")
+	// ErrTooLong is a duration longer than the parser holds, some 292 years.
+	ErrTooLong = errors.New("a duration from now is at most 292y; a later time is written as a date, such as 2999-08-27")
 )
 
 // Closest is the name nearest to word, within two edits, for "Did you

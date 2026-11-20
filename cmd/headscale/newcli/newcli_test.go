@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -75,9 +76,11 @@ type result struct {
 	stdout, stderr string
 	code           int
 	// answers are the bodies the server sent in this run, by path, in the
-	// order sent; asked are the requests, as "METHOD path?query".
+	// order sent; asked are the requests, as "METHOD path?query", and sent
+	// the same with the body of each, as the CLI wrote them.
 	answers map[string][][]byte
 	asked   []string
+	sent    []string
 }
 
 // fixture is the server of one case, reached over its socket and its TCP
@@ -154,7 +157,7 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		out, errOut bytes.Buffer
 		mu          sync.Mutex
 		answers     = map[string][][]byte{}
-		asked       []string
+		asked, sent []string
 	)
 
 	pageSize := tc.pageSize
@@ -184,6 +187,7 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 
 			answers[req.URL.Path] = append(answers[req.URL.Path], body)
 			asked = append(asked, req.Method+" "+req.URL.RequestURI())
+			sent = append(sent, req.Method+" "+req.URL.RequestURI()+" "+bodyOf(tb, req))
 
 			if tc.answered != nil {
 				tc.answered(tb, f, req.Method+" "+req.URL.RequestURI())
@@ -191,7 +195,24 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		},
 	})
 
-	return result{stdout: out.String(), stderr: errOut.String(), code: code, answers: answers, asked: asked}
+	return result{stdout: out.String(), stderr: errOut.String(), code: code, answers: answers, asked: asked, sent: sent}
+}
+
+// bodyOf is the body the CLI sent with req, read again.
+func bodyOf(tb testing.TB, req *http.Request) string {
+	tb.Helper()
+
+	if req.GetBody == nil {
+		return ""
+	}
+
+	body, err := req.GetBody()
+	require.NoError(tb, err)
+
+	b, err := io.ReadAll(body)
+	require.NoError(tb, err)
+
+	return string(b)
 }
 
 // cliPages is a case that walks with the page size of the CLI.
@@ -638,6 +659,10 @@ Server commands (talk to a running headscale):
   users get <user>   Show one user
   users create <name>   Create a local user
   users set <user>   Change a local user
+  auth keys list   List the auth keys (alias: ls)
+  auth keys get <key>   Show one auth key
+  auth keys create <owner>   Create an auth key
+  auth keys delete <key>   Revoke an auth key (alias: rm)
   api whoami   Show what the CLI is connected as
 
 Debug:

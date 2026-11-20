@@ -220,6 +220,9 @@ func TestJSONIsTheAnswer(t *testing.T) {
 			return h, err
 		}),
 		spec("made", func(Ctx, NoInput) (clientv0.Health, error) { return clientv0.Health{Healthy: true}, nil }),
+		// A zero value is no answer either: only ErrNotRead says that
+		// there is nothing to print.
+		spec("zero", func(Ctx, NoInput) (clientv0.Health, error) { return clientv0.Health{}, nil }),
 		New(Spec[NoInput, clientv0.Health]{
 			Name: "local", Short: "S", Long: "S.", Example: []string{"prog local"}, Local: true,
 			Run:  func(c Ctx, _ NoInput) (clientv0.Health, error) { return c.API.Health(c) },
@@ -283,6 +286,8 @@ func TestJSONIsTheAnswer(t *testing.T) {
 		{line: "changed -o json", stderr: notAnswer, code: 1},
 		{line: "made", stderr: notAnswer, code: 1},
 		{line: "made -o json", stderr: notAnswer, code: 1},
+		{line: "zero", stderr: notAnswer, code: 1},
+		{line: "zero -o json", stderr: notAnswer, code: 1},
 		{line: "local", stderr: "Error: this command is Local and has no server to call\n", code: 1},
 		{line: "items -o json", stdout: "[\n  {\n    \"id\": \"2\",\n    \"name\": \"b\",\n    \"x\": 2\n  },\n  {\n    \"id\": \"1\",\n    \"name\": \"a\",\n    \"x\": 1\n  }\n]\n"},
 		{line: "items", stdout: "ID  NAME\n2   b\n1   a\n"},
@@ -368,7 +373,7 @@ func TestLookupKeepsItsSentence(t *testing.T) {
 func TestSentence(t *testing.T) {
 	t.Parallel()
 
-	p := &ProblemError{Problem: clientv0.Problem{Code: clientv0.Unauthorized}}
+	p := &ProblemError{Problem: clientv0.Problem{Code: clientv0.ProblemCodeUnauthorized}}
 	require.Equal(t, "the server did not accept the API key.", sentence(fmt.Errorf("getting user: %w", p)))
 	require.Equal(t, "cannot connect to x: it broke", sentence(fmt.Errorf("listing: %w", &connectError{target: "x", err: errBroken})))
 	require.Equal(t, "listing: it broke", sentence(fmt.Errorf("listing: %w", errBroken)))
@@ -732,10 +737,10 @@ func TestAbout(t *testing.T) {
 		in   in
 		want string
 	}{
-		{"a target that is gone has the name read", problem(clientv0.NotFound, clientv0.ProblemObject{Kind: "node", Id: "12"}), in{Node: node}, "Node 12 (mynode) no longer exists."},
-		{"another object keeps no name", problem(clientv0.NotFound, clientv0.ProblemObject{Kind: "node", Id: "13"}), in{Node: node}, "Node 13 no longer exists."},
-		{"the expiry sent", problem(clientv0.ExpiryInPast, clientv0.ProblemObject{}), in{Node: node, Expiry: cmdline.Some(e)}, "2024-01-01 00:00 UTC is in the past.\nTo expire the node now: headscale nodes expire 12"},
-		{"no expiry sent", problem(clientv0.ExpiryInPast, clientv0.ProblemObject{}), in{Node: node}, "the expiry is in the past."},
+		{"a target that is gone has the name read", problem(clientv0.ProblemCodeNotFound, clientv0.ProblemObject{Kind: "node", Id: "12"}), in{Node: node}, "Node 12 (mynode) no longer exists."},
+		{"another object keeps no name", problem(clientv0.ProblemCodeNotFound, clientv0.ProblemObject{Kind: "node", Id: "13"}), in{Node: node}, "Node 13 no longer exists."},
+		{"the expiry sent", problem(clientv0.ProblemCodeExpiryInPast, clientv0.ProblemObject{}), in{Node: node, Expiry: cmdline.Some(e)}, "2024-01-01 00:00 UTC is in the past.\nTo expire the node now: headscale nodes expire 12"},
+		{"no expiry sent", problem(clientv0.ProblemCodeExpiryInPast, clientv0.ProblemObject{}), in{Node: node}, "the expiry is in the past."},
 		{"not a problem", errBroken, in{Node: node}, errBroken.Error()},
 	} {
 		require.Equal(t, tt.want, sentence(c.about(tt.err, tt.in)), tt.name)

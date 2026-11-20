@@ -138,11 +138,12 @@ func (b *SetNodeRoutesBody) fieldErrors() []FieldError {
 }
 
 // tokenMustOwnTags keeps a token from putting a tag on a node, or taking
-// one off, that its grant does not reach. The tags of a node are its owner
-// and decide what it may reach.
+// one off, or making an auth key for one, that its grant does not reach.
+// The tags of a node are its owner and decide what it may reach. Its check
+// is the function GET /me shows as authorization.tags.
 var tokenMustOwnTags = tokenRule{
 	name: "token_must_own_tags",
-	why:  "An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives and every tag the node has now. An API key may give any tag of the policy.",
+	why:  "An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives: to a node, where it must also own every tag the node has now, and to an auth key. GET /me lists these tags as authorization.tags. An API key may give any tag of the policy.",
 }
 
 type (

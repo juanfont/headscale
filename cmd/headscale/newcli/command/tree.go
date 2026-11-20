@@ -43,13 +43,16 @@ type leaf struct {
 	info      []table.ColumnInfo
 	checkList func(line *cmdline.Line, command string) (int, error)
 	// noRows is what a list with no rows says on a terminal; filter is an
-	// example of --filter for its help.
-	noRows, filter string
+	// example of --filter for its help; only is the filter that --all
+	// removes, "" for a list that hides nothing.
+	noRows, filter, only string
 	// set is a command that changes the fields its Opt flags name, so a
 	// line gives at least one of them: NeedsChange.
 	set bool
 	// force is a command that can ask, and so takes --force.
 	force bool
+	// secret is a command that prints a secret once: Spec.Secret.
+	secret bool
 	// hint follows a wrong argument count or an empty list argument;
 	// emptyList follows the sentence of an empty list argument.
 	hint      func(args []string) string
@@ -134,28 +137,10 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
 	l.output = !noOut || !s.Local || s.NeedsServer != nil
 	l.own = !noOut && s.Local && s.NeedsServer == nil
-	l.check = func() error {
-		var errs []error
-
-		if s.Run == nil {
-			errs = append(errs, errNoRun)
-		}
-
-		switch {
-		case !noOut && s.Columns == nil && s.Done == nil:
-			errs = append(errs, errNoShow)
-		case s.Columns != nil && s.Done != nil:
-			errs = append(errs, errBoth)
-		}
-
-		if s.Blocks != nil && s.Columns == nil {
-			errs = append(errs, errBlocks)
-		}
-
-		return errors.Join(append(errs, s.Columns.Check(), s.Blocks.Check())...)
-	}
+	l.check = func() error { return checkSpec(s) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
+	l.secret = s.Secret != nil
 	l.hint = s.Hint
 	l.emptyList = s.EmptyList
 	l.target, _ = targetType(reflect.TypeFor[In]())
@@ -220,21 +205,66 @@ func New[In, Out any](s Spec[In, Out]) Node {
 				}
 			}
 
-			if err != nil {
+			notRead := errors.Is(err, ErrNotRead)
+
+			switch {
+			case err != nil && !notRead && s.Secret != nil:
+				return c.lostAnswer(flagsOf[In](c.about(err, in)))
+			case err != nil && !notRead:
 				return flagsOf[In](c.about(err, in))
+			case s.Secret != nil:
+				return printSecret(c, out, s.Secret(out), func() string { return s.Done(in, out, c.Now()) })
 			}
 
-			return printOne(c, out, s.Columns, s.Blocks, func() string {
+			done := func() string {
 				if s.Done == nil {
 					return ""
 				}
 
 				return s.Done(in, out, c.Now())
-			})
+			}
+
+			// The change is made and there is no object: JSON has nothing
+			// to print.
+			if notRead {
+				if c.json {
+					return nil
+				}
+
+				return writeText(c.stdout, done())
+			}
+
+			return printOne(c, out, s.Columns, s.Blocks, done)
 		}}
 	}
 
 	return l
+}
+
+// checkSpec reports what is wrong with a spec, for the tree to name.
+func checkSpec[In, Out any](s Spec[In, Out]) error {
+	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
+
+	var errs []error
+
+	if s.Run == nil {
+		errs = append(errs, errNoRun)
+	}
+
+	switch {
+	case !noOut && s.Columns == nil && s.Done == nil:
+		errs = append(errs, errNoShow)
+	case s.Columns != nil && s.Done != nil:
+		errs = append(errs, errBoth)
+	}
+
+	errs = append(errs, checkSecret(reflect.TypeFor[Out](), s.Secret != nil, s.Done != nil, s.Columns != nil)...)
+
+	if s.Blocks != nil && s.Columns == nil {
+		errs = append(errs, errBlocks)
+	}
+
+	return errors.Join(append(errs, s.Columns.Check(), s.Blocks.Check())...)
 }
 
 // NewList makes the command of a list spec.
@@ -242,8 +272,9 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
 	l.output = true
 	l.list = true
-	l.info = s.Columns.Info()
+	l.info = onlyInfo(s.Columns, s.Only)
 	l.noRows = s.NoRows
+	l.only = s.Only
 	l.filter = filterExample(s.Example)
 	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
 	l.check = func() error {
@@ -271,17 +302,23 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 			}
 		}
 
+		errs = append(errs, checkOnly(s.Columns, s.Only, s.Long)...)
+		errs = append(errs, checkRows(reflect.TypeFor[Row]())...)
+
 		return errors.Join(append(errs, s.Columns.Check())...)
 	}
 	l.cmd = func(flags []any) cmdline.Node {
 		return cmdline.Command[In]{Name: s.Name, Aliases: s.Aliases, Help: s.Short, Flags: flags, Run: func(ctx context.Context, in In) error {
 			c := ctxOf(ctx)
 			f, _ := cmdline.Get[listFlags](c.line)
+			all, _ := cmdline.Get[allFlags](c.line)
 
 			conds, err := filters(c, s.Columns, f)
 			if err != nil {
 				return err
 			}
+
+			cols, only := applyOnly(s.Columns, s.Only, all.All, conds)
 
 			rows, err := s.Run(c, in)
 			if err != nil {
@@ -293,7 +330,12 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 				return err
 			}
 
-			return printList(c, rows, s.Columns.Pick(f.words()), s.NoRows)
+			shown, err := listOf(c, s.Columns, rows, only, "")
+			if err != nil {
+				return err
+			}
+
+			return printList(c, shown, cols.Pick(f.words()), moreRows(s.NoRows, len(rows)-len(shown)))
 		}}
 	}
 
@@ -329,6 +371,10 @@ func (l *leaf) flags() []any {
 
 	if l.list {
 		f = append(f, listFlags{})
+	}
+
+	if l.only != "" {
+		f = append(f, allFlags{})
 	}
 
 	switch {
@@ -393,7 +439,9 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 
 	var errs []error
 
-	opts := make([]cmdline.Option, 0, len(ents))
+	// An owner is no entity, so it has no candidates and no read; it has a
+	// lookup all the same.
+	opts := append(make([]cmdline.Option, 0, len(ents)+1), cmdline.LateReader(findOwner))
 
 	for _, e := range ents {
 		t.entities[e.t] = e
@@ -433,6 +481,8 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 			for _, c := range n.Commands {
 				g.Commands = append(g.Commands, build(append(slices.Clip(path), nameOf(c)), c))
 			}
+
+			errs = append(errs, secretEnds(path, n.Commands)...)
 
 			return g
 		case *leaf:
@@ -479,6 +529,8 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 	for _, n := range nodes {
 		root.Commands = append(root.Commands, build([]string{nameOf(n)}, n))
 	}
+
+	errs = append(errs, secretEnds(nil, nodes)...)
 
 	parser, err := cmdline.New(root, opts...)
 	if err != nil {

@@ -93,7 +93,7 @@ func TestAPIv0Users(t *testing.T) {
 
 			resp, err := c.ListUsersWithResponse(ctx, &tt.params)
 			require.NoError(t, err)
-			require.Equal(t, clientv0.InvalidPageToken, resp.ApplicationproblemJSON422.Code, string(resp.Body))
+			require.Equal(t, clientv0.ProblemCodeInvalidPageToken, resp.ApplicationproblemJSON422.Code, string(resp.Body))
 		})
 	}
 
@@ -117,7 +117,7 @@ func TestAPIv0Users(t *testing.T) {
 
 		missing, err := c.GetUserWithResponse(ctx, "9999")
 		require.NoError(t, err)
-		require.Equal(t, clientv0.NotFound, missing.ApplicationproblemJSON404.Code)
+		require.Equal(t, clientv0.ProblemCodeNotFound, missing.ApplicationproblemJSON404.Code)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -134,12 +134,12 @@ func TestAPIv0Users(t *testing.T) {
 		require.NoError(t, err)
 
 		p := taken.ApplicationproblemJSON409
-		require.Equal(t, clientv0.NameTaken, p.Code)
+		require.Equal(t, clientv0.ProblemCodeNameTaken, p.Code)
 		require.Equal(t, created[1], p.Object.MustGet().Id)
 
 		empty, err := c.UpdateUserWithResponse(ctx, created[0], clientv0.UpdateUserBody{})
 		require.NoError(t, err)
-		require.Equal(t, clientv0.EmptyPatch, empty.ApplicationproblemJSON422.Code)
+		require.Equal(t, clientv0.ProblemCodeEmptyPatch, empty.ApplicationproblemJSON422.Code)
 	})
 
 	t.Run("create a taken name", func(t *testing.T) {
@@ -147,7 +147,7 @@ func TestAPIv0Users(t *testing.T) {
 
 		resp, err := c.CreateUserWithResponse(ctx, clientv0.CreateUserBody{Name: "alice"})
 		require.NoError(t, err)
-		require.Equal(t, clientv0.NameTaken, resp.ApplicationproblemJSON409.Code)
+		require.Equal(t, clientv0.ProblemCodeNameTaken, resp.ApplicationproblemJSON409.Code)
 	})
 
 	t.Run("create with a taken email", func(t *testing.T) {
@@ -155,7 +155,7 @@ func TestAPIv0Users(t *testing.T) {
 
 		resp, err := c.CreateUserWithResponse(ctx, clientv0.CreateUserBody{Name: "mallory", Email: new("ERIN@example.com")})
 		require.NoError(t, err)
-		require.Equal(t, clientv0.EmailTaken, resp.ApplicationproblemJSON409.Code)
+		require.Equal(t, clientv0.ProblemCodeEmailTaken, resp.ApplicationproblemJSON409.Code)
 		require.Equal(t, created[3], resp.ApplicationproblemJSON409.Object.MustGet().Id)
 	})
 }

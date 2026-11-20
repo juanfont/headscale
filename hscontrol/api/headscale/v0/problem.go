@@ -37,8 +37,10 @@ const (
 	CodeNameTaken            Code = "name_taken"
 	CodeEmailTaken           Code = "email_taken"
 	CodeUserManagedByOIDC    Code = "user_managed_by_oidc"
+	CodeOwnerConflict        Code = "owner_conflict"
 	CodeTagsRequired         Code = "tags_required"
 	CodeTagsNotPermitted     Code = "tags_not_permitted"
+	CodeExpiryRequired       Code = "expiry_required"
 	CodeExpiryInPast         Code = "expiry_in_past"
 	CodeUpdateRefused        Code = "update_refused"
 	CodePreconditionFailed   Code = "precondition_failed"
@@ -108,13 +110,18 @@ var codes = map[Code]codeInfo{
 		http.StatusConflict, "The identity provider owns this user",
 		"A change to a user from OIDC, whose fields the identity provider owns. `object` is the user.", nil,
 	},
+	CodeOwnerConflict: {
+		http.StatusUnprocessableEntity, "The owner is not one user or tags",
+		"A key with both a user and tags, or with neither.", nil,
+	},
 	CodeTagsRequired: {http.StatusUnprocessableEntity, "Tags are required", "An empty tag list where one is needed, such as the tags of a node.", nil},
 	CodeTagsNotPermitted: {
 		http.StatusUnprocessableEntity, "The tags are not in the policy",
 		"Tags that are not in `tagOwners` of the policy.",
 		[]string{"`tags`: every tag of the request that the policy does not name"},
 	},
-	CodeExpiryInPast: {http.StatusUnprocessableEntity, "The expiry is in the past", "An expiry before now. Send `\"now\"` to expire at the server's clock.", nil},
+	CodeExpiryRequired: {http.StatusUnprocessableEntity, "An expiry is required", "A key with no expiry.", nil},
+	CodeExpiryInPast:   {http.StatusUnprocessableEntity, "The expiry is in the past", "An expiry before now. A node's expiry takes `\"now\"` for the server's clock; a key's must be in the future.", nil},
 	CodeUpdateRefused: {
 		http.StatusConflict, "The node did not start the update",
 		"The node did not start an update of its Tailscale client.",

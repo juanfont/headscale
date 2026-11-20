@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/netip"
@@ -2252,9 +2253,13 @@ func TestRegistrationRecordsCreator(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, new(user.ID), creator(viaKey(t, taggedKey)), "the maker of a tagged key")
 
-	tokenKey, err := s.CreateTokenPreAuthKey(nil, false, false, nil, []string{"tag:ci"})
+	_, tokenKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, ByToken: true}, func() error { return nil })
 	require.NoError(t, err)
 	assert.Nil(t, creator(viaKey(t, tokenKey)), "a key a token made")
+
+	_, apiKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, CreatedBy: user.TypedID()}, func() error { return nil })
+	require.NoError(t, err)
+	assert.Equal(t, new(user.ID), creator(viaKey(t, apiKey)), "the maker of a tagged key that records it apart")
 
 	authID := types.MustAuthID()
 	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
@@ -2266,6 +2271,67 @@ func TestRegistrationRecordsCreator(t *testing.T) {
 	byLogin, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodCLI)
 	require.NoError(t, err)
 	assert.Equal(t, new(user.ID), creator(byLogin), "a login")
+}
+
+var errRefused = errors.New("tag:ci does not own tag:prod")
+
+// TestCreateAuthKeyIfHoldsThePolicy: a key's check reads the policy and the
+// key is stored later. A policy write that would refuse the key waits for
+// it, so no key is stored under a policy its check did not read. Without
+// the lock the policy write finishes first.
+func TestCreateAuthKeyIfHoldsThePolicy(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": [], "tag:prod": ["tag:ci"]}}`))
+	require.NoError(t, err)
+
+	k := db.NewPreAuthKey{Tags: []string{"tag:prod"}, Expiration: new(time.Now().Add(time.Hour)), ByToken: true}
+
+	checked, release := make(chan struct{}), make(chan struct{})
+	made := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.CreateAuthKeyIf(k, func() error {
+			if !s.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
+				return errRefused
+			}
+
+			close(checked)
+			<-release
+
+			return nil
+		})
+		made <- err
+	}()
+
+	<-checked
+
+	policyDone := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": [], "tag:prod": []}}`))
+		policyDone <- err
+	}()
+
+	select {
+	case err := <-policyDone:
+		t.Fatalf("the policy changed between a key's check and its write (%v)", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(release)
+	require.NoError(t, <-made)
+	require.NoError(t, <-policyDone)
+
+	_, _, err = s.CreateAuthKeyIf(k, func() error {
+		if !s.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
+			return errRefused
+		}
+
+		return nil
+	})
+	require.ErrorIs(t, err, errRefused, "the new policy holds for the next key")
 }
 
 // TestLoadedExpiryIsUTC proves an expiry the database returns in another zone is
@@ -3601,4 +3667,131 @@ func TestDeleteNodeIfKeepsNodeWholeOnDBFailure(t *testing.T) {
 
 	_, err = s.db.GetNodeByID(id)
 	require.NoError(t, err, "the row stays")
+}
+
+// TestRegistrationRefusesAKeyEndedAfterItsCheck: a registration read and
+// checked its key, then the key was revoked or expired; the write of the node
+// refuses it, for a new node and for a login with a new node key. A refused
+// new node gives its addresses back, and nodes that joined keep theirs: each
+// case has its own server whose address range holds two.
+func TestRegistrationRefusesAKeyEndedAfterItsCheck(t *testing.T) {
+	setup := func(t *testing.T) (*State, *types.User) {
+		t.Helper()
+
+		prefix := netip.MustParsePrefix("100.64.0.0/30")
+		cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+		cfg.Prefixes.V4 = &prefix
+		cfg.Prefixes.V6 = nil
+		cfg.Prefixes.Allocation = types.IPAllocationStrategyRandom
+
+		s, err := NewState(cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Close() })
+
+		return s, s.CreateUserForTest("ended-user")
+	}
+
+	// checkedKey is a key as a registration holds it after its checks.
+	checkedKey := func(t *testing.T, s *State, user *types.User, reusable bool) *types.PreAuthKey {
+		t.Helper()
+
+		made, err := s.CreatePreAuthKey(user.TypedID(), reusable, false, new(time.Now().Add(time.Hour)), nil)
+		require.NoError(t, err)
+
+		pak, err := s.GetPreAuthKey(made.Key)
+		require.NoError(t, err)
+		require.NoError(t, pak.Validate())
+
+		return pak
+	}
+
+	join := func(t *testing.T, s *State, user *types.User) (types.NodeView, tailcfg.RegisterRequest, key.MachinePublic, *types.PreAuthKeyNew) {
+		t.Helper()
+
+		made, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+		require.NoError(t, err)
+
+		machineKey := key.NewMachine().Public()
+		req := tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: made.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "ended-node"},
+		}
+
+		node, _, err := s.HandleNodeFromPreAuthKey(req, machineKey)
+		require.NoError(t, err)
+
+		return node, req, machineKey, made
+	}
+
+	ends := []struct {
+		name string
+		end  func(*State, uint64) error
+		want string
+	}{
+		{"revoked", (*State).RevokePreAuthKey, "authkey revoked"},
+		{"expired", (*State).ExpirePreAuthKey, "authkey expired"},
+	}
+
+	for _, end := range ends {
+		for _, reusable := range []bool{false, true} {
+			t.Run(fmt.Sprintf("a new node, %s, reusable %t", end.name, reusable), func(t *testing.T) {
+				s, user := setup(t)
+				pak := checkedKey(t, s, user, reusable)
+				require.NoError(t, end.end(s, pak.ID))
+
+				_, err := s.createAndSaveNewNode(newNodeParams{
+					User:           *pak.User,
+					MachineKey:     key.NewMachine().Public(),
+					NodeKey:        key.NewNode().Public(),
+					Hostname:       "ended-node",
+					Hostinfo:       &tailcfg.Hostinfo{Hostname: "ended-node"},
+					RegisterMethod: util.RegisterMethodAuthKey,
+					PreAuthKey:     pak,
+				})
+
+				var pakErr types.PAKError
+				require.ErrorAs(t, err, &pakErr)
+				require.Equal(t, end.want, pakErr.Error())
+				require.Zero(t, s.ListNodes().Len())
+
+				// The refused node took no address, so two nodes join; then
+				// both addresses are held.
+				join(t, s, user)
+				join(t, s, user)
+
+				_, _, err = s.ipAlloc.Next()
+				require.ErrorIs(t, err, db.ErrCouldNotAllocateIP, "nodes that joined keep their addresses")
+			})
+
+			t.Run(fmt.Sprintf("a login with a new node key, %s, reusable %t", end.name, reusable), func(t *testing.T) {
+				s, user := setup(t)
+				node, regReq, machineKey, first := join(t, s, user)
+
+				pak := checkedKey(t, s, user, reusable)
+				req := regReq
+				req.NodeKey = key.NewNode().Public()
+
+				view, ok := s.GetNodeByID(node.ID())
+				require.True(t, ok)
+
+				reauth, err := pakReregister(view, pak, req.NodeKey, time.Now())
+				require.NoError(t, err)
+				require.True(t, reauth, "precondition: the login writes the key")
+
+				require.NoError(t, end.end(s, pak.ID))
+
+				_, _, err = s.reregisterNodeWithPAK(view, pak, nil, req, machineKey, "ended-node", req.Hostinfo.Clone())
+
+				var pakErr types.PAKError
+				require.ErrorAs(t, err, &pakErr)
+				require.Equal(t, end.want, pakErr.Error())
+
+				after, ok := s.GetNodeByID(node.ID())
+				require.True(t, ok)
+				require.Equal(t, regReq.NodeKey, after.NodeKey(), "the node is as it was")
+				require.Equal(t, first.ID, after.AuthKeyID().Get())
+			})
+		}
+	}
 }
