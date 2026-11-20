@@ -1,0 +1,755 @@
+[
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "undecided: a refused word earlier on the line (unknown flag or command): cobra offers files (its parse error returns the Default directive) or skips the word; own completes from the last good command",
+  "Class": "",
+  "Shrunk": 1779,
+  "Est": 17790,
+  "Classes": {
+   "report": 1779
+  },
+  "Example": [
+   "-1",
+   ""
+  ],
+  "Outcomes": [
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "undecided: a flag value with no value list (`--config \u003cTab\u003e`, `--name \u003cTab\u003e`): cobra offers files, own nothing",
+  "Class": "",
+  "Shrunk": 645,
+  "Est": 6450,
+  "Classes": {
+   "report": 645
+  },
+  "Example": [
+   "-c="
+  ],
+  "Outcomes": [
+   "[]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "decided D11: attached value or grouped shorts earlier on the line (D11): pflag reads them, own refuses, so the two complete from different places",
+  "Class": "",
+  "Shrunk": 327,
+  "Est": 3270,
+  "Classes": {
+   "report": 327
+  },
+  "Example": [
+   "-hc",
+   ""
+  ],
+  "Outcomes": [
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "undecided: cobra gives nothing once -h/--help/--version is on the line; own completes as usual",
+  "Class": "",
+  "Shrunk": 212,
+  "Est": 2120,
+  "Classes": {
+   "report": 212
+  },
+  "Example": [
+   "-h",
+   ""
+  ],
+  "Outcomes": [
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+   "[]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+  "Class": "",
+  "Shrunk": 137,
+  "Est": 1370,
+  "Classes": {
+   "report": 137
+  },
+  "Example": [
+   "--"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+   "[\"--help\" \"--version\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 126,
+  "Est": 1260,
+  "Classes": {
+   "report": 126
+  },
+  "Example": [
+   "api",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--help\"]",
+   "[\"--help\" \"-h\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version + undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 96,
+  "Est": 960,
+  "Classes": {
+   "report": 96
+  },
+  "Example": [
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+   "[\"--help\" \"--version\" \"-h\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "unwanted: pflag's `-x=` quirk earlier on the line (`-h=`, `-o=`)",
+  "Class": "",
+  "Shrunk": 59,
+  "Est": 590,
+  "Classes": {
+   "report": 59
+  },
+  "Example": [
+   "-d=",
+   ""
+  ],
+  "Outcomes": [
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+   "[]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "unwanted: cobra completes subcommands after `--` at a group (`nodes -- de\u003cTab\u003e` → delete), which its own Run then refuses as unknown command",
+  "Class": "",
+  "Shrunk": 48,
+  "Est": 480,
+  "Classes": {
+   "report": 48
+  },
+  "Example": [
+   "--",
+   ""
+  ],
+  "Outcomes": [
+   "[]",
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "unwanted: malformed flag under the cursor (`--=`, `-=`): cobra completes as if it were empty",
+  "Class": "",
+  "Shrunk": 37,
+  "Est": 370,
+  "Classes": {
+   "report": 37
+  },
+  "Example": [
+   "-="
+  ],
+  "Outcomes": [
+   "[]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 27,
+  "Est": 270,
+  "Classes": {
+   "report": 27
+  },
+  "Example": [
+   "-c",
+   "-",
+   "serve",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\"]",
+   "[\"--help\" \"-h\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "bug: own's Tab reads the previous word as a flag without parsing: a flag-like value (`-c -o \u003cTab\u003e`, D20), a word after `--`, or an empty word (`nodes ls '' \u003cTab\u003e`) make it offer flag values",
+  "Class": "",
+  "Shrunk": 21,
+  "Est": 210,
+  "Classes": {
+   "report": 21
+  },
+  "Example": [
+   "-c",
+   "-o",
+   ""
+  ],
+  "Outcomes": [
+   "[\"json\"]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once)",
+  "Class": "",
+  "Shrunk": 14,
+  "Est": 140,
+  "Classes": {
+   "report": 14
+  },
+  "Example": [
+   "serve",
+   "-h",
+   "--"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\"]",
+   "[\"--config\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "unwanted: cobra's Tab path reads a flag-like value of a value flag as flags (`-o -last-se api \u003cTab\u003e`: 'api does not support flag e'); its Run reads it as the value (D20), so Tab and Run disagree (#2243 family)",
+  "Class": "",
+  "Shrunk": 13,
+  "Est": 130,
+  "Classes": {
+   "report": 13
+  },
+  "Example": [
+   "policy",
+   "-c",
+   "--o",
+   ""
+  ],
+  "Outcomes": [
+   "[\"set\"]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+  "Class": "",
+  "Shrunk": 7,
+  "Est": 70,
+  "Classes": {
+   "report": 7
+  },
+  "Example": [
+   "-h",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+   "[\"--version\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "harness: cobra adapter: its #2243 workaround (`--x -\u003cTab\u003e` → `--x=-`) does not reach the root's persistent -o, so `headscale -o -\u003cTab\u003e` gives files",
+  "Class": "",
+  "Shrunk": 4,
+  "Est": 40,
+  "Classes": {
+   "report": 4
+  },
+  "Example": [
+   "-o",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"-json\"]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + harness: cobra adapter hides --filter once given; it may repeat (D6) but its Value type is not a slice + undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 1,
+  "Est": 10,
+  "Classes": {
+   "report": 1
+  },
+  "Example": [
+   "nodes",
+   "list",
+   "--filter",
+   "x",
+   "--sort",
+   "x",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--columns\" \"--config\" \"--filter\" \"--help\" \"--list-columns\" \"--output\" \"--sort\"]",
+   "[\"--columns\" \"--config\" \"--help\" \"--list-columns\" \"--output\" \"-c\" \"-h\" \"-o\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version + undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 1,
+  "Est": 10,
+  "Classes": {
+   "report": 1
+  },
+  "Example": [
+   "--version",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+   "[\"--help\" \"-h\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "harness: cobra adapter hides --filter once given; it may repeat (D6) but its Value type is not a slice",
+  "Class": "",
+  "Shrunk": 1,
+  "Est": 10,
+  "Classes": {
+   "report": 1
+  },
+  "Example": [
+   "nodes",
+   "list",
+   "--filter=",
+   "--"
+  ],
+  "Outcomes": [
+   "[\"--columns\" \"--config\" \"--filter\" \"--help\" \"--list-columns\" \"--output\" \"--sort\"]",
+   "[\"--columns\" \"--config\" \"--help\" \"--list-columns\" \"--output\" \"--sort\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "harness: cobra adapter hides --filter once given; it may repeat (D6) but its Value type is not a slice + undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 1,
+  "Est": 10,
+  "Classes": {
+   "report": 1
+  },
+  "Example": [
+   "nodes",
+   "ls",
+   "--filter=",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--columns\" \"--config\" \"--filter\" \"--help\" \"--list-columns\" \"--output\" \"--sort\"]",
+   "[\"--columns\" \"--config\" \"--help\" \"--list-columns\" \"--output\" \"--sort\" \"-c\" \"-h\" \"-o\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~pflag",
+  "Cause": "decided D11: attached value or grouped shorts earlier on the line (D11): pflag reads them, own refuses, so the two complete from different places",
+  "Class": "",
+  "Shrunk": 81,
+  "Est": 81,
+  "Classes": {
+   "report": 81
+  },
+  "Example": [
+   "-oa=",
+   "x",
+   ""
+  ],
+  "Outcomes": [
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+   "[]"
+  ]
+ },
+ {
+  "Pair": "grammar~pflag",
+  "Cause": "unwanted: pflag's `-x=` quirk earlier on the line (`-h=`, `-o=`)",
+  "Class": "",
+  "Shrunk": 19,
+  "Est": 19,
+  "Classes": {
+   "report": 19
+  },
+  "Example": [
+   "-h=",
+   "-",
+   ""
+  ],
+  "Outcomes": [
+   "[]",
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "undecided: a refused word earlier on the line (unknown flag or command): cobra offers files (its parse error returns the Default directive) or skips the word; own completes from the last good command",
+  "Class": "",
+  "Shrunk": 1598,
+  "Est": 15980,
+  "Classes": {
+   "report": 1598
+  },
+  "Example": [
+   "-,",
+   ""
+  ],
+  "Outcomes": [
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "undecided: a flag value with no value list (`--config \u003cTab\u003e`, `--name \u003cTab\u003e`): cobra offers files, own nothing",
+  "Class": "",
+  "Shrunk": 667,
+  "Est": 6670,
+  "Classes": {
+   "report": 667
+  },
+  "Example": [
+   "-,="
+  ],
+  "Outcomes": [
+   "[]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "decided D11: attached value or grouped shorts earlier on the line (D11): pflag reads them, own refuses, so the two complete from different places",
+  "Class": "",
+  "Shrunk": 296,
+  "Est": 2960,
+  "Classes": {
+   "report": 296
+  },
+  "Example": [
+   "-h,",
+   ""
+  ],
+  "Outcomes": [
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "undecided: cobra gives nothing once -h/--help/--version is on the line; own completes as usual",
+  "Class": "",
+  "Shrunk": 211,
+  "Est": 2110,
+  "Classes": {
+   "report": 211
+  },
+  "Example": [
+   "-h",
+   ""
+  ],
+  "Outcomes": [
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+   "[]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+  "Class": "",
+  "Shrunk": 148,
+  "Est": 1480,
+  "Classes": {
+   "report": 148
+  },
+  "Example": [
+   "--"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+   "[\"--help\" \"--version\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 103,
+  "Est": 1030,
+  "Classes": {
+   "report": 103
+  },
+  "Example": [
+   "api",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--help\"]",
+   "[\"--help\" \"-h\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version + undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 97,
+  "Est": 970,
+  "Classes": {
+   "report": 97
+  },
+  "Example": [
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+   "[\"--help\" \"--version\" \"-h\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "unwanted: pflag's `-x=` quirk earlier on the line (`-h=`, `-o=`)",
+  "Class": "",
+  "Shrunk": 72,
+  "Est": 720,
+  "Classes": {
+   "report": 72
+  },
+  "Example": [
+   "-a=",
+   ""
+  ],
+  "Outcomes": [
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]",
+   "[]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "unwanted: cobra completes subcommands after `--` at a group (`nodes -- de\u003cTab\u003e` → delete), which its own Run then refuses as unknown command",
+  "Class": "",
+  "Shrunk": 39,
+  "Est": 390,
+  "Classes": {
+   "report": 39
+  },
+  "Example": [
+   "--",
+   ""
+  ],
+  "Outcomes": [
+   "[]",
+   "[\"api\" \"auth\" \"check\" \"completion\" \"nodes\" \"policy\" \"serve\" \"users\" \"version\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "unwanted: malformed flag under the cursor (`--=`, `-=`): cobra completes as if it were empty",
+  "Class": "",
+  "Shrunk": 31,
+  "Est": 310,
+  "Classes": {
+   "report": 31
+  },
+  "Example": [
+   "-="
+  ],
+  "Outcomes": [
+   "[]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 24,
+  "Est": 240,
+  "Classes": {
+   "report": 24
+  },
+  "Example": [
+   "serve",
+   "-h",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\"]",
+   "[\"--config\" \"-c\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once)",
+  "Class": "",
+  "Shrunk": 21,
+  "Est": 210,
+  "Classes": {
+   "report": 21
+  },
+  "Example": [
+   "serve",
+   "--help",
+   "--"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\"]",
+   "[\"--config\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "bug: own's Tab reads the previous word as a flag without parsing: a flag-like value (`-c -o \u003cTab\u003e`, D20), a word after `--`, or an empty word (`nodes ls '' \u003cTab\u003e`) make it offer flag values",
+  "Class": "",
+  "Shrunk": 16,
+  "Est": 160,
+  "Classes": {
+   "report": 16
+  },
+  "Example": [
+   "-h=",
+   "-h"
+  ],
+  "Outcomes": [
+   "[\"-h\"]",
+   "[]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "unwanted: cobra's Tab path reads a flag-like value of a value flag as flags (`-o -last-se api \u003cTab\u003e`: 'api does not support flag e'); its Run reads it as the value (D20), so Tab and Run disagree (#2243 family)",
+  "Class": "",
+  "Shrunk": 14,
+  "Est": 140,
+  "Classes": {
+   "report": 14
+  },
+  "Example": [
+   "policy",
+   "-c",
+   "--o",
+   ""
+  ],
+  "Outcomes": [
+   "[\"set\"]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version",
+  "Class": "",
+  "Shrunk": 7,
+  "Est": 70,
+  "Classes": {
+   "report": 7
+  },
+  "Example": [
+   "-h",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+   "[\"--version\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "harness: cobra adapter: its #2243 workaround (`--x -\u003cTab\u003e` → `--x=-`) does not reach the root's persistent -o, so `headscale -o -\u003cTab\u003e` gives files",
+  "Class": "",
+  "Shrunk": 6,
+  "Est": 60,
+  "Classes": {
+   "report": 6
+  },
+  "Example": [
+   "-o",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"-json\"]",
+   "[] +files"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "bug: own offers flags already on the line; cobra leaves them out (D15: each flag once) + harness: cobra adapter: -c/-o are hidden persistent flags on the root and groups, so `-\u003cTab\u003e` there offers only --help/--version + undecided: cobra also lists short forms (`-c -h -o`) for a lone `-`; own lists long names only",
+  "Class": "",
+  "Shrunk": 4,
+  "Est": 40,
+  "Classes": {
+   "report": 4
+  },
+  "Example": [
+   "--version",
+   "-"
+  ],
+  "Outcomes": [
+   "[\"--config\" \"--help\" \"--output\" \"--version\"]",
+   "[\"--help\" \"-h\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "? CMD CMD -- -G:string=''",
+  "Class": "",
+  "Shrunk": 1,
+  "Est": 10,
+  "Classes": {
+   "report": 1
+  },
+  "Example": [
+   "nodes",
+   "delete",
+   "--",
+   "-o="
+  ],
+  "Outcomes": [
+   "[\"json\"]",
+   "[]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "? CMD V",
+  "Class": "",
+  "Shrunk": 1,
+  "Est": 10,
+  "Classes": {
+   "report": 1
+  },
+  "Example": [
+   "completion",
+   "id,"
+  ],
+  "Outcomes": [
+   "[]",
+   "[\"id,bash\" \"id,fish\" \"id,powershell\" \"id,zsh\"]"
+  ]
+ }
+]

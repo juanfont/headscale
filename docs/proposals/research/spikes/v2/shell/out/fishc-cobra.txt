@@ -1,0 +1,108 @@
+LINE: headscale no
+  nodes
+LINE: headscale nodes 
+  delete
+  list
+  ls
+  rm
+  routes
+  set
+LINE: headscale nodes routes ap
+  approve
+LINE: headscale -c x no
+  nodes
+LINE: headscale nodes list --
+  --columns
+  --config
+  --filter
+  --help
+  --list-columns
+  --output
+  --sort
+LINE: headscale nodes list -o 
+  json
+  json.
+LINE: headscale nodes list --columns 
+  expiry
+  hostname
+  id
+  ip
+  last-seen
+  name
+  online
+  owner
+  version
+LINE: headscale nodes list --columns id,na
+  id,name
+  id,name.
+LINE: headscale nodes list --columns=id,na
+  string split: --columns=id,name: unknown option
+  
+  - (line 1): 
+  string split --max 1 \t $__headscale_comp_results[1]
+  ^
+  in command substitution
+  	called on line 189 of file -
+  in function '__headscale_prepare_completions'
+  in command substitution
+  
+  (Type 'help string' for related documentation)
+LINE: headscale nodes list --columns id,
+  id,expiry
+  id,hostname
+  id,id
+  id,ip
+  id,last-seen
+  id,name
+  id,online
+  id,owner
+  id,version
+LINE: headscale nodes list --sort la
+  last-seen
+  last-seen.
+LINE: headscale nodes list --sort -la
+  -last-seen
+LINE: headscale nodes list --filter=ow
+  string split: --filter=owner: unknown option
+  
+  - (line 1): 
+  string split --max 1 \t $__headscale_comp_results[1]
+  ^
+  in command substitution
+  	called on line 189 of file -
+  in function '__headscale_prepare_completions'
+  in command substitution
+  
+  (Type 'help string' for related documentation)
+LINE: headscale policy set 
+  other.json
+  policy.hujson
+LINE: headscale check config 
+  other.json
+  policy.hujson
+LINE: headscale nodes list 
+LINE: headscale nodes delete 
+LINE: headscale completion 
+  bash
+  fish
+  powershell
+  zsh
+LINE: headscale nodes rm --f
+  --force
+LINE: headscale -o 
+  other.json
+  policy.hujson
+LINE: headscale nodes list -o=
+  string split: -o=json: unknown option
+  
+  - (line 1): 
+  string split --max 1 \t $__headscale_comp_results[1]
+  ^
+  in command substitution
+  	called on line 189 of file -
+  in function '__headscale_prepare_completions'
+  in command substitution
+  
+  (Type 'help string' for related documentation)
+LINE: headscale auth keys create alice --tags tag:p
+LINE: headscale auth keys create alice --tags tag:ci,tag:p

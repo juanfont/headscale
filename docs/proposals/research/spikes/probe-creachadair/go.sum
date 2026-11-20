@@ -1,0 +1,8 @@
+github.com/creachadair/command v0.2.13 h1:AfPgZCQebSDxaH9ouAW5kefyHel4OAO17yxffM6cuYA=
+github.com/creachadair/command v0.2.13/go.mod h1:NngN5vztfAlswH/7YjwU3IBEgKXby/LyaLGhBJyk360=
+github.com/creachadair/flax v0.1.0 h1:smGIMMdPK21WiN2hwHE8FqdfkfSaIEZGpZyEnPa5jsU=
+github.com/creachadair/flax v0.1.0/go.mod h1:F1PML0JZLXSNDMNiRGK2yjm5f+L9QCHchyHBldFymj8=
+github.com/creachadair/mds v0.31.0 h1:h4SXXgallvZfD8CFQnQNAOtBkUGpZjPwNBRQpHpHM/g=
+github.com/creachadair/mds v0.31.0/go.mod h1:IZ3oLffgVNZ4O5WXTPxx7EX5ilSl1ypdv5FekYyynyI=
+github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=

@@ -1,0 +1,38 @@
+LINE: headscale nodes list --columns id,na
+  id,name
+  id,name.
+LINE: headscale nodes list --columns=id,na
+  string split: --columns=id,name: unknown option
+  
+  - (line 1): 
+  string split --max 1 \t $__headscale_comp_results[1]
+  ^
+  in command substitution
+  	called on line 189 of file -
+  in function '__headscale_prepare_completions'
+  in command substitution
+  
+  (Type 'help string' for related documentation)
+LINE: headscale nodes list --sort -la
+LINE: headscale nodes list --sort=-la
+  string split: --sort=-last-seen: unknown option
+  
+  - (line 1): 
+  string split --max 1 \t $__headscale_comp_results[1]
+  ^
+  in command substitution
+  	called on line 189 of file -
+  in function '__headscale_prepare_completions'
+  in command substitution
+  
+  (Type 'help string' for related documentation)
+LINE: headscale nodes list --tags tag:p
+  tag:prod
+  tag:prod.
+LINE: headscale nodes list --tags tag:ci,tag:p
+  tag:ci,tag:prod
+  tag:ci,tag:prod.
+LINE: headscale nodes list --columns id,
+  id,id
+  id,last-seen
+  id,name

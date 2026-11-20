@@ -1,0 +1,118 @@
+src	name	verdict	reason	ids
+completions_test.go:55	TestCmdNameCompletionInGo	IN		cobracomp-001,cobracomp-002,cobracomp-003
+completions_test.go:157	TestNoCmdNameCompletionInGo	IN		cobracomp-004,cobracomp-005,cobracomp-006,cobracomp-007,cobracomp-008
+completions_test.go:322	TestValidArgsCompletionInGo	IN		cobracomp-009,cobracomp-010,cobracomp-011
+completions_test.go:376	TestValidArgsAndCmdCompletionInGo	OUT	other: command with both sub-commands and positionals (our groups never run)	
+completions_test.go:426	TestValidArgsFuncAndCmdCompletionInGo	OUT	other: command with both sub-commands and positionals (our groups never run)	
+completions_test.go:493	TestFlagNameCompletionInGo	IN		cobracomp-019,cobracomp-020,cobracomp-021,cobracomp-022
+completions_test.go:583	TestFlagNameCompletionInGoWithDesc	OUT	other: descriptions	
+completions_test.go:697	TestFlagNameCompletionRepeat	IN		cobracomp-023,cobracomp-024,cobracomp-025,cobracomp-026,cobracomp-027
+completions_test.go:844	TestRequiredFlagNameCompletionInGo	OUT	layer-validation	
+completions_test.go:1038	TestFlagFileExtFilterCompletionInGo	IN		cobracomp-028,cobracomp-029,cobracomp-030
+completions_test.go:1160	TestFlagDirFilterCompletionInGo	OUT	other: file-filter directives (FilterDirs)	
+completions_test.go:1276	TestValidArgsFuncCmdContext	OUT	lifecycle	
+completions_test.go:1318	TestValidArgsFuncSingleCmd	IN		cobracomp-009,cobracomp-010
+completions_test.go:1357	TestValidArgsFuncSingleCmdInvalidArg	IN		cobracomp-012
+completions_test.go:1384	TestValidArgsFuncChildCmds	IN		cobracomp-013,cobracomp-014,cobracomp-015
+completions_test.go:1488	TestValidArgsFuncAliases	IN		cobracomp-016,cobracomp-017,cobracomp-018
+completions_test.go:1544	TestValidArgsFuncInBashScript	OUT	script-internals	
+completions_test.go:1560	TestNoValidArgsFuncInBashScript	OUT	script-internals	
+completions_test.go:1575	TestCompleteCmdInBashScript	OUT	script-internals	
+completions_test.go:1591	TestCompleteNoDesCmdInZshScript	OUT	script-internals	
+completions_test.go:1607	TestCompleteCmdInZshScript	OUT	script-internals	
+completions_test.go:1624	TestFlagCompletionInGo	IN		cobracomp-031,cobracomp-032
+completions_test.go:1717	TestValidArgsFuncChildCmdsWithDesc	OUT	other: descriptions	
+completions_test.go:1821	TestFlagCompletionWithNotInterspersedArgs	IN		cobracomp-033,cobracomp-034,cobracomp-035,cobracomp-036,cobracomp-037,cobracomp-038,cobracomp-039,cobracomp-040
+completions_test.go:2044	TestFlagCompletionWorksRootCommandAddedAfterFlags	OUT	api-only	
+completions_test.go:2079	TestFlagCompletionForPersistentFlagsCalledFromSubCmd	IN		cobracomp-041
+completions_test.go:2121	TestFlagCompletionConcurrentRegistration	OUT	api-only	
+completions_test.go:2187	TestFlagCompletionInGoWithDesc	OUT	other: descriptions	
+completions_test.go:2280	TestValidArgsNotValidArgsFunc	OUT	api-only	
+completions_test.go:2323	TestArgAliasesCompletionInGo	IN		cobracomp-042,cobracomp-043,cobracomp-044
+completions_test.go:2381	TestCompleteHelp	IN		cobracomp-001,cobracomp-045,cobracomp-046
+completions_test.go:2461	TestDefaultCompletionCmd	OUT	script-internals	
+completions_test.go:2607	TestCompleteCompletion	IN		cobracomp-009,cobracomp-047
+completions_test.go:2694	TestMultipleShorthandFlagCompletion	IN		cobracomp-048,cobracomp-049,cobracomp-050,cobracomp-051,cobracomp-052
+completions_test.go:2787	TestCompleteWithDisableFlagParsing	OUT	other: DisableFlagParsing	
+completions_test.go:2850	TestCompleteWithRootAndLegacyArgs	OUT	layer-validation	
+completions_test.go:2896	TestCompletionFuncCompatibility	OUT	api-only	
+completions_test.go:2980	TestFixedCompletions	OUT	api-only	
+completions_test.go:3007	TestFixedCompletionsWithCompletionHelpers	OUT	api-only	
+completions_test.go:3057	TestCompletionForGroupedFlags row 1	OUT	layer-validation	
+completions_test.go:3057	TestCompletionForGroupedFlags row 2	OUT	layer-validation	
+completions_test.go:3057	TestCompletionForGroupedFlags row 3	OUT	layer-validation	
+completions_test.go:3057	TestCompletionForGroupedFlags row 4	OUT	layer-validation	
+completions_test.go:3057	TestCompletionForGroupedFlags row 5	OUT	layer-validation	
+completions_test.go:3157	TestCompletionForOneRequiredGroupFlags row 1	OUT	layer-validation	
+completions_test.go:3157	TestCompletionForOneRequiredGroupFlags row 2	OUT	layer-validation	
+completions_test.go:3157	TestCompletionForOneRequiredGroupFlags row 3	OUT	layer-validation	
+completions_test.go:3157	TestCompletionForOneRequiredGroupFlags row 4	OUT	layer-validation	
+completions_test.go:3157	TestCompletionForOneRequiredGroupFlags row 5	OUT	layer-validation	
+completions_test.go:3255	TestCompletionForMutuallyExclusiveFlags row 1	OUT	layer-validation	
+completions_test.go:3255	TestCompletionForMutuallyExclusiveFlags row 2	OUT	layer-validation	
+completions_test.go:3255	TestCompletionForMutuallyExclusiveFlags row 3	OUT	layer-validation	
+completions_test.go:3255	TestCompletionForMutuallyExclusiveFlags row 4	OUT	layer-validation	
+completions_test.go:3349	TestCompletionCobraFlags row 1	IN		cobracomp-053
+completions_test.go:3349	TestCompletionCobraFlags row 2	IN		cobracomp-054
+completions_test.go:3349	TestCompletionCobraFlags row 3	IN		cobracomp-055
+completions_test.go:3349	TestCompletionCobraFlags row 4	IN		cobracomp-056
+completions_test.go:3349	TestCompletionCobraFlags row 5	OUT	other: -v/--version on a sub-command (only our root has --version, no -v)	
+completions_test.go:3349	TestCompletionCobraFlags row 6	IN		cobracomp-057
+completions_test.go:3349	TestCompletionCobraFlags row 7	IN		cobracomp-058
+completions_test.go:3349	TestCompletionCobraFlags row 8	OUT	other: -v/--version on a sub-command (only our root has --version, no -v)	
+completions_test.go:3349	TestCompletionCobraFlags row 9	OUT	other: -v/--version on a sub-command (only our root has --version, no -v)	
+completions_test.go:3349	TestCompletionCobraFlags row 10	IN		cobracomp-059
+completions_test.go:3349	TestCompletionCobraFlags row 11	OUT	other: program-defined -h/-v replacing cobra's own	
+completions_test.go:3349	TestCompletionCobraFlags row 12	OUT	other: program-defined -h/-v replacing cobra's own	
+completions_test.go:3349	TestCompletionCobraFlags row 13	OUT	other: program-defined -h/-v replacing cobra's own	
+completions_test.go:3349	TestCompletionCobraFlags row 14	OUT	other: program-defined -h/-v replacing cobra's own	
+completions_test.go:3349	TestCompletionCobraFlags row 15	OUT	other: program-defined -h/-v replacing cobra's own	
+completions_test.go:3349	TestCompletionCobraFlags row 16	OUT	other: program-defined -h/-v replacing cobra's own	
+completions_test.go:3349	TestCompletionCobraFlags row 17	OUT	other: DisableFlagParsing	
+completions_test.go:3349	TestCompletionCobraFlags row 18	OUT	other: DisableFlagParsing	
+completions_test.go:3583	TestArgsNotDetectedAsFlagsCompletionInGo row 1	IN		cobracomp-060
+completions_test.go:3583	TestArgsNotDetectedAsFlagsCompletionInGo row 2	IN		cobracomp-061
+completions_test.go:3583	TestArgsNotDetectedAsFlagsCompletionInGo row 3	IN		cobracomp-062
+completions_test.go:3583	TestArgsNotDetectedAsFlagsCompletionInGo row 4	IN		cobracomp-063
+completions_test.go:3583	TestArgsNotDetectedAsFlagsCompletionInGo row 5	IN		cobracomp-064
+completions_test.go:3647	TestGetFlagCompletion row 1	OUT	api-only	
+completions_test.go:3647	TestGetFlagCompletion row 2	OUT	api-only	
+completions_test.go:3647	TestGetFlagCompletion row 3	OUT	api-only	
+completions_test.go:3647	TestGetFlagCompletion row 4	OUT	api-only	
+completions_test.go:3647	TestGetFlagCompletion row 5	OUT	api-only	
+completions_test.go:3737	TestGetEnvConfig row 1	OUT	env	
+completions_test.go:3737	TestGetEnvConfig row 2	OUT	env	
+completions_test.go:3737	TestGetEnvConfig row 3	OUT	env	
+completions_test.go:3737	TestGetEnvConfig row 4	OUT	env	
+completions_test.go:3737	TestGetEnvConfig row 5	OUT	env	
+completions_test.go:3822	TestDisableDescriptions row 1	OUT	env	
+completions_test.go:3822	TestDisableDescriptions row 2	OUT	env	
+completions_test.go:3822	TestDisableDescriptions row 3	OUT	env	
+completions_test.go:3822	TestDisableDescriptions row 4	OUT	env	
+completions_test.go:3822	TestDisableDescriptions row 5	OUT	env	
+completions_test.go:3930	TestInitDefaultCompletionCmd	OUT	api-only	
+completions_test.go:4019	TestCustomDefaultShellCompDirective row 1	IN		cobracomp-065
+completions_test.go:4019	TestCustomDefaultShellCompDirective row 2	IN		cobracomp-066
+completions_test.go:4019	TestCustomDefaultShellCompDirective row 3	IN		cobracomp-067
+completions_test.go:4076	TestCompletionDoesNotMutateOsArgs	OUT	api-only	
+bash_completions_test.go:83	TestBashCompletions	OUT	script-internals	
+bash_completions_test.go:229	TestBashCompletionHiddenFlag	OUT	script-internals	
+bash_completions_test.go:245	TestBashCompletionDeprecatedFlag	OUT	deprecated	
+bash_completions_test.go:261	TestBashCompletionTraverseChildren	OUT	script-internals	
+bash_completions_test.go:279	TestBashCompletionNoActiveHelp	OUT	active-help	
+bash_completionsV2_test.go:23	TestBashCompletionV2WithActiveHelp	OUT	active-help	
+fish_completions_test.go:26	TestCompleteNoDesCmdInFishScript	OUT	script-internals	
+fish_completions_test.go:42	TestCompleteCmdInFishScript	OUT	script-internals	
+fish_completions_test.go:59	TestProgWithDash	OUT	script-internals	
+fish_completions_test.go:74	TestProgWithColon	OUT	script-internals	
+fish_completions_test.go:89	TestFishCompletionNoActiveHelp	OUT	active-help	
+fish_completions_test.go:101	TestGenFishCompletionFile	OUT	api-only	
+fish_completions_test.go:120	TestFailGenFishCompletionFile	OUT	api-only	
+zsh_completions_test.go:23	TestZshCompletionWithActiveHelp	OUT	active-help	
+powershell_completions_test.go:23	TestPwshCompletionNoActiveHelp	OUT	active-help	
+active_help_test.go:29	TestActiveHelpAlone	OUT	active-help	
+active_help_test.go:84	TestActiveHelpWithComps	OUT	active-help	
+active_help_test.go:169	TestMultiActiveHelp	OUT	active-help	
+active_help_test.go:231	TestActiveHelpForFlag	OUT	active-help	
+active_help_test.go:266	TestConfigActiveHelp	OUT	active-help	
+active_help_test.go:319	TestDisableActiveHelp	OUT	active-help	

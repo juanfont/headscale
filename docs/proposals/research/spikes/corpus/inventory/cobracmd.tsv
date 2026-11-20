@@ -1,0 +1,211 @@
+src	name	verdict	reason	ids
+command_test.go:88	TestSingleCommand	IN		cobracmd-001
+command_test.go:113	TestChildCommand	IN		cobracmd-002
+command_test.go:138	TestCallCommandWithoutSubcommands	IN		cobracmd-003
+command_test.go:146	TestRootExecuteUnknownCommand	IN		cobracmd-004
+command_test.go:159	TestSubcommandExecuteC	IN		cobracmd-005
+command_test.go:177	TestExecuteContext	OUT	lifecycle	
+command_test.go:206	TestExecuteContextC	OUT	lifecycle	
+command_test.go:235	TestExecute_NoContext	OUT	lifecycle	
+command_test.go:262	TestRootUnknownCommandSilenced	OUT	help-format	
+command_test.go:274	TestCommandAlias	IN		cobracmd-006
+command_test.go:305	TestEnablePrefixMatching	IN		cobracmd-007
+command_test.go:334	TestAliasPrefixMatching	IN		cobracmd-008
+command_test.go:372	TestPlugin	OUT	help-format	
+command_test.go:394	TestPluginWithSubCommands	OUT	help-format	
+command_test.go:437	TestChildSameName	IN		cobracmd-009
+command_test.go:465	TestGrandChildSameName	IN		cobracmd-010
+command_test.go:491	TestFlagLong	IN		cobracmd-011
+command_test.go:528	TestFlagShort	IN		cobracmd-012
+command_test.go:562	TestChildFlag	IN		cobracmd-013
+command_test.go:583	TestChildFlagWithParentLocalFlag	IN		cobracmd-014
+command_test.go:604	TestFlagInvalidInput	OUT	typed-value	
+command_test.go:616	TestFlagBeforeCommand	IN		cobracmd-015,cobracmd-016
+command_test.go:643	TestStripFlags	IN		cobracmd-017,cobracmd-018,cobracmd-019
+command_test.go:716	TestDisableFlagParsing	OUT	other: DisableFlagParsing (no pass-through commands in 001)	
+command_test.go:740	TestPersistentFlagsOnSameCommand	IN		cobracmd-022
+command_test.go:770	TestEmptyInputs	IN		cobracmd-020
+command_test.go:789	TestChildFlagShadowsParentPersistentFlag	OUT	api-only	
+command_test.go:818	TestPersistentFlagsOnChild	IN		cobracmd-021
+command_test.go:853	TestRequiredFlags	OUT	layer-validation	
+command_test.go:871	TestPersistentRequiredFlags	OUT	layer-validation	
+command_test.go:896	TestPersistentRequiredFlagsWithDisableFlagParsing	OUT	layer-validation	
+command_test.go:927	TestInitHelpFlagMergesFlags	OUT	api-only	
+command_test.go:941	TestHelpCommandExecuted	IN		cobracmd-023
+command_test.go:953	TestHelpCommandExecutedOnChild	IN		cobracmd-024
+command_test.go:966	TestHelpCommandExecutedOnChildWithFlagThatShadowsParentFlag	OUT	help-format	
+command_test.go:998	TestSetHelpCommand	OUT	help-format	
+command_test.go:1021	TestSetHelpTemplate	OUT	help-format	
+command_test.go:1064	TestHelpFlagExecuted	IN		cobracmd-025
+command_test.go:1075	TestHelpFlagExecutedOnChild	IN		cobracmd-026
+command_test.go:1092	TestHelpFlagInHelp	OUT	help-format	
+command_test.go:1106	TestFlagsInUsage	OUT	help-format	
+command_test.go:1116	TestHelpExecutedOnNonRunnableChild	IN		cobracmd-027
+command_test.go:1129	TestSetUsageTemplate	OUT	help-format	
+command_test.go:1168	TestVersionFlagExecuted	IN		cobracmd-028
+command_test.go:1179	TestVersionFlagExecutedDiplayName	OUT	help-format	
+command_test.go:1197	TestVersionFlagExecutedWithNoName	OUT	help-format	
+command_test.go:1208	TestShortAndLongVersionFlagInHelp	OUT	help-format	
+command_test.go:1219	TestLongVersionFlagOnlyInHelpWhenShortPredefined	OUT	help-format	
+command_test.go:1232	TestShorthandVersionFlagExecuted	IN		cobracmd-031
+command_test.go:1243	TestVersionTemplate	OUT	help-format	
+command_test.go:1255	TestShorthandVersionTemplate	OUT	help-format	
+command_test.go:1267	TestRootErrPrefixExecutedOnSubcommand	OUT	help-format	
+command_test.go:1280	TestRootAndSubErrPrefix	OUT	help-format	
+command_test.go:1300	TestVersionFlagExecutedOnSubcommand	IN		cobracmd-029
+command_test.go:1312	TestShorthandVersionFlagExecutedOnSubcommand	IN		cobracmd-031
+command_test.go:1324	TestVersionFlagOnlyAddedToRoot	IN		cobracmd-030
+command_test.go:1336	TestShortVersionFlagOnlyAddedToRoot	IN		cobracmd-030
+command_test.go:1348	TestVersionFlagOnlyExistsIfVersionNonEmpty	OUT	lifecycle	
+command_test.go:1358	TestShorthandVersionFlagOnlyExistsIfVersionNonEmpty	OUT	lifecycle	
+command_test.go:1368	TestShorthandVersionFlagOnlyAddedIfShorthandNotDefined	OUT	lifecycle	
+command_test.go:1380	TestShorthandVersionFlagOnlyAddedIfVersionNotDefined	OUT	lifecycle	
+command_test.go:1391	TestUsageIsNotPrintedTwice	OUT	help-format	
+command_test.go:1402	TestVisitParents	OUT	api-only	
+command_test.go:1431	TestSuggestions	OUT	suggestions	
+command_test.go:1478	TestCaseInsensitive	IN		cobracmd-032,cobracmd-033
+command_test.go:1573	TestCaseSensitivityBackwardCompatibility	IN		cobracmd-032
+command_test.go:1585	TestRemoveCommand	OUT	api-only	
+command_test.go:1597	TestReplaceCommandWithRemove	OUT	api-only	
+command_test.go:1628	TestDeprecatedCommand	OUT	deprecated	
+command_test.go:1645	TestHooks	OUT	lifecycle	
+command_test.go:1697	TestPersistentHooks	OUT	lifecycle	
+command_test.go:1789	TestGlobalNormFuncPropagation	OUT	normalisation	
+command_test.go:1809	TestNormPassedOnLocal	OUT	normalisation	
+command_test.go:1823	TestNormPassedOnInherited	OUT	normalisation	
+command_test.go:1851	TestConsistentNormalizedName	OUT	normalisation	
+command_test.go:1869	TestFlagOnPflagCommandLine	OUT	api-only	
+command_test.go:1884	TestHiddenCommandExecutes	OUT	deprecated	
+command_test.go:1906	TestHiddenCommandIsHidden	OUT	help-format	
+command_test.go:1913	TestCommandsAreSorted	OUT	help-format	
+command_test.go:1935	TestEnableCommandSortingIsDisabled	OUT	help-format	
+command_test.go:1956	TestUsageWithGroup	OUT	help-format	
+command_test.go:1977	TestUsageHelpGroup	OUT	help-format	
+command_test.go:1995	TestUsageCompletionGroup	OUT	help-format	
+command_test.go:2015	TestUngroupedCommand	OUT	help-format	
+command_test.go:2037	TestAddGroup	OUT	help-format	
+command_test.go:2051	TestWrongGroupFirstLevel	OUT	help-format	
+command_test.go:2069	TestWrongGroupNestedLevel	OUT	help-format	
+command_test.go:2089	TestWrongGroupForHelp	OUT	help-format	
+command_test.go:2109	TestWrongGroupForCompletion	OUT	help-format	
+command_test.go:2129	TestSetOutput	OUT	lifecycle	
+command_test.go:2137	TestSetOut	OUT	lifecycle	
+command_test.go:2145	TestSetErr	OUT	lifecycle	
+command_test.go:2153	TestSetIn	OUT	lifecycle	
+command_test.go:2161	TestUsageStringRedirected	OUT	help-format	
+command_test.go:2177	TestCommandPrintRedirection	OUT	lifecycle	
+command_test.go:2218	TestFlagErrorFunc	OUT	help-format	
+command_test.go:2235	TestFlagErrorFuncHelp	OUT	help-format	
+command_test.go:2270	TestSortedFlags	OUT	api-only	
+command_test.go:2296	TestMergeCommandLineToFlags	OUT	api-only	
+command_test.go:2310	TestUseDeprecatedFlags	OUT	deprecated	
+command_test.go:2322	TestTraverseWithParentFlags	IN		cobracmd-034
+command_test.go:2344	TestTraverseNoParentFlags	IN		cobracmd-035
+command_test.go:2364	TestTraverseWithBadParentFlags	IN		cobracmd-036
+command_test.go:2382	TestTraverseWithBadChildFlag	IN		cobracmd-037
+command_test.go:2403	TestTraverseWithTwoSubcommands	IN		cobracmd-038
+command_test.go:2425	TestUpdateName	OUT	api-only	
+command_test.go:2477	TestCalledAs	IN		cobracmd-039,cobracmd-040
+command_test.go:2498	TestFParseErrWhitelistBackwardCompatibility	OUT	other: unknown-flag allowlist/passthrough (not in the grammar)	
+command_test.go:2509	TestFParseErrWhitelistSameCommand	OUT	other: unknown-flag allowlist/passthrough (not in the grammar)	
+command_test.go:2525	TestFParseErrWhitelistParentCommand	OUT	other: unknown-flag allowlist/passthrough (not in the grammar)	
+command_test.go:2549	TestFParseErrWhitelistChildCommand	OUT	other: unknown-flag allowlist/passthrough (not in the grammar)	
+command_test.go:2572	TestFParseErrWhitelistSiblingCommand	OUT	other: unknown-flag allowlist/passthrough (not in the grammar)	
+command_test.go:2603	TestSetContext	OUT	lifecycle	
+command_test.go:2628	TestSetContextPreRun	OUT	lifecycle	
+command_test.go:2654	TestSetContextPreRunOverwrite	OUT	lifecycle	
+command_test.go:2675	TestSetContextPersistentPreRun	OUT	lifecycle	
+command_test.go:2709	TestNoRootRunCommandExecutedWithVersionSet	IN		cobracmd-062
+command_test.go:2723	TestNoRootRunCommandExecutedWithoutVersionSet	IN		cobracmd-062
+command_test.go:2737	TestHelpCommandExecutedWithVersionSet	IN		cobracmd-023
+command_test.go:2751	TestHelpCommandExecutedWithoutVersionSet	IN		cobracmd-023
+command_test.go:2765	TestHelpflagCommandExecutedWithVersionSet	IN		cobracmd-063
+command_test.go:2779	TestHelpflagCommandExecutedWithoutVersionSet	IN		cobracmd-063
+command_test.go:2793	TestFind	IN		cobracmd-041,cobracmd-042,cobracmd-043,cobracmd-044,cobracmd-045,cobracmd-046,cobracmd-047,cobracmd-048,cobracmd-049
+command_test.go:2882	TestUnknownFlagShouldReturnSameErrorRegardlessOfArgPosition	IN		cobracmd-050,cobracmd-051,cobracmd-052,cobracmd-053,cobracmd-054,cobracmd-055,cobracmd-056,cobracmd-057,cobracmd-058,cobracmd-059,cobracmd-060,cobracmd-061
+command_test.go:2925	TestHelpFuncExecuted	IN		cobracmd-024
+args_test.go:123	TestNoArgs	OUT	layer-validation	
+args_test.go:129	TestNoArgs_WithArgs	OUT	layer-validation	
+args_test.go:135	TestNoArgs_WithValid_WithArgs	OUT	layer-validation	
+args_test.go:141	TestNoArgs_WithValid_WithInvalidArgs	OUT	layer-validation	
+args_test.go:147	TestNoArgs_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:155	TestOnlyValidArgs	OUT	layer-validation	
+args_test.go:161	TestOnlyValidArgs_WithInvalidArgs	OUT	layer-validation	
+args_test.go:169	TestNoDuplicateArgs	OUT	layer-validation	
+args_test.go:175	TestNoDuplicateArgs_WithDuplicateArgs	OUT	layer-validation	
+args_test.go:181	TestNoDuplicateArgs_WithValid_WithDuplicateArgs	OUT	layer-validation	
+args_test.go:187	TestNoDuplicateArgs_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:195	TestArbitraryArgs	OUT	layer-validation	
+args_test.go:201	TestArbitraryArgs_WithValid	OUT	layer-validation	
+args_test.go:207	TestArbitraryArgs_WithValid_WithInvalidArgs	OUT	layer-validation	
+args_test.go:213	TestArbitraryArgs_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:221	TestMinimumNArgs	OUT	layer-validation	
+args_test.go:227	TestMinimumNArgs_WithValid	OUT	layer-validation	
+args_test.go:233	TestMinimumNArgs_WithValid__WithInvalidArgs	OUT	layer-validation	
+args_test.go:239	TestMinimumNArgs_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:245	TestMinimumNArgs_WithLessArgs	OUT	layer-validation	
+args_test.go:251	TestMinimumNArgs_WithLessArgs_WithValid	OUT	layer-validation	
+args_test.go:257	TestMinimumNArgs_WithLessArgs_WithValid_WithInvalidArgs	OUT	layer-validation	
+args_test.go:263	TestMinimumNArgs_WithLessArgs_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:271	TestMaximumNArgs	OUT	layer-validation	
+args_test.go:277	TestMaximumNArgs_WithValid	OUT	layer-validation	
+args_test.go:283	TestMaximumNArgs_WithValid_WithInvalidArgs	OUT	layer-validation	
+args_test.go:289	TestMaximumNArgs_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:295	TestMaximumNArgs_WithMoreArgs	OUT	layer-validation	
+args_test.go:301	TestMaximumNArgs_WithMoreArgs_WithValid	OUT	layer-validation	
+args_test.go:307	TestMaximumNArgs_WithMoreArgs_WithValid_WithInvalidArgs	OUT	layer-validation	
+args_test.go:313	TestMaximumNArgs_WithMoreArgs_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:321	TestExactArgs	OUT	layer-validation	
+args_test.go:327	TestExactArgs_WithValid	OUT	layer-validation	
+args_test.go:333	TestExactArgs_WithValid_WithInvalidArgs	OUT	layer-validation	
+args_test.go:339	TestExactArgs_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:345	TestExactArgs_WithInvalidCount	OUT	layer-validation	
+args_test.go:351	TestExactArgs_WithInvalidCount_WithValid	OUT	layer-validation	
+args_test.go:357	TestExactArgs_WithInvalidCount_WithValid_WithInvalidArgs	OUT	layer-validation	
+args_test.go:363	TestExactArgs_WithInvalidCount_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:371	TestRangeArgs	OUT	layer-validation	
+args_test.go:377	TestRangeArgs_WithValid	OUT	layer-validation	
+args_test.go:383	TestRangeArgs_WithValid_WithInvalidArgs	OUT	layer-validation	
+args_test.go:389	TestRangeArgs_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:395	TestRangeArgs_WithInvalidCount	OUT	layer-validation	
+args_test.go:401	TestRangeArgs_WithInvalidCount_WithValid	OUT	layer-validation	
+args_test.go:407	TestRangeArgs_WithInvalidCount_WithValid_WithInvalidArgs	OUT	layer-validation	
+args_test.go:413	TestRangeArgs_WithInvalidCount_WithValidOnly_WithInvalidArgs	OUT	layer-validation	
+args_test.go:421	TestRootTakesNoArgs	IN		cobracmd-064
+args_test.go:438	TestRootTakesArgs	IN		cobracmd-067
+args_test.go:449	TestChildTakesNoArgs	IN		cobracmd-065
+args_test.go:466	TestChildTakesArgs	IN		cobracmd-066
+args_test.go:477	TestMatchAll	OUT	layer-validation	
+args_test.go:527	TestExactValidArgs	OUT	layer-validation	
+args_test.go:533	TestExactValidArgs_WithInvalidCount	OUT	layer-validation	
+args_test.go:539	TestExactValidArgs_WithInvalidCount_WithInvalidArgs	OUT	layer-validation	
+args_test.go:545	TestExactValidArgs_WithInvalidArgs	OUT	layer-validation	
+args_test.go:555	TestLegacyArgsRootAcceptsArgs	IN		cobracmd-068
+args_test.go:567	TestLegacyArgsSubcmdAcceptsArgs	IN		cobracmd-069
+flag_groups_test.go:22	TestValidateFlagGroups row 1	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 2	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 3	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 4	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 5	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 6	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 7	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 8	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 9	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 10	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 11	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 12	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 13	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 14	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 15	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 16	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 17	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 18	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 19	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 20	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 21	OUT	layer-validation	
+flag_groups_test.go:22	TestValidateFlagGroups row 22	OUT	layer-validation	
+cobra_test.go:33	TestAddTemplateFunctions	OUT	help-format	
+cobra_test.go:49	TestLevenshteinDistance	OUT	suggestions	
+cobra_test.go:121	TestStringInSlice	OUT	api-only	
+cobra_test.go:185	TestRpad	OUT	help-format	
+cobra_test.go:245	TestDeadcodeElimination	OUT	other: binary size	

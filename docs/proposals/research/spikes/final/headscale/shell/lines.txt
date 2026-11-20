@@ -1,0 +1,48 @@
+headscale no
+headscale nodes 
+headscale nodes routes ap
+headscale -c x no
+headscale nodes list --
+headscale nodes list -o 
+headscale nodes list --columns 
+headscale nodes list --columns id,na
+headscale nodes list --columns=id,na
+headscale nodes list --columns id,
+headscale nodes list --sort la
+headscale nodes list --sort -la
+headscale nodes list --filter=ow
+headscale policy set 
+headscale check config 
+headscale nodes list 
+headscale nodes delete 
+headscale completion 
+headscale nodes rm --f
+headscale -o 
+headscale nodes list -o=
+headscale auth keys create alice --tags tag:p
+headscale auth keys create alice --tags tag:ci,tag:p
+# final: D27 files for a path flag, nothing for free text
+headscale -c 
+headscale nodes list --config 
+headscale nodes list --config=
+headscale nodes set 12 --name 
+# final: D28 help texts (zsh, fish, pwsh show them)
+headscale nodes routes 
+headscale nodes list --s
+# final: D29 long names only on a lone dash; a short typed in full
+headscale nodes list -
+headscale nodes list -c
+# final: D30 keep completing after a mistake, never files
+headscale nodez 
+headscale nodes list --bogus --l
+headscale policy set --bogus 
+# final: D15 a flag given once is not offered again; --filter is
+headscale nodes list --sort id --s
+headscale nodes list --filter id --f
+# final: D20 and B5 on Tab
+headscale -c -o 
+headscale nodes delete o 
+headscale nodes routes set 12 -- --
+# round 2: signs only on --columns and --sort; a file positional
+headscale nodes list --filter -ow
+headscale nodes list --columns id,-ho

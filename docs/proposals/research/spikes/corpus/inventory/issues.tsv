@@ -1,0 +1,191 @@
+src	name	verdict	reason	ids
+https://github.com/spf13/pflag/issues/541	Parse empty shorthand flag values	IN		issues-001
+https://github.com/spf13/pflag/issues/511	parse explicit short flag values (NoOptDefVal)	OUT	optional-value	
+https://github.com/spf13/pflag/issues/499	empty StringArray value as empty slice	OUT	typed-value	
+https://github.com/spf13/pflag/issues/475	reject single-dash long flag names	IN		issues-004
+https://github.com/spf13/pflag/issues/421	bool flags parent/child order	IN		issues-031
+https://github.com/spf13/pflag/issues/417	StringP parses next flag as value	IN		issues-007
+https://github.com/spf13/pflag/issues/410	footgun-proofing --bool false	IN		issues-009
+https://github.com/spf13/pflag/issues/406	asterisk as string value	OUT	other: shell glob expansion	
+https://github.com/spf13/pflag/issues/372	abbreviated long args	IN		issues-010
+https://github.com/spf13/pflag/issues/328	same flag name on several commands	OUT	api-only	
+https://github.com/spf13/pflag/issues/314	shorthand understands parameter without space	IN		issues-004
+https://github.com/spf13/pflag/issues/311	cannot pass arguments that begin with -	IN		issues-011,issues-012
+https://github.com/spf13/pflag/issues/307	StringSlice truncates on newline	IN		issues-013
+https://github.com/spf13/pflag/issues/303	Bool after StringArray parsed into array	IN		issues-007
+https://github.com/spf13/pflag/issues/288	boolean --test false	IN		issues-009
+https://github.com/spf13/pflag/issues/277	optional stop on first argument	OUT	other: opt-in non-interspersed mode	
+https://github.com/spf13/pflag/issues/265	bool vs boolSlice	OUT	typed-value	
+https://github.com/spf13/pflag/issues/214	bool flags with only NoOptDefVal	IN		issues-014
+https://github.com/spf13/pflag/issues/173	panic: unknown flag followed by empty arg	IN		issues-015
+https://github.com/spf13/pflag/issues/154	args after bool flag	IN		issues-016
+https://github.com/spf13/pflag/issues/117	error if flag provided multiple times	IN		issues-017
+https://github.com/spf13/pflag/issues/72	error if same flag given twice	IN		issues-017
+https://github.com/spf13/pflag/issues/60	Go flag short values	OUT	other: Go flag compatibility	
+https://github.com/spf13/pflag/issues/33	mixed named and positional parsing (PR)	OUT	other: no argv in issue (links rkt)	
+https://github.com/spf13/pflag/issues/32	mixed named and positional broken	OUT	other: no argv in issue (links rkt)	
+https://github.com/spf13/pflag/issues/21	bool= with shortnames	IN		issues-019
+https://github.com/spf13/pflag/issues/20	--flag arg	IN		issues-040
+https://github.com/spf13/pflag/issues/12	short form -p=value	IN		issues-020
+https://github.com/spf13/pflag/issues/5	-- termination	IN		issues-022
+https://github.com/spf13/pflag/issues/4	force stop at terminator	IN		issues-022
+https://github.com/spf13/pflag/issues/1	flag terminator	IN		issues-022
+https://github.com/spf13/pflag/issues/370	double quote in string slice	OUT	typed-value	
+https://github.com/spf13/pflag/issues/81	comma in string slice	OUT	typed-value	
+https://github.com/spf13/pflag/issues/439	FlagSet.Parse keeps old args	OUT	api-only	
+https://github.com/spf13/pflag/issues/146	single dash long options	IN		issues-005
+https://github.com/spf13/pflag/issues/329	traditional single-dash flags	IN		issues-005
+https://github.com/spf13/cobra/issues/2528	TraverseChildren runs subcommand after --	IN		issues-023
+https://github.com/spf13/cobra/issues/2518	lone dash positional in command discovery	IN		issues-024,issues-025
+https://github.com/spf13/cobra/issues/2512	unknown flag swallows following flag	IN		issues-027
+https://github.com/spf13/cobra/issues/2360	unknown-flag errors stable	IN		issues-027
+https://github.com/spf13/cobra/issues/2535	inherit parent local flags before subcommand	IN		issues-029
+https://github.com/spf13/cobra/issues/2311	missing subcommand with parent flags	IN		issues-029
+https://github.com/spf13/cobra/issues/2559	completion after --	IN		issues-032,issues-033
+https://github.com/spf13/cobra/issues/2565	one-letter long flag completion	OUT	other: one-letter long names not in our specs	
+https://github.com/spf13/cobra/issues/2527	completion parses flags twice	OUT	api-only	
+https://github.com/spf13/cobra/issues/2358	single-hyphen long flag mistreated	IN		issues-004
+https://github.com/spf13/cobra/issues/2295	'- h' read as flag	IN		issues-006
+https://github.com/spf13/cobra/issues/2290	root local flag before subcommand	OUT	other: opt-in TraverseChildren	
+https://github.com/spf13/cobra/issues/2251	bool flags parent/child order	IN		issues-031
+https://github.com/spf13/cobra/issues/2243	ValidArgsFunction on '-'	OUT	api-only	
+https://github.com/spf13/cobra/issues/2210	multi-value flag detection in completion	OUT	typed-value	
+https://github.com/spf13/cobra/issues/2188	grouped shorts before command names	IN		issues-055
+https://github.com/spf13/cobra/issues/2144	@ in completed value	OUT	script-internals	
+https://github.com/spf13/cobra/issues/2132	embedded struct flags	OUT	struct-tags	
+https://github.com/spf13/cobra/issues/2100	ArgsLenAtDash for single dash	OUT	api-only	
+https://github.com/spf13/cobra/issues/2092	leaf flag accepted before the leaf	IN		issues-030
+https://github.com/spf13/cobra/issues/2038	local flags on root	OUT	other: runnable root (tree shape)	
+https://github.com/spf13/cobra/issues/2007	ignore unknown hyphen flags	OUT	other: unknown-flag pass-through	
+https://github.com/spf13/cobra/issues/1998	flags passed to ValidArgsFunction	OUT	api-only	
+https://github.com/spf13/cobra/issues/1985	option to forbid --flag <space> arg	OUT	other: opt-in mode	
+https://github.com/spf13/cobra/issues/1931	flag found inside another flag's argument	IN		issues-036
+https://github.com/spf13/cobra/issues/1913	flag value matches subcommand name	IN		issues-038
+https://github.com/spf13/cobra/issues/1834	persistent flag value equals subcommand	IN		issues-038
+https://github.com/spf13/cobra/issues/1777	flag value misparsed as subcommand	IN		issues-037
+https://github.com/spf13/cobra/issues/1895	args after --: split helper	OUT	api-only	
+https://github.com/spf13/cobra/issues/1877	ArgsLenAtDash in completion	OUT	api-only	
+https://github.com/spf13/cobra/issues/1821	bool default true toggle	OUT	api-only	
+https://github.com/spf13/cobra/issues/1816	completion: dash as 2nd char seen as flag	IN		issues-034,issues-035
+https://github.com/spf13/cobra/issues/1817	completion: dash as 2nd char (PR)	IN		issues-034
+https://github.com/spf13/cobra/issues/1797	unknown flag before unknown command	IN		issues-028
+https://github.com/spf13/cobra/issues/1733	'- + 7' positional read as flag	IN		issues-006
+https://github.com/spf13/cobra/issues/1714	zsh r<tab> file completion	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1606	bool flag false vs =false	IN		issues-009
+https://github.com/spf13/cobra/issues/1594	Go 1.18 test env unknown flag	OUT	other: go test build env	
+https://github.com/spf13/cobra/issues/1562	completion for programs without subcommands	OUT	other: root-only program (tree shape)	
+https://github.com/spf13/cobra/issues/1542	flag completion after -- with DisableFlagParsing	IN		issues-032
+https://github.com/spf13/cobra/issues/1502	zsh completion without space	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1491	completion of two positionals (question)	OUT	api-only	
+https://github.com/spf13/cobra/issues/1480	NoArgs and --all true	IN		issues-009
+https://github.com/spf13/cobra/issues/1472	flags recognised as value of other flags	IN		issues-007
+https://github.com/spf13/cobra/issues/1462	integer flags like -6	OUT	typed-value	
+https://github.com/spf13/cobra/issues/1449	duplicate flag names persistent/local	OUT	other: spec construction	
+https://github.com/spf13/cobra/issues/1445	double quotes in help	OUT	help-format	
+https://github.com/spf13/cobra/issues/1437	flag completion registry regression	OUT	api-only	
+https://github.com/spf13/cobra/issues/1409	inconsistent errors for bad subcommand + flag	IN		issues-027
+https://github.com/spf13/cobra/issues/1398	two commands share one flag variable	OUT	api-only	
+https://github.com/spf13/cobra/issues/1170	complete subcommands after local flag	IN		issues-039
+https://github.com/spf13/cobra/issues/1172	bash: subcommands after local non-persistent flag	OUT	other: no root-local value flags in our tree	
+https://github.com/spf13/cobra/issues/1127	<space><tab> runs the handler	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1114	argument with space	IN		issues-040
+https://github.com/spf13/cobra/issues/1011	extra positional ignored	OUT	layer-validation	
+https://github.com/spf13/cobra/issues/997	subcommand after positional	OUT	other: tree shape (groups take no positionals)	
+https://github.com/spf13/cobra/issues/981	subcommand handling meta issue	OUT	other: no single argv	
+https://github.com/spf13/cobra/issues/909	empty argument swallows next flag	IN		issues-008
+https://github.com/spf13/cobra/issues/760	em/en dash	IN		issues-041
+https://github.com/spf13/cobra/issues/722	local flags with same name	OUT	api-only	
+https://github.com/spf13/cobra/issues/683	no flag parsing after subcommand	OUT	other: DisableFlagParsing	
+https://github.com/spf13/cobra/issues/618	Traverse with grouped shorts	IN		issues-055
+https://github.com/spf13/cobra/issues/615	bool flag before command	IN		issues-042
+https://github.com/spf13/cobra/issues/433	hyphen arguments that are not flags	IN		issues-011
+https://github.com/spf13/cobra/issues/415	--flag=<tab> doubled	IN		issues-044
+https://github.com/spf13/cobra/issues/368	-org read as -o rg	IN		issues-004
+https://github.com/spf13/cobra/issues/124	negative numbers as arguments	IN		issues-012,issues-011
+https://github.com/spf13/cobra/issues/66	stripFlags robustness (PR)	OUT	other: no argv	
+https://github.com/spf13/cobra/issues/63	unknown commands -h --help	IN		issues-043
+https://github.com/spf13/cobra/issues/44	global pflag.CommandLine flags	OUT	api-only	
+https://github.com/spf13/cobra/issues/17	flags after -- reported	IN		issues-022
+https://github.com/spf13/cobra/issues/10	commands and flags in any order	IN		issues-066
+https://github.com/spf13/cobra/issues/2	wrap command line arguments	IN		issues-045
+https://github.com/spf13/cobra/issues/26	prefix matching replaced by aliases	IN		issues-046
+https://github.com/spf13/cobra/issues/1852	aliases not tab-completed	IN		issues-049
+https://github.com/spf13/cobra/issues/578	bash alias of the program	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1786	completion for --help/--version	IN		issues-051
+https://github.com/spf13/cobra/issues/572	extra space after single flag	OUT	script-internals	
+https://github.com/spf13/cobra/issues/2385	comma-separated completion	IN		issues-052
+https://github.com/spf13/cobra/issues/2433	MarkFlagAppendEqual	OUT	optional-value	
+https://github.com/spf13/cobra/issues/2476	flags mixed into filter directive	OUT	other: FilterFileExt/FilterDirs unused	
+https://github.com/spf13/cobra/issues/1257	completion with grouped shorts	IN		issues-054
+https://github.com/spf13/cobra/issues/1629	completion of attached short value	IN		issues-053
+https://github.com/spf13/cobra/issues/1307	completion and interspersed=false	OUT	other: opt-in non-interspersed mode	
+https://github.com/spf13/cobra/issues/1061	required flags hide optional ones	OUT	layer-validation	
+https://github.com/spf13/cobra/issues/926	bool flag order misleading error	OUT	help-format	
+https://github.com/spf13/cobra/issues/1424	choose between repeated flags	IN		issues-017
+https://github.com/spf13/cobra/issues/2186	completion must use stdout	OUT	lifecycle	
+https://github.com/spf13/cobra/issues/2129	zsh file completion despite NoFileComp	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1076	subcommands hidden by ValidArgs	OUT	other: group with positionals (tree shape)	
+https://github.com/spf13/cobra/issues/2376	bash splits on colons	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1929	PowerShell drops @arg	OUT	other: platform	
+https://github.com/spf13/cobra/issues/1740	whitespace in candidates, bash	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1303	fish: line starting with space	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1214	fish: unbalanced quote	OUT	script-internals	
+https://github.com/spf13/cobra/issues/868	bash: duplicated flags with =	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1269	empty alias breaks bash script	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1334	bash: redirection on the line	OUT	script-internals	
+https://github.com/spf13/cobra/issues/2465	bash: required flag as --flag value	OUT	script-internals	
+https://github.com/spf13/cobra/issues/2513	directive line when stderr is stdout	OUT	lifecycle	
+https://github.com/spf13/cobra/issues/1189	zsh prefers flags over nouns	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1211	zsh ignores NoSpace	OUT	script-internals	
+https://github.com/spf13/cobra/issues/1802	case-insensitive command names	IN		issues-048
+https://github.com/alecthomas/kong/issues/679	default command flags before sibling	OUT	other: default commands	
+https://github.com/alecthomas/kong/issues/660	-- protects flags but not command matching	IN		issues-023
+https://github.com/alecthomas/kong/issues/662	missing value with hyphen-prefixed params	IN		issues-056
+https://github.com/alecthomas/kong/issues/637	single-char alias leaks between siblings	OUT	other: spec construction	
+https://github.com/alecthomas/kong/issues/611	command validated before flags	OUT	lifecycle	
+https://github.com/alecthomas/kong/issues/589	single-letter alias as short	OUT	struct-tags	
+https://github.com/alecthomas/kong/issues/570	short flags keep the equal sign	IN		issues-020
+https://github.com/alecthomas/kong/issues/478	negative positional	IN		issues-011
+https://github.com/alecthomas/kong/issues/166	negative number as argument	IN		issues-011
+https://github.com/alecthomas/kong/issues/315	negative value with -a=	IN		issues-021
+https://github.com/alecthomas/kong/issues/463	passthrough passes a flag	OUT	struct-tags	
+https://github.com/alecthomas/kong/issues/441	error if flag given twice	IN		issues-018
+https://github.com/alecthomas/kong/issues/433	quotes and sep in []string	OUT	typed-value	
+https://github.com/alecthomas/kong/issues/290	values starting with -	IN		issues-057
+https://github.com/alecthomas/kong/issues/175	multi-char short tag	OUT	api-only	
+https://github.com/alecthomas/kong/issues/170	negatable flag value	IN		issues-058
+https://github.com/alecthomas/kong/issues/152	quoted argument as one value	IN		issues-040
+https://github.com/alecthomas/kong/issues/102	slice flag with several words	IN		issues-059
+https://github.com/alecthomas/kong/issues/80	-x inside an arg slice	IN		issues-022
+https://github.com/alecthomas/kong/issues/70	single dash as argument	IN		issues-024
+https://github.com/alecthomas/kong/issues/51	positionals before command	OUT	other: tree shape	
+https://github.com/urfave/cli/issues/2544	DefaultCommand name leaks into args	OUT	other: default commands	
+https://github.com/urfave/cli/issues/2439	inverse bool in combined shorts	OUT	other: inverse bool flags (D9) inside groups (D11)	
+https://github.com/urfave/cli/issues/2433	single-rune Unicode flags	OUT	other: non-ASCII short names	
+https://github.com/urfave/cli/issues/2418	bare - drops following args	IN		issues-026,issues-024
+https://github.com/urfave/cli/issues/2315	completion for -- and --prefix	IN		issues-064,issues-065
+https://github.com/urfave/cli/issues/2293	--flag= rejected	IN		issues-002
+https://github.com/urfave/cli/issues/2292	empty positional ends parse	IN		issues-060
+https://github.com/urfave/cli/issues/2257	spurious empty string before flag name	OUT	api-only	
+https://github.com/urfave/cli/issues/2254	combined shorts do not consume value	IN		issues-055
+https://github.com/urfave/cli/issues/2248	--XXX<TAB> no completions	IN		issues-064
+https://github.com/urfave/cli/issues/2234	empty argument drops rest	IN		issues-061
+https://github.com/urfave/cli/issues/2229	-v alias clashes with version flag	OUT	other: spec construction	
+https://github.com/urfave/cli/issues/2223	--value1= swallows next arg	IN		issues-003
+https://github.com/urfave/cli/issues/2208	root-local flags after subcommand	IN		issues-062
+https://github.com/urfave/cli/issues/1993	completion after -- runs action	IN		issues-032
+https://github.com/urfave/cli/issues/1964	bool arg breaks other flags	IN		issues-063
+https://github.com/urfave/cli/issues/1932	completion ignores --	IN		issues-032
+https://github.com/urfave/cli/issues/1875	completion suggests aliases	IN		issues-050
+https://github.com/urfave/cli/issues/1822	custom completion panics on partial flag	OUT	api-only	
+https://github.com/urfave/cli/issues/1500	string slice parsed twice with short handling	OUT	typed-value	
+https://github.com/urfave/cli/issues/1447	-- missing from Args	IN		issues-022
+https://github.com/urfave/cli/issues/1424	args reordered after --	IN		issues-022
+https://github.com/urfave/cli/issues/1114	naked -- strange behaviour	IN		issues-022
+https://github.com/urfave/cli/issues/1152	flag-like args to slice flags	IN		issues-007
+https://github.com/urfave/cli/issues/740	bool --flag false	IN		issues-009
+https://github.com/urfave/cli/issues/645	negative numbers as arguments	IN		issues-011
+https://github.com/urfave/cli/issues/596	bare double dash	IN		issues-022
+https://github.com/urfave/cli/issues/324	single dash reorders args	IN		issues-026,issues-024
+https://github.com/urfave/cli/issues/56	-- terminator broken	IN		issues-022
+https://github.com/urfave/cli/issues/1215	unique-substring command names	IN		issues-047

@@ -1,0 +1,16 @@
+## F1: a plain auth key that no node used (not ephemeral, not reusable, no tags)
+ in list before  : 1
+ DELETE ->null HTTP 200
+ GET by id after : {"status":"200","body":{"revoked":"2026-11-12T18:37:42Z","invalid":true,"expires":"2026-11-12T18:47:42Z"}}
+ in list after   : 0   with all=true: 0
+
+## F2: what the key list holds at all (keyType and whether any entry is revoked, expired or invalid)
+{"count":3,"types":{"api":3},"anyRevoked":0,"anyInvalid":0}
+
+## F3: an unknown key id
+ GET    ->{"message":"not found"} HTTP 404
+ DELETE ->{"message":"key not found"} HTTP 404
+
+## F4: the earlier probe keys, read by id now (about 15 minutes after their DELETE)
+ kLMGJaDJ8p11CNTRL: {"status":"200","body":{"revoked":"2026-11-12T18:21:51Z","invalid":true}}
+ kyBWL6oKa511CNTRL: {"status":"200","body":{"revoked":"2026-11-12T18:10:15Z","invalid":true}}

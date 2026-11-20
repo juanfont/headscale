@@ -1,0 +1,47 @@
+# S. The tailnet as found, read only (2026-11-13T17:24:20Z)
+S1 devices                                  : {"count":0,"hostnames":[]} HTTP 200
+S2 keys, all=true                           : [{"id":"kTnc58RaY921CNTRL","keyType":"api","description":"tscap","scopes":["all","all:read"],"tags":null},{"id":"kVmBtQSLTq11CNTRL","keyType":"api","description":"tscap","scopes":["all","all:read"],"tags":null},{"id":"kCw7JG3gjC21CNTRL","keyType":"api","description":"tscap","scopes":["all","all:read"],"tags":null}] HTTP 200
+S3 keys, default                            : {"count":1,"ids":["kCw7JG3gjC21CNTRL"]} HTTP 200
+S4 policy                                   : {"etag":"\"fb5186f318ccae7939d3d91e478403501a87647c0ab55a303f173bde670dca5d\"","topKeys":["tagOwners"],"tagOwners":{"tag:server":["kratail2tid@passkey"],"tag:prod":["kratail2tid@passkey"],"tag:client":["kratail2tid@passkey"],"tag:router":["kratail2tid@passkey"],"tag:exit":["kratail2tid@passkey"],"tag:ha":["kratail2tid@passkey"],"tag:exit-a":["kratail2tid@passkey"],"tag:exit-b":["kratail2tid@passkey"],"tag:group-a":["kratail2tid@passkey"],"tag:group-b":["kratail2tid@passkey"],"tag:router-a":["kratail2tid@passkey"],"tag:router-b":["kratail2tid@passkey"],"tag:router-c":["kratail2tid@passkey"],"tag:db":["kratail2tid@passkey"],"tag:web":["kratail2tid@passkey"],"tag:spearow":["kratail2tid@passkey"],"tag:fearow":["kratail2tid@passkey"],"tag:pidgey":["kratail2tid@passkey"],"tag:pidgeotto":["kratail2tid@passkey"],"tag:ha-a":["kratail2tid@passkey"],"tag:ha-a1":["kratail2tid@passkey"],"tag:ha-a2":["kratail2tid@passkey"],"tag:ha-b":["kratail2tid@passkey"],"tag:ha-b1":["kratail2tid@passkey"],"tag:ha-b2":["kratail2tid@passkey"]},"acls":null,"grants":null,"autoApprovers":null} HTTP 200
+S5 settings                                 : {"aclsExternallyManagedOn":false,"devicesApprovalOn":false,"devicesAutoUpdatesOn":false,"devicesKeyDurationDays":180,"usersApprovalOn":false,"usersRoleAllowedToJoinExternalTailnets":"admin","networkFlowLoggingOn":false,"postureIdentityCollectionOn":false,"httpsEnabled":false,"regionalRoutingOn":false,"routeSelection":"active-passive-failover"} HTTP 200
+S6 dns nameservers                          : {"dns":[]} HTTP 200
+S7 dns preferences                          : {"magicDNS":false} HTTP 200
+S8 dns searchpaths                          : {"searchPaths":[]} HTTP 200
+S9 dns split-dns                            : {} HTTP 200
+S10 webhooks                                : {"count":0} HTTP 200
+S11 contacts (hash only)                    : {"keys":["account","security","support"],"sha":"4da1047c4aef"} HTTP 200
+S12 users (hash only)                       : {"count":3,"roles":["admin","admin","owner"],"sha":"a910d82ce9f8"} HTTP 200
+
+# The credentials revoked on purpose, read by ID
+S13 kyBWL6oKa511CNTRL (auth key, revoked 2026-11-12 18:10)      : {"keyType":"auth","created":"2026-11-12T18:10:12Z","expires":"2026-11-12T18:20:12Z","revoked":"2026-11-12T18:10:15Z","invalid":true} HTTP 200
+S13 kLMGJaDJ8p11CNTRL (auth key, revoked 2026-11-12 18:21)      : {"keyType":"auth","created":"2026-11-12T18:21:45Z","expires":"2026-11-12T18:31:45Z","revoked":"2026-11-12T18:21:51Z","invalid":true} HTTP 200
+S13 kiJueGvH4521CNTRL (OAuth client, revoked 2026-11-12 18:39)  : {"keyType":"client","created":"2026-11-12T18:39:01Z","expires":null,"revoked":"2026-11-12T18:39:02Z","invalid":true} HTTP 200
+S13 kPyuQBqjwn11CNTRL (OAuth client, revoked 2026-11-13 13:53)  : {"keyType":"client","created":"2026-11-13T13:53:05Z","expires":null,"revoked":"2026-11-13T13:53:06Z","invalid":true} HTTP 200
+S13 kgBwmWZXZ811CNTRL (OAuth client, revoked 2026-11-13 16:24)  : {"keyType":"client","created":"2026-11-13T16:24:31Z","expires":null,"revoked":"2026-11-13T16:24:32Z","invalid":true} HTTP 200
+
+# After the tscap scenario run hsovernight-base (2026-11-13T17:26:54Z): the policy for tonight, and the device list (read only)
+S14 policy                                  : {"etag":"\"9710cc1ea50bcd255f101856c61b111e223cec396fae3bde566ffdc95befa888\"","acls":[{"action":"accept","dst":["*:*"],"src":["*"]}],"autoApprovers":{"exitNode":["tag:exit-a"],"routes":{"0.0.0.0/0":["tag:exit"],"10.77.0.0/24":["tag:router"]}},"tagOwnersCount":26,"tag:hsov-child":["tag:server"]} HTTP 200
+S15 device in the list                      : {"id":"1335040003334737","nodeId":"nEByTkEeRB11CNTRL","hostname":"hsov-anchor","user":"kratail2tid@passkey","created":"2026-11-13T17:25:51Z","connectedToControl":false} HTTP 200
+S16 DELETE /device/1335040003334737 (hsov-anchor, made by my tscap run):  HTTP 200
+S17 devices now                             : {"count":0} HTTP 200
+
+# End of the night (2026-11-13T21:00:41Z): every object in created-objects.tsv, read by ID
+S20 client  ended, still readable (revoked)                 : 36
+S20 device  gone (404)                                      : 23
+S20 key     ended, still readable (expired, never revoked)  : 1
+S20 key     ended, still readable (revoked)                 : 54
+S22 objects checked: 114; needed an action now: 0
+
+# After `tscap reset` (2026-11-13T21:01:50Z): the tailnet as left, read only. Compare with S1 to S12.
+S31 devices                                 : {"count":0,"hostnames":[]} HTTP 200
+S32 keys, all=true                          : [{"id":"kTnc58RaY921CNTRL","keyType":"api","description":"tscap"},{"id":"kVmBtQSLTq11CNTRL","keyType":"api","description":"tscap"},{"id":"kCw7JG3gjC21CNTRL","keyType":"api","description":"tscap"}] HTTP 200
+S33 keys, default                           : {"count":1,"ids":["kCw7JG3gjC21CNTRL"]} HTTP 200
+S34 policy                                  : {"etag":"\"fb5186f318ccae7939d3d91e478403501a87647c0ab55a303f173bde670dca5d\"","topKeys":["tagOwners"],"tagOwnersCount":25,"sameAsS4":true} HTTP 200
+S35 settings                                : {"aclsExternallyManagedOn":false,"devicesApprovalOn":false,"devicesAutoUpdatesOn":false,"devicesKeyDurationDays":180,"usersApprovalOn":false,"usersRoleAllowedToJoinExternalTailnets":"admin","networkFlowLoggingOn":false,"postureIdentityCollectionOn":false,"httpsEnabled":false,"regionalRoutingOn":false,"routeSelection":"active-passive-failover"} HTTP 200
+S36 dns nameservers                         : {"dns":[]} HTTP 200
+S37 dns preferences                         : {"magicDNS":false} HTTP 200
+S38 dns searchpaths                         : {"searchPaths":[]} HTTP 200
+S39 dns split-dns                           : {} HTTP 200
+S40 webhooks                                : {"count":0} HTTP 200
+S41 contacts (hash only)                    : {"keys":["account","security","support"],"sha":"4da1047c4aef"} HTTP 200
+S42 users (hash only)                       : {"count":3,"roles":["admin","admin","owner"],"sha":"a910d82ce9f8"} HTTP 200

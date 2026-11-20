@@ -1,0 +1,32 @@
+src	name	verdict	reason	ids
+flag_test.go:230	TestParse (testParse)	IN		goflag-001,goflag-002,goflag-003
+flag_test.go:235	TestFlagSetParse (testParse)	IN		goflag-001,goflag-002,goflag-003
+flag_test.go:230	testParse typed parts	OUT	typed-value	
+flag_test.go:251	TestUserDefined	IN		goflag-004
+flag_test.go:342	TestUserDefinedBool	IN		goflag-005
+flag_test.go:423	TestHelp	IN		goflag-006
+flag_test.go:660	TestExitCode	IN		goflag-006,goflag-007
+flag.go (code) + cobra#2358	goflag-012	IN		goflag-012
+flag.go (code)	goflag-008	IN		goflag-008
+flag.go (code)	goflag-009	IN		goflag-009
+flag.go (code)	goflag-010	IN		goflag-010
+flag.go (code)	goflag-011	IN		goflag-011
+flag_test.go:31	TestEverything	OUT	api-only	
+flag_test.go:109	TestGet	OUT	api-only	
+flag_test.go:153	TestUsage	OUT	help-format	
+flag_test.go:269	TestUserDefinedFunc	OUT	typed-value	
+flag_test.go:312	TestUserDefinedForCommandLine	OUT	api-only	
+flag_test.go:364	TestUserDefinedBoolUsage	OUT	help-format	
+flag_test.go:389	TestSetOutput	OUT	api-only	
+flag_test.go:402	TestChangingArgs	IN		pflag-026
+flag_test.go:519	TestPrintDefaults	OUT	help-format	
+flag_test.go:546	TestIntFlagOverflow	OUT	typed-value	
+flag_test.go:562	TestUsageOutput	OUT	help-format	
+flag_test.go:575	TestGetters	OUT	api-only	
+flag_test.go:608	TestParseError	OUT	typed-value	
+flag_test.go:632	TestRangeError	OUT	typed-value	
+flag_test.go:740	TestInvalidFlags	OUT	api-only	
+flag_test.go:772	TestRedefinedFlags	OUT	api-only	
+flag_test.go:806	TestUserDefinedBoolFunc	OUT	typed-value	
+flag_test.go:849	TestDefineAfterSet	OUT	api-only	
+flag_test.go:608	TestParseError/bool	IN		pflag-009

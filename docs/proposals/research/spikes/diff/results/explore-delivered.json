@@ -1,0 +1,722 @@
+[
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "decided D19: `-h` with a mistake: the error wins; cobra shows help",
+  "Class": "",
+  "Shrunk": 1860,
+  "Est": 18600,
+  "Classes": {
+   "acceptance": 1860
+  },
+  "Example": [
+   "-",
+   "-h"
+  ],
+  "Outcomes": [
+   "unknown-command [] \"-\"",
+   "help"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "decided D11: attached value or grouped shorts (`-ojson`, `-hc`, `-c-`, `-output`): own refuses, pflag reads a value or a group",
+  "Class": "",
+  "Shrunk": 1683,
+  "Est": 16830,
+  "Classes": {
+   "acceptance": 898,
+   "report": 785
+  },
+  "Example": [
+   "-c,"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"c,\"",
+   "help"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "harness: cobra adapter: pflag's InvalidSyntaxError (`--=`, `---x`) is not mapped to a usage error",
+  "Class": "",
+  "Shrunk": 987,
+  "Est": 9870,
+  "Classes": {
+   "report": 987
+  },
+  "Example": [
+   "---"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"\"",
+   "error: bad flag syntax: ---"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "undecided: `--` before the command is complete: own says unknown command `--`; cobra drops it and reads on (`nodes --` is help, `-- nodes list` unknown command `nodes`)",
+  "Class": "",
+  "Shrunk": 673,
+  "Est": 6730,
+  "Classes": {
+   "acceptance": 107,
+   "report": 566
+  },
+  "Example": [
+   "--"
+  ],
+  "Outcomes": [
+   "unknown-command [] \"--\"",
+   "help"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "harness: cobra adapter: unknown flags at a group go to its args (for D5), so the unknown command is named instead of the flag",
+  "Class": "",
+  "Shrunk": 660,
+  "Est": 6600,
+  "Classes": {
+   "report": 660
+  },
+  "Example": [
+   "-\u0000",
+   "x"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"\\x00\"",
+   "unknown-command [] \"x\""
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "report: same wrong word, spelled differently: pflag names one letter of a short group (`-12` → `-1`) or decodes a byte as a rune (`-\\xc3` → `Ã`)",
+  "Class": "",
+  "Shrunk": 489,
+  "Est": 4890,
+  "Classes": {
+   "report": 489
+  },
+  "Example": [
+   "serve",
+   "-ñ"
+  ],
+  "Outcomes": [
+   "unknown-flag [serve] \"ñ\"",
+   "unknown-flag [serve] \"Ã\""
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "unwanted: cobra's command search skips `-`, `` and flag-like words (`- nodes` → unknown `-` under nodes; `nodes - list` runs list with `-`)",
+  "Class": "",
+  "Shrunk": 450,
+  "Est": 4500,
+  "Classes": {
+   "acceptance": 4,
+   "report": 446
+  },
+  "Example": [
+   "",
+   "api"
+  ],
+  "Outcomes": [
+   "unknown-command [] \"\"",
+   "unknown-command [api] \"\""
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "report: two mistakes on the line, each side names a different one first",
+  "Class": "",
+  "Shrunk": 382,
+  "Est": 3820,
+  "Classes": {
+   "report": 382
+  },
+  "Example": [
+   "",
+   "-="
+  ],
+  "Outcomes": [
+   "unknown-command [] \"\"",
+   "unknown-flag [] \"\""
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "unwanted: pflag reads `-o=` as `-o` with the value `=`, and `-h=` as `-h` then an unknown shorthand `=`",
+  "Class": "",
+  "Shrunk": 376,
+  "Est": 3760,
+  "Classes": {
+   "acceptance": 268,
+   "report": 106,
+   "semantic": 2
+  },
+  "Example": [
+   "-h="
+  ],
+  "Outcomes": [
+   "bad-value [] \"help\"",
+   "help"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "harness: cobra adapter: `--help=` / `--help=x` make cobra print \"flag declared as non-bool\" to stdout (cobra reads help back through Value.String)",
+  "Class": "",
+  "Shrunk": 252,
+  "Est": 2520,
+  "Classes": {
+   "acceptance": 32,
+   "report": 220
+  },
+  "Example": [
+   "-h=x"
+  ],
+  "Outcomes": [
+   "bad-value [] \"help\"",
+   "error: strconv.ParseBool: parsing \"x\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "decided D3: cobra takes a leaf's own flags before or between the command words (only -c/-o may come there)",
+  "Class": "",
+  "Shrunk": 44,
+  "Est": 440,
+  "Classes": {
+   "acceptance": 13,
+   "report": 31
+  },
+  "Example": [
+   "--sort",
+   "x",
+   "nodes",
+   "list"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"sort\"",
+   "run nodes list [] sort=[\"x\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "bug: own drops flags read before a group word when the line ends at a group (`--version nodes` is help, cobra: unknown flag)",
+  "Class": "",
+  "Shrunk": 38,
+  "Est": 380,
+  "Classes": {
+   "acceptance": 38
+  },
+  "Example": [
+   "--version",
+   "api"
+  ],
+  "Outcomes": [
+   "help api",
+   "unknown-flag [api] \"version\""
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "layer: layer: `--help=1` / `-h=T` runs the command; Exec looks for the text \"true\" before it parses the bool",
+  "Class": "",
+  "Shrunk": 23,
+  "Est": 230,
+  "Classes": {
+   "acceptance": 7,
+   "semantic": 16
+  },
+  "Example": [
+   "serve",
+   "-h=1"
+  ],
+  "Outcomes": [
+   "run serve [] help=[\"true\"]",
+   "help serve"
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "layer: layer: Exec lets `-h` win over a root-only flag on a group (`api --version -h` is help; D19 says the error wins, cobra refuses)",
+  "Class": "",
+  "Shrunk": 5,
+  "Est": 50,
+  "Classes": {
+   "acceptance": 5
+  },
+  "Example": [
+   "api",
+   "--version",
+   "--help",
+   "--help=f"
+  ],
+  "Outcomes": [
+   "help api",
+   "unknown-flag [api] \"version\""
+  ]
+ },
+ {
+  "Pair": "grammar~cobra",
+  "Cause": "unwanted: cobra's command search takes the word after an unknown flag as its value (`nodes --version routes -h` is help for nodes)",
+  "Class": "",
+  "Shrunk": 3,
+  "Est": 30,
+  "Classes": {
+   "semantic": 3
+  },
+  "Example": [
+   "nodes",
+   "--version",
+   "routes",
+   "-h"
+  ],
+  "Outcomes": [
+   "help nodes routes",
+   "help nodes"
+  ]
+ },
+ {
+  "Pair": "grammar~pflag",
+  "Cause": "decided D11: attached value or grouped shorts (`-ojson`, `-hc`, `-c-`, `-output`): own refuses, pflag reads a value or a group",
+  "Class": "",
+  "Shrunk": 3529,
+  "Est": 3529,
+  "Classes": {
+   "report": 3529
+  },
+  "Example": [
+   "-d-="
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"d-\"",
+   "unknown-flag [] \"description\""
+  ]
+ },
+ {
+  "Pair": "grammar~pflag",
+  "Cause": "report: two mistakes on the line, each side names a different one first",
+  "Class": "",
+  "Shrunk": 2277,
+  "Est": 2277,
+  "Classes": {
+   "report": 2277
+  },
+  "Example": [
+   "-\u0000",
+   "-ñ"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"\\x00\"",
+   "unknown-flag [] \"ñ\""
+  ]
+ },
+ {
+  "Pair": "grammar~pflag",
+  "Cause": "unwanted: pflag reads `-o=` as `-o` with the value `=`, and `-h=` as `-h` then an unknown shorthand `=`",
+  "Class": "",
+  "Shrunk": 576,
+  "Est": 576,
+  "Classes": {
+   "acceptance": 84,
+   "report": 487,
+   "semantic": 5
+  },
+  "Example": [
+   "-h="
+  ],
+  "Outcomes": [
+   "bad-value [] \"help\"",
+   "unknown-flag [] \"\""
+  ]
+ },
+ {
+  "Pair": "grammar~pflag",
+  "Cause": "report: same wrong word, spelled differently: pflag names one letter of a short group (`-12` → `-1`) or decodes a byte as a rune (`-\\xc3` → `Ã`)",
+  "Class": "",
+  "Shrunk": 555,
+  "Est": 555,
+  "Classes": {
+   "report": 555
+  },
+  "Example": [
+   "-�"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"\\xc3\"",
+   "unknown-flag [] \"Ã\""
+  ]
+ },
+ {
+  "Pair": "grammar~pflag",
+  "Cause": "harness: own-pflag pre-scan skips words with `=`: `-oname=` reaches pflag and is read as `-o` with value `name=`",
+  "Class": "",
+  "Shrunk": 455,
+  "Est": 455,
+  "Classes": {
+   "acceptance": 204,
+   "report": 251
+  },
+  "Example": [
+   "-c-="
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"c-\"",
+   "help"
+  ]
+ },
+ {
+  "Pair": "grammar~plainpflag",
+  "Cause": "decided D11: attached value or grouped shorts (`-ojson`, `-hc`, `-c-`, `-output`): own refuses, pflag reads a value or a group",
+  "Class": "",
+  "Shrunk": 3556,
+  "Est": 3556,
+  "Classes": {
+   "acceptance": 1192,
+   "report": 2364
+  },
+  "Example": [
+   "serve",
+   "-c\n"
+  ],
+  "Outcomes": [
+   "unknown-flag [serve] \"c\\n\"",
+   "run serve [] config=[\"\\n\"]"
+  ]
+ },
+ {
+  "Pair": "grammar~plainpflag",
+  "Cause": "report: same wrong word, spelled differently: pflag names one letter of a short group (`-12` → `-1`) or decodes a byte as a rune (`-\\xc3` → `Ã`)",
+  "Class": "",
+  "Shrunk": 2949,
+  "Est": 2949,
+  "Classes": {
+   "report": 2949
+  },
+  "Example": [
+   "serve",
+   "-�"
+  ],
+  "Outcomes": [
+   "unknown-flag [serve] \"\\xff\"",
+   "unknown-flag [serve] \"ÿ\""
+  ]
+ },
+ {
+  "Pair": "grammar~plainpflag",
+  "Cause": "unwanted: pflag reads `-o=` as `-o` with the value `=`, and `-h=` as `-h` then an unknown shorthand `=`",
+  "Class": "",
+  "Shrunk": 208,
+  "Est": 208,
+  "Classes": {
+   "acceptance": 32,
+   "report": 173,
+   "semantic": 3
+  },
+  "Example": [
+   "serve",
+   "-h="
+  ],
+  "Outcomes": [
+   "bad-value [serve] \"help\"",
+   "unknown-flag [serve] \"\""
+  ]
+ },
+ {
+  "Pair": "grammar~stdflag",
+  "Cause": "undecided: Go's flag package: `--h` is `-h` and `-help` is `--help` (no long/short split; referee open question 4)",
+  "Class": "",
+  "Shrunk": 544,
+  "Est": 544,
+  "Classes": {
+   "acceptance": 280,
+   "report": 264
+  },
+  "Example": [
+   "serve",
+   "--h"
+  ],
+  "Outcomes": [
+   "unknown-flag [serve] \"help\"",
+   "help serve"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "decided D19: `-h` with a mistake: the error wins; cobra shows help",
+  "Class": "",
+  "Shrunk": 2001,
+  "Est": 20010,
+  "Classes": {
+   "acceptance": 2001
+  },
+  "Example": [
+   "-",
+   "-h"
+  ],
+  "Outcomes": [
+   "unknown-command [] \"-\"",
+   "help"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "decided D11: attached value or grouped shorts (`-ojson`, `-hc`, `-c-`, `-output`): own refuses, pflag reads a value or a group",
+  "Class": "",
+  "Shrunk": 1813,
+  "Est": 18130,
+  "Classes": {
+   "acceptance": 875,
+   "report": 938
+  },
+  "Example": [
+   "-c\u0000"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"c\\x00\"",
+   "help"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "harness: cobra adapter: pflag's InvalidSyntaxError (`--=`, `---x`) is not mapped to a usage error",
+  "Class": "",
+  "Shrunk": 1000,
+  "Est": 10000,
+  "Classes": {
+   "report": 1000
+  },
+  "Example": [
+   "---"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"\"",
+   "error: bad flag syntax: ---"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "harness: cobra adapter: unknown flags at a group go to its args (for D5), so the unknown command is named instead of the flag",
+  "Class": "",
+  "Shrunk": 695,
+  "Est": 6950,
+  "Classes": {
+   "report": 695
+  },
+  "Example": [
+   "-,",
+   "x"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \",\"",
+   "unknown-command [] \"x\""
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "undecided: `--` before the command is complete: own says unknown command `--`; cobra drops it and reads on (`nodes --` is help, `-- nodes list` unknown command `nodes`)",
+  "Class": "",
+  "Shrunk": 648,
+  "Est": 6480,
+  "Classes": {
+   "acceptance": 102,
+   "report": 546
+  },
+  "Example": [
+   "--"
+  ],
+  "Outcomes": [
+   "unknown-command [] \"--\"",
+   "help"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "report: same wrong word, spelled differently: pflag names one letter of a short group (`-12` → `-1`) or decodes a byte as a rune (`-\\xc3` → `Ã`)",
+  "Class": "",
+  "Shrunk": 560,
+  "Est": 5600,
+  "Classes": {
+   "report": 560
+  },
+  "Example": [
+   "-�"
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"ÿ\"",
+   "unknown-flag [] \"\\xff\""
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "unwanted: cobra's command search skips `-`, `` and flag-like words (`- nodes` → unknown `-` under nodes; `nodes - list` runs list with `-`)",
+  "Class": "",
+  "Shrunk": 438,
+  "Est": 4380,
+  "Classes": {
+   "acceptance": 5,
+   "report": 433
+  },
+  "Example": [
+   "-",
+   "api"
+  ],
+  "Outcomes": [
+   "unknown-command [] \"-\"",
+   "unknown-command [api] \"-\""
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "report: two mistakes on the line, each side names a different one first",
+  "Class": "",
+  "Shrunk": 429,
+  "Est": 4290,
+  "Classes": {
+   "report": 429
+  },
+  "Example": [
+   "",
+   "-1"
+  ],
+  "Outcomes": [
+   "unknown-command [] \"\"",
+   "unknown-flag [] \"1\""
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "unwanted: pflag reads `-o=` as `-o` with the value `=`, and `-h=` as `-h` then an unknown shorthand `=`",
+  "Class": "",
+  "Shrunk": 336,
+  "Est": 3360,
+  "Classes": {
+   "acceptance": 212,
+   "report": 124
+  },
+  "Example": [
+   "-h="
+  ],
+  "Outcomes": [
+   "unknown-flag [] \"\"",
+   "help"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "harness: cobra adapter: `--help=` / `--help=x` make cobra print \"flag declared as non-bool\" to stdout (cobra reads help back through Value.String)",
+  "Class": "",
+  "Shrunk": 228,
+  "Est": 2280,
+  "Classes": {
+   "acceptance": 30,
+   "report": 198
+  },
+  "Example": [
+   "-h=x"
+  ],
+  "Outcomes": [
+   "bad-value [] \"help\"",
+   "error: strconv.ParseBool: parsing \"x\": invalid syntax (stdout \"\\\"help\\\" flag declared as non-bool. Please correct your code\\n\")"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "decided D3: cobra takes a leaf's own flags before or between the command words (only -c/-o may come there)",
+  "Class": "",
+  "Shrunk": 42,
+  "Est": 420,
+  "Classes": {
+   "acceptance": 14,
+   "report": 28
+  },
+  "Example": [
+   "nodes",
+   "--columns=",
+   "ls"
+  ],
+  "Outcomes": [
+   "unknown-flag [nodes] \"columns\"",
+   "run nodes list [] columns=[\"\"]"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "layer: layer: `--help=1` / `-h=T` runs the command; Exec looks for the text \"true\" before it parses the bool",
+  "Class": "",
+  "Shrunk": 35,
+  "Est": 350,
+  "Classes": {
+   "acceptance": 12,
+   "semantic": 23
+  },
+  "Example": [
+   "-h=1",
+   "serve"
+  ],
+  "Outcomes": [
+   "run serve [] help=[\"true\"]",
+   "help serve"
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "bug: own drops flags read before a group word when the line ends at a group (`--version nodes` is help, cobra: unknown flag)",
+  "Class": "",
+  "Shrunk": 27,
+  "Est": 270,
+  "Classes": {
+   "acceptance": 27
+  },
+  "Example": [
+   "--version",
+   "api"
+  ],
+  "Outcomes": [
+   "help api",
+   "unknown-flag [api] \"version\""
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "layer: layer: Exec lets `-h` win over a root-only flag on a group (`api --version -h` is help; D19 says the error wins, cobra refuses)",
+  "Class": "",
+  "Shrunk": 4,
+  "Est": 40,
+  "Classes": {
+   "acceptance": 4
+  },
+  "Example": [
+   "auth",
+   "--version",
+   "-h",
+   "--help=f"
+  ],
+  "Outcomes": [
+   "help auth",
+   "unknown-flag [auth] \"version\""
+  ]
+ },
+ {
+  "Pair": "pflag~cobra",
+  "Cause": "unwanted: cobra's command search takes the word after an unknown flag as its value (`nodes --version routes -h` is help for nodes)",
+  "Class": "",
+  "Shrunk": 2,
+  "Est": 20,
+  "Classes": {
+   "semantic": 2
+  },
+  "Example": [
+   "auth",
+   "-h",
+   "--version",
+   "keys"
+  ],
+  "Outcomes": [
+   "help auth keys",
+   "help auth"
+  ]
+ }
+]

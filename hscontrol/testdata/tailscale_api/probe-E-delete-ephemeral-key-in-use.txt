@@ -1,0 +1,11 @@
+## E: an ephemeral, reusable, tagged auth key; one node joined with it
+ key    : {"id":"kLMGJaDJ8p11CNTRL","keyType":"auth","revoked":null,"invalid":null,"expires":"2026-11-12T18:31:45Z","capabilities":{"devices":{"create":{"reusable":true,"ephemeral":true,"preauthorized":true,"tags":["tag:server"]}}}}
+ device : {"hostname":"hs-probe-eph","isEphemeral":true,"tags":["tag:server"],"connectedToControl":true}
+## E: DELETE /tailnet/-/keys/{id} while the node is connected ->null HTTP 200
+ GET key after   : {"id":"kLMGJaDJ8p11CNTRL","keyType":"auth","expirySeconds":600,"created":"2026-11-12T18:21:45Z","expires":"2026-11-12T18:31:45Z","revoked":"2026-11-12T18:21:51Z","invalid":true,"capabilities":{"devices":{"create":{"reusable":true,"ephemeral":true,"preauthorized":true,"tags":["tag:server"]}}},"descri
+ key in list     : 0
+ device after    : {"hostname":"hs-probe-eph","isEphemeral":true,"connectedToControl":true}
+ node after      : {"BackendState":"Running","Online":true}
+## E: DELETE the same key again ->null HTTP 200
+## cleanup: devicenull HTTP 200
+devices left: 0

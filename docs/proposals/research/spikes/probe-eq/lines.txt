@@ -1,0 +1,2 @@
+eqp list --filter=name=w
+eqp list --filter=na

@@ -1,0 +1,73 @@
+LINE: headscale no
+  nodes
+LINE: headscale nodes 
+  delete
+  list
+  routes
+  set
+LINE: headscale nodes routes ap
+  approve
+LINE: headscale -c x no
+  nodes
+LINE: headscale nodes list --
+  --columns
+  --config
+  --filter
+  --help
+  --list-columns
+  --output
+  --sort
+LINE: headscale nodes list -o 
+  json
+LINE: headscale nodes list --columns 
+  expiry
+  hostname
+  id
+  ip
+  last-seen
+  name
+  online
+  owner
+  version
+LINE: headscale nodes list --columns id,na
+  id,name
+LINE: headscale nodes list --columns=id,na
+  --columns=id,name
+LINE: headscale nodes list --columns id,
+  id,expiry
+  id,hostname
+  id,id
+  id,ip
+  id,last-seen
+  id,name
+  id,online
+  id,owner
+  id,version
+LINE: headscale nodes list --sort la
+  last-seen
+LINE: headscale nodes list --sort -la
+  -last-seen
+LINE: headscale nodes list --filter=ow
+  --filter=owner
+LINE: headscale policy set 
+  other.json
+  policy.hujson
+LINE: headscale check config 
+  other.json
+  policy.hujson
+LINE: headscale nodes list 
+LINE: headscale nodes delete 
+LINE: headscale completion 
+  bash
+  fish
+  powershell
+  zsh
+LINE: headscale nodes rm --f
+  --force
+LINE: headscale -o 
+  json
+LINE: headscale nodes list -o=
+LINE: headscale auth keys create alice --tags tag:p
+  tag:prod
+LINE: headscale auth keys create alice --tags tag:ci,tag:p
+  tag:ci,tag:prod

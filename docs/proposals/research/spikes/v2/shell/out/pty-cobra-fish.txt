@@ -1,0 +1,92 @@
+LINE: headscale no
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes 
+FINAL: [headscale nodes ]
+
+LINE: headscale nodes 
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes 
+FINAL: [headscale nodes ]
+
+LINE: headscale nodes routes ap
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes routes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes routes approve kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes routes approve 
+FINAL: [headscale nodes routes approve ]
+
+LINE: headscale -c x no
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale -c kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale -c x kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale -c x nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale -c x nodes 
+FINAL: [headscale -c x nodes ]
+
+LINE: headscale nodes list --
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --
+FINAL: [headscale nodes list --]
+
+LINE: headscale nodes list -o 
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list -o kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list -o jsonkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list -o json
+FINAL: [headscale nodes list -o json]
+
+LINE: headscale nodes list --columns 
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns 
+FINAL: [headscale nodes list --columns ]
+
+LINE: headscale nodes list --columns id,na
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns id,namekradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns id,name
+FINAL: [headscale nodes list --columns id,name]
+
+LINE: headscale nodes list --columns=id,na
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list string split: --columns=id,name: unknown option /  / - (line 1):  / in command substitution / 	called on line 189 of file - / in function '__headscale_prepare_completions' / in command substitution /  / (Type 'help string' for related documentation) / kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns=id,nakradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns=id,nakradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns=id,nakradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns=id,na
+FINAL: [headscale nodes list --columns=id,na]
+
+LINE: headscale nodes list --columns id,
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns id,kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --columns id,
+FINAL: [headscale nodes list --columns id,]
+
+LINE: headscale nodes list --sort la
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --sort kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --sort last-seenkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --sort last-seen
+FINAL: [headscale nodes list --sort last-seen]
+
+LINE: headscale nodes list --sort -la
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --sort kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --sort -last-seen kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --sort -last-seen 
+FINAL: [headscale nodes list --sort -last-seen ]
+
+LINE: headscale nodes list --filter=ow
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list string split: --filter=owner: unknown option /  / - (line 1):  / in command substitution / 	called on line 189 of file - / in function '__headscale_prepare_completions' / in command substitution /  / (Type 'help string' for related documentation) / kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --filter=owkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --filter=owkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --filter=owkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list --filter=ow
+FINAL: [headscale nodes list --filter=ow]
+
+LINE: headscale policy set 
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale policy kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale policy set kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale policy set kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale policy set 
+FINAL: [headscale policy set ]
+
+LINE: headscale check config 
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale check kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale check config kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale check config kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale check config 
+FINAL: [headscale check config ]
+
+LINE: headscale nodes list 
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list 
+FINAL: [headscale nodes list ]
+
+LINE: headscale nodes delete 
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes delete kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes delete kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes delete kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes delete kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes delete 
+FINAL: [headscale nodes delete ]
+
+LINE: headscale completion 
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale completion kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale completion kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale completion kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale completion 
+FINAL: [headscale completion ]
+
+LINE: headscale nodes rm --f
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes rm kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes rm --force kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes rm --force 
+FINAL: [headscale nodes rm --force ]
+
+LINE: headscale -o 
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale -o kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale -o kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale -o 
+FINAL: [headscale -o ]
+
+LINE: headscale nodes list -o=
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list string split: -o=json: unknown option /  / - (line 1):  / in command substitution / 	called on line 189 of file - / in function '__headscale_prepare_completions' / in command substitution /  / (Type 'help string' for related documentation) / kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list -o=kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list -o=kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list -o=kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list -o=kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale nodes list -o=
+FINAL: [headscale nodes list -o=]
+
+LINE: headscale auth keys create alice --tags tag:p
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:pkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:pkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:pkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:pkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:p
+FINAL: [headscale auth keys create alice --tags tag:p]
+
+LINE: headscale auth keys create alice --tags tag:ci,tag:p
+LISTED: kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags kradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:ci,tag:pkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:ci,tag:pkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:ci,tag:pkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:ci,tag:pkradalby@dev ~/.c/h/r/H/s/v/s/cwd> headscale auth keys create alice --tags tag:ci,tag:p
+FINAL: [headscale auth keys create alice --tags tag:ci,tag:p]
+

@@ -1,0 +1,37 @@
+$ prog __complete items ''
+list	List items
+delete	Delete an item
+:4
+$ prog __complete items rm ''
+12
+13
+:4
+$ prog __complete -c other.yaml items rm ''
+21
+22
+:4
+$ prog __complete items list --s
+--sort	Sort by
+:4
+$ prog __completeNoDesc items ''
+list
+delete
+:4
+$ prog __complete items list --config=
+:0
+$ prog completion bash | head -1
+# bash completion V2 for prog                                 -*- shell-script -*-
+$ prog items rm 12 --force
+run "items delete" flags=[{force true 3}] args=["12"]
+$ prog -c x.yaml items ls --sort=-id
+run "items list" flags=[{config x.yaml 0} {sort -id 4}] args=[]
+$ prog items
+help of "items"
+$ prog items lst
+Error: "lst" is not a command of `prog items`.
+$ prog items list --sort
+Error: --sort needs a value.
+$ prog --force items delete 12
+Error: `prog` has no flag --force.
+$ prog completion tcsh
+Error: completion takes bash, zsh, fish or powershell.

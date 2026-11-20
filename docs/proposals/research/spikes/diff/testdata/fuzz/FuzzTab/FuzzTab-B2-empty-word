@@ -1,0 +1,2 @@
+go test fuzz v1
+string("nodes\x00list\x00\x00-")

@@ -1,0 +1,8 @@
+# upstream clones: can be fetched again
+/spikes/src/
+# built binaries and scratch output
+bin/
+bin-fix/
+*.test
+/spikes/diff/results/smoke.json
+/spikes/corpus/gen/probe-others/p

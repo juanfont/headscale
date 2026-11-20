@@ -1,0 +1,57 @@
+# Z. Expire variants (2026-11-13T17:41:42Z)
+joined zt = hs-ov-zt device 5838807436406354 tags ['tag:server']
+joined zl = hs-ov-zl device 3669469518414421 tags None
+joined zu = hs-ov-zu device 3060600643525864 tags None
+Z0 zl: tagged later through the API (tag:server)        : null HTTP 200
+Z0 zu: key expiry disabled through the API              : null HTTP 200
+Z1 zt before                                            : {"api":{"tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2027-05-12T17:41:44Z","connectedToControl":true,"now":"2026-11-13T17:41:53Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+Z1 zl before                                            : {"api":{"tags":["tag:server"],"keyExpiryDisabled":false,"expires":"2027-05-12T17:41:45Z","connectedToControl":true,"now":"2026-11-13T17:41:54Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":"2027-05-12T17:41:44Z","Online":true,"Expired":null,"Health":[]}}
+Z1 zu before                                            : {"api":{"tags":null,"keyExpiryDisabled":true,"expires":"2027-05-12T17:41:46Z","connectedToControl":true,"now":"2026-11-13T17:41:54Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+Z2 zt: POST /device/{id}/expire                         : null HTTP 200
+Z2 zl: POST /device/{id}/expire                         : null HTTP 200
+Z2 zu: POST /device/{id}/expire                         : null HTTP 200
+Z3 zt 15 s after the expire                             : {"api":{"tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2026-11-13T17:41:54Z","connectedToControl":true,"now":"2026-11-13T17:42:10Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+Z3 zl 15 s after the expire                             : {"api":{"tags":["tag:server"],"keyExpiryDisabled":false,"expires":"2026-11-13T17:41:54Z","connectedToControl":true,"now":"2026-11-13T17:42:11Z"},"node":{"BackendState":"NeedsLogin","AuthURL":"","KeyExpiry":"2026-11-13T17:41:54Z","Online":true,"Expired":null,"Health":["Tailscale could not connect to the 'Amsterdam' relay server. Your Internet connection might be down, or the server might be temporarily unavailable."]}}
+Z3 zu 15 s after the expire                             : {"api":{"tags":null,"keyExpiryDisabled":true,"expires":"2026-11-13T17:41:55Z","connectedToControl":true,"now":"2026-11-13T17:42:11Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+Z3 zt 60 s after the expire                             : {"api":{"tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2026-11-13T17:41:54Z","connectedToControl":true,"now":"2026-11-13T17:42:56Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+Z3 zl 60 s after the expire                             : {"api":{"tags":["tag:server"],"keyExpiryDisabled":false,"expires":"2026-11-13T17:41:54Z","connectedToControl":true,"now":"2026-11-13T17:42:57Z"},"node":{"BackendState":"NeedsLogin","AuthURL":"","KeyExpiry":"2026-11-13T17:41:54Z","Online":true,"Expired":null,"Health":["Tailscale could not connect to the 'Amsterdam' relay server. Your Internet connection might be down, or the server might be temporarily unavailable."]}}
+Z3 zu 60 s after the expire                             : {"api":{"tags":null,"keyExpiryDisabled":true,"expires":"2026-11-13T17:41:55Z","connectedToControl":true,"now":"2026-11-13T17:42:57Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+Z3 zt 180 s after the expire                            : {"api":{"tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2026-11-13T17:41:54Z","connectedToControl":true,"now":"2026-11-13T17:44:57Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+Z3 zl 180 s after the expire                            : {"api":{"tags":["tag:server"],"keyExpiryDisabled":false,"expires":"2026-11-13T17:41:54Z","connectedToControl":true,"now":"2026-11-13T17:44:58Z"},"node":{"BackendState":"NeedsLogin","AuthURL":"","KeyExpiry":"2026-11-13T17:41:54Z","Online":true,"Expired":null,"Health":["Tailscale could not connect to the 'Amsterdam' relay server. Your Internet connection might be down, or the server might be temporarily unavailable."]}}
+Z3 zu 180 s after the expire                            : {"api":{"tags":null,"keyExpiryDisabled":true,"expires":"2026-11-13T17:41:55Z","connectedToControl":true,"now":"2026-11-13T17:44:58Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+Z4 zt: a second expire, 3 minutes after the first       : null HTTP 200
+Z4 zt 10 s after the second expire                      : {"api":{"tags":["tag:server"],"keyExpiryDisabled":true,"expires":"2026-11-13T17:44:58Z","connectedToControl":true,"now":"2026-11-13T17:45:09Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+Z5 zl: `tailscale up` with no key (12 s)                : rc=1 "Error: changing settings via 'tailscale up' requires mentioning all non-default flags. To proceed, either re-run your command with --reset or use the command be"
+Z6 zu: enable key expiry, 3 minutes after the expire    : null HTTP 200
+Z6 zu 12 s after                                        : {"api":{"tags":null,"keyExpiryDisabled":false,"expires":"2026-11-13T17:41:55Z","connectedToControl":true,"now":"2026-11-13T17:45:21Z"},"node":{"BackendState":"NeedsLogin","AuthURL":"","KeyExpiry":"2026-11-13T17:41:54Z","Online":true,"Expired":null,"Health":["Tailscale could not connect to the 'Amsterdam' relay server. Your Internet connection might be down, or the server might be temporarily unavailable."]}}
+Z7 zu: disable key expiry again                         : null HTTP 200
+Z7 zu 20 s after                                        : {"api":{"tags":null,"keyExpiryDisabled":true,"expires":"2026-11-13T17:41:55Z","connectedToControl":true,"now":"2026-11-13T17:45:41Z"},"node":{"BackendState":"Running","AuthURL":"","KeyExpiry":null,"Online":true,"Expired":null,"Health":[]}}
+
+## cleanup: only what this probe made, by ID
+ device 5838807436406354 (zt): DELETE -> 200
+ device 3669469518414421 (zl): DELETE -> 200
+ device 3060600643525864 (zu): DELETE -> 200
+ auth key kZHtXPnoqX11CNTRL: HTTP 200, revoked=2026-11-13T17:41:44Z (single use, spent); left
+ auth key kctLVwuN5C21CNTRL: HTTP 200, revoked=2026-11-13T17:41:45Z (single use, spent); left
+ auth key kjX39jVUv611CNTRL: HTTP 200, revoked=2026-11-13T17:41:46Z (single use, spent); left
+done 2026-11-13T17:45:44Z
+
+## Z, second part (2026-11-13T17:46:06Z): `tailscale up` with no key on a node that needs a login
+joined zt2 = hs-ov-zt2 device 1597620261263642 tags ['tag:server']
+joined zu2 = hs-ov-zu2 device 1211921460680420 tags None
+Z8 zt2: expire                                          : null HTTP 200
+Z8 zu2: expire                                          : null HTTP 200
+Z8 zt2: enable key expiry                               : null HTTP 200
+Z9 zt2 before up                                        : {"BackendState": "NeedsLogin", "AuthURL": "", "KeyExpiry": "2026-11-13T17:46:08Z", "Online": true, "Expired": null, "Health": ["Tailscale could not connect to the 'Amsterdam' relay server. Your Internet connection might be down, or the server might be temporarily unavailable."]}
+Z9 zt2: `tailscale up --hostname=…` with no key (12 s)  : rc=1 'To authenticate, visit: https://login.tailscale.com/a/REDACTED timeout waiting for Tailscale service to enter a Running state; check health with "tailscale status"'
+Z9 zt2 after up                                         : {"BackendState": "NeedsLogin", "AuthURL": "set", "KeyExpiry": "2026-11-13T17:46:08Z", "Online": false, "Expired": null, "Health": ["Tailscale could not connect to the 'Amsterdam' relay server. Your Internet connection might be down, or the server might be temporarily unavailable."]}
+Z9 zt2 in the API                                       : {"keyExpiryDisabled": false, "expires": "2026-11-13T17:46:09Z", "connectedToControl": true, "lastSeen": "2026-11-13T17:46:38Z", "now": "2026-11-13T17:46:37Z"}
+Z9 zu2 before up                                        : {"BackendState": "NeedsLogin", "AuthURL": "", "KeyExpiry": "2026-11-13T17:46:09Z", "Online": true, "Expired": null, "Health": ["Tailscale could not connect to the 'London' relay server. Your Internet connection might be down, or the server might be temporarily unavailable."]}
+Z9 zu2: `tailscale up --hostname=…` with no key (12 s)  : rc=1 'To authenticate, visit: https://login.tailscale.com/a/REDACTED timeout waiting for Tailscale service to enter a Running state; check health with "tailscale status"'
+Z9 zu2 after up                                         : {"BackendState": "NeedsLogin", "AuthURL": "set", "KeyExpiry": "2026-11-13T17:46:09Z", "Online": false, "Expired": null, "Health": ["Tailscale could not connect to the 'London' relay server. Your Internet connection might be down, or the server might be temporarily unavailable."]}
+Z9 zu2 in the API                                       : {"keyExpiryDisabled": false, "expires": "2026-11-13T17:46:09Z", "connectedToControl": true, "lastSeen": "2026-11-13T17:46:50Z", "now": "2026-11-13T17:46:50Z"}
+## cleanup of this part, by ID
+ device 1597620261263642 (zt2): DELETE -> 200
+ device 1211921460680420 (zu2): DELETE -> 200
+ auth key k1HSyd54w611CNTRL: revoked=2026-11-13T17:46:08Z (single use, spent); left
+ auth key koiuq3ZzV621CNTRL: revoked=2026-11-13T17:46:09Z (single use, spent); left

@@ -64,6 +64,7 @@ theme:
 # Excludes
 exclude_docs: |
   /requirements.txt
+  /proposals/research/
 
 # Plugins
 plugins:

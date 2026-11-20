@@ -1,0 +1,15 @@
+fuzz: elapsed: 0s, gathering baseline coverage: 0/523 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 523/523 completed, now fuzzing with 6 workers
+fuzz: elapsed: 1s, execs: 47703 (53494/sec), new interesting: 0 (total: 523)
+--- FAIL: FuzzRun (0.97s)
+    --- FAIL: FuzzRun (0.00s)
+        fuzz_test.go:156: trailing --: ["nodes" "set" "--name=" "--name=" "-c"]
+              without nodes set [] name=["" ""]
+              with    nodes set [] config=["--"] name=["" ""]
+    
+    Failing input written to testdata/fuzz/FuzzRun/f75e51ec8daae131
+    To re-run:
+    go test -run=FuzzRun/f75e51ec8daae131
+FAIL
+exit status 1
+FAIL	spike/diff	0.972s

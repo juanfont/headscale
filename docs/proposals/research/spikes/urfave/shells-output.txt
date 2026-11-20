@@ -1,0 +1,30 @@
+## bash (bash-interactive, non-interactive shell, bash-completion sourced)
+headscale no<TAB>                            -> [nodes]
+headscale nodes list --columns <TAB>         -> [id name owner ip version online last-seen expiry hostname]
+headscale nodes list -o <TAB>                -> [json]
+headscale policy set <TAB>                   -> []  (empty: complete -o default offers files)
+headscale nodes list --sort la<TAB>          -> [last-seen]
+headscale nodes list --sort=<TAB>            -> []  (empty: complete -o default offers files)
+headscale nodes list --columns id,<TAB>      -> []  (empty: complete -o default offers files)
+headscale nodes delete <TAB>                 -> []  (empty: complete -o default offers files)
+headscale nodes list --filter owner=tag:<TAB> -> []  (empty: complete -o default offers files)
+## zsh (script sourced; _describe/_files stubbed to print what they are given)
+headscale no<TAB>                            -> describe: serve version check completion nodes users auth api policy
+headscale nodes list --columns <TAB>         -> describe: id name owner ip version online last-seen expiry hostname
+headscale nodes list -o <TAB>                -> describe: json
+headscale policy set <TAB>                   -> FILES
+headscale nodes list --sort la<TAB>          -> describe: id name owner ip version online last-seen expiry hostname
+headscale nodes list --sort=<TAB>            -> FILES
+headscale nodes list --columns id,<TAB>      -> describe: id name owner ip version online last-seen expiry hostname
+headscale nodes delete <TAB>                 -> FILES
+headscale nodes list --filter owner=tag:<TAB> -> describe: id name owner ip version online last-seen expiry hostname
+## fish (complete -C)
+headscale no<TAB>                            -> [nodes ]
+headscale nodes list --columns <TAB>         -> [expiry hostname id ip last-seen name online owner version ]
+headscale nodes list -o <TAB>                -> [json ]
+headscale policy set <TAB>                   -> []
+headscale nodes list --sort la<TAB>          -> [last-seen ]
+headscale nodes list --sort=<TAB>            -> []
+headscale nodes list --columns id,<TAB>      -> []
+headscale nodes delete <TAB>                 -> []
+headscale nodes list --filter owner=tag:<TAB> -> []

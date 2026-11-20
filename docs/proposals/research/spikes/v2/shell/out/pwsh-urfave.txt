@@ -1,0 +1,46 @@
+LINE: headscale no
+  [serve] [version] [check] [completion] [nodes] [users] [auth] [api] [policy]
+LINE: headscale nodes 
+  [list] [ls] [delete] [rm] [set] [routes]
+LINE: headscale nodes routes ap
+  [set] [approve]
+LINE: headscale -c x no
+  [serve] [version] [check] [completion] [nodes] [users] [auth] [api] [policy]
+LINE: headscale nodes list --
+  [--columns] [--sort] [--filter] [--list-columns] [--output] [--config] [--help]
+LINE: headscale nodes list -o 
+  [json]
+LINE: headscale nodes list --columns 
+  [id] [name] [owner] [ip] [version] [online] [last-seen] [expiry] [hostname]
+LINE: headscale nodes list --columns id,na
+  
+LINE: headscale nodes list --columns=id,na
+  
+LINE: headscale nodes list --columns id,
+  [./other.json] [./policy.hujson]
+LINE: headscale nodes list --sort la
+  
+LINE: headscale nodes list --sort -la
+  
+LINE: headscale nodes list --filter=ow
+  
+LINE: headscale policy set 
+  [./other.json] [./policy.hujson]
+LINE: headscale check config 
+  [./other.json] [./policy.hujson]
+LINE: headscale nodes list 
+  [./other.json] [./policy.hujson]
+LINE: headscale nodes delete 
+  [./other.json] [./policy.hujson]
+LINE: headscale completion 
+  [bash] [zsh] [fish] [powershell]
+LINE: headscale nodes rm --f
+  [--force] [--output] [--config] [--help]
+LINE: headscale -o 
+  [json]
+LINE: headscale nodes list -o=
+  
+LINE: headscale auth keys create alice --tags tag:p
+  
+LINE: headscale auth keys create alice --tags tag:ci,tag:p
+  

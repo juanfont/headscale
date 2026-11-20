@@ -1,0 +1,23 @@
+headscale no
+headscale nodes 
+headscale nodes routes ap
+headscale -c x no
+headscale nodes list --
+headscale nodes list -o 
+headscale nodes list --columns 
+headscale nodes list --columns id,na
+headscale nodes list --columns=id,na
+headscale nodes list --columns id,
+headscale nodes list --sort la
+headscale nodes list --sort -la
+headscale nodes list --filter=ow
+headscale policy set 
+headscale check config 
+headscale nodes list 
+headscale nodes delete 
+headscale completion 
+headscale nodes rm --f
+headscale -o 
+headscale nodes list -o=
+headscale auth keys create alice --tags tag:p
+headscale auth keys create alice --tags tag:ci,tag:p

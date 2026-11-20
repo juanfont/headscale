@@ -1,0 +1,28 @@
+LINE: headscale nodes list --columns id,na
+LISTED: headscale nodes list --columns id,na\,name
+FINAL: [headscale nodes list --columns id\,name]
+
+LINE: headscale nodes list --columns=id,na
+LISTED: headscale nodes list --columns=id,na\,name
+FINAL: [headscale nodes list --columns=id\,name]
+
+LINE: headscale nodes list --sort -la
+LISTED: headscale nodes list --sort -la<BEL>
+FINAL: [headscale nodes list --sort -la]
+
+LINE: headscale nodes list --sort=-la
+LISTED: headscale nodes list --sort=-last-seen
+FINAL: [headscale nodes list --sort=-last-seen]
+
+LINE: headscale nodes list --tags tag:p
+LISTED: headscale nodes list --tags tag:prod
+FINAL: [headscale nodes list --tags tag:prod]
+
+LINE: headscale nodes list --tags tag:ci,tag:p
+LISTED: headscale nodes list --tags tag:ci,tag:ptag:ci\,tag:prod
+FINAL: [headscale nodes list --tags tag:ci,tag:tag:ci\,tag:prod]
+
+LINE: headscale nodes list --columns id,
+LISTED: headscale nodes list --columns id, / id,id         id,last-seen  id,name        / $ headscale nodes list --columns id,
+FINAL: [headscale nodes list --columns id,]
+

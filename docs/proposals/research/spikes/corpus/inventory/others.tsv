@@ -1,0 +1,872 @@
+src	name	verdict	reason	ids
+alecthomas/kong@v1.17.0 kong_test.go:33	TestPositionalArguments	IN		others-001
+alecthomas/kong@v1.17.0 kong_test.go:33	TestPositionalArguments / Missing	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:53	TestRemainderReturnsUnparsedArgs	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:72	TestBranchingArgument	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:109	TestResetWithDefaults	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:123	TestFlagSlice	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:133	TestFlagSliceWithSeparator	OUT	other: backslash-escaped list separator	
+alecthomas/kong@v1.17.0 kong_test.go:143	TestArgSlice	IN		others-002
+alecthomas/kong@v1.17.0 kong_test.go:155	TestArgSliceWithSeparator	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:167	TestUnsupportedFieldErrors	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:175	TestMatchingArgField	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:186	TestCantMixPositionalAndBranches	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:196	TestPropagatedFlags	IN		others-003
+alecthomas/kong@v1.17.0 kong_test.go:212	TestRequiredFlag	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:222	TestOptionalArg	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:232	TestOptionalArgWithDefault	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:243	TestArgWithDefaultIsOptional	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:254	TestRequiredArg	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:264	TestInvalidRequiredAfterOptional	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:274	TestOptionalStructArg	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:303	TestMixedRequiredArgs	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:325	TestInvalidDefaultErrors	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:334	TestCommandMissingTagIsInvalid	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:342	TestDuplicateFlag	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:353	TestDuplicateFlagOnPeerCommandIsOkay	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:366	TestTraceErrorPartiallySucceeds	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:391	TestNegatableFlag / boolean flag	IN		others-004
+alecthomas/kong@v1.17.0 kong_test.go:391	TestNegatableFlag / inverted boolean flag	IN		others-005
+alecthomas/kong@v1.17.0 kong_test.go:391	TestNegatableFlag / negated boolean flag	IN		others-006
+alecthomas/kong@v1.17.0 kong_test.go:391	TestNegatableFlag / inverted negated boolean flag	IN		others-007
+alecthomas/kong@v1.17.0 kong_test.go:391	TestNegatableFlag / no flag	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:391	TestNegatableFlag / custom boolean flag	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:391	TestNegatableFlag / custom inverted boolean flag	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:391	TestNegatableFlag / custom negated boolean flag	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:391	TestNegatableFlag / inverted custom negated boolean flag	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:475	TestNegatableFlagWithBoolMapper	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:517	TestNegatableFlagWithBoolMapperValue	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:590	TestDuplicateNegatableLong	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:606	TestDuplicateNegatableFlagsInSubcommands	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:619	TestExistingNoFlag	OUT	other: tree has no flag named no-*	
+alecthomas/kong@v1.17.0 kong_test.go:634	TestInvalidNegatedNonBool	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:677	TestHooks	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:708	TestGlobalHooks	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:767	TestShort	IN		others-008
+alecthomas/kong@v1.17.0 kong_test.go:779	TestAlias	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:789	TestSingleCharAliasIsShortFlag	IN		others-009
+alecthomas/kong@v1.17.0 kong_test.go:799	TestDuplicateFlagChoosesLast	IN		others-010
+alecthomas/kong@v1.17.0 kong_test.go:809	TestDuplicateSliceAccumulates	IN		others-011
+alecthomas/kong@v1.17.0 kong_test.go:820	TestMapFlag	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:829	TestMapFlagWithSliceValue	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:838	TestMapFlagWithUnmappableValueType	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:846	TestMapFlagWithUnmappableKeyType	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:858	TestEmbeddedStruct	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:870	TestSliceWithDisabledSeparator	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:879	TestMultilineMessage	OUT	help-format	
+alecthomas/kong@v1.17.0 kong_test.go:930	TestRun	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:963	TestRunnableNodeDoesNotRequireSubcommand	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:997	TestPassesThroughOriginalCommandError	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:1008	TestInterpolationIntoModel	OUT	help-format	
+alecthomas/kong@v1.17.0 kong_test.go:1038	TestEmptyInterpolationFallback	OUT	help-format	
+alecthomas/kong@v1.17.0 kong_test.go:1053	TestIssue244	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1064	TestPositionalArgWithEnv	OUT	env	
+alecthomas/kong@v1.17.0 kong_test.go:1080	TestErrorMissingArgs	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1092	TestBoolOverride	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1103	TestAnonymousPrefix	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1126	TestEmbedInterface	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1139	TestExcludedField	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1152	TestExcludeEmbeddedField	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1189	TestUnnamedFieldEmbeds	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1205	TestHooksCalledForDefault	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:1217	TestEnum	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1225	TestEnumMeaningfulOrder	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1252	TestParentBindings	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:1259	TestDefaultValueIsHyphen	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1269	TestDefaultEnumValidated	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1278	TestEnvarEnumValidated	OUT	env	
+alecthomas/kong@v1.17.0 kong_test.go:1289	TestXor	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1304	TestAnd	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1319	TestXorChild	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1336	TestAndChild	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1353	TestMultiXor	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1369	TestMultiAnd	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1390	TestXorAnd	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1410	TestOverLappingXorAnd	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1420	TestXorRequired	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1440	TestAndRequired	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1460	TestXorRequiredMany	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1479	TestAndRequiredMany	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1494	TestLastWins	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1526	TestLastWinsInterleavedSequences	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1548	TestLastWinsLoserRevertsToDefault	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1572	TestLastWinsLoserRevertsToEnv	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1584	TestLastWinsLoserRevertsToResolver	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1601	TestLastWinsRequired	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1617	TestLastWinsIsScopedToCommand	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1630	TestPrefixLastWins	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1647	TestLastWinsNegatable	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1665	TestLastWinsEnumLoserRevertsToDefault	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1676	TestLastWinsHooks	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1689	TestEnumSequence	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1699	TestIssue40EnumAcrossCommands	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1723	TestIssue179	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1740	TestIssue153	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1759	TestEnumArg	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:1773	TestDefaultCommand	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1784	TestMultipleDefaultCommands	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1793	TestDefaultCommandWithSubCommand	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1803	TestDefaultCommandWithAllowedSubCommand	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1815	TestDefaultCommandWithArgument	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1825	TestDefaultCommandWithAllowedArgument	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1839	TestDefaultCommandWithBranchingArgument	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1851	TestDefaultCommandWithAllowedBranchingArgument	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1867	TestDefaultCommandPrecedence	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1897	TestDefaultCommandFlagsBeforeSiblingCommand / RejectsDefaultFlagBeforeSibling	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1897	TestDefaultCommandFlagsBeforeSiblingCommand / DefaultCommandWithoutName	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1897	TestDefaultCommandFlagsBeforeSiblingCommand / DefaultFlagBeforeNamedDefault	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1897	TestDefaultCommandFlagsBeforeSiblingCommand / NamedDefaultCommand	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1897	TestDefaultCommandFlagsBeforeSiblingCommand / NamedSiblingCommand	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:1897	TestDefaultCommandFlagsBeforeSiblingCommand / ParentAndInheritedFlagsBeforeSibling	IN		others-012
+alecthomas/kong@v1.17.0 kong_test.go:1976	TestLoneHpyhen	IN		others-013
+alecthomas/kong@v1.17.0 kong_test.go:1976	TestLoneHpyhen	IN		others-014
+alecthomas/kong@v1.17.0 kong_test.go:1992	TestPlugins	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2027	TestValidateApp	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2034	TestValidateCmd	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2043	TestValidateFlag	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2052	TestValidateArg	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2065	TestExtendedValidateFlag	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2080	TestValidateEmbed	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2089	TestValidateEmbedOnCommand	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2107	TestValidatePlugin	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2124	TestValidateNestedEmbed	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2141	TestExtendedValidateEmbed	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2150	TestPointers	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2181	TestDynamicCommands	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2216	TestDuplicateShortflags	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2225	TestDuplicateAliases	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2234	TestSubCommandAliases	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2248	TestSubCommandSingleCharAliases	IN		others-009
+alecthomas/kong@v1.17.0 kong_test.go:2265	TestDuplicateAliasLong	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2274	TestDuplicateNestedShortFlags	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2285	TestHydratePointerCommandsAndEmbeds	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2320	TestIgnoreRegex	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2342	TestIgnoreRegexEmpty	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2356	TestOptionReturnsErr	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2368	TestEnumValidation	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2437	TestPassthroughArgs	OUT	other: passthrough/raw-args mode	
+alecthomas/kong@v1.17.0 kong_test.go:2491	TestPassthroughPartial	OUT	other: passthrough/raw-args mode	
+alecthomas/kong@v1.17.0 kong_test.go:2505	TestPassthroughAll	OUT	other: passthrough/raw-args mode	
+alecthomas/kong@v1.17.0 kong_test.go:2520	TestPassthroughCmd	OUT	other: passthrough/raw-args mode	
+alecthomas/kong@v1.17.0 kong_test.go:2576	TestPassthroughCmdOnlyArgs	OUT	other: passthrough/raw-args mode	
+alecthomas/kong@v1.17.0 kong_test.go:2587	TestPassthroughCmdOnlyStringArgs	OUT	other: passthrough/raw-args mode	
+alecthomas/kong@v1.17.0 kong_test.go:2597	TestHelpShouldStillWork	OUT	help-format	
+alecthomas/kong@v1.17.0 kong_test.go:2619	TestVersionFlagShouldStillWork	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:2642	TestSliceDecoderHelpfulErrorMsg	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:2692	TestMapDecoderHelpfulErrorMsg	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:2742	TestDuplicateName	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2751	TestDuplicateChildName	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2763	TestChildNameCanBeDuplicated	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2774	TestCumulativeArgumentLast	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2783	TestCumulativeArgumentNotLast	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2792	TestStringPointer	IN		others-015
+alecthomas/kong@v1.17.0 kong_test.go:2806	TestStringPointerNoValue	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2819	TestStringPointerDefault	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2833	TestStringPointerAliasNoValue	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2847	TestStringPointerAlias	IN		others-016
+alecthomas/kong@v1.17.0 kong_test.go:2862	TestStringPointerEmptyValue	IN		others-017
+alecthomas/kong@v1.17.0 kong_test.go:2862	TestStringPointerEmptyValue	IN		others-018
+alecthomas/kong@v1.17.0 kong_test.go:2879	TestIntPtr	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:2895	TestBoolPtr	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2909	TestBoolPtrFalse	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2923	TestBoolPtrNegated	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2937	TestNilNegatableBoolPtr	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2950	TestBoolPtrNil	OUT	api-only	
+alecthomas/kong@v1.17.0 kong_test.go:2963	TestUnsupportedPtr	OUT	struct-tags	
+alecthomas/kong@v1.17.0 kong_test.go:2981	TestEnumPtr	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:2995	TestEnumPtrOmitted	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:3009	TestEnumPtrOmittedNoDefault	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:3022	TestIntEnum	OUT	typed-value	
+alecthomas/kong@v1.17.0 kong_test.go:3032	TestRecursiveVariableExpansion	OUT	help-format	
+alecthomas/kong@v1.17.0 kong_test.go:3064	TestAfterRun	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:3091	TestProviderMethods	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:3141	TestEmbeddedCallbacks	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:3180	TestApplyCalledOnce	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:3205	TestPromotedEmbeddedAfterApplyCalledOnce	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:3232	TestPromotedUnexportedEmbeddedAfterApplyCalledOnce	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:3259	TestAfterApplyFiresForEnvOnlyFlag	OUT	env	
+alecthomas/kong@v1.17.0 kong_test.go:3271	TestCustomTypeNoEllipsis	OUT	help-format	
+alecthomas/kong@v1.17.0 kong_test.go:3286	TestPrefixXorIssue343	OUT	layer-validation	
+alecthomas/kong@v1.17.0 kong_test.go:3306	TestIssue483EmptyRootNodeNoRun	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:3329	TestProviderWithoutError	OUT	lifecycle	
+alecthomas/kong@v1.17.0 kong_test.go:3339	TestParseHyphenParameter / ShortFlag	IN		others-019
+alecthomas/kong@v1.17.0 kong_test.go:3339	TestParseHyphenParameter / LongFlag	IN		others-020
+alecthomas/kong@v1.17.0 kong_test.go:3339	TestParseHyphenParameter / ParamMatchesFlag	IN		others-021
+alecthomas/kong@v1.17.0 kong_test.go:3339	TestParseHyphenParameter / NegativeNumber	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:833	TestValuesThatLookLikeFlags	IN		others-022
+alecthomas/kong@v1.17.0 mapper_test.go:833	TestValuesThatLookLikeFlags	IN		others-023
+alecthomas/kong@v1.17.0 context.go:928	(scanner.go:166)	IN		others-024
+alecthomas/kong@v1.17.0 context.go:552	short flag tail	IN		others-025
+alecthomas/kong@v1.17.0 mapper_test.go:20	TestValueMapper	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:45	TestTextUnmarshaler	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:69	TestJSONUnmarshaler	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:79	TestNamedMapper	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:106	TestTimeMapper	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:119	TestDurationMapper	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:129	TestDurationMapperJSONResolver	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:141	TestSplitEscaped	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:147	TestJoinEscaped	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:153	TestMapWithNamedTypes	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:167	TestMapWithMultipleValues	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:177	TestMapWithDifferentSeparator	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:187	TestMapWithNoSeparator	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:199	TestURLMapper	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:257	TestMapperValue	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:267	TestFileContentFlag	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:280	TestNamedFileContentFlag	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:294	TestNamedSliceTypesDontHaveEllipsis	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:308	TestCounter	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:347	TestNumbers	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:435	TestJSONLargeNumber	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:483	TestFileMapper	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:502	TestFileContentMapper	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:523	TestFileContentMapperRejectsNonByteSlice	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:545	TestPathMapperUsingStringPointer	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:590	TestPathMapperWithDefaultUsingStringPointer	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:627	TestExistingFileMapper	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:647	TestExistingFileMapperSlice	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:661	TestExistingFileMapperDefaultMissing	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:679	TestExistingFileMapperDefaultMissingCmds	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:706	TestExistingDirMapper	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:726	TestExistingDirMapperDefaultMissing	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:744	TestExistingDirMapperDefaultMissingCmds	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:770	TestMapperPlaceHolder	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:801	TestMapperVarsContributor	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:866	TestDecode	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:879	TestFileMapperWithDefaultNonExistentFile	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_test.go:211	TestSliceConsumesRemainingPositionalArgs	IN		others-026
+alecthomas/kong@v1.17.0 mapper_test.go:221	TestPassthroughStopsParsing	OUT	other: passthrough/raw-args mode	
+alecthomas/kong@v1.17.0 help_test.go	(all test functions)	OUT	help-format	
+alecthomas/kong@v1.17.0 helpwrap1.18_test.go	(all test functions)	OUT	help-format	
+alecthomas/kong@v1.17.0 helpwrap1.19_test.go	(all test functions)	OUT	help-format	
+alecthomas/kong@v1.17.0 config_test.go	(all test functions)	OUT	config-file	
+alecthomas/kong@v1.17.0 defaults_test.go	(all test functions)	OUT	api-only	
+alecthomas/kong@v1.17.0 global_test.go	(all test functions)	OUT	api-only	
+alecthomas/kong@v1.17.0 interpolate_test.go	(all test functions)	OUT	help-format	
+alecthomas/kong@v1.17.0 mapper_linux_test.go	(all test functions)	OUT	typed-value	
+alecthomas/kong@v1.17.0 mapper_windows_test.go	(all test functions)	OUT	typed-value	
+alecthomas/kong@v1.17.0 model_test.go	(all test functions)	OUT	help-format	
+alecthomas/kong@v1.17.0 options_test.go	(all test functions)	OUT	api-only	
+alecthomas/kong@v1.17.0 resolver_test.go	(all test functions)	OUT	env	
+alecthomas/kong@v1.17.0 scanner_test.go	(all test functions)	OUT	api-only	
+alecthomas/kong@v1.17.0 signature_test.go	(all test functions)	OUT	struct-tags	
+alecthomas/kong@v1.17.0 tag_test.go	(all test functions)	OUT	struct-tags	
+alecthomas/kong@v1.17.0 util_test.go	(all test functions)	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:160	TestCommandFlagParsing / row 1	IN		others-027
+urfave/cli@v3.14.0 command_test.go:160	TestCommandFlagParsing / row 2 SkipFlagParsing	OUT	other: passthrough/raw-args mode	
+urfave/cli@v3.14.0 command_test.go:160	TestCommandFlagParsing / row 3 SkipFlagParsing	OUT	other: passthrough/raw-args mode	
+urfave/cli@v3.14.0 command_test.go:160	TestCommandFlagParsing / row 4 SkipFlagParsing	OUT	other: passthrough/raw-args mode	
+urfave/cli@v3.14.0 command_test.go:160	TestCommandFlagParsing / row 5 blah -h	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -a	IN		others-028
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -c arg1 arg2	IN		others-029
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -f	IN		others-030
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -ac --fgh	IN		others-031
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -af	IN		others-032
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -cf	IN		others-033
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -acf	IN		others-034
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / --acf	IN		others-035
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -invalid	IN		others-036
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -acf -invalid	IN		others-037
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / --invalid	IN		others-038
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -acf --invalid	IN		others-039
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -acf arg1 -invalid	IN		others-037
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -acf arg1 --invalid	IN		others-039
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -acfi not-arg arg1 -invalid	IN		others-040
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -i ivalue	IN		others-041
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -i ivalue arg1	IN		others-042
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -i	IN		others-043
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -ia	IN		others-044
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -ia ivalue	IN		others-045
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -aic	IN		others-046
+urfave/cli@v3.14.0 command_test.go:203	TestParseAndRunShortOpts / -ai ivalue	IN		others-047
+urfave/cli@v3.14.0 command_test.go:279	TestCommand_Run_DoesNotOverwriteErrorFromBefore	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:297	TestCommand_Run_BeforeSavesMetadata	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:331	TestCommand_Run_BeforeReturnNewContext	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:392	TestCommand_Run_BeforeReturnNewContextSubcommand	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:442	TestCommand_Run_FlagActionContext	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:497	TestCommand_OnUsageError_hasCommandContext	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:512	TestCommand_OnUsageError_WithWrongFlagValue	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:528	TestCommand_OnUsageError_WithSubcommand	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:549	TestCommand_Run_SubcommandsCanUseErrWriter	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:570	TestCommandSkipFlagParsing	OUT	other: passthrough/raw-args mode	
+urfave/cli@v3.14.0 command_test.go:603	TestCommand_Run_CustomShellCompleteAcceptsMalformedFlags	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:646	TestCommand_CanAddVFlagOnSubCommands	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:666	TestCommand_VisibleSubcCommands	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:692	TestCommand_VisibleFlagCategories	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:744	TestCommand_RunSubcommandWithDefault	OUT	other: default command	
+urfave/cli@v3.14.0 command_test.go:774	TestCommand_Run	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:803	TestCommand_Command	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:840	TestCommand_RunDefaultCommand	OUT	other: default command	
+urfave/cli@v3.14.0 command_test.go:931	TestCommand_RunDefaultCommandWithSubCommand	OUT	other: default command	
+urfave/cli@v3.14.0 command_test.go:997	TestCommand_RunDefaultCommandWithFlags	OUT	other: default command	
+urfave/cli@v3.14.0 command_test.go:1051	TestCommand_FlagsFromExtPackage	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:1105	TestCommand_Setup_defaultsReader	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:1111	TestCommand_Setup_defaultsWriter	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:1117	TestCommand_CommandWithFlagBeforeTerminator	IN		others-048
+urfave/cli@v3.14.0 command_test.go:1144	TestCommand_CommandWithDash	IN		others-049
+urfave/cli@v3.14.0 command_test.go:1165	TestCommand_BareDash / arguments after a bare dash are kept	IN		others-050
+urfave/cli@v3.14.0 command_test.go:1165	TestCommand_BareDash / flags after a bare dash still parse	IN		others-051
+urfave/cli@v3.14.0 command_test.go:1165	TestCommand_BareDash / terminator after a bare dash still stops flag parsing	IN		others-052
+urfave/cli@v3.14.0 command_test.go:1165	TestCommand_BareDash / a bare dash with surrounding whitespace	IN		others-053
+urfave/cli@v3.14.0 command_test.go:1165	TestCommand_BareDash / an undefined flag after a bare dash is an error	IN		others-054
+urfave/cli@v3.14.0 command_test.go:1237	TestCommand_PositionalArgsKeepWhitespace	IN		others-055
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / empty	IN		others-017,others-018
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / spaces	IN		others-056
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / tab only	IN		others-057
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / newline	IN		others-058
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / unicode space	IN		others-059
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / embedded equals	IN		others-060
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / alias	IN		others-061
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / alias equals=true	IN		others-062
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / leading flag whitespace	IN		others-063
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / trim enabled	OUT	other: TrimSpace value option	
+urfave/cli@v3.14.0 command_test.go:1253	TestCommand_FlagValuesKeepWhitespace / map kind	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:1310	TestCommand_SingleRuneUnicodeFlag	OUT	other: non-ASCII flag name (tree has none)	
+urfave/cli@v3.14.0 command_test.go:1331	TestCommand_EqualsFlagValueValidation / bool/whitespace=""	IN		others-064
+urfave/cli@v3.14.0 command_test.go:1331	TestCommand_EqualsFlagValueValidation / bool/whitespace=" "	IN		others-065
+urfave/cli@v3.14.0 command_test.go:1331	TestCommand_EqualsFlagValueValidation / bool/whitespace="\t"	IN		others-066
+urfave/cli@v3.14.0 command_test.go:1331	TestCommand_EqualsFlagValueValidation / int rows	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:1359	TestCommand_CommandWithNoFlagBeforeTerminator	IN		others-067
+urfave/cli@v3.14.0 command_test.go:1381	TestCommand_SkipFlagParsing	OUT	other: passthrough/raw-args mode	
+urfave/cli@v3.14.0 command_test.go:1400	TestCommand_VisibleCommands	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:1446	TestCommand_UseShortOptionHandling	IN		others-068
+urfave/cli@v3.14.0 command_test.go:1471	TestCommand_UseShortOptionHandlingBoolWithInverse / -c -v	IN		others-069
+urfave/cli@v3.14.0 command_test.go:1471	TestCommand_UseShortOptionHandlingBoolWithInverse / -cv	IN		others-070
+urfave/cli@v3.14.0 command_test.go:1471	TestCommand_UseShortOptionHandlingBoolWithInverse / -vc	IN		others-071
+urfave/cli@v3.14.0 command_test.go:1492	TestCommand_UseShortOptionHandling_missing_value	IN		others-043
+urfave/cli@v3.14.0 command_test.go:1503	TestCommand_UseShortOptionHandlingMultiByteLastFlag	OUT	other: non-ASCII flag name (tree has none)	
+urfave/cli@v3.14.0 command_test.go:1537	TestCommand_UseShortOptionHandlingCommand	IN		others-068
+urfave/cli@v3.14.0 command_test.go:1567	TestCommand_UseShortOptionHandlingCommand_missing_value	IN		others-043
+urfave/cli@v3.14.0 command_test.go:1585	TestCommand_UseShortOptionHandlingSubCommand	IN		others-068
+urfave/cli@v3.14.0 command_test.go:1621	TestCommand_UseShortOptionHandlingSubCommand_missing_value	IN		others-072
+urfave/cli@v3.14.0 command_test.go:1640	TestCommand_UseShortOptionHandlingLocalFlagNotInherited / -d	IN		others-073
+urfave/cli@v3.14.0 command_test.go:1640	TestCommand_UseShortOptionHandlingLocalFlagNotInherited / -xd	IN		others-073,others-070
+urfave/cli@v3.14.0 command_test.go:1640	TestCommand_UseShortOptionHandlingLocalFlagNotInherited / -dx	IN		others-073,others-070
+urfave/cli@v3.14.0 command_test.go:1640	TestCommand_UseShortOptionHandlingLocalFlagNotInherited / -sd	IN		others-073,others-070
+urfave/cli@v3.14.0 command_test.go:1640	TestCommand_UseShortOptionHandlingLocalFlagNotInherited / -xy	IN		others-070
+urfave/cli@v3.14.0 command_test.go:1690	TestCommand_UseShortOptionAfterSliceFlag	IN		others-074
+urfave/cli@v3.14.0 command_test.go:1721	TestCommand_UseShortOptionWithArg	IN		others-075
+urfave/cli@v3.14.0 command_test.go:1748	TestCommand_Float64Flag	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:1765	TestCommand_ParseSliceFlags	IN		others-076
+urfave/cli@v3.14.0 command_test.go:1793	TestCommand_ParseSliceFlagsWithMissingValue	IN		others-076
+urfave/cli@v3.14.0 command_test.go:1821	TestCommand_DefaultStdin	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:1828	TestCommand_DefaultStdout	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:1835	TestCommand_SetStdin	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:1852	TestCommand_SetStdin_Subcommand	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:1879	TestCommand_SetStdout	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:1892	TestCommand_BeforeFunc	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:1962	TestCommand_BeforeFuncPersistentFlag	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:1999	TestCommand_BeforeAfterFuncShellCompletion	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:2051	TestCommand_AfterFunc	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:2118	TestCommand_AfterNotCalledOnSubcommandHelp	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:2140	TestCommand_AfterStillCalledOnNormalSubcommand	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:2162	TestCommandNoHelpFlag	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:2177	TestRequiredFlagCommandRunBehavior	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:2318	TestCommand_IncorrectUsageOnRequiredFlagsViaRun	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:2366	TestCommand_IncorrectUsageOnMutuallyExclusiveFlagsViaRun	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:2424	TestCommand_IncorrectUsageOnSubcommandWithFailingShowCommandHelp	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:2495	TestCommandHelpPrinter	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:2513	TestCommand_VersionPrinter	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:2530	TestCommand_CommandNotFound	IN		others-077
+urfave/cli@v3.14.0 command_test.go:2556	TestCommand_OrderOfOperations	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:2715	TestCommand_HelpFlagTakesPrecedenceOverParseErrors / root command with --help and bad flag	IN		others-078
+urfave/cli@v3.14.0 command_test.go:2715	TestCommand_HelpFlagTakesPrecedenceOverParseErrors / root command with -h and bad flag	IN		others-079
+urfave/cli@v3.14.0 command_test.go:2715	TestCommand_HelpFlagTakesPrecedenceOverParseErrors / subcommand with --help and bad flag	IN		others-080
+urfave/cli@v3.14.0 command_test.go:2715	TestCommand_HelpFlagTakesPrecedenceOverParseErrors / subcommand with bad flag	IN		others-081
+urfave/cli@v3.14.0 command_test.go:2813	TestFlagActionOrder	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:2861	TestCommand_Run_CommandWithSubcommandHasHelpTopic	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:2906	TestCommand_Run_SubcommandFullPath	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:2929	TestCommand_Run_Help	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:2995	TestCommand_Run_Version	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:3020	TestCommand_Run_CustomFlagCanUseVersionAlias	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:3045	TestCommand_Run_Categories	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:3093	TestCommand_VisibleCategories	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:3191	TestCommand_Run_SubcommandDoesNotOverwriteErrorFromBefore	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:3212	TestCommand_OnUsageError_WithWrongFlagValue_ForSubcommand	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:3307	TestCustomFlagsUnused	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:3317	TestCustomFlagsUsed	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:3329	TestVersionFlagWorksWhenAliasYieldedToUserFlag	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:3353	TestDropClashingAliases	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:3375	TestCustomHelpVersionFlags	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:3393	TestHandleExitCoder_Default	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:3401	TestHandleExitCoder_Custom	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:3459	TestWhenExitSubCommandWithCodeThenCommandQuitUnexpectedly	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:3513	TestSetupInitializesBothWriters	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:3522	TestSetupInitializesOnlyNilWriters	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:3537	TestSubcommandInheritsRootWriters	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:3560	TestFlagAction	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:3880	TestLocalSliceFlagAccumulation	IN		others-082
+urfave/cli@v3.14.0 command_test.go:3913	TestLocalFlagError	IN		others-073
+urfave/cli@v3.14.0 command_test.go:3941	TestPersistentFlag / levels	IN		others-083
+urfave/cli@v3.14.0 command_test.go:3941	TestPersistentFlag / repeat across levels	IN		others-084
+urfave/cli@v3.14.0 command_test.go:4054	TestPersistentFlagIsSet	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4088	TestDuplicatePersistentFlagUsesEnvSource	OUT	env	
+urfave/cli@v3.14.0 command_test.go:4130	TestPersistentFlagCommandLineOverridesSourceInSubcommand	OUT	env	
+urfave/cli@v3.14.0 command_test.go:4206	TestPersistentFlagSourceResetKeepsSliceSeparator	OUT	env	
+urfave/cli@v3.14.0 command_test.go:4229	TestRequiredFlagDelayed	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:4299	TestRequiredPersistentFlag	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:4325	TestFlagDuplicates / all args present once	IN		others-085
+urfave/cli@v3.14.0 command_test.go:4325	TestFlagDuplicates / duplicate non slice flag(duplicatable)	IN		others-010
+urfave/cli@v3.14.0 command_test.go:4325	TestFlagDuplicates / duplicate non slice flag(non duplicatable)	IN		others-086
+urfave/cli@v3.14.0 command_test.go:4325	TestFlagDuplicates / duplicate slice flag(non duplicatable)	IN		others-087
+urfave/cli@v3.14.0 command_test.go:4325	TestFlagDuplicates / duplicate bool inverse flag(non duplicatable)	IN		others-088
+urfave/cli@v3.14.0 command_test.go:4394	TestDuplicateFlagNamesAreRejected	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4456	TestDuplicateFlagNamesInSubcommandAreRejected	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4492	TestDuplicateFlagNamesSkipExtFlags	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4514	TestUserDefinedHelpFlagOverridesBuiltin	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4543	TestHelpFlagWorksWhenAliasYieldedToUserFlag	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4601	TestHelpFlagNameTakenByUserFlag	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4667	TestShorthandCommand / cthd	IN		others-089
+urfave/cli@v3.14.0 command_test.go:4667	TestShorthandCommand / cth	IN		others-090
+urfave/cli@v3.14.0 command_test.go:4667	TestShorthandCommand / cthe	OUT	other: PrefixMatchCommands tie-breaking (no abbreviations, see cthd row)	
+urfave/cli@v3.14.0 command_test.go:4667	TestShorthandCommand / cthert	OUT	other: PrefixMatchCommands tie-breaking (no abbreviations, see cthd row)	
+urfave/cli@v3.14.0 command_test.go:4667	TestShorthandCommand / cthet	OUT	other: PrefixMatchCommands tie-breaking (no abbreviations, see cthd row)	
+urfave/cli@v3.14.0 command_test.go:4726	TestCommand_Int	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:4749	TestCommand_Uint	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:4772	TestCommand_Float64	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:4796	TestCommand_Duration	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:4820	TestCommand_Timestamp	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:4857	TestCommand_String	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4883	TestCommand_Bool	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4906	TestCommand_Value	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4963	TestCommand_Value_InvalidFlagAccessHandler	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:4991	TestCommand_Args	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5007	TestCommand_IsSet	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5049	TestCommand_IsSet_fromEnv	OUT	env	
+urfave/cli@v3.14.0 command_test.go:5097	TestCommand_NumFlags	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5140	TestCommand_Set	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5157	TestCommand_Set_ReplacesSourceValue	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5177	TestCommand_Set_InvalidFlagAccessHandler	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5191	TestCommand_lookupFlag	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5221	TestCommandAttributeAccessing	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5283	TestCheckRequiredFlags	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:5447	TestCheckRequiredFlagsWithOnUsageError	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:5462	TestCommand_ParentCommand_Set	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5477	TestCommandStringDashOption / double dash separate value	IN		others-014
+urfave/cli@v3.14.0 command_test.go:5477	TestCommandStringDashOption / single dash separate value	IN		others-091
+urfave/cli@v3.14.0 command_test.go:5522	TestCommandReadArgsFromStdIn	OUT	other: args from stdin	
+urfave/cli@v3.14.0 command_test.go:5688	TestZeroValueCommand	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5693	TestCommandInvalidName	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:5708	TestCommandCategories	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:5736	TestCommandSliceFlagSeparator	OUT	other: configurable list separator	
+urfave/cli@v3.14.0 command_test.go:5751	TestCommandSliceFlagSeparatorFromEnvVar	OUT	env	
+urfave/cli@v3.14.0 command_test.go:5769	TestCommandMapKeyValueFlagSeparator	OUT	typed-value	
+urfave/cli@v3.14.0 command_test.go:5790	TestStringFlagTerminator / flag and args after terminator	IN		others-092
+urfave/cli@v3.14.0 command_test.go:5790	TestStringFlagTerminator / missing flag value due to terminator (commented out)	IN		others-093
+urfave/cli@v3.14.0 command_test.go:5790	TestStringFlagTerminator / terminator with no trailing args	IN		others-094
+urfave/cli@v3.14.0 command_test.go:5790	TestStringFlagTerminator / no terminator, only flag	IN		others-015
+urfave/cli@v3.14.0 command_test.go:5790	TestStringFlagTerminator / flag defined after --	IN		others-095
+urfave/cli@v3.14.0 command_test.go:5790	TestStringFlagTerminator / flag and without --	IN		others-096
+urfave/cli@v3.14.0 command_test.go:5874	TestBoolFlagTerminator / bool flag omitted value defaults to true	IN		others-097
+urfave/cli@v3.14.0 command_test.go:5874	TestBoolFlagTerminator / bool flag explicitly set to false	IN		others-098
+urfave/cli@v3.14.0 command_test.go:5874	TestBoolFlagTerminator / bool flag defined after --	IN		others-099
+urfave/cli@v3.14.0 command_test.go:5874	TestBoolFlagTerminator / bool flag and without --	IN		others-100
+urfave/cli@v3.14.0 command_test.go:5952	TestSliceStringFlagParsing / single value without delimiter	IN		others-082
+urfave/cli@v3.14.0 command_test.go:5952	TestSliceStringFlagParsing / multiple values with comma	IN		others-101
+urfave/cli@v3.14.0 command_test.go:5952	TestSliceStringFlagParsing / without delimiter specified, value remains unsplit	IN		others-102
+urfave/cli@v3.14.0 command_test.go:6037	TestJSONExportCommand	OUT	help-format	
+urfave/cli@v3.14.0 command_test.go:6606	TestCommand_ExclusiveFlags	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:6632	TestCommand_ExclusiveFlagsWithOnUsageError	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:6662	TestCommand_ExclusiveFlagsWithAfter	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:6697	TestCommand_ParallelRun	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:6725	TestCommand_ExclusiveFlagsPersistent	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:6823	TestEmptyPositionalArgs / empty arg between values	IN		others-103
+urfave/cli@v3.14.0 command_test.go:6823	TestEmptyPositionalArgs / empty arg at start	IN		others-104
+urfave/cli@v3.14.0 command_test.go:6823	TestEmptyPositionalArgs / whitespace-only arg	IN		others-105
+urfave/cli@v3.14.0 command_test.go:6866	TestEmptyPositionalArgsAfterFlag / empty arg after equals-form flag	IN		others-106
+urfave/cli@v3.14.0 command_test.go:6866	TestEmptyPositionalArgsAfterFlag / empty arg after space-form flag	IN		others-107
+urfave/cli@v3.14.0 command_test.go:6911	TestFlagEqualsEmptyValue / --flag= sets empty string	IN		others-018
+urfave/cli@v3.14.0 command_test.go:6911	TestFlagEqualsEmptyValue / --flag= does not consume next positional arg	IN		others-108
+urfave/cli@v3.14.0 command_test.go:6956	TestCommand_NoDefaultCmdArgMatchingFlag	IN		others-109
+urfave/cli@v3.14.0 command_test.go:6983	TestDefaultCommandWithSubcommandFlags	OUT	other: default command	
+urfave/cli@v3.14.0 command_test.go:7026	TestDefaultCommandWithShortFlag	OUT	other: default command	
+urfave/cli@v3.14.0 command_test.go:7057	TestDefaultCommandWithShortFlagHandling	OUT	other: default command	
+urfave/cli@v3.14.0 command_test.go:7088	TestCommand_Path	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:7105	TestCommand_Walk	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:7124	TestCommand_Walk_ShortCircuit	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:7147	TestCommand_Walk_Hidden	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:7166	TestCommand_Walk_NilFn	OUT	api-only	
+urfave/cli@v3.14.0 command_test.go:7171	TestCommand_ArgValidator_RunsBeforeAction	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:7193	TestCommand_ArgValidator_ErrorShortCircuitsAction	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:7212	TestCommand_ArgValidator_InheritsFromParent	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:7234	TestCommand_ArgValidator_SubcommandOverride	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:7262	TestCommand_ArgValidator_RunsBeforeBefore	OUT	layer-validation	
+urfave/cli@v3.14.0 command_test.go:7290	TestRunWithNoOsArgs	OUT	lifecycle	
+urfave/cli@v3.14.0 command_test.go:7317	TestCommand_Deprecated	OUT	deprecated	
+urfave/cli@v3.14.0 command_test.go:7433	TestCommand_DeprecatedStillRuns	OUT	deprecated	
+urfave/cli@v3.14.0 command_parse.go:163	(bool flag, empty value)	IN		others-110
+urfave/cli@v3.14.0 command_parse.go:136	(dash word not followed by a letter)	IN		others-111
+urfave/cli@v3.14.0 command_stop_on_nth_arg_test.go:11	TestCommand_StopOnNthArg / nil StopOnNthArg - normal parsing	IN		others-112
+urfave/cli@v3.14.0 command_stop_on_nth_arg_test.go:11	TestCommand_StopOnNthArg / other rows	OUT	other: opt-in stop after N positionals	
+urfave/cli@v3.14.0 command_stop_on_nth_arg_test.go:122	TestCommand_StopOnNthArg_WithSubcommands	OUT	other: opt-in stop after N positionals	
+urfave/cli@v3.14.0 command_stop_on_nth_arg_test.go:236	TestCommand_StopOnNthArg_EdgeCases	OUT	other: opt-in stop after N positionals	
+urfave/cli@v3.14.0 args_test.go:13	TestArgNotSet	OUT	api-only	
+urfave/cli@v3.14.0 args_test.go:22	TestArgsMaxNotSet	OUT	api-only	
+urfave/cli@v3.14.0 args_test.go:35	TestArgsMinGtMax	OUT	layer-validation	
+urfave/cli@v3.14.0 args_test.go:50	TestArgsFloatTypes	OUT	typed-value	
+urfave/cli@v3.14.0 args_test.go:77	TestArgsIntTypes	OUT	typed-value	
+urfave/cli@v3.14.0 args_test.go:103	TestArgsFloatSliceTypes	OUT	typed-value	
+urfave/cli@v3.14.0 args_test.go:126	TestArgsIntSliceTypes	OUT	typed-value	
+urfave/cli@v3.14.0 args_test.go:151	TestArgsUintTypes	OUT	typed-value	
+urfave/cli@v3.14.0 args_test.go:175	TestArgsUintSliceTypes	OUT	typed-value	
+urfave/cli@v3.14.0 args_test.go:200	TestArgumentsRootCommand	OUT	typed-value	
+urfave/cli@v3.14.0 args_test.go:301	TestArgumentsInvalidType	OUT	typed-value	
+urfave/cli@v3.14.0 args_test.go:326	TestArgumentsSubcommand	OUT	typed-value	
+urfave/cli@v3.14.0 args_test.go:420	TestArgUsage	OUT	help-format	
+urfave/cli@v3.14.0 args_test.go:453	TestArgsUsage	OUT	help-format	
+urfave/cli@v3.14.0 args_test.go:518	TestArgsConsumedByNamedArguments	OUT	api-only	
+urfave/cli@v3.14.0 args_test.go:542	TestSingleOptionalArg	OUT	layer-validation	
+urfave/cli@v3.14.0 args_test.go:587	TestSingleRequiredArg	OUT	layer-validation	
+urfave/cli@v3.14.0 args_test.go:644	TestMissingRequiredArgDoesNotMutateValue	OUT	layer-validation	
+urfave/cli@v3.14.0 args_test.go:670	TestChainedRequiredArgs	OUT	layer-validation	
+urfave/cli@v3.14.0 args_test.go:689	TestRequiredArgAfterOptionalArg	OUT	layer-validation	
+urfave/cli@v3.14.0 args_test.go:701	TestRequiredArgAfterMultiValueArgUsesRequiredErrorHandling	OUT	layer-validation	
+urfave/cli@v3.14.0 args_test.go:721	TestCheckRequiredArgumentsSkipsHelpAndCompletionCommands	OUT	layer-validation	
+urfave/cli@v3.14.0 args_test.go:747	TestRequiredArgWithOnUsageError	OUT	layer-validation	
+urfave/cli@v3.14.0 args_test.go:761	TestUnboundedArgs	OUT	api-only	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:74	TestBoolWithInverseBasic / --no-env	IN		others-006
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:74	TestBoolWithInverseBasic / --env	IN		others-004
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:74	TestBoolWithInverseBasic / (none)	OUT	api-only	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:74	TestBoolWithInverseBasic / --env --no-env	IN		others-113
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:109	TestBoolWithInverseAction	OUT	lifecycle	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:155	TestBoolWithInverseAlias	IN		others-006
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:191	TestBoolWithInverseEnvVars	OUT	env	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:255	TestBoolWithInverseWithPrefix	IN		others-006
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:295	TestBoolWithInverseRequired	OUT	layer-validation	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:327	TestBoolWithInverseNames	OUT	api-only	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:342	TestBoolWithInverseDefaultText	OUT	help-format	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:348	TestBoolWithInverseString	OUT	help-format	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:446	TestBoolWithInverseDestination	OUT	api-only	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:542	TestBoolWithInverseFlag_SatisfiesRequiredFlagInterface	OUT	api-only	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:548	TestBoolWithInverseFlag_SatisfiesVisibleFlagInterface	OUT	api-only	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:558	TestBoolWithInverseFlagStringNoPanicWithNoTabStringer	OUT	help-format	
+urfave/cli@v3.14.0 flag_bool_with_inverse_test.go:577	TestBoolWithInverseFlagCount	OUT	api-only	
+urfave/cli@v3.14.0 flag_test.go:1870	TestParseShortOptionBoolError	IN		others-114
+urfave/cli@v3.14.0 flag_test.go:1893	TestParseMultiString	IN		others-009
+urfave/cli@v3.14.0 flag_test.go:1952	TestParseMultiStringSlice	IN		others-082
+urfave/cli@v3.14.0 flag_test.go:2378	TestParseMultiBool	IN		others-004
+urfave/cli@v3.14.0 flag_test.go:2391	TestParseBoolShortOptionHandle	IN		others-070
+urfave/cli@v3.14.0 flag_test.go:2483	TestParseMultiBoolT	IN		others-005
+urfave/cli@v3.14.0 flag_test.go:2496	TestStringSliceFlagApply_LocalPreservesRepeatedValues	IN		others-115
+urfave/cli@v3.14.0 flag_test.go:3313	TestSliceShortOptionHandle	IN		others-070
+urfave/cli@v3.14.0 flag_test.go	(all other test functions: help output, env, typed values, Apply/ValueFromCommand getters)	OUT	typed-value	
+urfave/cli@v3.14.0 completion_test.go:17	TestCompletionHelp	OUT	help-format	
+urfave/cli@v3.14.0 completion_test.go:64	TestCompletionDisable	OUT	api-only	
+urfave/cli@v3.14.0 completion_test.go:71	TestCompletionEnable	OUT	api-only	
+urfave/cli@v3.14.0 completion_test.go:90	TestCompletionEnableDiffCommandName	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:104	TestCompletionShell	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:122	TestCompletionSubcommandOrder	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:147	TestCompletionBashNoShebang	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:168	TestCompletionBashAppendsSpace	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:189	TestCompletionBashGreedyColonParsing	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:216	TestCompletionFishFormat	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:246	TestCompletionFishOmitsPositionalTokenFromDynamicCompletion	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:265	TestCompletionBashOmitsPositionalTokenFromDynamicCompletion	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:284	TestCompletionSubcommand / subcommand general completion	IN		others-116
+urfave/cli@v3.14.0 completion_test.go:284	TestCompletionSubcommand / subcommand flag completion	IN		others-117
+urfave/cli@v3.14.0 completion_test.go:284	TestCompletionSubcommand / subcommand double dash shows long flags	IN		others-118
+urfave/cli@v3.14.0 completion_test.go:284	TestCompletionSubcommand / sub sub command general completion	IN		others-119
+urfave/cli@v3.14.0 completion_test.go:284	TestCompletionSubcommand / sub sub command flag completion	IN		others-117
+urfave/cli@v3.14.0 completion_test.go:284	TestCompletionSubcommand / sub sub command double dash shows flags	IN		others-118
+urfave/cli@v3.14.0 completion_test.go:284	TestCompletionSubcommand / sub sub command no completion extra args	IN		others-120
+urfave/cli@v3.14.0 completion_test.go:284	TestCompletionSubcommand / subcommand partial double dash flag completion	IN		others-121
+urfave/cli@v3.14.0 completion_test.go:284	TestCompletionSubcommand / sub sub command partial double dash flag completion	IN		others-122
+urfave/cli@v3.14.0 completion_test.go:438	TestCompletionAfterDoubleDashNeverRunsAction / root command past double dash	IN		others-123
+urfave/cli@v3.14.0 completion_test.go:438	TestCompletionAfterDoubleDashNeverRunsAction / root command past double dash multiple words	IN		others-123
+urfave/cli@v3.14.0 completion_test.go:438	TestCompletionAfterDoubleDashNeverRunsAction / subcommand past double dash	IN		others-124
+urfave/cli@v3.14.0 completion_test.go:493	TestCompletionAfterDoubleDashDoesNotLeakToNextRun	OUT	other: state across runs in one process	
+urfave/cli@v3.14.0 completion_test.go:529	TestCompletionSubcommandCustomShellComplete	OUT	api-only	
+urfave/cli@v3.14.0 completion_test.go:556	TestCompletionRunsBeforeChain	OUT	lifecycle	
+urfave/cli@v3.14.0 completion_test.go:587	TestCompletionReturnsBeforeError	OUT	lifecycle	
+urfave/cli@v3.14.0 completion_test.go:608	TestCompletionInvalidShell	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:618	TestCompletionShellRenderError	OUT	script-internals	
+urfave/cli@v3.14.0 completion_test.go:656	TestCompletionShellWriteError	OUT	script-internals	
+urfave/cli@v3.14.0 completion_partial_regression_test.go:33	TestPartialFlagCompletionAfterPositionalArgument / app/*	IN		others-125
+urfave/cli@v3.14.0 completion_partial_regression_test.go:33	TestPartialFlagCompletionAfterPositionalArgument / sub/*	IN		others-126
+urfave/cli@v3.14.0 completion_partial_regression_test.go:33	TestPartialFlagCompletionAfterPositionalArgument / nested/*	IN		others-127
+urfave/cli@v3.14.0 completion_partial_regression_test.go:68	TestPartialFlagCompletionAfterDoubleDash	IN		others-128
+urfave/cli@v3.14.0 completion_partial_regression_test.go:89	TestPartialFlagCustomCompletionArgs	OUT	api-only	
+urfave/cli@v3.14.0 completion_partial_regression_test.go:109	TestPartialFlagCompletionDisabled	OUT	api-only	
+urfave/cli@v3.14.0 cli_test.go	(all test functions; not in the assigned files)	OUT	api-only	
+urfave/cli@v3.14.0 dce_test.go	(all test functions; not in the assigned files)	OUT	api-only	
+urfave/cli@v3.14.0 errors_test.go	(all test functions; not in the assigned files)	OUT	lifecycle	
+urfave/cli@v3.14.0 examples_test.go	(all test functions; not in the assigned files)	OUT	help-format	
+urfave/cli@v3.14.0 examples_template_test.go	(all test functions; not in the assigned files)	OUT	help-format	
+urfave/cli@v3.14.0 fish_test.go	(all test functions; not in the assigned files)	OUT	script-internals	
+urfave/cli@v3.14.0 fish_template_test.go	(all test functions; not in the assigned files)	OUT	script-internals	
+urfave/cli@v3.14.0 flag_float_slice_test.go	(all test functions; not in the assigned files)	OUT	typed-value	
+urfave/cli@v3.14.0 flag_float_test.go	(all test functions; not in the assigned files)	OUT	typed-value	
+urfave/cli@v3.14.0 flag_int_slice_test.go	(all test functions; not in the assigned files)	OUT	typed-value	
+urfave/cli@v3.14.0 flag_int_test.go	(all test functions; not in the assigned files)	OUT	typed-value	
+urfave/cli@v3.14.0 flag_mutex_test.go	(all test functions; not in the assigned files)	OUT	layer-validation	
+urfave/cli@v3.14.0 flag_number_slice_test.go	(all test functions; not in the assigned files)	OUT	typed-value	
+urfave/cli@v3.14.0 flag_schema_type_test.go	(all test functions; not in the assigned files)	OUT	api-only	
+urfave/cli@v3.14.0 flag_text_test.go	(all test functions; not in the assigned files)	OUT	typed-value	
+urfave/cli@v3.14.0 flag_uint_slice_test.go	(all test functions; not in the assigned files)	OUT	typed-value	
+urfave/cli@v3.14.0 flag_uint_test.go	(all test functions; not in the assigned files)	OUT	typed-value	
+urfave/cli@v3.14.0 flag_validation_test.go	(all test functions; not in the assigned files)	OUT	layer-validation	
+urfave/cli@v3.14.0 help_notemplate_test.go	(all test functions; not in the assigned files)	OUT	help-format	
+urfave/cli@v3.14.0 help_output_test.go	(all test functions; not in the assigned files)	OUT	help-format	
+urfave/cli@v3.14.0 help_test.go	(all test functions; not in the assigned files)	OUT	help-format	
+urfave/cli@v3.14.0 helpers_test.go	(all test functions; not in the assigned files)	OUT	api-only	
+urfave/cli@v3.14.0 sort_test.go	(all test functions; not in the assigned files)	OUT	api-only	
+urfave/cli@v3.14.0 suggestions_test.go	(all test functions; not in the assigned files)	OUT	suggestions	
+urfave/cli@v3.14.0 value_source_test.go	(all test functions; not in the assigned files)	OUT	env	
+peterbourgon/ff@d04e563 flag_set_test.go:19	TestFlagSet_Basics	OUT	api-only	
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / add bool flag	OUT	api-only	
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / --xflag	IN		others-004
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / --xflag=true	IN		others-129
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / --xflag true	IN		others-130
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / -x=true	IN		others-131
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / -x	IN		others-132
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / -x false	IN		others-133
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / -y	IN		others-004
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / --yflag=false	IN		others-005
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / --yflag false	IN		others-134
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / --yflag false -y	OUT	layer-validation	
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / -y=false	IN		others-131
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / -h	IN		others-135
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / --help	IN		others-135
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / --xflag -h	IN		others-136
+peterbourgon/ff@d04e563 flag_set_test.go:40	TestFlagSet_Bool / -y --help	IN		others-135
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / -xflag	IN		others-137
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / -xflag=true	IN		others-138
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / -xflag true	IN		others-130,others-137
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / --xflag true	IN		others-130,others-137
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / -y false	IN		others-130,others-137
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / --y false	IN		others-130,others-137
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / --y false -y	IN		others-130,others-137
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / --xflag=true	IN		others-137,others-135
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / -y	IN		others-137,others-135
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / -y=false	IN		others-137,others-135
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / --y=false	IN		others-137,others-135
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / -h	IN		others-137,others-135
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / --help	IN		others-137,others-135
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / -xflag -h	IN		others-137,others-135
+peterbourgon/ff@d04e563 flag_set_test.go:115	TestStdFlags_Bool / --y=false --help	IN		others-137,others-135
+peterbourgon/ff@d04e563 flag_set_test.go:167	TestFlagSet_HelpFlag	OUT	api-only	
+peterbourgon/ff@d04e563 flag_set_test.go:193	TestFlagSet_GetFlag	OUT	api-only	
+peterbourgon/ff@d04e563 flag_set_test.go:217	TestFlagSet_NoDefault	OUT	help-format	
+peterbourgon/ff@d04e563 flag_set_test.go:233	TestFlagSet_NoPlaceholder	OUT	help-format	
+peterbourgon/ff@d04e563 flag_set_test.go:249	TestFlagSet_Get	OUT	api-only	
+peterbourgon/ff@d04e563 flag_set_test.go:271	TestFlagSet_invalid	OUT	api-only	
+peterbourgon/ff@d04e563 flag_set_test.go:313	TestFlagSet_structs	OUT	struct-tags	
+peterbourgon/ff@d04e563 flag_set_test.go:486	TestFlagSet_StructIgnoreReset	OUT	struct-tags	
+peterbourgon/ff@d04e563 flag_set_test.go:546	TestFlagSet_StructEmbedded	OUT	struct-tags	
+peterbourgon/ff@d04e563 flag_set_test.go:591	TestFlagSet_Std	OUT	api-only	
+peterbourgon/ff@d04e563 flag_set_test.go:614	TestStructFieldCustomDefault	OUT	struct-tags	
+peterbourgon/ff@d04e563 flag_set_test.go:656	TestFlagSet_Func	OUT	typed-value	
+peterbourgon/ff@d04e563 flag_set_test.go:751	TestFlagSet_duplicates	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / empty	OUT	typed-value	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / args	OUT	typed-value	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / file only	OUT	config-file	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / env only	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / file args	OUT	config-file	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / env args	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / file env	OUT	config-file	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / file env args	OUT	config-file	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / file repeats	OUT	config-file	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / priority repeats	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / WithEnvVars	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / WithEnvVars prefix	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / WithEnvVars no prefix	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / WithEnvVarSplit	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / env default comma behavior	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / env var split comma whitespace	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / env var split escaping	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / env var split escaping multichar	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / env var provided but empty	OUT	env	
+peterbourgon/ff@d04e563 parse_test.go:18	TestParse / repeated args	IN		others-010,others-082
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / long args	IN		others-139
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -b only	IN		others-004
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / --str abc	IN		others-015
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -s xxx	IN		others-009
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -s=xxx	IN		others-140
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -str=xxx	IN		others-141
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -s -b	IN		others-142
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -a -b -c	IN		others-143
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -ab -c	IN		others-144
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -ab -sfoo -bc	IN		others-145
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -absfoo -c	IN		others-146
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -acs foo -b	IN		others-147
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -a true -b false -c true	IN		others-148
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / --str foo -h	IN		others-149
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / --str foo --help -b	IN		others-135
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -s foo -f 1.23	OUT	typed-value	
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -a true -b true	IN		others-148
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / --aflag true --cflag true	IN		others-150
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -a --bflag=false	IN		others-151
+peterbourgon/ff@d04e563 parse_test.go:149	TestParse_FlagSet / -a false	IN		others-152
+peterbourgon/ff@d04e563 parse_test.go:280	TestParse_StdFlagSetAdapter / -singledash space values	OUT	typed-value	
+peterbourgon/ff@d04e563 parse_test.go:280	TestParse_StdFlagSetAdapter / -singledash space values bool	IN		others-153
+peterbourgon/ff@d04e563 parse_test.go:280	TestParse_StdFlagSetAdapter / --doubledash space values bool	OUT	other: one-letter long names (tree has none)	
+peterbourgon/ff@d04e563 parse_test.go:280	TestParse_StdFlagSetAdapter / bool default true set false	IN		others-154
+peterbourgon/ff@d04e563 parse_test.go:280	TestParse_StdFlagSetAdapter / bool default true set false with spaces	IN		others-130
+peterbourgon/ff@d04e563 parse_test.go:321	TestParse_PlainParser	OUT	config-file	
+peterbourgon/ff@d04e563 parse_test.go:378	TestParse_types	OUT	typed-value	
+peterbourgon/ff@d04e563 parse_test.go:411	TestParse_stdfs	OUT	config-file	
+peterbourgon/ff@d04e563 command_test.go:14	TestCommandNoFlags / -h, --help	IN		others-135
+peterbourgon/ff@d04e563 command_test.go:14	TestCommandNoFlags / no args (ErrNoExec)	OUT	other: root without exec errors; D10 makes the root alone help	
+peterbourgon/ff@d04e563 command_test.go:38	TestCommandReset / first run	IN		others-155
+peterbourgon/ff@d04e563 command_test.go:38	TestCommandReset / later runs	OUT	lifecycle	
+peterbourgon/ff@d04e563 example_test.go	(examples)	OUT	help-format	
+peterbourgon/ff@d04e563 ffval/value_test.go	(all test functions)	OUT	typed-value	
+peterbourgon/ff@d04e563 ffval/collections_test.go	(all test functions)	OUT	typed-value	
+peterbourgon/ff@d04e563 flag_set.go:327	parseLongFlag	IN		others-156
+peterbourgon/ff@d04e563 flag_set.go:200	parse loop	IN		others-157
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / deb	IN		others-158
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / deb+descs	IN		others-158
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / -	IN		others-159
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / --	IN		others-160
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / -r	IN		others-161
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / --r	IN		others-162
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / --root-str=s --r	IN		others-163
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / -- --root	IN		others-164
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / --root-str -- --r	IN		others-165
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / --root-str -- --root	IN		others-165
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / --root-str -- -- --r	IN		others-166
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / --root-bool=	IN		others-167
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / --root-bool=t	IN		others-168
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / --root-bool=T	IN		others-169
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / debug --de	IN		others-121
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / debug --enum=	IN		others-170
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / debug --enum=al	IN		others-171
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / debug --level ""	IN		others-172
+urfave/cli@v3.14.0 command_test.go:3414	TestShellCompletionForIncompleteFlags	IN		others-172
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / debug --enum b	IN		others-173
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / debug --enum al	IN		others-173
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / ping "" +flags, +flags+descs	OUT	other: option listing flags on an empty word	
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / ping ""	IN		others-174
+tailscale/tailscale@f3bc40b67 cmd/tailscale/cli/ffcomplete/internal/complete_test.go:31	TestComplete / ping j	IN		others-175
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / SimpleOK	IN		others-176
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / Alias	IN		others-177
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / BadArgs	OUT	layer-validation	
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / NoSubcommand	IN		others-077
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / UnknownFlags	IN		others-178
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / Verbose	IN		others-179
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / Verbose=	IN		others-180
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / PrefixSpace	IN		others-181
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / GlobalFlagsAnywhere	IN		others-182
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / LowerVerbose	IN		others-182
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / ParsedFlags	OUT	api-only	
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / NoDeepChild	IN		others-183
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / RequiredFlagsMissing	OUT	layer-validation	
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / RequiredFlagsMissingWithHelp	OUT	layer-validation	
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / RequiredFlagsMissingBool	OUT	layer-validation	
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / RequiredFlagsMissingString	OUT	layer-validation	
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / RequiredFlagsInvalid	OUT	layer-validation	
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / RequiredFlagsOK	OUT	layer-validation	
+coder/serpent@v0.15.0 command_test.go:183	TestCommand / DeprecatedCommand	OUT	deprecated	
+coder/serpent@v0.15.0 command_test.go:402	TestCommand_DeepNest	IN		others-001
+coder/serpent@v0.15.0 command_test.go:428	TestCommand_FlagOverride	OUT	other: child flag shadows a parent flag (tree construction)	
+coder/serpent@v0.15.0 command_test.go:464	TestCommand_MiddlewareOrder	OUT	lifecycle	
+coder/serpent@v0.15.0 command_test.go:497	TestCommand_RawArgs	OUT	other: passthrough/raw-args mode	
+coder/serpent@v0.15.0 command_test.go:562	TestCommand_RootRaw	OUT	other: passthrough/raw-args mode	
+coder/serpent@v0.15.0 command_test.go:580	TestCommand_HyphenHyphen	IN		others-184
+coder/serpent@v0.15.0 command_test.go:608	TestCommand_ContextCancels	OUT	lifecycle	
+coder/serpent@v0.15.0 command_test.go:629	TestCommand_Help / DefaultHandler/Long	IN		others-185
+coder/serpent@v0.15.0 command_test.go:629	TestCommand_Help / Short	IN		others-186
+coder/serpent@v0.15.0 command_test.go:677	TestCommand_SliceFlags	IN		others-082
+coder/serpent@v0.15.0 command_test.go:706	TestCommand_EmptySlice	IN		others-187
+coder/serpent@v0.15.0 command_test.go:751	TestCommand_DefaultsOverride	OUT	env	
+coder/serpent@v0.15.0 command_test.go:853	TestCommand_OptionsWithSharedValue	OUT	api-only	
+coder/serpent@v0.15.0 command_test.go:928	TestOptionSet_DefaultAndDefaultFn	OUT	api-only	
+coder/serpent@v0.15.0 command_test.go:946	TestCommand_DefaultFn	OUT	api-only	
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / SubcommandList	IN		others-188
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / SubcommandNoPartial	IN		others-189
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / SubcommandComplete	IN		others-190
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / ListFlags	IN		others-117
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / ListFlagsAfterArg	IN		others-191
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / FlagExhaustive	IN		others-192
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / FlagShorthand	IN		others-193
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / NoOptDefValueFlag	IN		others-194
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / EnumOK	IN		others-195
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / EnumEqualsOK	IN		others-196
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / EnumEqualsBeginQuotesOK	IN		others-197
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / EnumArrayOK	IN		others-198
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / EnumArrayEqualsOK	IN		others-199
+coder/serpent@v0.15.0 completion_test.go:16	TestCompletion / EnumArrayEqualsBeginQuotesOK	IN		others-197
+coder/serpent@v0.15.0 completion_test.go:163	TestFileCompletion / DirOK	IN		others-200
+coder/serpent@v0.15.0 completion_test.go:163	TestFileCompletion / EmptyDirOK	IN		others-200
+coder/serpent@v0.15.0 completion_test.go:163	TestFileCompletion / CurDirOK	IN		others-200
+coder/serpent@v0.15.0 completion_test.go:163	TestFileCompletion / PrevDirOK	IN		others-200
+coder/serpent@v0.15.0 completion_test.go:163	TestFileCompletion / RootOK	IN		others-200
+coder/serpent@v0.15.0 completion_test.go:238	TestCompletionInstall	OUT	script-internals	
+coder/serpent@v0.15.0 option_test.go:13	TestOptionSet_ParseFlags / SimpleString	IN		others-015,others-009
+coder/serpent@v0.15.0 option_test.go:13	TestOptionSet_ParseFlags / StringArray	IN		others-082
+coder/serpent@v0.15.0 option_test.go:13	TestOptionSet_ParseFlags / ExtraFlags	IN		others-178
+coder/serpent@v0.15.0 option_test.go:13	TestOptionSet_ParseFlags / RegexValid, RegexInvalid	OUT	typed-value	
+coder/serpent@v0.15.0 option_test.go:113	TestOptionSet_ParseEnv	OUT	env	
+coder/serpent@v0.15.0 option_test.go:255	TestOptionSet_JsonMarshal	OUT	api-only	
+coder/serpent@v0.15.0 option_test.go:316	TestOptionSet_DefaultFn	OUT	api-only	
+coder/serpent@v0.15.0 option_test.go:365	TestOptionSet_DefaultFnRace	OUT	api-only	
+coder/serpent@v0.15.0 env_test.go:10	TestFilterNamePrefix	OUT	env	
+coder/serpent@v0.15.0 values_test.go	TestDuration, TestDurationOf	OUT	typed-value	
+coder/serpent@v0.15.0 yaml_test.go	TestOptionSet_YAML*	OUT	config-file	
+bminor/glibc@04e750e7 posix/bug-getopt1.c:63	do_test / -a	IN		others-201
+bminor/glibc@04e750e7 posix/bug-getopt1.c:63	do_test / -b -a	IN		others-202
+bminor/glibc@04e750e7 posix/bug-getopt2.c:60	do_test	IN		others-203
+bminor/glibc@04e750e7 posix/bug-getopt3.c:67	do_test / -a;	IN		others-204
+bminor/glibc@04e750e7 posix/bug-getopt3.c:67	do_test / -a:	IN		others-204
+bminor/glibc@04e750e7 posix/bug-getopt4.c:66	do_test / --a	IN		others-205
+bminor/glibc@04e750e7 posix/bug-getopt4.c:66	do_test / -W a	OUT	other: GNU -W foo means --foo	
+bminor/glibc@04e750e7 posix/bug-getopt5.c:61	do_test / --a (two longs, same val)	IN		others-205
+bminor/glibc@04e750e7 posix/bug-getopt5.c:61	do_test / -W a	OUT	other: GNU -W foo means --foo	
+bminor/glibc@04e750e7 posix/tst-getopt_long1.c:30	do_test	IN		others-206
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:160	tests_short / no errors	IN		others-207
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:160	tests_short / invalid option	IN		others-208
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:160	tests_short / missing argument	IN		others-201
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / no errors (long)	IN		others-209
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / invalid option (long)	IN		others-210
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / unwanted argument	IN		others-211
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / unwanted argument (generalised)	IN		others-212
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / missing argument (long)	IN		others-213
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / ambiguous options	IN		others-206
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / no errors (long W)	OUT	other: GNU -W foo means --foo	
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / missing argument (W itself)	OUT	other: GNU -W foo means --foo	
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / missing argument (W longopt)	OUT	other: GNU -W foo means --foo	
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / unwanted argument (W longopt)	OUT	other: GNU -W foo means --foo	
+bminor/glibc@04e750e7 posix/tst-getopt-cancel.c:172	tests_long / ambiguous options (W)	OUT	other: GNU -W foo means --foo	
+util-linux/util-linux@d6abbba tests/ts/getopt/basic	(expected/getopt/basic)	IN		others-214
+util-linux/util-linux@d6abbba tests/ts/getopt/options	alternative_option_clash	OUT	other: getopt(1) --alternative mode (single-dash long names with abbreviation)	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	alternative_option_long	OUT	other: getopt(1) --alternative mode (single-dash long names with abbreviation)	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	alternative_option_short	OUT	other: getopt(1) --alternative mode (single-dash long names with abbreviation)	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	invalid_getopt_option	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	invocation_model_one	IN		others-215
+util-linux/util-linux@d6abbba tests/ts/getopt/options	invocation_model_three_as_one	IN		others-215
+util-linux/util-linux@d6abbba tests/ts/getopt/options	invocation_model_two_as_one	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	invocation_without_parameters	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	long_option_ambiguous_1	IN		others-206
+util-linux/util-linux@d6abbba tests/ts/getopt/options	longopts	IN		others-216
+util-linux/util-linux@d6abbba tests/ts/getopt/options	name_option_long	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	name_option_short	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	quiet_option_long	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	quiet_option_short	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	quiet_output_option_long	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	quiet_output_option_short	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	test_for_enhanced_getopt	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	unquoted_option_bash	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	unquoted_option_tcsh	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	weird_quoting_bash	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	weird_quoting_tcsh	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	no-arguments	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	compatible	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	sh	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	csh	OUT	other: getopt(1) own options and output quoting	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	same_long_short_options	OUT	other: one-letter long names (tree has none)	
+util-linux/util-linux@d6abbba tests/ts/getopt/options	unknown_options	IN		others-217
+util-linux/util-linux@d6abbba tests/ts/getopt/options	posix_correctly	IN		others-218
+util-linux/util-linux@d6abbba tests/ts/getopt/options	non-option / + mode	IN		others-218
+util-linux/util-linux@d6abbba tests/ts/getopt/options	non-option / default mode	IN		others-219
+util-linux/util-linux@d6abbba tests/ts/getopt/options	non-option / - mode (return in order)	OUT	other: getopt(1) in-order mode	
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2	Guideline 3	IN		others-220
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2	Guideline 5	IN		others-221
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.1	item 2 / Guideline 6	IN		others-222
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2 Guideline 7	option-arguments should not be optional	OUT	optional-value	
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2 Guideline 8	multiple option-arguments as one comma-separated argument	IN		others-101
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2	Guideline 9	IN		others-223
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2	Guideline 10	IN		others-224
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2	Guideline 10	IN		others-225
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2	Guideline 11	IN		others-226
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2 Guideline 13	- as an operand means stdin/stdout	IN		others-013
+POSIX.1-2024 XBD 12 https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html 12.2 Guideline 14	an argument that fits an option is an option (so -s -b gives s the value only because -s needs one)	IN		others-215
