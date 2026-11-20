@@ -374,7 +374,7 @@ func TestSentence(t *testing.T) {
 	t.Parallel()
 
 	p := &ProblemError{Problem: clientv0.Problem{Code: clientv0.ProblemCodeUnauthorized}}
-	require.Equal(t, "the server did not accept the API key.", sentence(fmt.Errorf("getting user: %w", p)))
+	require.Equal(t, "the server did not accept the credential of this CLI: it is unknown, expired or revoked.\nIt is set by cli.api_key in the config file, or HEADSCALE_CLI_API_KEY.", sentence(fmt.Errorf("getting user: %w", p)))
 	require.Equal(t, "cannot connect to x: it broke", sentence(fmt.Errorf("listing: %w", &connectError{target: "x", err: errBroken})))
 	require.Equal(t, "listing: it broke", sentence(fmt.Errorf("listing: %w", errBroken)))
 }

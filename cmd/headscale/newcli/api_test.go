@@ -69,7 +69,7 @@ Expiry:      {tokenexpiry}
 		name:   "a key the server does not accept",
 		args:   "api whoami",
 		env:    []string{"HEADSCALE_CLI_ADDRESS={url}", "HEADSCALE_CLI_API_KEY=hskey-api-abcdefghijkl-nope"},
-		stderr: "Error: the server did not accept the API key.\n",
+		stderr: "Error: the server did not accept the credential of this CLI: it is unknown, expired or revoked.\nIt is set by cli.api_key in the config file, or HEADSCALE_CLI_API_KEY.\n",
 		code:   1,
 	},
 	{
@@ -642,7 +642,7 @@ var selfCases = []cliCase{
 			tb.Helper()
 
 			r := f.run(tb, cliCase{args: "api whoami", env: selfEnv})
-			require.Equal(tb, "Error: the server did not accept the API key.\n", r.stderr)
+			require.Equal(tb, "Error: the server did not accept the credential of this CLI: it is unknown, expired or revoked.\nIt is set by cli.api_key in the config file, or HEADSCALE_CLI_API_KEY.\n", r.stderr)
 		},
 	},
 	{name: "an API key deletes itself, as JSON", args: "api keys delete {selfid} --force -o json", setup: selfKey, env: selfEnv, check: asksMe(false)},

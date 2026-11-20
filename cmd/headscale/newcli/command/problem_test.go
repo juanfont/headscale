@@ -17,7 +17,7 @@ func TestProblemSentence(t *testing.T) {
 		p    clientv0.Problem
 		want string
 	}{
-		{"unauthorized", clientv0.Problem{Code: clientv0.ProblemCodeUnauthorized}, "the server did not accept the API key."},
+		{"unauthorized", clientv0.Problem{Code: clientv0.ProblemCodeUnauthorized}, "the server did not accept the credential of this CLI: it is unknown, expired or revoked.\nIt is set by cli.api_key in the config file, or HEADSCALE_CLI_API_KEY."},
 		// Text of the server cannot end the line and write one of its own.
 		{"a title with a line break", clientv0.Problem{Code: "new_code", Title: "New\nError: fake"}, `New\x0aError: fake (new_code).`},
 		{

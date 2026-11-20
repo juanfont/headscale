@@ -46,7 +46,9 @@ func (e *ProblemError) Error() string {
 
 	switch p.Code { //nolint:exhaustive // the others print their title
 	case clientv0.ProblemCodeUnauthorized:
-		return "the server did not accept the API key."
+		// True of every credential and of every reason the server has: a
+		// typo, a key never made, one expired or revoked.
+		return "the server did not accept the credential of this CLI: it is unknown, expired or revoked.\nIt is set by cli.api_key in the config file, or HEADSCALE_CLI_API_KEY."
 	case clientv0.ProblemCodeForbidden:
 		return "this credential may not do that." + forbidden(p.Details, e.target.Kind == "node")
 	case clientv0.ProblemCodeNotFound:
