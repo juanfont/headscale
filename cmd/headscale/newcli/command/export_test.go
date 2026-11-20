@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// KitModel is the kit's tree of twelve commands, built with this builder:
+// KitModel is the kit's tree of thirteen commands, built with this builder:
 // a kit row that names a command the real tree lacks waits for it. Its
 // nodes list is the one of hs, so the kit's rows on columns run on
 // Headscale's own columns.

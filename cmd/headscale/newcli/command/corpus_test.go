@@ -87,7 +87,7 @@ func (oneTwo) Words() []string     { return []string{"one", "two"} }
 func (svcWords) Words() []string   { return []string{"service", "1-123", "11-123"} }
 func (works) Words() []string      { return []string{"works"} }
 
-// The kit's tree: the hard cases of the CLI proposal, twelve commands.
+// The kit's tree: the hard cases of the CLI proposal, thirteen commands.
 type (
 	nodesDeleteIn struct {
 		Node string `arg:"node"`
@@ -105,12 +105,18 @@ type (
 		User      string `arg:"user"`
 		WithNodes bool   `flag:"with-nodes" help:"Delete the nodes of the user too"`
 	}
+	// The owner, a user or tags, is the one argument of auth keys create.
 	authKeysCreateIn struct {
-		Owner       string           `arg:"owner"`
-		Expiry      string           `flag:"expiry"      help:"When the key ends"            short:"e"`
-		Reusable    bool             `flag:"reusable"    help:"Let more than one node join"`
-		Tags        []text[tagWords] `flag:"tags"        help:"Tags for the nodes that join"`
-		Description string           `flag:"description" help:"What the key is for"          short:"d"`
+		Owner       string `arg:"owner"`
+		Expiry      string `flag:"expiry"      help:"When the key ends"           short:"e"`
+		Reusable    bool   `flag:"reusable"    help:"Let more than one node join"`
+		Description string `flag:"description" help:"What the key is for"         short:"d"`
+	}
+	// --tags is the kit's list flag that cannot be repeated.
+	oauthClientsCreateIn struct {
+		Scopes      []string         `arg:"scopes"`
+		Tags        []text[tagWords] `flag:"tags"        help:"Tags the client may give"`
+		Description string           `flag:"description" help:"What the client is for"   short:"d"`
 	}
 	apiKeysCreateIn struct {
 		User   string `flag:"user"   help:"Owner of the key"  short:"u"`
@@ -212,7 +218,7 @@ func group(name, short string, nodes ...Node) Group {
 	return Group{Name: name, Short: short, Commands: nodes}
 }
 
-// kitTree is the kit's tree of twelve commands, with the nodes list given.
+// kitTree is the kit's tree of thirteen commands, with the nodes list given.
 func kitTree(nodesList Node) []Node {
 	return []Node{
 		cmd[NoInput]("serve", "Run the control server", false, true),
@@ -228,7 +234,10 @@ func kitTree(nodesList Node) []Node {
 		),
 		group("users", "Manage users", asking[usersDeleteIn]("delete", "Delete a user", "rm")),
 		group("auth", "Manage auth keys", group("keys", "Manage auth keys", cmd[authKeysCreateIn]("create", "Create an auth key", true, true))),
-		group("api", "Manage API access", group("keys", "Manage API keys", cmd[apiKeysCreateIn]("create", "Create an API key", true, true))),
+		group("api", "Manage API access",
+			group("keys", "Manage API keys", cmd[apiKeysCreateIn]("create", "Create an API key", true, true)),
+			group("oauth-clients", "Manage OAuth clients", cmd[oauthClientsCreateIn]("create", "Create an OAuth client", true, true)),
+		),
 		group("policy", "Manage the policy", asking[policySetIn]("set", "Replace the policy")),
 	}
 }

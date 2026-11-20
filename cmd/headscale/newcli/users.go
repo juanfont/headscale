@@ -27,7 +27,7 @@ var userColumns = table.Columns[clientv0.User]{
 	{Name: "login-name", Field: "loginName", Help: "What headscale shows for the user: the email, else the username, else the provider identifier"},
 	{Name: "profile-pic-url", Field: "profilePicUrl", Help: "URL of the profile picture"},
 	{Name: "provider-id", Field: "providerId", Kind: table.Text, Help: "Identifier at the identity provider"},
-	{Name: "created", Field: "created", Help: "When the user was created"},
+	{Name: "created", Field: "created", Help: "When the user was created"}, //nolint:goconst // a column is named as its field
 }
 
 // user names a user in a message, as tables show it.

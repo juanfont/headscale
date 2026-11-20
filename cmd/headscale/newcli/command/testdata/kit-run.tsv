@@ -1,12 +1,12 @@
-# headscale: 206 rows: pass 166 seen 2 waits 38
+# headscale: 206 rows: pass 177 seen 3 waits 26
 # model: 206 rows: pass 203 seen 3
 headscale	T01	pass
 headscale	T02	pass
 headscale	T03	pass
 headscale	T04	pass
 headscale	T05	waits	users delete
-headscale	T06	waits	auth keys
-headscale	T07	waits	auth keys create
+headscale	T06	pass
+headscale	T07	pass
 headscale	T08	waits	api keys create
 headscale	T09	waits	check config
 headscale	T10	waits	check config
@@ -24,7 +24,7 @@ headscale	H06	pass
 headscale	H07	pass
 headscale	H08	pass
 headscale	H09	pass
-headscale	H10	waits	auth keys create
+headscale	H10	waits	api oauth-clients create
 headscale	H11	pass
 headscale	H12	pass
 headscale	H13	pass
@@ -35,7 +35,7 @@ headscale	H17	pass
 headscale	H18	pass
 headscale	H19	pass
 headscale	H20	pass
-headscale	H21	waits	auth keys create
+headscale	H21	waits	api oauth-clients create
 headscale	H22	pass
 headscale	H23	pass
 headscale	V01	pass
@@ -50,16 +50,16 @@ headscale	V09	pass
 headscale	V10	pass
 headscale	V11	pass
 headscale	V12	pass
-headscale	F01	waits	auth keys create
-headscale	F02	waits	auth keys create
+headscale	F01	pass
+headscale	F02	pass
 headscale	F03	pass
 headscale	F04	pass
 headscale	F05	seen	unknown-flag [nodes list] "ojson"
-headscale	F06	waits	auth keys create
+headscale	F06	pass
 headscale	F07	pass
 headscale	F08	pass
 headscale	F09	pass
-headscale	F10	waits	auth keys create
+headscale	F10	waits	api oauth-clients create
 headscale	F11	pass
 headscale	F12	pass
 headscale	F13	pass
@@ -101,33 +101,33 @@ headscale	G08	waits	check config
 headscale	G09	pass
 headscale	G10	waits	serve
 headscale	G11	pass
-headscale	L01	waits	auth keys create
-headscale	L02	waits	auth keys create
+headscale	L01	waits	api oauth-clients create
+headscale	L02	waits	api oauth-clients create
 headscale	L03	pass
-headscale	L04	waits	auth keys create
+headscale	L04	waits	api oauth-clients create
 headscale	L05	pass
 headscale	L06	pass
 headscale	L07	pass
 headscale	L08	pass
 headscale	L09	pass
 headscale	L10	pass
-headscale	L11	waits	auth keys create
+headscale	L11	waits	api oauth-clients create
 headscale	L12	pass
 headscale	L13	pass
 headscale	E01	pass
 headscale	E02	pass
 headscale	E03	pass
-headscale	E04	waits	auth
+headscale	E04	pass
 headscale	E05	pass
 headscale	E06	pass
 headscale	E07	pass
 headscale	E08	pass
 headscale	E09	pass
 headscale	E10	pass
-headscale	E11	waits	auth keys create
-headscale	E12	waits	auth keys create
+headscale	E11	pass
+headscale	E12	pass
 headscale	E13	pass
-headscale	E14	waits	auth keys create
+headscale	E14	pass
 headscale	E15	pass
 headscale	E16	pass
 headscale	E17	pass
@@ -160,7 +160,7 @@ headscale	D04	pass
 headscale	D05	pass
 headscale	D06	pass
 headscale	D07	pass
-headscale	D08	waits	auth keys create
+headscale	D08	pass
 headscale	A01	pass
 headscale	A02	pass
 headscale	A03	waits	check config
@@ -176,12 +176,12 @@ headscale	G12	pass
 headscale	G13	pass
 headscale	G14	pass
 headscale	G15	pass
-headscale	X01	waits	auth keys create
+headscale	X01	seen	unknown-flag [auth keys create] "e24h"
 headscale	X02	pass
 headscale	X03	pass
 headscale	X04	pass
 headscale	X05	pass
-headscale	X06	waits	auth keys create
+headscale	X06	pass
 headscale	O01	pass
 headscale	O02	pass
 headscale	O03	pass

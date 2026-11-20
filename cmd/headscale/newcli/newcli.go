@@ -14,6 +14,7 @@ var commands = []command.Node{
 	completionCmd,
 	nodesGroup,
 	usersGroup,
+	authGroup,
 	apiGroup,
 	debugGroup,
 }

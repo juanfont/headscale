@@ -4,7 +4,7 @@ package command_test
 // row by row, on Headscale's real tree. A row that names a command the tree
 // does not have yet waits for it: it is reported as skipped, with the
 // commands it waits for, and it runs as soon as they are in the tree.
-// The kit's own tree of twelve commands (KitModel) says which commands a
+// The kit's own tree of thirteen commands (KitModel) says which commands a
 // row names.
 
 import (
@@ -146,7 +146,7 @@ var runCases = []runCase{
 	{"H07", Must, "R53", sh("nodes delete 12 -h"), help("nodes delete")},
 	{"H08", Must, "R53", sh("nodes rm --help"), help("nodes delete")},
 	{"H09", Must, "R53", sh("nodes routes approve -h"), help("nodes routes set")},
-	{"H10", Must, "R53", sh("auth keys create alice --tags tag:a -h"), help("auth keys create")},
+	{"H10", Must, "R53", sh("api oauth-clients create devices:core --tags tag:a -h"), help("api oauth-clients create")},
 	{"H11", Must, "D8", sh("help"), usage(UnknownCommand, "", "help")},
 	{"H12", Must, "D8", sh("help nodes"), usage(UnknownCommand, "", "help")},
 	{"H13", Must, "D8", sh("nodes help"), usage(UnknownCommand, "nodes", "help")},
@@ -158,7 +158,7 @@ var runCases = []runCase{
 	{"H18", Must, "D19 L2", sh("api --version -h"), usage(UnknownFlag, "api", "version")},
 	{"H19", Must, "D19 D26", sh("nodes delete 12 --force=maybe -h"), usage(BadValue, "nodes delete", "force")},
 	{"H20", Must, "D19 D15", sh("nodes list -o json -o json -h"), usage(FlagRepeated, "nodes list", "output")}, // v4: json, D49
-	{"H21", Must, "D19 001-lists", sh("auth keys create alice --tags= -h"), usage(BadValue, "auth keys create", "tags")},
+	{"H21", Must, "D19 001-lists", sh("api oauth-clients create devices:core --tags= -h"), usage(BadValue, "api oauth-clients create", "tags")},
 	{"H22", Must, "D35 D19", sh("nodes routes set 12 '' -h"), usage(BadValue, "nodes routes set", "routes")},
 	{"H23", Must, "D35", sh("nodes delete 12 13 -h"), help("nodes delete")},
 
@@ -186,7 +186,7 @@ var runCases = []runCase{
 	{"F07", Must, "R20", sh("nodes delete --force 12"), ran("nodes delete", a1, "force", "true")},
 	{"F08", Must, "R20", sh("nodes delete 12 --force"), ran("nodes delete", a1, "force", "true")},
 	{"F09", Must, "R20", sh("nodes routes set 12 -o json 10.0.0.0/8"), ran("nodes routes set", []string{"12", "10.0.0.0/8"}, "output", "json")},
-	{"F10", Must, "R20 R25", sh("auth keys create --reusable alice -e 1h --tags tag:ci"), ran("auth keys create", []string{"alice"}, "expiry", "1h", "reusable", "true", "tags", "tag:ci")},
+	{"F10", Must, "R20 R25", sh("api oauth-clients create -d CI devices:core --tags tag:ci"), ran("api oauth-clients create", []string{"devices:core"}, "description", "CI", "tags", "tag:ci")},
 	{"F11", Must, "R23", sh("nodes set 12 --name ''"), ran("nodes set", a1, "name", "")},
 	{"F12", Must, "R23", sh("nodes set 12 --name="), ran("nodes set", a1, "name", "")},
 	{"F13", Must, "R24", sh("nodes set 12 -e 1d"), ran("nodes set", a1, "expiry", "1d")},
@@ -236,18 +236,18 @@ var runCases = []runCase{
 	{"G11", Must, "D3 D15", sh("-c /a nodes list -c /b"), usage(FlagRepeated, "nodes list", "config")},
 
 	// Lists and repeats (D6).
-	{"L01", Must, "D6", sh("auth keys create alice --tags tag:a,tag:b"), ran("auth keys create", []string{"alice"}, "tags", "tag:a,tag:b")},
-	{"L02", Must, "D6", sh("auth keys create alice --tags tag:a --tags tag:b"), usage(FlagRepeated, "auth keys create", "tags")},
+	{"L01", Must, "D6", sh("api oauth-clients create devices:core --tags tag:a,tag:b"), ran("api oauth-clients create", []string{"devices:core"}, "tags", "tag:a,tag:b")},
+	{"L02", Must, "D6", sh("api oauth-clients create devices:core --tags tag:a --tags tag:b"), usage(FlagRepeated, "api oauth-clients create", "tags")},
 	{"L03", Must, "D6", sh("nodes list -o json -o json"), usage(FlagRepeated, "nodes list", "output")},
 	// v3: an empty list value is an error (001 "Lists as input", DECISIONS facts).
-	{"L04", Must, "001-lists", sh("auth keys create alice --tags="), usage(BadValue, "auth keys create", "tags")},
+	{"L04", Must, "001-lists", sh("api oauth-clients create devices:core --tags="), usage(BadValue, "api oauth-clients create", "tags")},
 	{"L05", Must, "001-lists", sh("nodes list --filter="), usage(BadValue, "nodes list", "filter")},
 	{"L06", Must, "001-lists", sh("nodes list --columns ''"), usage(BadValue, "nodes list", "columns")},
 	{"L07", Must, "001-lists", sh("nodes list --filter a --filter ''"), usage(BadValue, "nodes list", "filter")},
 	{"L08", Must, "D6", sh("nodes list --filter id=1 --filter name:a"), ran("nodes list", nil, "filter", "id=1", "filter", "name:a")},
 	{"L09", Asked, "001-lists", sh("nodes list --columns id,,name"), usage(BadValue, "nodes list", "columns")},
 	{"L10", Asked, "001-lists", sh("nodes routes set 12 a,,b"), usage(BadValue, "nodes routes set", "routes")},
-	{"L11", Asked, "001-lists", sh("auth keys create alice --tags tag:a,"), usage(BadValue, "auth keys create", "tags")},
+	{"L11", Asked, "001-lists", sh("api oauth-clients create devices:core --tags tag:a,"), usage(BadValue, "api oauth-clients create", "tags")},
 	{"L12", Asked, "R19", sh("nodes list -o="), usage(BadValue, "nodes list", "output")},
 	{"L13", Must, "R23", sh("nodes set 12 --name="), ran("nodes set", a1, "name", "")},
 
@@ -374,7 +374,7 @@ var compCases = []compCase{
 	{"C07", Must, "D1 D3", sh("-c /x nodes l"), []string{"list"}, nil, false},
 	{"C08", Must, "D1 R60", sh("nodes list --"), []string{"--columns", "--sort", "--filter", "--list-columns", "--output", "--config"}, []string{"--force"}, false},
 	{"C09", Must, "D1 R18", sh("users delete alice --"), []string{"--force", "--with-nodes"}, []string{"--columns"}, false},
-	{"C10", Must, "D1", sh("auth keys create alice --"), []string{"--tags", "--expiry", "--reusable", "--description"}, []string{"--force", "--columns"}, false},
+	{"C10", Must, "D1", sh("api oauth-clients create devices:core --"), []string{"--tags", "--description"}, []string{"--force", "--columns"}, false},
 	{"C11", Must, "D1 R60", sh("nodes list -o ''"), []string{"json"}, nil, false},
 	{"C12", Must, "D1 R60", sh("nodes list --columns ''"), []string{"id", "name", "owner", "last-seen"}, nil, false},
 	{"C13", Must, "D1 R60", sh("nodes list --sort la"), []string{"last-seen"}, []string{"id"}, false},
@@ -411,8 +411,8 @@ var compCases = []compCase{
 	{"N18", Must, "D1 D3", sh("-o ''"), []string{"json"}, nil, false},
 
 	// v2: values with a colon (bash splits words on ':').
-	{"N19", Stretch, "R60", sh("auth keys create alice --tags tag:p"), []string{"tag:prod"}, nil, false},
-	{"N20", Stretch, "R60", sh("auth keys create alice --tags tag:ci,tag:p"), []string{"tag:ci,tag:prod"}, nil, false},
+	{"N19", Stretch, "R60", sh("api oauth-clients create devices:core --tags tag:p"), []string{"tag:prod"}, nil, false},
+	{"N20", Stretch, "R60", sh("api oauth-clients create devices:core --tags tag:ci,tag:p"), []string{"tag:ci,tag:prod"}, nil, false},
 	{"N21", Must, "G05", sh("nodes routes set 12 -- --"), nil, []string{"--output"}, false},
 
 	// v3: D27, files for a flag marked as a path, nothing for other free text.
@@ -447,7 +447,7 @@ var compCases = []compCase{
 	{"Q24", Must, "D20", sh("nodes list --sort -"), nil, []string{"--columns"}, false},
 	// v3: words that are no flag are not read as one (B5).
 	{"Q25", Must, "facts", sh("nodes delete o ''"), nil, []string{"json"}, false},
-	{"Q26", Must, "facts", sh("auth keys create alice ---tags="), nil, []string{"tag:ci", "---tags=tag:ci"}, false},
+	{"Q26", Must, "facts", sh("api oauth-clients create devices:core ---tags="), nil, []string{"tag:ci", "---tags=tag:ci"}, false},
 	// v3: the assistant's calls.
 	{"Q27", Asked, "call", sh("nodes delete 12 --force="), nil, []string{"true", "false"}, false},
 	{"Q28", Asked, "call", sh("-h no"), []string{"nodes"}, nil, false},
@@ -457,7 +457,7 @@ var compCases = []compCase{
 	{"Q32", Must, "D6", sh("nodes list --filter id --filter ow"), []string{"owner"}, nil, false},
 	// v3: a + or - is completed only on lists that take signs (--columns, --sort).
 	{"Q33", Asked, "call", sh("nodes list --filter -ow"), nil, []string{"-owner"}, false},
-	{"Q34", Asked, "call", sh("auth keys create alice --tags +tag:p"), nil, []string{"+tag:prod"}, false},
+	{"Q34", Asked, "call", sh("api oauth-clients create devices:core --tags +tag:p"), nil, []string{"+tag:prod"}, false},
 	{"Q35", Must, "R60", sh("nodes list --columns id,-ho"), []string{"id,-hostname"}, nil, false},
 }
 
@@ -765,6 +765,7 @@ func TestKitTab(t *testing.T) {
 var beyondKit = []string{
 	"api whoami", "debug", "debug health", "users list", "users get", "users create", "users set",
 	"nodes get", "nodes expire", "nodes update-client", "nodes routes list", "nodes routes clear", "nodes tags", "nodes tags list", "nodes tags set",
+	"auth keys list", "auth keys get", "auth keys delete",
 }
 
 func TestKitKnowsHeadscale(t *testing.T) {

@@ -1,15 +1,15 @@
-# headscale: 76 rows: fails 2 pass 55 waits 19
+# headscale: 76 rows: fails 2 pass 57 waits 17
 # model: 76 rows: fails 2 pass 74
-headscale	C01	waits	serve, check, auth, policy
+headscale	C01	waits	serve, check, policy
 headscale	C02	pass
 headscale	C03	pass
 headscale	C04	pass
 headscale	C05	pass
-headscale	C06	waits	auth keys, auth keys create
+headscale	C06	pass
 headscale	C07	pass
 headscale	C08	pass
 headscale	C09	waits	users delete
-headscale	C10	waits	auth keys create
+headscale	C10	waits	api oauth-clients create
 headscale	C11	pass
 headscale	C12	pass
 headscale	C13	pass
@@ -38,14 +38,14 @@ headscale	N15	waits	check config
 headscale	N16	pass
 headscale	N17	waits	serve
 headscale	N18	pass
-headscale	N19	waits	auth keys create
-headscale	N20	waits	auth keys create
+headscale	N19	waits	api oauth-clients create
+headscale	N20	waits	api oauth-clients create
 headscale	N21	pass
 headscale	Q01	pass
 headscale	Q02	pass
 headscale	Q03	pass
 headscale	Q04	pass
-headscale	Q05	waits	auth keys create
+headscale	Q05	pass
 headscale	Q06	pass
 headscale	Q07	fails	"--columns\tColumns to show: a list, or +name and -name to change the default\n--list-columns\tList the columns, the API field behind each, and exit\n--filter\tKeep the rows that match; may be repeated\n--sort\tColumn to sort by; -name sorts in reverse\n--output\tOutput format: json (the API object)\n--config\tConfig file\n--help\tShow this help\n:4\n"
 headscale	Q08	fails	"-o\tOutput format: json (the API object)\n:4\n"
@@ -66,7 +66,7 @@ headscale	Q22	pass
 headscale	Q23	pass
 headscale	Q24	pass
 headscale	Q25	pass
-headscale	Q26	waits	auth keys create
+headscale	Q26	waits	api oauth-clients create
 headscale	Q27	pass
 headscale	Q28	pass
 headscale	Q29	pass
@@ -74,7 +74,7 @@ headscale	Q30	pass
 headscale	Q31	pass
 headscale	Q32	pass
 headscale	Q33	pass
-headscale	Q34	waits	auth keys create
+headscale	Q34	waits	api oauth-clients create
 headscale	Q35	pass
 model	C01	pass
 model	C02	pass
