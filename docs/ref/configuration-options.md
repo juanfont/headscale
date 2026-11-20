@@ -735,42 +735,42 @@ The maximum time to wait for a probe response before declaring a node unhealthy;
     services.headscale.settings.node.routes.ha.probe_timeout = "3s";
     ```
 
-## `preauth_keys` { #preauth_keys data-toc-label="preauth_keys" }
+## `credentials` { #credentials data-toc-label="credentials" }
 
-Covers the cleanup of revoked pre-auth keys. See [Pre authenticated key](registration.md#pre-authenticated-key).
+Covers the removal of revoked auth keys, API keys and OAuth clients.
 
-??? example "All `preauth_keys` keys and defaults"
+??? example "All `credentials` keys and defaults"
 
     ```yaml
-    preauth_keys:
+    credentials:
       revoked_retention: 168h
     ```
 
-### `preauth_keys.revoked_retention` { #preauth_keys.revoked_retention data-toc-label="revoked_retention" }
+### `credentials.revoked_retention` { #credentials.revoked_retention data-toc-label="revoked_retention" }
 
 - **Type:** [duration](#type-duration)
 - **Default:** `168h`
-- **Env:** `HEADSCALE_PREAUTH_KEYS_REVOKED_RETENTION`
+- **Env:** `HEADSCALE_CREDENTIALS_REVOKED_RETENTION`
 
-How long a soft-revoked pre-auth key or OAuth client (revoked via the v2 API's DELETE) is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.
+How long a revoked auth key, API key or OAuth client is kept readable, with its state revoked, before an hourly job removes it. An auth key that a node still refers to is kept until the node is deleted. A zero or negative duration keeps revoked records for ever.
 
 === "YAML"
 
     ```yaml
-    preauth_keys:
+    credentials:
       revoked_retention: 720h
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_PREAUTH_KEYS_REVOKED_RETENTION=720h
+    export HEADSCALE_CREDENTIALS_REVOKED_RETENTION=720h
     ```
 
 === "NixOS"
 
     ```nix
-    services.headscale.settings.preauth_keys.revoked_retention = "720h";
+    services.headscale.settings.credentials.revoked_retention = "720h";
     ```
 
 ## `derp` { #derp data-toc-label="derp" }

@@ -106,13 +106,12 @@ node:
       # unhealthy; at least 1s and less than `node.routes.ha.probe_interval`.
       probe_timeout: 5s
 
-# Covers the cleanup of revoked pre-auth keys. See [Pre authenticated
-# key](https://headscale.net/stable/ref/registration/#pre-authenticated-key).
-preauth_keys:
-  # How long a soft-revoked pre-auth key or OAuth client (revoked via the v2
-  # API's DELETE) is kept retrievable before the background collector
-  # hard-deletes it. Keys still backing a node are kept until the node is
-  # deleted. A zero or negative duration disables the collector.
+# Covers the removal of revoked auth keys, API keys and OAuth clients.
+credentials:
+  # How long a revoked auth key, API key or OAuth client is kept readable, with
+  # its state revoked, before an hourly job removes it. An auth key that a node
+  # still refers to is kept until the node is deleted. A zero or negative
+  # duration keeps revoked records for ever.
   revoked_retention: 168h
 
 # The DERP map: the relay servers clients use when they cannot connect directly,
