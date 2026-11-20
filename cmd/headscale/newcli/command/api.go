@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,6 +54,9 @@ type API struct {
 	// answered before and whether a write is out; timeout is cli.timeout.
 	check   *versionCheck
 	timeout time.Duration
+	// guard is the revision of the target, sent in If-Match with every
+	// write on it; see guardOf.
+	guard atomic.Pointer[revision]
 
 	mu      sync.Mutex
 	answers map[answerKey]json.RawMessage
@@ -348,16 +353,23 @@ func (e *writeError) Error() string {
 
 func (e *writeError) Unwrap() error { return e.err }
 
-// each is what every request of a run gets, whichever method made it:
-// cli.timeout bounds the dial, the answer and its body. The time of a
-// command is the sum of its requests, so a walk is not cut while its pages
-// arrive. A timeout of 0 bounds nothing.
+// each is what every request of a run gets, whichever method made it: a
+// write on the target carries its revision in If-Match, and cli.timeout
+// bounds the dial, the answer and its body. The time of a command is the
+// sum of its requests, so a walk is not cut while its pages arrive. A
+// timeout of 0 bounds nothing.
 type each struct {
 	next    http.RoundTripper
 	timeout time.Duration
+	guard   *atomic.Pointer[revision]
 }
 
 func (t each) RoundTrip(req *http.Request) (*http.Response, error) {
+	if g := t.guard.Load(); g != nil && g.on(req) {
+		req = req.Clone(req.Context())
+		req.Header.Set("If-Match", strconv.Quote(g.rev))
+	}
+
 	if t.timeout <= 0 {
 		return t.next.RoundTrip(req)
 	}
@@ -492,8 +504,11 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 
 	check := &versionCheck{next: base, own: env.Version, target: target, server: server, warn: env.Stderr}
 
+	// Each request reads the guard of the API it serves.
+	a := &API{}
+
 	c, err := clientv0.NewClient(server,
-		clientv0.WithHTTPClient(&http.Client{Transport: each{next: check, timeout: cfg.CLI.Timeout}}),
+		clientv0.WithHTTPClient(&http.Client{Transport: each{next: check, timeout: cfg.CLI.Timeout, guard: &a.guard}}),
 		clientv0.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 			if key != "" {
 				req.Header.Set("Authorization", "Bearer "+key)
@@ -511,7 +526,71 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 		size = maxPage
 	}
 
-	return &API{c: c, target: target, answered: env.Answered, socket: sock, pageSize: size, check: check, timeout: cfg.CLI.Timeout}, nil
+	a.c, a.target, a.answered, a.socket, a.pageSize, a.check, a.timeout = c, target, env.Answered, sock, size, check, cfg.CLI.Timeout
+
+	return a, nil
+}
+
+// revision is the target of a command and its revision, which a write on
+// the target sends back in If-Match: a server that holds another revision
+// refuses the write with precondition_failed, so a change made in between
+// is not lost.
+type revision struct{ id, rev string }
+
+// on reports whether req is a write on the target: not a GET, and a path
+// that has the target's ID as one of its segments.
+func (g *revision) on(req *http.Request) bool {
+	return req.Method != http.MethodGet && slices.Contains(strings.Split(req.URL.Path, "/"), g.id)
+}
+
+// guardOf is the revision of the target of in: its first argument that is
+// an entity, when that entity has an id and a revision. A command does not
+// send it itself; the builder sets it before Run, so no write can leave it
+// out.
+func guardOf[In any](in In) *revision {
+	v := reflect.ValueOf(in)
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+
+	for i := range v.NumField() {
+		if v.Type().Field(i).Tag.Get("arg") == "" {
+			continue
+		}
+
+		e := v.Field(i)
+		if e.Kind() != reflect.Struct {
+			continue
+		}
+
+		// The first argument that is an entity, a struct with an id, is
+		// the target; one with no revision has nothing to guard.
+		id, rev := jsonText(e, "id"), jsonText(e, "revision")
+
+		switch {
+		case id == "":
+			continue
+		case rev == "":
+			return nil
+		}
+
+		return &revision{id: id, rev: rev}
+	}
+
+	return nil
+}
+
+// jsonText is the string field of struct v under the JSON key name; "" for
+// none.
+func jsonText(v reflect.Value, name string) string {
+	for i := range v.NumField() {
+		tag, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("json"), ",")
+		if tag == name && v.Field(i).Kind() == reflect.String {
+			return v.Field(i).String()
+		}
+	}
+
+	return ""
 }
 
 var errNoSocket = errors.New("unix_socket is empty")

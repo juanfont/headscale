@@ -138,6 +138,10 @@ func New[In, Out any](s Spec[In, Out]) Node {
 		return cmdline.Command[In]{Name: s.Name, Aliases: s.Aliases, Help: s.Short, Flags: flags, Run: func(ctx context.Context, in In) error {
 			c := ctxOf(ctx)
 
+			if c.API != nil {
+				c.API.guard.Store(guardOf(in))
+			}
+
 			out, err := s.Run(c, in)
 			if err != nil {
 				return flagsOf[In](err)

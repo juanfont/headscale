@@ -54,6 +54,11 @@ func (e *ProblemError) Error() string {
 		if s, ok := taken(p, "email"); ok {
 			return s
 		}
+	case preconditionFailed:
+		o, err := p.Object.Get()
+		if err == nil {
+			return table.Entity(string(o.Kind), o.Id, o.Name) + " changed while the command ran. Run it again."
+		}
 	case clientv0.UserManagedByOidc:
 		o, err := p.Object.Get()
 		if err == nil {
@@ -128,6 +133,11 @@ func flagsOf[In any](err error) error {
 
 	return err
 }
+
+// preconditionFailed is a write whose If-Match no longer matches: the
+// target changed after the CLI read it. v0 has no write that takes
+// If-Match yet, so the code is not in the client.
+const preconditionFailed clientv0.ProblemCode = "precondition_failed"
 
 // forbidden names what the credential lacks, when the problem says it.
 func forbidden(details map[string]any) string {

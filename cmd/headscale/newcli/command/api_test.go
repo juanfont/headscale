@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/cmdline"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
@@ -432,4 +434,121 @@ func TestTimeout(t *testing.T) {
 	_, err = api(t, 2).UpdateUser(t.Context(), "3", clientv0.UpdateUserBody{})
 	require.EqualError(t, err, "the server at "+target+" did not answer the change: no answer in time.\n"+
 		"The change may have been made: look before you run the command again.")
+}
+
+// guarded is an entity with a revision, as a node is.
+type guarded struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Revision string `json:"revision"`
+}
+
+// TestIfMatch: a write on the target carries the target's revision, which
+// the command does not pass itself; no other request does, and a server
+// that holds another revision is the CLI's sentence.
+func TestIfMatch(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu   sync.Mutex
+		seen []string
+	)
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+
+		seen = append(seen, r.Method+" "+r.URL.Path+" "+r.Header.Get("If-Match"))
+		mu.Unlock()
+
+		w.Header().Set("Headscale-Version", "dev")
+
+		switch {
+		case r.Method == http.MethodPatch && r.Header.Get("If-Match") != `"r2"`:
+			w.WriteHeader(http.StatusPreconditionFailed)
+			_, _ = w.Write([]byte(`{"code": "precondition_failed", "status": 412, "title": "Precondition failed", "object": {"kind": "node", "id": "12", "name": "mynode"}}`))
+		case r.Method == http.MethodPatch:
+			_, _ = w.Write([]byte(`{"id": "12", "name": "web", "revision": "r3"}`))
+		}
+	}))
+	t.Cleanup(s.Close)
+
+	type in struct {
+		Node guarded `arg:"node"`
+	}
+
+	send := func(c Ctx, method, path string) error {
+		_, err := call[NoOutput](c.API, func(cl *clientv0.Client) (*http.Response, error) {
+			req, err := http.NewRequestWithContext(c, method, cl.Server+path, nil)
+			if err != nil {
+				return nil, err
+			}
+
+			return cl.Client.Do(req)
+		})
+
+		return err
+	}
+
+	lookup := cmdline.LateReader(func(_ context.Context, word string) (guarded, error) {
+		return guarded{ID: "12", Name: "mynode", Revision: word}, nil
+	})
+
+	tree, err := build("prog", "A program", allowedAliases, []cmdline.Option{lookup}, New(Spec[in, NoOutput]{
+		Name: "rename", Short: "S", Long: "S.", Example: []string{"prog rename r2"},
+		Run: func(c Ctx, _ in) (NoOutput, error) {
+			err := send(c, http.MethodPost, "other")
+			if err != nil {
+				return NoOutput{}, err
+			}
+
+			return NoOutput{}, send(c, http.MethodPatch, "nodes/12")
+		},
+		Done: func(in, NoOutput, time.Time) string { return "renamed" },
+	}))
+	require.NoError(t, err)
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	run := func(rev string) (string, string) {
+		mu.Lock()
+		seen = nil
+		mu.Unlock()
+
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, []string{"rename", rev}, Env{
+			Stdout: &stdout, Stderr: &stderr, Version: &types.VersionInfo{Version: "dev"},
+			Environ: []string{"HEADSCALE_CONFIG=" + file, "HEADSCALE_CLI_ADDRESS=" + s.URL, "HEADSCALE_CLI_API_KEY=key"},
+		})
+
+		return stdout.String(), stderr.String()
+	}
+
+	stdout, stderr := run("r2")
+	require.Empty(t, stderr)
+	require.Equal(t, "renamed\n", stdout)
+	require.Equal(t, []string{"GET /api/headscale/v0/version ", "POST /other ", `PATCH /nodes/12 "r2"`}, seen)
+
+	_, stderr = run("r1")
+	require.Equal(t, "Error: Node 12 (mynode) changed while the command ran. Run it again.\n", stderr)
+}
+
+// TestGuardOf: the target is the first argument that is an entity; one
+// with no revision guards nothing.
+func TestGuardOf(t *testing.T) {
+	t.Parallel()
+
+	type routes struct {
+		Prefix netip.Prefix `arg:"prefix"`
+		Node   guarded      `arg:"node"`
+		Other  guarded      `arg:"other"`
+	}
+
+	require.Equal(t, &revision{id: "12", rev: "r1"}, guardOf(routes{Node: guarded{ID: "12", Revision: "r1"}, Other: guarded{ID: "13", Revision: "r9"}}))
+	require.Nil(t, guardOf(routes{Node: guarded{ID: "12"}, Other: guarded{ID: "13", Revision: "r9"}}), "a target with no revision guards nothing")
+	require.Nil(t, guardOf(struct {
+		User clientv0.User `arg:"user"`
+	}{User: clientv0.User{Id: "3"}}))
+	require.Nil(t, guardOf(NoInput{}))
 }
