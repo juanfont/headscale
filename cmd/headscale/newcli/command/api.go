@@ -48,6 +48,10 @@ type API struct {
 	socket *socket
 	// pageSize is the rows of one page of a walk.
 	pageSize int64
+	// check is the version check, which also knows whether the server
+	// answered before and whether a write is out; timeout is cli.timeout.
+	check   *versionCheck
+	timeout time.Duration
 
 	mu      sync.Mutex
 	answers map[answerKey]json.RawMessage
@@ -194,6 +198,10 @@ func pages[Row any](a *API, items string, get func(c *clientv0.Client, p page) (
 
 	for {
 		body, err := a.do(func(c *clientv0.Client) (*http.Response, error) { return get(c, p) })
+		if s, ok := errors.AsType[*slowError](err); ok {
+			s.list = true
+		}
+
 		if err != nil {
 			return nil, err
 		}
@@ -289,13 +297,96 @@ func (a *API) callError(err error) error {
 		return v
 	}
 
+	deadline := errors.Is(err, context.DeadlineExceeded)
+
+	switch {
+	// A write that was sent may have been made, whatever went wrong after.
+	case a.check != nil && a.check.writing.Load():
+		return &writeError{target: a.target, err: err}
+	// A server that answered before is reached: it is slow, not gone.
+	case deadline && a.check != nil && a.check.checked.Load():
+		return &slowError{target: a.target, timeout: a.timeout}
 	// A request that ran out of time while the socket was not there says
 	// why the dial failed, not that the time was up.
-	if a.socket != nil && errors.Is(err, context.DeadlineExceeded) {
+	case deadline && a.socket != nil:
 		err = cmp.Or(a.socket.failed(), err)
 	}
 
 	return &connectError{target: a.target, err: err}
+}
+
+// slowError is a server that answered before, and not this request in
+// time.
+type slowError struct {
+	target  string
+	timeout time.Duration
+	// list is a page of a walk.
+	list bool
+}
+
+func (e *slowError) Error() string {
+	what := "answer"
+	if e.list {
+		what = "send the next page of the list"
+	}
+
+	return "the server at " + e.target + " did not " + what + " in " + e.timeout.String() + ".\n" +
+		"Run the command again, or wait longer with HEADSCALE_CLI_TIMEOUT or cli.timeout."
+}
+
+// writeError is a write that was sent and got no answer: the server may
+// have made the change.
+type writeError struct {
+	target string
+	err    error
+}
+
+func (e *writeError) Error() string {
+	return "the server at " + e.target + " did not answer the change: " + causeOf(e.err) + ".\n" +
+		"The change may have been made: look before you run the command again."
+}
+
+func (e *writeError) Unwrap() error { return e.err }
+
+// each is what every request of a run gets, whichever method made it:
+// cli.timeout bounds the dial, the answer and its body. The time of a
+// command is the sum of its requests, so a walk is not cut while its pages
+// arrive. A timeout of 0 bounds nothing.
+type each struct {
+	next    http.RoundTripper
+	timeout time.Duration
+}
+
+func (t each) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.timeout <= 0 {
+		return t.next.RoundTrip(req)
+	}
+
+	ctx, cancel := context.WithTimeout(req.Context(), t.timeout)
+
+	resp, err := t.next.RoundTrip(req.WithContext(ctx))
+	if err != nil {
+		cancel()
+
+		return nil, err
+	}
+
+	resp.Body = cancelOnClose{resp.Body, cancel}
+
+	return resp, nil
+}
+
+// cancelOnClose ends the time of a request when its body is read.
+type cancelOnClose struct {
+	io.ReadCloser
+
+	cancel context.CancelFunc
+}
+
+func (c cancelOnClose) Close() error {
+	defer c.cancel()
+
+	return c.ReadCloser.Close()
 }
 
 // connectError is a server that cannot be reached, with what was wrong.
@@ -402,7 +493,7 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 	check := &versionCheck{next: base, own: env.Version, target: target, server: server, warn: env.Stderr}
 
 	c, err := clientv0.NewClient(server,
-		clientv0.WithHTTPClient(&http.Client{Transport: check}),
+		clientv0.WithHTTPClient(&http.Client{Transport: each{next: check, timeout: cfg.CLI.Timeout}}),
 		clientv0.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 			if key != "" {
 				req.Header.Set("Authorization", "Bearer "+key)
@@ -420,7 +511,7 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 		size = maxPage
 	}
 
-	return &API{c: c, target: target, answered: env.Answered, socket: sock, pageSize: size}, nil
+	return &API{c: c, target: target, answered: env.Answered, socket: sock, pageSize: size, check: check, timeout: cfg.CLI.Timeout}, nil
 }
 
 var errNoSocket = errors.New("unix_socket is empty")
@@ -435,7 +526,7 @@ type socket struct {
 }
 
 // dial connects to the socket, and tries again until it appears or the
-// time of the command is up: a command run right after the server starts
+// time of the request is up: a command run right after the server starts
 // can come before the socket. A socket the user may not open does not get
 // better by waiting.
 func (s *socket) dial(ctx context.Context) (net.Conn, error) {
@@ -485,6 +576,9 @@ type versionCheck struct {
 	server string
 	// checked is set once an answer has passed the check.
 	checked atomic.Bool
+	// writing is set while a write is out: sent, and its answer not yet
+	// come.
+	writing atomic.Bool
 	// warn is stderr, also with -o json, unlike Ctx.Note: the warning says
 	// whether what is read can be trusted, so a script must see it too.
 	warn   io.Writer
@@ -506,9 +600,18 @@ func (v *versionCheck) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp.Body.Close()
 	}
 
+	write := req.Method != http.MethodGet
+	if write {
+		v.writing.Store(true)
+	}
+
 	resp, err := v.next.RoundTrip(req)
 	if err != nil {
 		return nil, err
+	}
+
+	if write {
+		v.writing.Store(false)
 	}
 
 	server := resp.Header.Get("Headscale-Version")

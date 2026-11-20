@@ -76,6 +76,14 @@ func sentence(err error) string {
 		return v.Error()
 	}
 
+	if s, ok := errors.AsType[*slowError](err); ok {
+		return s.Error()
+	}
+
+	if w, ok := errors.AsType[*writeError](err); ok {
+		return w.Error()
+	}
+
 	return err.Error()
 }
 
@@ -132,16 +140,13 @@ func (t *Tree) run(argv []string, env Env) error {
 
 	ctx := context.Background()
 
+	// cli.timeout bounds each request, in connect, not the whole command:
+	// a walk of many pages, then a write, may take longer than one wait.
 	if l.server(line) {
 		cfg, err := loadConfig(c.ConfigFile, env.Environ)
 		if err != nil {
 			return err
 		}
-
-		var cancel context.CancelFunc
-
-		ctx, cancel = context.WithTimeout(ctx, cfg.CLI.Timeout)
-		defer cancel()
 
 		c.API, err = connect(cfg, env)
 		if err != nil {

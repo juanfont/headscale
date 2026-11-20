@@ -359,3 +359,77 @@ func TestWalkEnds(t *testing.T) {
 		require.LessOrEqual(t, asked.Load(), int32(2), next)
 	}
 }
+
+// TestTimeout: cli.timeout bounds each request, not the command, and a
+// request that runs out of it says what the CLI knows: a write may have
+// been made, a slow page is no stopped server.
+func TestTimeout(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 300 * time.Millisecond
+
+	// Each page takes half the timeout, so four of them take two.
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Headscale-Version", "dev")
+
+		token := r.URL.Query().Get("pageToken")
+
+		// The server is slow on purpose; a request the CLI gave up on ends
+		// the wait.
+		wait := func(d time.Duration) {
+			select {
+			case <-time.After(d):
+			case <-r.Context().Done():
+			}
+		}
+
+		switch {
+		case r.Method == http.MethodPatch:
+			wait(2 * timeout)
+		case r.URL.Path == "/api/headscale/v0/users" && token == "slow":
+			wait(2 * timeout)
+		case r.URL.Path == "/api/headscale/v0/users":
+			wait(timeout / 2)
+
+			next := map[string]string{"": "p2", "p2": "p3", "p3": "p4"}[token]
+			if r.URL.Query().Get("pageSize") == "1" && token == "p2" {
+				next = "slow"
+			}
+
+			if next == "" {
+				_, _ = w.Write([]byte(`{"users": [{"id": "` + token + `"}]}`)) //nolint:gosec // a test server echoes its own tokens
+
+				return
+			}
+
+			_, _ = w.Write([]byte(`{"users": [{"id": "` + token + `"}], "nextPageToken": "` + next + `"}`)) //nolint:gosec // a test server echoes its own tokens
+		}
+	}))
+	t.Cleanup(s.Close)
+
+	api := func(t *testing.T, size int) *API {
+		t.Helper()
+
+		a, err := connect(&types.Config{CLI: types.CLIConfig{Address: s.URL, APIKey: "key", Timeout: timeout}},
+			Env{Stderr: io.Discard, Version: types.GetVersionInfo(), PageSize: size})
+		require.NoError(t, err)
+
+		return a
+	}
+
+	target := strings.TrimPrefix(s.URL, "http://")
+
+	start := time.Now()
+	rows, err := api(t, 2).ListUsers(t.Context())
+	require.NoError(t, err)
+	require.Len(t, rows, 4)
+	require.Greater(t, time.Since(start), timeout, "the walk took longer than one timeout and was not cut")
+
+	_, err = api(t, 1).ListUsers(t.Context())
+	require.EqualError(t, err, "the server at "+target+" did not send the next page of the list in 300ms.\n"+
+		"Run the command again, or wait longer with HEADSCALE_CLI_TIMEOUT or cli.timeout.")
+
+	_, err = api(t, 2).UpdateUser(t.Context(), "3", clientv0.UpdateUserBody{})
+	require.EqualError(t, err, "the server at "+target+" did not answer the change: no answer in time.\n"+
+		"The change may have been made: look before you run the command again.")
+}
