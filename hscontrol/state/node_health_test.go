@@ -123,3 +123,18 @@ func TestBatchSetNodeHealthUnchangedSkipsWrite(t *testing.T) {
 			"unchanged health write must not publish a new snapshot")
 	}
 }
+
+func TestNodeProblems(t *testing.T) {
+	s := &State{cfg: &types.Config{DNSConfig: types.DNSConfig{BaseDomain: "example.com"}}}
+
+	require.Equal(t, []string{}, s.NodeProblems((&types.Node{ID: 1, GivenName: "good"}).View()))
+
+	far := time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
+	require.Equal(t, []string{"node_name_invalid", "node_expiry_invalid"},
+		s.NodeProblems((&types.Node{ID: 2, Expiry: &far}).View()))
+
+	// With key expiry disabled the stored time is never sent, so it breaks
+	// nothing.
+	require.Equal(t, []string{},
+		s.NodeProblems((&types.Node{ID: 3, GivenName: "off", Expiry: &far, KeyExpiryDisabled: true}).View()))
+}
