@@ -838,15 +838,30 @@ func TestAndroidTaildrop(t *testing.T) {
 	_, _, err := e.peer.Execute([]string{"sh", "-c", fmt.Sprintf("printf %%s %q > /tmp/%s", body, file)})
 	require.NoError(t, err)
 
-	sent := make(chan error, 1)
-
-	go func() {
+	send := func() error {
 		_, stderr, err := e.peer.Execute(
 			[]string{"tailscale", "file", "cp", "/tmp/" + file, node.IpAddresses[0] + ":"},
 			dockertestutil.ExecuteCommandTimeout(3*time.Minute),
 		)
 		if err != nil {
-			err = fmt.Errorf("%w: %s", err, stderr)
+			return fmt.Errorf("%w: %s", err, stderr)
+		}
+
+		return nil
+	}
+
+	sent := make(chan error, 1)
+
+	go func() {
+		err := send()
+		// Apps without tailscale/tailscale-android@264102c resume the
+		// transfer that waited for the folder before they store it, and
+		// reject it with this error. The folder is stored by the time the
+		// sender sees it, so sending again works, as it does for a user.
+		if err != nil && strings.Contains(err.Error(), "Invalid URI") {
+			t.Logf("taildrop: app rejected the first transfer, sending again: %s", err)
+
+			err = send()
 		}
 
 		sent <- err
