@@ -4,6 +4,7 @@
 package script
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,14 @@ import (
 )
 
 var errShell = errors.New("no completion script for shell")
+
+// Cobra's fish script splits a lone candidate without "--", so fish takes
+// one that starts with "-", such as "--columns=id,name", as an option of
+// string split and prints an error instead of completing.
+var (
+	fishSplit      = []byte(`string split --max 1 \t $__`)
+	fishSplitFixed = []byte(`string split --max 1 -- \t $__`)
+)
 
 // Write writes the script for shell ("bash", "zsh", "fish" or
 // "powershell") for the program named program, with descriptions.
@@ -33,7 +42,16 @@ func Write(w io.Writer, shell, program string) error {
 	case "zsh":
 		return c.GenZshCompletion(w)
 	case "fish":
-		return c.GenFishCompletion(w, true)
+		var b bytes.Buffer
+
+		err := c.GenFishCompletion(&b, true)
+		if err != nil {
+			return err
+		}
+
+		_, err = w.Write(bytes.Replace(b.Bytes(), fishSplit, fishSplitFixed, 1))
+
+		return err
 	case "powershell":
 		return c.GenPowerShellCompletionWithDesc(w)
 	}
