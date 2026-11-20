@@ -810,12 +810,36 @@ func TestFullMapResponseSurvivesPeerWithInvalidData(t *testing.T) {
 }
 
 // TestPeerCarriesOwnCapabilityVersion proves each peer's [tailcfg.Node.Cap]
-// is that peer's own capability version, not the viewer's. Clients gate
-// per-peer protocol features on it: a new client enables hybrid WireGuard
-// handshakes for any peer with Cap >= 152, so stamping the viewer's version
-// on an older peer makes the new client use a handshake the peer never
-// answers.
+// is that peer's own capability version, not the viewer's, as Tailscale
+// SaaS sends it (policy/v2/testdata/capver_results, a 1.86 client beside one at 152).
+// Clients gate per-peer features on it: a new client enables hybrid
+// WireGuard handshakes for any peer with Cap >= 152, so stamping the
+// viewer's version on an older peer makes the new client use a handshake
+// the peer never answers.
 func TestPeerCarriesOwnCapabilityVersion(t *testing.T) {
+	c, err := testcapture.Read(filepath.Join(
+		"..", "policy", "v2", "testdata", "capver_results", "capver-mixed-clients.hujson",
+	))
+	require.NoError(t, err)
+
+	// want[viewer][peer] is the Cap SaaS sent viewer for peer; own[peer]
+	// is then that peer's own version, the one its client reports.
+	want := map[string]map[string]tailcfg.CapabilityVersion{}
+	own := map[string]tailcfg.CapabilityVersion{}
+
+	for viewer, nc := range c.Captures {
+		want[viewer] = map[string]tailcfg.CapabilityVersion{}
+
+		for _, p := range nc.Netmap.Peers {
+			name, _, _ := strings.Cut(p.Name(), ".")
+			want[viewer][name] = p.Cap()
+			own[name] = p.Cap()
+		}
+	}
+
+	require.Len(t, own, 2)
+	require.NotEqual(t, own["old"], own["new"], "the capture must mix client versions")
+
 	tmp := t.TempDir()
 	p4 := netip.MustParsePrefix("100.64.0.0/10")
 	p6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
@@ -842,9 +866,12 @@ func TestPeerCarriesOwnCapabilityVersion(t *testing.T) {
 	require.NoError(t, err)
 
 	user := database.CreateUserForTest("u1")
-	oldNode := database.CreateRegisteredNodeForTest(user, "old")
-	newNode := database.CreateRegisteredNodeForTest(user, "new")
-	silent := database.CreateRegisteredNodeForTest(user, "silent")
+	nodes := map[string]*types.Node{}
+
+	for _, name := range []string{"new", "old", "silent"} {
+		nodes[name] = database.CreateRegisteredNodeForTest(user, name)
+	}
+
 	require.NoError(t, database.Close())
 
 	s, err := state.NewState(cfg)
@@ -854,43 +881,31 @@ func TestPeerCarriesOwnCapabilityVersion(t *testing.T) {
 	_, err = s.SetPolicy([]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
 	require.NoError(t, err)
 
-	const (
-		oldVer tailcfg.CapabilityVersion = 120
-		newVer tailcfg.CapabilityVersion = 160
-	)
+	for _, name := range []string{"old", "new"} {
+		n := nodes[name]
 
-	_, err = s.UpdateNodeFromMapRequest(oldNode.ID, tailcfg.MapRequest{Version: oldVer, NodeKey: oldNode.NodeKey})
-	require.NoError(t, err)
-
-	c, err := s.UpdateNodeFromMapRequest(newNode.ID, tailcfg.MapRequest{Version: newVer, NodeKey: newNode.NodeKey})
-	require.NoError(t, err)
-	assert.Equal(t, change.NodeAdded(newNode.ID), c, "a new capability version must reach peers")
+		ch, err := s.UpdateNodeFromMapRequest(n.ID, tailcfg.MapRequest{Version: own[name], NodeKey: n.NodeKey})
+		require.NoError(t, err)
+		assert.Equal(t, change.NodeAdded(n.ID), ch, "%s: a new capability version must reach peers", name)
+	}
 
 	m := &mapper{state: s, cfg: cfg}
 
-	peerCaps := func(viewer types.NodeID, viewerVer tailcfg.CapabilityVersion) map[tailcfg.NodeID]tailcfg.CapabilityVersion {
-		t.Helper()
-
-		resp, err := m.fullMapResponse(viewer, viewerVer)
+	for viewer, wantPeers := range want {
+		resp, err := m.fullMapResponse(nodes[viewer].ID, own[viewer])
 		require.NoError(t, err)
-		require.NotNil(t, resp.Node)
 
-		caps := map[tailcfg.NodeID]tailcfg.CapabilityVersion{}
+		got := map[string]tailcfg.CapabilityVersion{}
+
 		for _, p := range resp.Peers {
-			caps[p.ID] = p.Cap
+			name, _, _ := strings.Cut(p.Name, ".")
+			got[name] = p.Cap
 		}
 
-		return caps
+		// A node that never sent a MapRequest reports 0: no hybrid.
+		wantPeers["silent"] = 0
+		assert.Equal(t, wantPeers, got, "%s's peers (want SaaS)", viewer)
 	}
-
-	assert.Equal(t, map[tailcfg.NodeID]tailcfg.CapabilityVersion{
-		oldNode.ID.NodeID(): oldVer,
-		silent.ID.NodeID():  0,
-	}, peerCaps(newNode.ID, newVer))
-	assert.Equal(t, map[tailcfg.NodeID]tailcfg.CapabilityVersion{
-		newNode.ID.NodeID(): newVer,
-		silent.ID.NodeID():  0,
-	}, peerCaps(oldNode.ID, oldVer))
 }
 
 // TestGenerateDNSConfigNilHostinfoNoPanic proves generateDNSConfig does not
