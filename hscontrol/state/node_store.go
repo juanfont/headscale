@@ -52,6 +52,7 @@ const (
 	updateIf        = 7
 	beginDelIf      = 8
 	cancelDel       = 9
+	delMulti        = 10
 )
 
 const prometheusNamespace = "headscale"
@@ -266,6 +267,11 @@ type work struct {
 	// pre, when non-nil, receives each updated node as it was before its
 	// update function ran.
 	pre map[types.NodeID]types.NodeView
+	// For delMulti: the nodes removed, and receives each one's peers in the
+	// snapshot the delete replaces. Its multiUpdates run on the nodes that
+	// stay.
+	nodeIDs  []types.NodeID
+	delPeers map[types.NodeID][]types.NodeID
 	// For updateIf and beginDelIf: the revision the node must still have;
 	// "" guards nothing.
 	revision string
@@ -459,6 +465,40 @@ func (s *NodeStore) DeleteNode(id types.NodeID) []types.NodeID {
 	nodeStoreOperations.WithLabelValues("delete").Inc()
 
 	return peers
+}
+
+// DeleteNodes removes the nodes ids and runs updates on nodes that stay, in
+// one snapshot, and returns the peers each removed node had in the snapshot
+// it replaces. One write however many nodes: each write waits for the
+// writer's batch.
+func (s *NodeStore) DeleteNodes(ids []types.NodeID, updates map[types.NodeID]UpdateNodeFunc) map[types.NodeID][]types.NodeID {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("delete_multi"))
+	defer timer.ObserveDuration()
+
+	w := work{
+		op:           delMulti,
+		nodeIDs:      ids,
+		delPeers:     make(map[types.NodeID][]types.NodeID, len(ids)),
+		multiUpdates: updates,
+		result:       make(chan struct{}),
+	}
+
+	nodeStoreQueueDepth.Inc()
+
+	select {
+	case s.writeQueue <- w:
+	case <-s.stopped:
+		nodeStoreQueueDepth.Dec()
+
+		return nil
+	}
+
+	<-w.result
+	nodeStoreQueueDepth.Dec()
+
+	nodeStoreOperations.WithLabelValues("delete_multi").Inc()
+
+	return w.delPeers
 }
 
 // SetGivenName sets [types.Node.GivenName] on the node identified by id,
@@ -716,32 +756,19 @@ func (s *NodeStore) applyBatch(batch []work) {
 			relationChanged = true
 			electionChanged = true
 		case updateMulti:
-			for id, fn := range w.multiUpdates {
-				n, exists := nodes[id]
-				if !exists {
-					continue
-				}
+			s.applyUpdates(w, nodes, &relationChanged, &electionChanged)
+		case delMulti:
+			for _, id := range w.nodeIDs {
+				delete(nodes, id)
+				delete(s.deleting, id)
 
-				oldGivenName := n.GivenName
-				pre := n
-				fn(&n)
-
-				if n.GivenName != oldGivenName {
-					n.GivenName = resolveGivenName(
-						nodes, n.ID, n.GivenName, s.reservedLabel,
-					)
-				}
-
-				nodes[id] = n
-
-				if w.pre != nil {
-					w.pre[id] = pre.View()
-				}
-
-				relation, election := updateChanges(&pre, &n)
-				relationChanged = relationChanged || relation
-				electionChanged = electionChanged || election
+				w.delPeers[id] = slices.Clone(prev.peersByNode[id])
 			}
+
+			relationChanged = true
+			electionChanged = true
+
+			s.applyUpdates(w, nodes, &relationChanged, &electionChanged)
 		case del:
 			delete(nodes, w.nodeID)
 			delete(s.deleting, w.nodeID)
@@ -843,6 +870,37 @@ func (s *NodeStore) applyBatch(batch []work) {
 		if w.op != rebuildPeerMaps {
 			close(w.result)
 		}
+	}
+}
+
+// applyUpdates runs the multiUpdates of w on the nodes that exist, and
+// marks what they moved in relationChanged and electionChanged.
+func (s *NodeStore) applyUpdates(w *work, nodes map[types.NodeID]types.Node, relationChanged, electionChanged *bool) {
+	for id, fn := range w.multiUpdates {
+		n, exists := nodes[id]
+		if !exists {
+			continue
+		}
+
+		oldGivenName := n.GivenName
+		pre := n
+		fn(&n)
+
+		if n.GivenName != oldGivenName {
+			n.GivenName = resolveGivenName(
+				nodes, n.ID, n.GivenName, s.reservedLabel,
+			)
+		}
+
+		nodes[id] = n
+
+		if w.pre != nil {
+			w.pre[id] = pre.View()
+		}
+
+		relation, election := updateChanges(&pre, &n)
+		*relationChanged = *relationChanged || relation
+		*electionChanged = *electionChanged || election
 	}
 }
 

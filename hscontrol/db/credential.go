@@ -8,6 +8,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // revokedNow is the time a revoke stores: in UTC, because SQLite compares
@@ -40,13 +41,53 @@ func revokeCredential(tx *gorm.DB, kind types.CredentialKind, cond string, arg a
 // DestroyRevokedCredentialsBefore removes every credential revoked before
 // cutoff, of every kind, and returns how many. An auth key that a node refers
 // to is kept until that node is deleted, so the node's auth key stays valid.
+//
+// It never waits for a row, so it is never part of a deadlock, whatever
+// another writer locks and in whichever order: on PostgreSQL it takes its rows
+// FOR UPDATE SKIP LOCKED, and a row someone holds is left for the next run.
+// SQLite has one connection, and there it is a plain SELECT in the job's
+// transaction. It works in pieces of [revokedRemovalPiece] rows, each its own
+// transaction, so no statement binds more IDs than a database takes.
 func (hsdb *HSDatabase) DestroyRevokedCredentialsBefore(cutoff time.Time) (int64, error) {
-	res := hsdb.DB.Where("revoked IS NOT NULL AND revoked < ?", cutoff.UTC()).
-		Where("id NOT IN (SELECT auth_key_id FROM nodes WHERE auth_key_id IS NOT NULL)").
-		Delete(&types.Credential{})
+	var total int64
 
-	return res.RowsAffected, res.Error
+	for {
+		n, err := Write(hsdb.DB, func(tx *gorm.DB) (int, error) {
+			var ids []uint64
+
+			err := tx.Model(&types.Credential{}).
+				Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate, Options: clause.LockingOptionsSkipLocked}).
+				Where("revoked IS NOT NULL AND revoked < ?", cutoff.UTC()).
+				Where("id NOT IN (SELECT auth_key_id FROM nodes WHERE auth_key_id IS NOT NULL)").
+				Order("id").Limit(revokedRemovalPiece).Pluck("id", &ids).Error
+			if err != nil || len(ids) == 0 {
+				return 0, err
+			}
+
+			err = tx.Delete(&types.Credential{}, ids).Error
+			if err != nil {
+				return 0, err
+			}
+
+			return len(ids), nil
+		})
+		if err != nil {
+			return total, err
+		}
+
+		total += int64(n)
+
+		// A short piece is the last: what is left is held, or not revoked.
+		if n < revokedRemovalPiece {
+			return total, nil
+		}
+	}
 }
+
+// revokedRemovalPiece bounds the rows one transaction of
+// [HSDatabase.DestroyRevokedCredentialsBefore] removes: far below the
+// parameters one statement may bind (SQLite 32766, PostgreSQL 65535).
+const revokedRemovalPiece = 1000
 
 // credentialToAPIKey projects a unified credentials row onto the [types.APIKey]
 // shape the API, state, and CLI layers consume.

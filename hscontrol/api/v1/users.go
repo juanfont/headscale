@@ -151,12 +151,12 @@ func registerUsers(api huma.API, b Backend) {
 			return nil, mapError("deleting user", err)
 		}
 
-		policyChanged, err := b.State.DeleteUser(types.UserID(user.ID))
+		changes, err := b.State.DeleteUser(types.UserID(user.ID))
+		b.Change(changes...)
+
 		if err != nil {
 			return nil, mapError("deleting user", err)
 		}
-
-		b.Change(policyChanged)
 
 		return &deleteUserOutput{}, nil
 	})

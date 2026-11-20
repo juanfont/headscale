@@ -104,17 +104,13 @@ func CreateOAuthClientFrom(tx *gorm.DB, c NewOAuthClient) (*types.Credential, st
 		return nil, "", err
 	}
 
-	err = holdCredential(tx, c.Maker)
-	if err != nil {
-		return nil, "", err
-	}
-
 	var maker *types.User
 
 	// A maker deleted while the request ran leaves createdBy null, as its
-	// delete does to every client it made.
+	// delete does to every client it made. The user before the credential
+	// that asks, as a delete of the user locks them.
 	if c.CreatedBy != nil {
-		maker, err = GetUserByID(tx, *c.CreatedBy)
+		maker, err = holdUser(tx, *c.CreatedBy)
 		if errors.Is(err, ErrUserNotFound) {
 			maker, err = nil, nil
 		}
@@ -122,6 +118,11 @@ func CreateOAuthClientFrom(tx *gorm.DB, c NewOAuthClient) (*types.Credential, st
 		if err != nil {
 			return nil, "", err
 		}
+	}
+
+	err = holdCredential(tx, c.Maker)
+	if err != nil {
+		return nil, "", err
 	}
 
 	scopes := set.SetOf(c.Scopes).Slice()
