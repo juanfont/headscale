@@ -25,4 +25,9 @@ Install the official Tailscale Android client from the [Google Play Store](https
 - Tap on `Accounts`
 - In the kebab menu icon (three dots) in the upper-right corner select `Use an auth key`
 - Enter your [preauthkey generated from headscale](../../ref/registration.md#pre-authenticated-key)
-- If needed, tap `Log in` on the main screen. You should now be connected to your headscale.
+- If needed, tap `Connect` on the main screen. You should now be connected to your headscale.
+
+!!! warning "The app does not remember the preauthkey"
+
+    `Log in` on the main screen and `Reauthenticate` restart the login without the preauthkey and open the web
+    authentication instead. `Log out` also removes the alternate server: set it again before entering a preauthkey.
