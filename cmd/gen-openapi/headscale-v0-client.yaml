@@ -1,0 +1,10 @@
+# oapi-codegen settings for the v0 client, read by `make client`. The client
+# is generated from the 3.1 document in the tree; nullable-type lets it send
+# and read an explicit null.
+package: clientv0
+generate:
+  models: true
+  client: true
+output: gen/client/headscale/v0/client.gen.go
+output-options:
+  nullable-type: true

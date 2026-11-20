@@ -42,6 +42,8 @@ jobs:
               - 'docs/ref/configuration-options.md'
               - 'docs/ref/config-example.yaml'
               - 'nix/options.generated.nix'
+              - 'docs/ref/api/headscale-v0.yaml'
+              - 'docs/ref/api/problems.md'
       - uses: NixOS/nix-installer-action@v1.0.0
         if: steps.changed-files.outputs.files == 'true'
       - uses: Mic92/hestia@v3.1.0
@@ -51,9 +53,9 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         run: make generate
 
-      - name: Check the configuration reference is mdformat-stable
+      - name: Check the generated pages are mdformat-stable
         if: steps.changed-files.outputs.files == 'true'
-        run: mdformat --check docs/ref/configuration-options.md
+        run: mdformat --check docs/ref/configuration-options.md docs/ref/api/problems.md
 
       - name: Check for uncommitted changes
         if: steps.changed-files.outputs.files == 'true'

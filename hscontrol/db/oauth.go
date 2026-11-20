@@ -314,7 +314,7 @@ func (hsdb *HSDatabase) AuthenticateAccessToken(tokenStr string) (*types.OAuthAc
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("looking up issuing oauth client: %w", err)
+		return nil, fmt.Errorf("looking up issuing oauth client: %w: %w", ErrCredentialStore, err)
 	}
 
 	return credentialToOAuthAccessToken(token), nil

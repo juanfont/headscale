@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
+	apiv0 "github.com/juanfont/headscale/hscontrol/api/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -570,4 +572,57 @@ func TestServeStopsOnContextCancel(t *testing.T) {
 	}
 
 	assert.NoFileExists(t, cfg.UnixSocket)
+}
+
+// TestRequestID: the server makes the ID; a client cannot set it. Every
+// router of the request log uses requestID, never chi's, which takes the
+// client's header.
+func TestRequestID(t *testing.T) {
+	for _, f := range []string{"app.go", "noise.go"} {
+		src, err := os.ReadFile(f)
+		require.NoError(t, err)
+		require.NotContains(t, string(src), "middleware.RequestID)", f)
+	}
+
+	seen := map[string]bool{}
+
+	var id string
+
+	h := requestID(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		id = middleware.GetReqID(r.Context())
+	}))
+
+	for range 10 {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+		req.Header.Set("X-Request-Id", "mine")
+		h.ServeHTTP(httptest.NewRecorder(), req)
+
+		require.Regexp(t, `^[A-Z2-7]{12}$`, id)
+		require.False(t, seen[id])
+		seen[id] = true
+	}
+}
+
+// TestAPIv0Paths: /api/headscale/v0 with and without a slash is v0's, on
+// the router and on the socket, never the legacy API's.
+func TestAPIv0Paths(t *testing.T) {
+	legacy := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	v0 := apiv0.Handler(apiv0.Backend{})
+
+	app := &Headscale{cfg: &types.Config{}, authProvider: NewAuthProviderWeb("")}
+
+	for name, h := range map[string]http.Handler{
+		"router": app.createRouter(legacy, legacy, v0),
+		"socket": socketHandler(legacy, legacy, v0),
+	} {
+		for _, path := range []string{apiv0.Prefix, apiv0.Prefix + "/"} {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+
+			require.Equal(t, http.StatusNotFound, rec.Code, "%s %s", name, path)
+			require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"), "%s %s", name, path)
+			require.NotEmpty(t, rec.Header().Get("Headscale-Version"), "%s %s", name, path)
+			require.Regexp(t, `"requestId":"[A-Z2-7]{12}"`, rec.Body.String(), "%s %s", name, path)
+		}
+	}
 }

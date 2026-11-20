@@ -1113,7 +1113,7 @@ func newOIDCBrowserWithPrefix(t *testing.T, prefix string) *oidcBrowser {
 	t.Cleanup(provider.authCache.Close)
 
 	app.authProvider = provider
-	router = app.createRouter(nil, nil)
+	router = app.createRouter(nil, nil, nil)
 
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)

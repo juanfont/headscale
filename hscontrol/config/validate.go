@@ -9,8 +9,10 @@ import (
 	"net/url"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -230,6 +232,7 @@ func Validate(c *types.Config) error {
 	validateCertificates(c, v)
 	validatePrefixes(c, v)
 	validateDNSProvider(c, v)
+	validateCORS(c, v)
 
 	// BaseDomain cannot be the same as the server URL.
 	// This is because Tailscale takes over the domain in BaseDomain,
@@ -336,6 +339,65 @@ func validateValue(v *configValidator, key string, val reflect.Value) {
 	}
 
 	v.Add(&ce)
+}
+
+// validateCORS records each allowed origin that a browser would never send
+// in Origin. Matching is exact, so such an entry would silently never match.
+func validateCORS(c *types.Config, v *configValidator) {
+	for i, o := range c.API.CORS.AllowedOrigins {
+		why := originProblem(o)
+		if why == "" {
+			continue
+		}
+
+		key := fmt.Sprintf("api.cors.allowed_origins[%d]", i)
+		v.Add(&types.ConfigError{
+			Reason: key + " is not an origin: " + why,
+			// An origin may carry userinfo by mistake; never print it.
+			Current: []types.KV{{Key: key, Value: types.HTTPURL(o).Redacted()}},
+			Hint:    `write it as a browser sends it: scheme, host, and the port only when not the default, e.g. "https://admin.example.com"`,
+		})
+	}
+}
+
+// originProblem says why o is not scheme://host[:port] as a browser
+// serializes it, or "" when it is.
+func originProblem(o string) string {
+	u, err := url.Parse(o)
+
+	switch {
+	case err != nil:
+		return "it does not parse"
+	case strings.Contains(o, "*"):
+		return "a wildcard is not allowed; list each origin"
+	case u.Scheme != "http" && u.Scheme != "https":
+		return "the scheme must be http or https"
+	case u.Hostname() == "":
+		return "it has no host"
+	case strings.HasSuffix(u.Hostname(), "."):
+		return "the host ends in a dot"
+	case strings.ContainsFunc(u.Hostname(), func(r rune) bool { return r > unicode.MaxASCII }):
+		return "a browser sends a host that is not ASCII in its xn-- form"
+	case u.User != nil, u.Path != "", u.ForceQuery, u.RawQuery != "", strings.Contains(o, "#"):
+		return "it has more than scheme, host and port"
+	case strings.HasSuffix(u.Host, ":"):
+		return "the port is empty"
+	}
+
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+
+		switch {
+		case err != nil || n < 1 || n > 65535:
+			return "the port is not a number from 1 to 65535"
+		case strings.HasPrefix(port, "0"):
+			return "a browser sends the port without leading zeros"
+		case (u.Scheme == "https" && n == 443) || (u.Scheme == "http" && n == 80):
+			return "a browser leaves out the default port " + port
+		}
+	}
+
+	return ""
 }
 
 // validatePolicy records a ConfigError for an unset policy.mode: startup

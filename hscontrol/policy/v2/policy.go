@@ -1439,27 +1439,40 @@ func (pm *PolicyManager) UserCanHaveTag(user types.UserView, tag string) bool {
 // tag:k8s keys when the policy declares "tag:k8s": ["tag:k8s-operator"]. It is
 // purely tag-relational and does not consult node IPs.
 func (pm *PolicyManager) TagOwnedByTags(tag string, ownerTags []string) bool {
+	return slices.Contains(pm.TagsOwnedByTags(ownerTags), tag)
+}
+
+// TagsOwnedByTags returns every tag a credential holding ownerTags may apply:
+// ownerTags, and each tag whose tagOwners list one of them, one step and no
+// further. Sorted, without duplicates. It is the one place of that rule:
+// [PolicyManager.TagOwnedByTags] asks it, and GET /me shows it. A nil
+// manager allows nothing.
+func (pm *PolicyManager) TagsOwnedByTags(ownerTags []string) []string {
 	if pm == nil {
-		return false
+		return nil
 	}
 
-	// A credential may always apply a tag it directly holds; this needs no policy.
-	if slices.Contains(ownerTags, tag) {
-		return true
-	}
+	out := slices.Clone(ownerTags)
 
 	pm.mu.RLock()
-	defer pm.mu.RUnlock()
 
-	if pm.pol == nil {
-		return false
+	if pm.pol != nil {
+		for tag, owners := range pm.pol.TagOwners {
+			if slices.ContainsFunc(owners, func(owner Owner) bool {
+				ot, ok := owner.(*Tag)
+
+				return ok && slices.Contains(ownerTags, string(*ot))
+			}) {
+				out = append(out, string(tag))
+			}
+		}
 	}
 
-	return slices.ContainsFunc(pm.pol.TagOwners[Tag(tag)], func(owner Owner) bool {
-		ot, ok := owner.(*Tag)
+	pm.mu.RUnlock()
 
-		return ok && slices.Contains(ownerTags, string(*ot))
-	})
+	slices.Sort(out)
+
+	return slices.Compact(out)
 }
 
 // userMatchesOwner checks if a user matches a tag owner entry.

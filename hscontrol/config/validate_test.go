@@ -262,3 +262,48 @@ func TestConfigValidator_AddErrSkipsNil(t *testing.T) {
 	assert.False(t, v.HasErrors())
 	assert.NoError(t, v.Err())
 }
+
+func TestValidateCORS(t *testing.T) {
+	for _, tt := range []struct {
+		origin string
+		ok     bool
+	}{
+		{"https://admin.example.com", true},
+		{"http://localhost:3000", true},
+		{"https://[2001:db8::1]:8443", true},
+		{"*", false},
+		{"admin.example.com", false},
+		{"https://admin.example.com/", false},
+		{"https://admin.example.com/ui", false},
+		{"https://admin.example.com?", false},
+		{"https://u:secret@admin.example.com", false},
+		{"ftp://admin.example.com", false},
+		{"https://*.example.com", false},
+		{"https://*", false},
+		{"https://admin.example.com:99999", false},
+		{"https://admin.example.com:", false},
+		{"https://admin.example.com#", false},
+		{"https://admin.example.com.", false},
+		{"https://admin.example.com:443", false},
+		{"http://admin.example.com:80", false},
+		{"http://admin.example.com:443", true},
+		{"https://admin.example.com:08443", false},
+		{"https://bücher.example", false},
+		{"https://xn--bcher-kva.example", true},
+	} {
+		t.Run(tt.origin, func(t *testing.T) {
+			c := Default()
+			c.API.CORS.AllowedOrigins = []string{tt.origin}
+
+			v := &configValidator{}
+			validateCORS(&c, v)
+
+			if tt.ok {
+				require.NoError(t, v.Err())
+			} else {
+				require.ErrorContains(t, v.Err(), "api.cors.allowed_origins[0] is not an origin")
+				require.NotContains(t, v.Err().Error(), "secret")
+			}
+		})
+	}
+}

@@ -26,12 +26,12 @@ func TestURLKeys(t *testing.T) {
 			typ = typ.Elem()
 		}
 
-		// shortcut: catches only HTTPURL leaves, lists of them and names ending
-		// in url, urls or address, not maps or pointers; list any other URL
-		// key in URLKeys by hand.
+		// shortcut: catches HTTPURL leaves and lists of them, names ending in
+		// url, urls or address, and keys whose example holds a URL; not maps
+		// or pointers without one. List any other URL key in URLKeys by hand.
 		name := f.Path[strings.LastIndex(f.Path, ".")+1:]
 		if typ == reflect.TypeFor[HTTPURL]() || strings.HasSuffix(name, "url") || strings.HasSuffix(name, "urls") ||
-			strings.HasSuffix(name, "address") {
+			strings.HasSuffix(name, "address") || strings.Contains(f.Field.Tag.Get("example"), "://") {
 			assert.Contains(t, URLKeys, f.Path)
 		}
 	}
@@ -139,6 +139,7 @@ func TestConfigFields(t *testing.T) {
 		"cli.api_key",
 		"cli.timeout",
 		"cli.insecure",
+		"api.cors.allowed_origins",
 		"tuning.batch_change_delay",
 		"tuning.node_mapsession_buffered_chan_size",
 		"tuning.batcher_workers",
@@ -235,6 +236,8 @@ func TestConfigTree(t *testing.T) {
 		"auto_update",
 		"tailsql",
 		"cli",
+		"api",
+		"api.cors",
 		"tuning",
 	}
 
