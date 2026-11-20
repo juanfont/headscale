@@ -349,6 +349,13 @@ func (b *logBuffer) Write(p []byte) (int, error) {
 	return b.buf.Write(p)
 }
 
+func (b *logBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
+}
+
 // entries returns the logged lines whose message is msg.
 func (b *logBuffer) entries(t *testing.T, msg string) []map[string]any {
 	t.Helper()

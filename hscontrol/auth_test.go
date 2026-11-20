@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -30,6 +31,59 @@ const (
 )
 
 var errNodeNotFoundAfterSetup = errors.New("node not found after setup")
+
+// TestRegisterRequestLogHidesAuthKey: the trace lines of a registration
+// print the request, whose auth key joins a node to the tailnet. Both are
+// reached: the registration, and the logout of an expired node that sends
+// its key along.
+func TestRegisterRequestLogHidesAuthKey(t *testing.T) {
+	logged := captureLog(t, zerolog.TraceLevel)
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("keyed")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machine := key.NewMachine().Public()
+	ns := &noiseServer{headscale: app, machineKey: machine}
+	nodeKey := key.NewNode().Public()
+	followup := "https://headscale.example/register/" + string(types.MustAuthID())
+
+	register := func(expiry time.Time) {
+		rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+			Version:  capver.MinSupportedCapabilityVersion,
+			NodeKey:  nodeKey,
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			Expiry:   expiry,
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "keyed"},
+		})
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	register(time.Time{})
+
+	node, ok := app.state.GetNodeByNodeKey(nodeKey)
+	require.True(t, ok)
+
+	_, _, err = app.state.SetNodeExpiry(node.ID(), new(time.Now().Add(-time.Minute)))
+	require.NoError(t, err)
+
+	register(time.Now().Add(-time.Minute))
+
+	out := logged.String()
+	require.Contains(t, out, `"message":"RegisterResponse"`)
+	require.Contains(t, out, "Node key expired, forcing re-authentication")
+	require.Contains(t, out, "hskey-auth-***")
+	require.NotContains(t, out, pak.Key)
+
+	got := registerRequestForLog(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: strings.Repeat("a", 48), Oauth2Token: &tailcfg.Oauth2Token{AccessToken: "secret"}},
+		Followup: followup,
+	})
+	require.Equal(t, "***", got.Auth.AuthKey, "a key of the old form")
+	require.Nil(t, got.Auth.Oauth2Token)
+	require.Equal(t, "https://headscale.example/register/hskey-authreq-***", got.Followup)
+}
 
 // interactiveStep defines a step in the interactive authentication workflow.
 type interactiveStep struct {
