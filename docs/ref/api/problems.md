@@ -75,6 +75,14 @@ code, and is `{}` when the code has none.
 - **When:** The body is not valid JSON.
 - **`details`:** `{}`
 
+## invalid_scope { #invalid_scope }
+
+- **Status:** 422
+- **Title:** The scope does not exist
+- **When:** A scope that the server does not know.
+- **`details`:**
+    - `scopes`: every scope of the request that the server does not know
+
 ## method_not_allowed { #method_not_allowed }
 
 - **Status:** 405
@@ -124,6 +132,14 @@ code, and is `{}` when the code has none.
 - **Title:** The body did not arrive in time
 - **When:** The request did not arrive in time.
 - **`details`:** `{}`
+
+## scope_requires_tags { #scope_requires_tags }
+
+- **Status:** 422
+- **Title:** The scopes need tags
+- **When:** An OAuth client with a scope that makes tagged keys or nodes (`devices:core`, `auth_keys`), and no tags.
+- **`details`:**
+    - `scopes`: every scope of the request that needs tags
 
 ## tags_not_permitted { #tags_not_permitted }
 
@@ -193,13 +209,21 @@ The `rule` of a `forbidden` problem: what an OAuth access token may not do altho
 
 An OAuth access token cannot change the name or the email of a user that exists, because a policy names a user by them. It can create a user, and change the display name and the picture. Use an API key.
 
+### token_cannot_create_api_key { #token_cannot_create_api_key }
+
+An OAuth access token cannot make an API key, whatever its scopes: an API key may do everything. Use an API key or the unix socket.
+
 ### token_cannot_create_key_for_user { #token_cannot_create_key_for_user }
 
 An OAuth access token can make an auth key for tags only, never for a user (userId). Use an API key.
 
+### token_must_hold_scopes { #token_must_hold_scopes }
+
+An OAuth access token can give a new OAuth client only scopes that its own scopes grant. GET /me lists them as authorization.scopes.
+
 ### token_must_own_tags { #token_must_own_tags }
 
-An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives: to a node, where it must also own every tag the node has now, and to an auth key. GET /me lists these tags as authorization.tags. An API key may give any tag of the policy.
+An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives: to a node, where it must also own every tag the node has now, and to an auth key or an OAuth client. GET /me lists these tags as authorization.tags. An API key may give any tag of the policy.
 
 ## Reasons of unhealthy { #reasons }
 
