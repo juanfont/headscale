@@ -78,6 +78,10 @@ func TestListFlags(t *testing.T) {
 		{line: "items list --list-columns -h", stdout: helpOf(t, "items", "list")},
 		// Tab offers the columns, after a sign and after a comma.
 		{line: "__complete items list --columns id,n", stdout: "id,name\n:6\n"},
+		// A column the list names already is not offered again.
+		{line: "__complete items list --columns id,", stdout: "id,name\n:6\n"},
+		{line: "__complete items list --columns=+name,", stdout: "+name,id\n:6\n"},
+		{line: "__complete items list --sort i", stdout: "id\n:4\n"},
 		{line: "__complete items list --sort -", stdout: "-id\n-name\n:4\n"},
 		{line: "__complete items list --filter n", stdout: "name\n:6\n"},
 	} {
