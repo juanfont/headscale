@@ -368,7 +368,7 @@ func TestLookupKeepsItsSentence(t *testing.T) {
 func TestSentence(t *testing.T) {
 	t.Parallel()
 
-	p := &ProblemError{Problem: clientv0.Problem{Code: clientv0.Unauthorized}}
+	p := &ProblemError{Problem: clientv0.Problem{Code: clientv0.ProblemCodeUnauthorized}}
 	require.Equal(t, "the server did not accept the API key.", sentence(fmt.Errorf("getting user: %w", p)))
 	require.Equal(t, "cannot connect to x: it broke", sentence(fmt.Errorf("listing: %w", &connectError{target: "x", err: errBroken})))
 	require.Equal(t, "listing: it broke", sentence(fmt.Errorf("listing: %w", errBroken)))
@@ -732,10 +732,10 @@ func TestAbout(t *testing.T) {
 		in   in
 		want string
 	}{
-		{"a target that is gone has the name read", problem(clientv0.NotFound, clientv0.ProblemObject{Kind: "node", Id: "12"}), in{Node: node}, "Node 12 (mynode) no longer exists."},
-		{"another object keeps no name", problem(clientv0.NotFound, clientv0.ProblemObject{Kind: "node", Id: "13"}), in{Node: node}, "Node 13 no longer exists."},
-		{"the expiry sent", problem(clientv0.ExpiryInPast, clientv0.ProblemObject{}), in{Node: node, Expiry: cmdline.Some(e)}, "2024-01-01 00:00 UTC is in the past.\nTo expire the node now: headscale nodes expire 12"},
-		{"no expiry sent", problem(clientv0.ExpiryInPast, clientv0.ProblemObject{}), in{Node: node}, "the expiry is in the past."},
+		{"a target that is gone has the name read", problem(clientv0.ProblemCodeNotFound, clientv0.ProblemObject{Kind: "node", Id: "12"}), in{Node: node}, "Node 12 (mynode) no longer exists."},
+		{"another object keeps no name", problem(clientv0.ProblemCodeNotFound, clientv0.ProblemObject{Kind: "node", Id: "13"}), in{Node: node}, "Node 13 no longer exists."},
+		{"the expiry sent", problem(clientv0.ProblemCodeExpiryInPast, clientv0.ProblemObject{}), in{Node: node, Expiry: cmdline.Some(e)}, "2024-01-01 00:00 UTC is in the past.\nTo expire the node now: headscale nodes expire 12"},
+		{"no expiry sent", problem(clientv0.ProblemCodeExpiryInPast, clientv0.ProblemObject{}), in{Node: node}, "the expiry is in the past."},
 		{"not a problem", errBroken, in{Node: node}, errBroken.Error()},
 	} {
 		require.Equal(t, tt.want, sentence(c.about(tt.err, tt.in)), tt.name)

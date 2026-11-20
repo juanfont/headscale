@@ -44,38 +44,38 @@ func (e *ProblemError) Error() string {
 	p := e.Problem
 
 	switch p.Code { //nolint:exhaustive // the others print their title
-	case clientv0.Unauthorized:
+	case clientv0.ProblemCodeUnauthorized:
 		return "the server did not accept the API key."
-	case clientv0.Forbidden:
+	case clientv0.ProblemCodeForbidden:
 		return "this credential may not do that." + forbidden(p.Details)
-	case clientv0.NotFound:
+	case clientv0.ProblemCodeNotFound:
 		o, err := p.Object.Get()
 		if err == nil {
 			return e.entity(o) + " no longer exists."
 		}
-	case clientv0.NameTaken:
+	case clientv0.ProblemCodeNameTaken:
 		if s, ok := taken(p, "name"); ok {
 			return s
 		}
-	case clientv0.EmailTaken:
+	case clientv0.ProblemCodeEmailTaken:
 		if s, ok := taken(p, "email"); ok {
 			return s
 		}
-	case clientv0.PreconditionFailed:
+	case clientv0.ProblemCodePreconditionFailed:
 		o, err := p.Object.Get()
 		if err == nil {
 			return table.Entity(string(o.Kind), o.Id, o.Name) + " changed while the command ran. Run it again."
 		}
-	case clientv0.UserManagedByOidc:
+	case clientv0.ProblemCodeUserManagedByOidc:
 		o, err := p.Object.Get()
 		if err == nil {
 			return table.Entity(string(o.Kind), o.Id, o.Name) + " is managed by OIDC and cannot be edited here."
 		}
-	case clientv0.TagsRequired:
+	case clientv0.ProblemCodeTagsRequired:
 		return "the tag list is empty. A tagged node needs at least one tag."
-	case clientv0.TagsNotPermitted:
+	case clientv0.ProblemCodeTagsNotPermitted:
 		return "these tags are not in the policy: " + strings.Join(texts(p.Details["tags"]), ", ")
-	case clientv0.ExpiryInPast:
+	case clientv0.ProblemCodeExpiryInPast:
 		if e.expiry.IsZero() {
 			return "the expiry is in the past."
 		}
@@ -86,14 +86,14 @@ func (e *ProblemError) Error() string {
 		}
 
 		return s
-	case clientv0.UpdateRefused:
+	case clientv0.ProblemCodeUpdateRefused:
 		o, err := p.Object.Get()
 		if err == nil {
 			return refused(table.Entity(string(o.Kind), o.Id, o.Name), p.Details)
 		}
-	case clientv0.Unhealthy:
+	case clientv0.ProblemCodeUnhealthy:
 		return "the server is not healthy:" + messages(p.Details["reasons"])
-	case clientv0.InvalidField:
+	case clientv0.ProblemCodeInvalidField:
 		var b strings.Builder
 
 		b.WriteString("the server refused a value:")
@@ -103,9 +103,9 @@ func (e *ProblemError) Error() string {
 		}
 
 		return b.String()
-	case clientv0.TooLarge:
+	case clientv0.ProblemCodeTooLarge:
 		return "the file is too large for the server."
-	case clientv0.Internal:
+	case clientv0.ProblemCodeInternal:
 		return "the server had an internal error. Its log has the request " + table.Visible(p.RequestId, "") + "."
 	}
 
@@ -132,7 +132,7 @@ func (e *ProblemError) entity(o clientv0.ProblemObject) string {
 // wrote it.
 func flagsOf[In any](err error) error {
 	p, ok := errors.AsType[*ProblemError](err)
-	if !ok || p.Problem.Code != clientv0.InvalidField {
+	if !ok || p.Problem.Code != clientv0.ProblemCodeInvalidField {
 		return err
 	}
 

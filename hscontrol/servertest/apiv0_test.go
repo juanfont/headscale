@@ -115,7 +115,7 @@ func TestAPIv0Me(t *testing.T) {
 
 		resp, err := c.GetMeWithResponse(t.Context())
 		require.NoError(t, err)
-		require.Equal(t, clientv0.Unauthorized, resp.ApplicationproblemJSON401.Code)
+		require.Equal(t, clientv0.ProblemCodeUnauthorized, resp.ApplicationproblemJSON401.Code)
 
 		version, err := c.GetVersionWithResponse(t.Context())
 		require.NoError(t, err)

@@ -1,6 +1,8 @@
 # oapi-codegen settings for the v0 client, read by `make client`. The client
 # is generated from the 3.1 document in the tree; nullable-type lets it send
-# and read an explicit null.
+# and read an explicit null. always-prefix-enum-values names every enum
+# constant after its type; without it a constant is renamed when a later
+# enum gains the same value.
 package: clientv0
 generate:
   models: true
@@ -8,3 +10,5 @@ generate:
 output: gen/client/headscale/v0/client.gen.go
 output-options:
   nullable-type: true
+compatibility:
+  always-prefix-enum-values: true

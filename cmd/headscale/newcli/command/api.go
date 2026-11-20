@@ -246,7 +246,7 @@ func walk[Row any](a *API, items string, get func(c *clientv0.Client, p page) (*
 	refused := func(err error) bool {
 		p, ok := errors.AsType[*ProblemError](err)
 
-		return ok && p.Problem.Code == clientv0.InvalidPageToken
+		return ok && p.Problem.Code == clientv0.ProblemCodeInvalidPageToken
 	}
 
 	rows, err := pages[Row](a, items, get)

@@ -20,16 +20,16 @@ import (
 
 // Defines values for AuthorizationResources.
 const (
-	All AuthorizationResources = "all"
-	Own AuthorizationResources = "own"
+	AuthorizationResourcesAll AuthorizationResources = "all"
+	AuthorizationResourcesOwn AuthorizationResources = "own"
 )
 
 // Valid indicates whether the value is a known member of the AuthorizationResources enum.
 func (e AuthorizationResources) Valid() bool {
 	switch e {
-	case All:
+	case AuthorizationResourcesAll:
 		return true
-	case Own:
+	case AuthorizationResourcesOwn:
 		return true
 	default:
 		return false
@@ -56,22 +56,22 @@ func (e CredentialKind) Valid() bool {
 
 // Defines values for MessageCode.
 const (
-	CredentialCheckBusy MessageCode = "credential_check_busy"
-	DatabaseUnreachable MessageCode = "database_unreachable"
-	NodeExpiryInvalid   MessageCode = "node_expiry_invalid"
-	NodeNameInvalid     MessageCode = "node_name_invalid"
+	MessageCodeCredentialCheckBusy MessageCode = "credential_check_busy"
+	MessageCodeDatabaseUnreachable MessageCode = "database_unreachable"
+	MessageCodeNodeExpiryInvalid   MessageCode = "node_expiry_invalid"
+	MessageCodeNodeNameInvalid     MessageCode = "node_name_invalid"
 )
 
 // Valid indicates whether the value is a known member of the MessageCode enum.
 func (e MessageCode) Valid() bool {
 	switch e {
-	case CredentialCheckBusy:
+	case MessageCodeCredentialCheckBusy:
 		return true
-	case DatabaseUnreachable:
+	case MessageCodeDatabaseUnreachable:
 		return true
-	case NodeExpiryInvalid:
+	case MessageCodeNodeExpiryInvalid:
 		return true
-	case NodeNameInvalid:
+	case MessageCodeNodeNameInvalid:
 		return true
 	default:
 		return false
@@ -131,76 +131,76 @@ func (e PrincipalKind) Valid() bool {
 
 // Defines values for ProblemCode.
 const (
-	EmailTaken           ProblemCode = "email_taken"
-	EmptyPatch           ProblemCode = "empty_patch"
-	ExpiryInPast         ProblemCode = "expiry_in_past"
-	Forbidden            ProblemCode = "forbidden"
-	Internal             ProblemCode = "internal"
-	InvalidField         ProblemCode = "invalid_field"
-	InvalidPageToken     ProblemCode = "invalid_page_token"
-	InvalidRequest       ProblemCode = "invalid_request"
-	MethodNotAllowed     ProblemCode = "method_not_allowed"
-	NameTaken            ProblemCode = "name_taken"
-	NotAcceptable        ProblemCode = "not_acceptable"
-	NotFound             ProblemCode = "not_found"
-	PreconditionFailed   ProblemCode = "precondition_failed"
-	RequestTimeout       ProblemCode = "request_timeout"
-	TagsNotPermitted     ProblemCode = "tags_not_permitted"
-	TagsRequired         ProblemCode = "tags_required"
-	TooLarge             ProblemCode = "too_large"
-	Unauthorized         ProblemCode = "unauthorized"
-	Unhealthy            ProblemCode = "unhealthy"
-	UnsupportedMediaType ProblemCode = "unsupported_media_type"
-	UpdateRefused        ProblemCode = "update_refused"
-	UserManagedByOidc    ProblemCode = "user_managed_by_oidc"
+	ProblemCodeEmailTaken           ProblemCode = "email_taken"
+	ProblemCodeEmptyPatch           ProblemCode = "empty_patch"
+	ProblemCodeExpiryInPast         ProblemCode = "expiry_in_past"
+	ProblemCodeForbidden            ProblemCode = "forbidden"
+	ProblemCodeInternal             ProblemCode = "internal"
+	ProblemCodeInvalidField         ProblemCode = "invalid_field"
+	ProblemCodeInvalidPageToken     ProblemCode = "invalid_page_token"
+	ProblemCodeInvalidRequest       ProblemCode = "invalid_request"
+	ProblemCodeMethodNotAllowed     ProblemCode = "method_not_allowed"
+	ProblemCodeNameTaken            ProblemCode = "name_taken"
+	ProblemCodeNotAcceptable        ProblemCode = "not_acceptable"
+	ProblemCodeNotFound             ProblemCode = "not_found"
+	ProblemCodePreconditionFailed   ProblemCode = "precondition_failed"
+	ProblemCodeRequestTimeout       ProblemCode = "request_timeout"
+	ProblemCodeTagsNotPermitted     ProblemCode = "tags_not_permitted"
+	ProblemCodeTagsRequired         ProblemCode = "tags_required"
+	ProblemCodeTooLarge             ProblemCode = "too_large"
+	ProblemCodeUnauthorized         ProblemCode = "unauthorized"
+	ProblemCodeUnhealthy            ProblemCode = "unhealthy"
+	ProblemCodeUnsupportedMediaType ProblemCode = "unsupported_media_type"
+	ProblemCodeUpdateRefused        ProblemCode = "update_refused"
+	ProblemCodeUserManagedByOidc    ProblemCode = "user_managed_by_oidc"
 )
 
 // Valid indicates whether the value is a known member of the ProblemCode enum.
 func (e ProblemCode) Valid() bool {
 	switch e {
-	case EmailTaken:
+	case ProblemCodeEmailTaken:
 		return true
-	case EmptyPatch:
+	case ProblemCodeEmptyPatch:
 		return true
-	case ExpiryInPast:
+	case ProblemCodeExpiryInPast:
 		return true
-	case Forbidden:
+	case ProblemCodeForbidden:
 		return true
-	case Internal:
+	case ProblemCodeInternal:
 		return true
-	case InvalidField:
+	case ProblemCodeInvalidField:
 		return true
-	case InvalidPageToken:
+	case ProblemCodeInvalidPageToken:
 		return true
-	case InvalidRequest:
+	case ProblemCodeInvalidRequest:
 		return true
-	case MethodNotAllowed:
+	case ProblemCodeMethodNotAllowed:
 		return true
-	case NameTaken:
+	case ProblemCodeNameTaken:
 		return true
-	case NotAcceptable:
+	case ProblemCodeNotAcceptable:
 		return true
-	case NotFound:
+	case ProblemCodeNotFound:
 		return true
-	case PreconditionFailed:
+	case ProblemCodePreconditionFailed:
 		return true
-	case RequestTimeout:
+	case ProblemCodeRequestTimeout:
 		return true
-	case TagsNotPermitted:
+	case ProblemCodeTagsNotPermitted:
 		return true
-	case TagsRequired:
+	case ProblemCodeTagsRequired:
 		return true
-	case TooLarge:
+	case ProblemCodeTooLarge:
 		return true
-	case Unauthorized:
+	case ProblemCodeUnauthorized:
 		return true
-	case Unhealthy:
+	case ProblemCodeUnhealthy:
 		return true
-	case UnsupportedMediaType:
+	case ProblemCodeUnsupportedMediaType:
 		return true
-	case UpdateRefused:
+	case ProblemCodeUpdateRefused:
 		return true
-	case UserManagedByOidc:
+	case ProblemCodeUserManagedByOidc:
 		return true
 	default:
 		return false

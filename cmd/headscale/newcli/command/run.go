@@ -448,7 +448,7 @@ func (c Ctx) confirm(p Prompt, before string) (bool, error) {
 func changed(err error) bool {
 	p, ok := errors.AsType[*ProblemError](err)
 
-	return ok && p.Problem.Code == clientv0.PreconditionFailed
+	return ok && p.Problem.Code == clientv0.ProblemCodePreconditionFailed
 }
 
 // reread is in with its target read again by its ID: what a write runs on

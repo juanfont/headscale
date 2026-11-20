@@ -17,47 +17,47 @@ func TestProblemSentence(t *testing.T) {
 		p    clientv0.Problem
 		want string
 	}{
-		{"unauthorized", clientv0.Problem{Code: clientv0.Unauthorized}, "the server did not accept the API key."},
+		{"unauthorized", clientv0.Problem{Code: clientv0.ProblemCodeUnauthorized}, "the server did not accept the API key."},
 		// Text of the server cannot end the line and write one of its own.
 		{"a title with a line break", clientv0.Problem{Code: "new_code", Title: "New\nError: fake"}, `New\x0aError: fake (new_code).`},
 		{
 			"a reason with a line break",
-			clientv0.Problem{Code: clientv0.Unhealthy, Details: map[string]any{"reasons": []any{map[string]any{"message": "db\nfake"}}}},
+			clientv0.Problem{Code: clientv0.ProblemCodeUnhealthy, Details: map[string]any{"reasons": []any{map[string]any{"message": "db\nfake"}}}},
 			"the server is not healthy:\n  " + `db\x0afake`,
 		},
 		{
 			"a field message with a line break",
-			clientv0.Problem{Code: clientv0.InvalidField, Errors: []clientv0.FieldError{{Location: "body.x", Message: "bad\nError: fake"}}},
+			clientv0.Problem{Code: clientv0.ProblemCodeInvalidField, Errors: []clientv0.FieldError{{Location: "body.x", Message: "bad\nError: fake"}}},
 			"the server refused a value:\n  body.x: " + `bad\x0aError: fake`,
 		},
-		{"forbidden", clientv0.Problem{Code: clientv0.Forbidden}, "this credential may not do that."},
+		{"forbidden", clientv0.Problem{Code: clientv0.ProblemCodeForbidden}, "this credential may not do that."},
 		{
 			"forbidden for scopes",
-			clientv0.Problem{Code: clientv0.Forbidden, Details: map[string]any{"scopes": []any{"users", "devices:core"}, "rule": nil}},
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{"users", "devices:core"}, "rule": nil}},
 			"this credential may not do that.\nIt lacks the scope users, devices:core.",
 		},
 		{
 			"forbidden by a rule",
-			clientv0.Problem{Code: clientv0.Forbidden, Details: map[string]any{"scopes": []any{}, "rule": "tags_of_token"}},
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "tags_of_token"}},
 			"this credential may not do that.\nA token rule refuses it: tags_of_token.",
 		},
 		{
 			"forbidden by a rule this build knows",
-			clientv0.Problem{Code: clientv0.Forbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_cannot_change_user_name_or_email"}},
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_cannot_change_user_name_or_email"}},
 			"this credential may not do that.\nAn OAuth access token cannot change the name or the email of a user; an API key can.",
 		},
 		{
 			"not found names the object",
-			clientv0.Problem{Code: clientv0.NotFound, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "node", Id: "12", Name: "mynode"})},
+			clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "node", Id: "12", Name: "mynode"})},
 			"Node 12 (mynode) no longer exists.",
 		},
-		{"tags required", clientv0.Problem{Code: clientv0.TagsRequired}, "the tag list is empty. A tagged node needs at least one tag."},
+		{"tags required", clientv0.Problem{Code: clientv0.ProblemCodeTagsRequired}, "the tag list is empty. A tagged node needs at least one tag."},
 		{
 			"tags not permitted names them, escaped",
-			clientv0.Problem{Code: clientv0.TagsNotPermitted, Details: map[string]any{"tags": []any{"tag:serverr", "tag:x\nError: fake"}}},
+			clientv0.Problem{Code: clientv0.ProblemCodeTagsNotPermitted, Details: map[string]any{"tags": []any{"tag:serverr", "tag:x\nError: fake"}}},
 			"these tags are not in the policy: tag:serverr, " + `tag:x\x0aError: fake`,
 		},
-		{"expiry in past", clientv0.Problem{Code: clientv0.ExpiryInPast}, "the expiry is in the past."},
+		{"expiry in past", clientv0.Problem{Code: clientv0.ProblemCodeExpiryInPast}, "the expiry is in the past."},
 		{"update refused: not connected", refusal("notConnected", ""), "Node 12 (mynode) is not connected."},
 		{"update refused: updates not allowed", refusal("updatesNotAllowed", ""), `Node 12 (mynode) does not allow remote updates. Run "tailscale set --auto-update" on it.`},
 		{"update refused: the client's text, escaped", refusal("clientRefused", "not supported\nError: fake"), `Node 12 (mynode) refused the update: not supported\x0aError: fake`},
@@ -66,56 +66,56 @@ func TestProblemSentence(t *testing.T) {
 		{"update refused: a reason this build does not know", refusal("new\nreason", ""), `Node 12 (mynode) did not start the update (new\x0areason).`},
 		{
 			"forbidden by the rule on tags",
-			clientv0.Problem{Code: clientv0.Forbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_must_own_tags"}},
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_must_own_tags"}},
 			"this credential may not do that.\nAn OAuth access token gives and takes only tags it holds or owns, and only on a node whose tags are all its own; an API key may give any tag of the policy.",
 		},
-		{"not found with no object", clientv0.Problem{Code: clientv0.NotFound, Title: "Not found"}, "Not found (not_found)."},
+		{"not found with no object", clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Title: "Not found"}, "Not found (not_found)."},
 		{
 			"unhealthy lists the reasons",
-			clientv0.Problem{Code: clientv0.Unhealthy, Details: map[string]any{"reasons": []any{
+			clientv0.Problem{Code: clientv0.ProblemCodeUnhealthy, Details: map[string]any{"reasons": []any{
 				map[string]any{"code": "database_unreachable", "message": "The database does not answer."},
 			}}},
 			"the server is not healthy:\n  The database does not answer.",
 		},
 		{
 			"invalid field names each field",
-			clientv0.Problem{Code: clientv0.InvalidField, Errors: []clientv0.FieldError{{Location: "body.name", Message: "is too long"}}},
+			clientv0.Problem{Code: clientv0.ProblemCodeInvalidField, Errors: []clientv0.FieldError{{Location: "body.name", Message: "is too long"}}},
 			"the server refused a value:\n  body.name: is too long",
 		},
 		{
 			"name taken names the holder and the name",
 			clientv0.Problem{
-				Code: clientv0.NameTaken, Details: map[string]any{"name": "bob"},
+				Code: clientv0.ProblemCodeNameTaken, Details: map[string]any{"name": "bob"},
 				Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "user", Id: "4", Name: "bob@example.com"}),
 			},
 			`the name "bob" belongs to User 4 (bob@example.com).`,
 		},
 		{
 			"name taken without the name",
-			clientv0.Problem{Code: clientv0.NameTaken, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "node", Id: "27", Name: "web-1"})},
+			clientv0.Problem{Code: clientv0.ProblemCodeNameTaken, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "node", Id: "27", Name: "web-1"})},
 			"the name belongs to Node 27 (web-1).",
 		},
 		{
 			"email taken names the holder and the email",
 			clientv0.Problem{
-				Code: clientv0.EmailTaken, Details: map[string]any{"email": "Bob@example.com"},
+				Code: clientv0.ProblemCodeEmailTaken, Details: map[string]any{"email": "Bob@example.com"},
 				Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "user", Id: "4", Name: "bob@example.com"}),
 			},
 			`the email "Bob@example.com" belongs to User 4 (bob@example.com).`,
 		},
 		{
 			"email taken without the email",
-			clientv0.Problem{Code: clientv0.EmailTaken, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "user", Id: "4", Name: "bob"})},
+			clientv0.Problem{Code: clientv0.ProblemCodeEmailTaken, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "user", Id: "4", Name: "bob"})},
 			"the email belongs to User 4 (bob).",
 		},
-		{"name taken with no holder", clientv0.Problem{Code: clientv0.NameTaken, Title: "The name is taken"}, "The name is taken (name_taken)."},
+		{"name taken with no holder", clientv0.Problem{Code: clientv0.ProblemCodeNameTaken, Title: "The name is taken"}, "The name is taken (name_taken)."},
 		{
 			"a user of OIDC",
-			clientv0.Problem{Code: clientv0.UserManagedByOidc, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "user", Id: "5", Name: "carol@example.com"})},
+			clientv0.Problem{Code: clientv0.ProblemCodeUserManagedByOidc, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "user", Id: "5", Name: "carol@example.com"})},
 			"User 5 (carol@example.com) is managed by OIDC and cannot be edited here.",
 		},
-		{"too large", clientv0.Problem{Code: clientv0.TooLarge}, "the file is too large for the server."},
-		{"internal names the request", clientv0.Problem{Code: clientv0.Internal, RequestId: "Zx81kq3f9a0c"}, "the server had an internal error. Its log has the request Zx81kq3f9a0c."},
+		{"too large", clientv0.Problem{Code: clientv0.ProblemCodeTooLarge}, "the file is too large for the server."},
+		{"internal names the request", clientv0.Problem{Code: clientv0.ProblemCodeInternal, RequestId: "Zx81kq3f9a0c"}, "the server had an internal error. Its log has the request Zx81kq3f9a0c."},
 		{"a code this build does not know", clientv0.Problem{Code: "user_has_nodes", Title: "The user still owns nodes"}, "The user still owns nodes (user_has_nodes)."},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestFlagsOf(t *testing.T) {
 		ProfilePicURL string      `flag:"picture-url"  help:"x"`
 	}
 
-	p := &ProblemError{Problem: clientv0.Problem{Code: clientv0.InvalidField, Errors: []clientv0.FieldError{
+	p := &ProblemError{Problem: clientv0.Problem{Code: clientv0.ProblemCodeInvalidField, Errors: []clientv0.FieldError{
 		{Location: "body.name", Message: "a"},
 		{Location: "body.displayName", Message: "b"},
 		{Location: "body.profilePicUrl", Message: "c"},
@@ -155,7 +155,7 @@ func TestFlagsOf(t *testing.T) {
 // refusal is an update_refused of Node 12 (mynode) for reason.
 func refusal(reason, clientError string) clientv0.Problem {
 	return clientv0.Problem{
-		Code:    clientv0.UpdateRefused,
+		Code:    clientv0.ProblemCodeUpdateRefused,
 		Object:  nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "node", Id: "12", Name: "mynode"}),
 		Details: map[string]any{"reason": reason, "clientError": clientError},
 	}
