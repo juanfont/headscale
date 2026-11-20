@@ -111,7 +111,7 @@ LISTED: [headscale completion bash -c<BEL>]
 FINAL: [headscale completion bash -c]
 
 LINE: headscale users |
-LISTED: [headscale users  / create  (Create a local user)  get     (Show one user)        list    (List the users)       set     (Change a local user)   / $ headscale users ]
+LISTED: [headscale users  / create  (Create a local user)          delete  (Delete a user with its keys)  get     (Show one user)                list    (List the users)               set     (Change a local user) / $ headscale users ]
 FINAL: [headscale users ]
 
 LINE: headscale users list --|

@@ -1,4 +1,4 @@
-# headscale: 76 rows: fails 2 pass 60 stretch 2 waits 12
+# headscale: 76 rows: fails 2 pass 62 stretch 2 waits 10
 # model: 76 rows: fails 2 pass 74
 headscale	C01	waits	serve, check, policy
 headscale	C02	pass
@@ -8,7 +8,7 @@ headscale	C05	pass
 headscale	C06	pass
 headscale	C07	pass
 headscale	C08	pass
-headscale	C09	waits	users delete
+headscale	C09	pass
 headscale	C10	pass
 headscale	C11	pass
 headscale	C12	pass
@@ -23,7 +23,7 @@ headscale	C20	pass
 headscale	N01	pass
 headscale	N02	pass
 headscale	N03	pass
-headscale	N04	waits	users delete
+headscale	N04	pass
 headscale	N05	pass
 headscale	N06	pass
 headscale	N07	pass

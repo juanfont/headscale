@@ -415,6 +415,15 @@ func Entity(kind, id, name string) string {
 	return w + " " + id + " (" + name + ")"
 }
 
+// Count is n of noun, as a message writes it: "1 node", "3 nodes".
+func Count(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+
+	return strconv.Itoa(n) + " " + noun + "s"
+}
+
 // Ago is a time relative to now, as a table shows it: "now", "3d ago",
 // "in 89d", and "never" for the zero time. It is rounded, not cut, so a key
 // made for 60 days reads "in 60d" right after.

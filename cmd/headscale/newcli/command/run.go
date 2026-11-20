@@ -669,6 +669,35 @@ func (c Ctx) object(in any) (clientv0.ProblemObject, bool) {
 	return clientv0.ProblemObject{Kind: clientv0.ProblemObjectKind(ent.kind), Id: jsonText(e, "id"), Name: ent.name(e.Interface())}, true
 }
 
+// typed is the word the target of in was typed as; "" for none.
+func (c Ctx) typed(in any) string {
+	t := reflect.TypeOf(in)
+
+	_, i := targetType(t)
+	if i < 0 || c.line == nil {
+		return ""
+	}
+
+	// The arguments are typed in the order of their fields.
+	k := 0
+
+	for f := range t.Fields() {
+		if f.Index[0] == i {
+			break
+		}
+
+		if f.Tag.Get("arg") != "" {
+			k++
+		}
+	}
+
+	if k >= len(c.line.Args) {
+		return ""
+	}
+
+	return c.line.Args[k]
+}
+
 // expiry is an [Expiry] of any words.
 type expiry interface {
 	At(now time.Time) time.Time
@@ -684,6 +713,7 @@ func (c Ctx) about(err error, in any) error {
 	}
 
 	p.target, _ = c.object(in)
+	p.word = c.typed(in)
 
 	v := reflect.ValueOf(in)
 	if v.Kind() != reflect.Struct {
