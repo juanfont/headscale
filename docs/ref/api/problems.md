@@ -28,7 +28,14 @@ code, and is `{}` when the code has none.
 
 - **Status:** 422
 - **Title:** The expiry is in the past
-- **When:** An expiry before now. Send `"now"` to expire at the server's clock.
+- **When:** An expiry before now. A node's expiry takes `"now"` for the server's clock; a key's must be in the future.
+- **`details`:** `{}`
+
+## expiry_required { #expiry_required }
+
+- **Status:** 422
+- **Title:** An expiry is required
+- **When:** A key with no expiry.
 - **`details`:** `{}`
 
 ## forbidden { #forbidden }
@@ -95,6 +102,13 @@ code, and is `{}` when the code has none.
 - **Status:** 404
 - **Title:** The resource does not exist
 - **When:** The resource does not exist, or no longer exists; also a path that no operation has.
+- **`details`:** `{}`
+
+## owner_conflict { #owner_conflict }
+
+- **Status:** 422
+- **Title:** The owner is not one user or tags
+- **When:** A key with both a user and tags, or with neither.
 - **`details`:** `{}`
 
 ## precondition_failed { #precondition_failed }
@@ -179,9 +193,13 @@ The `rule` of a `forbidden` problem: what an OAuth access token may not do altho
 
 An OAuth access token cannot change the name or the email of a user that exists, because a policy names a user by them. It can create a user, and change the display name and the picture. Use an API key.
 
+### token_cannot_create_key_for_user { #token_cannot_create_key_for_user }
+
+An OAuth access token can make an auth key for tags only, never for a user (userId). Use an API key.
+
 ### token_must_own_tags { #token_must_own_tags }
 
-An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives and every tag the node has now. An API key may give any tag of the policy.
+An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives: to a node, where it must also own every tag the node has now, and to an auth key. GET /me lists these tags as authorization.tags. An API key may give any tag of the policy.
 
 ## Reasons of unhealthy { #reasons }
 
