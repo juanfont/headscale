@@ -398,7 +398,7 @@ func jsonOf(c Ctx, v any) (json.RawMessage, error) {
 // printOne prints the result of a Spec: JSON as the server sent it, the
 // Done text, or a sheet.
 func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], blocks table.Blocks[Out], done func() string) error {
-	if reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]() {
+	if isNoOutput[Out]() {
 		if c.json {
 			return nil
 		}

@@ -51,6 +51,9 @@ type Spec[In, Out any] struct {
 	NeedsServer func(in In) bool
 	// ReadsConfig gives a Local command --config.
 	ReadsConfig bool
+	// NoJSON is a test tool that prints one fixed format: it takes no
+	// --output.
+	NoJSON bool
 	// NeedsChange is a command whose Opt flags each change a field, such as
 	// a set: a line that gives none of them is refused before any call.
 	NeedsChange bool
@@ -151,6 +154,11 @@ type NoInput struct{}
 
 // NoOutput is the result of a command that gives nothing back.
 type NoOutput struct{}
+
+// Said is the result of a write whose answer has no body, such as a 204:
+// What is what the command read before it acted, for Done to name. -o json
+// prints nothing, as for NoOutput.
+type Said struct{ What string }
 
 // Opt is a value that may be left out; [Opt.Get] says whether it was given.
 // As an argument it makes the argument optional.
