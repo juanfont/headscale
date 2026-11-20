@@ -35,7 +35,8 @@ zizmor, `golangci-lint --new-from-rev=HEAD~1`, vendor hash). Never skip them
 
 - **Tags XOR user ownership.** A node is tagged or user-owned, never both.
   `node.IsTagged()` (`hscontrol/types/node.go`) is authoritative: a tagged node
-  may still have `UserID` set for "created by" tracking.
+  has no `UserID`; who registered a node is `CreatedByUserID`, which says
+  nothing of its owner.
 
   ```go
   if node.UserID().Valid() { /* assume user-owned */ }       // WRONG
