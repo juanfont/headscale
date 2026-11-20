@@ -33,7 +33,7 @@ var nodeColumns = table.Columns[clientv0.Node]{
 	{Name: "version", Field: "clientVersion", Default: true, Kind: table.Version, Help: "Tailscale client version"},
 	{Name: "online", Field: "connectedToControl", Default: true, Help: "Whether the node is connected"},
 	{Name: "last-seen", Field: "lastSeen", Default: true, Help: "Time of last contact"},
-	{Name: "expiry", Field: "expiry", Default: true, Ahead: true, Invalid: expiryInvalid, Help: "When the node key expires"},
+	{Name: "expiry", Field: "expiry", Default: true, Ahead: true, Invalid: expiryInvalid, Help: "When the node key expires"}, //nolint:goconst // a column is named as its field
 	{Name: "hostname", Field: "hostname", Help: "Hostname the node reports"},
 	{Name: "os", Field: "os", Help: "Operating system"},
 	{Name: "enabled-routes", Field: "enabledRoutes", Header: "enabled", List: table.Stacked, Fold: table.Exit(), Help: "Routes the admin approved"},

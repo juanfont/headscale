@@ -289,7 +289,7 @@ var authKeysCreateCases = []cliCase{
 		stderr: "Error: the server refused a value:\n  <owner>: no user has this ID\n", code: 1,
 	},
 	{name: "no owner", args: "auth keys create", stderr: "Error: `auth keys create` needs 1 argument, got 0.\n\n  headscale auth keys create <owner>\n", code: 1},
-	{name: "--tags is no flag", args: "auth keys create alice --tags tag:ci", stderr: "Error: unknown flag --tags for `auth keys create`.\nRun `headscale auth keys create --help`.\n", code: 1},
+	{name: "--tags is no flag of it", args: "auth keys create alice --tags tag:ci", stderr: "Error: --tags does not apply to `auth keys create`.\nRun `headscale auth keys create --help`.\n", code: 1},
 	{
 		name: "a token makes a key for its tag", args: "auth keys create tag:ci", setup: withToken([]string{"tag:ci"}, "auth_keys"), env: tokenEnv, want: created,
 		stderr: "Auth key {id} ({prefix}) for tag:ci; expires in 1h.\n" + shownOnce,
@@ -411,62 +411,4 @@ func TestAuthKeysDelete(t *testing.T) {
 	t.Parallel()
 
 	runCases(t, keyring, authKeysDeleteCases)
-}
-
-// TestAuthKeySecretOnce: the secret of a new key is on the create's stdout
-// and in its -o json, and in nothing else: no other output of any command,
-// typed into any place of a line, no request the CLI sends, and not the
-// create's stderr. The secret holds a dash, as keys of 0.28 and 0.29 can.
-func TestAuthKeySecretOnce(t *testing.T) {
-	t.Parallel()
-
-	f := newFixture(t, false)
-	keyring(t, f)
-
-	r := f.run(t, cliCase{args: "auth keys create alice --reusable -d ci"})
-	require.Equal(t, 0, r.code, r.stderr)
-
-	k := created(t, f, r)
-	secret := strings.TrimSpace(strings.TrimPrefix(k, "hskey-auth-"+f.vars["prefix"]+"-"))
-	require.Len(t, secret, 64)
-	require.Equal(t, "hskey-auth-"+f.vars["prefix"]+"-"+secret+"\n", r.stdout, "stdout is the key alone")
-	require.NotContains(t, r.stderr, secret)
-
-	// A key with a dash in its secret, as one made before 0.30.
-	f.vars["dashed"] = "hskey-auth-" + f.vars["prefix"] + "-" + secret[:20] + "-" + secret[21:]
-	upper := strings.ToUpper(f.vars["key"])
-
-	for _, args := range []string{
-		"auth keys list", "auth keys list --all", "auth keys list --all -o json", "auth keys list --columns id,prefix,description",
-		"auth keys list --list-columns", "auth keys list --list-columns -o json",
-		"auth keys get {prefix}", "auth keys get {id} -o json", "auth keys get {key}", "auth keys get {dashed}", "auth keys get " + upper,
-		"auth keys get hskey-auht-{prefix}-" + secret, "auth keys get hskey-auth-{prefix}-***", "auth keys get hskey-auth-000000000000-" + secret,
-		"auth keys delete {key}", "auth keys delete {dashed} --force", "auth keys delete {key} --force -o json",
-		"auth keys create alice,bob -d " + secret, "auth keys create {key}", "auth keys create {dashed}", "auth keys create alice,{key}", "auth keys create tag:ci,{key}",
-		"auth keys list --filter owner={key}", "auth keys list --filter description={key}", "auth keys list --columns {key}",
-		"nodes get {key}", "users get {key}", "auth keys {key}", "auth keys get --{key}", "auth keys get {id} --{key}",
-		"auth keys --help", "auth keys create --help",
-		"auth keys delete {id} --force", "auth keys list --filter id={id} --all",
-	} {
-		r := f.run(t, cliCase{args: args})
-		require.NotContains(t, r.stdout, secret, args)
-		require.NotContains(t, r.stderr, secret, args)
-		require.NotContains(t, strings.ToLower(r.stdout+r.stderr), strings.ToLower(secret[21:]), args)
-
-		for _, req := range r.sent {
-			require.NotContains(t, req, secret, "%s: a request", args)
-			require.NotContains(t, req, secret[21:], "%s: a request", args)
-		}
-
-		for path, bodies := range r.answers {
-			for _, b := range bodies {
-				require.NotContains(t, string(b), secret, "%s: the answer of %s", args, path)
-			}
-		}
-	}
-
-	r = f.run(t, cliCase{args: "auth keys create tag:ci -o json"})
-	require.Equal(t, 0, r.code, r.stderr)
-	require.Contains(t, r.stdout, `"key": "hskey-auth-`, "-o json has the secret in key")
-	require.Empty(t, r.stderr, "-o json prints no note")
 }

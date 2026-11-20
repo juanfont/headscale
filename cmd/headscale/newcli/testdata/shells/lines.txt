@@ -69,8 +69,10 @@ headscale nodes list |
 headscale nodes delete |
 headscale nodes rm --f|
 headscale nodes list -o=|
-headscale api oauth-clients create devices:core --tags tag:p|	waits api oauth-clients create
-headscale api oauth-clients create devices:core --tags tag:ci,tag:p|	waits api oauth-clients create
+headscale api oauth-clients create devices:core --tags tag:p|
+headscale api oauth-clients create devices:core --tags tag:ci,tag:p|
+headscale api oauth-clients create devices:core --|
+headscale api oauth-clients create devices:core --t|
 headscale nodes list --config |
 headscale nodes list --config=|
 headscale nodes set 12 --name |

@@ -27,8 +27,8 @@ var authKeyColumns = table.Columns[clientv0.AuthKey]{
 	{Name: "state", Field: "state", Help: "valid, used, expired or revoked"},
 	{Name: "reusable", Field: "reusable", Default: true, Help: "Whether more than one node may join with the key"},
 	{Name: "ephemeral", Field: "ephemeral", Default: true, Help: "Whether a node that joins is removed some time after it disconnects"},
-	{Name: "expiry", Field: "expiry", Default: true, Ahead: true, Help: "When the key stops working"},
-	{Name: "created", Field: "created", Default: true, Help: "When the key was made"}, //nolint:goconst // a column is named as its field
+	{Name: "expiry", Field: "expiry", Default: true, Ahead: true, Help: "When the key stops working"}, //nolint:goconst // a column is named as its field
+	{Name: "created", Field: "created", Default: true, Help: "When the key was made"},                 //nolint:goconst // a column is named as its field
 	{Name: "description", Field: "description", Help: "What the key is for"},
 }
 
