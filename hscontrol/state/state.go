@@ -3856,7 +3856,7 @@ func (s *State) HandleNodeFromAuthPath(
 
 	// Create logger with common fields for all auth operations
 	logger := log.With().
-		Str(zf.RegistrationID, authID.String()).
+		Str(zf.RegistrationID, authID.Hidden()).
 		Str(zf.UserName, user.Name).
 		Str(zf.MachineKey, machineKey.ShortString()).
 		Str(zf.Method, registrationMethod).

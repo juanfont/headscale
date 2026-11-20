@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -68,9 +69,25 @@ func AuthIDFromString(str string) (AuthID, error) {
 	return r, nil
 }
 
-func (r AuthID) String() string {
+// Raw is the ID itself, for what must carry it: a URL, a page or an answer
+// to the one who holds it. Whoever holds an auth ID may answer its request.
+func (r AuthID) Raw() string {
 	return string(r)
 }
+
+// Hidden is the ID as a log line or an error carries it: its kind and no
+// more, as the request log writes a secret in a path.
+func (AuthID) Hidden() string {
+	return authIDPrefix + "***"
+}
+
+// String, GoString and MarshalText are [AuthID.Hidden], so that formatting,
+// a struct dump and JSON never print the secret by default.
+func (r AuthID) String() string { return r.Hidden() }
+
+func (r AuthID) GoString() string { return strconv.Quote(r.Hidden()) }
+
+func (r AuthID) MarshalText() ([]byte, error) { return []byte(r.Hidden()), nil }
 
 func (r AuthID) Validate() error {
 	if !strings.HasPrefix(string(r), authIDPrefix) {

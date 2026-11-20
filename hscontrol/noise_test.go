@@ -574,7 +574,7 @@ func TestRegistrationHandler_BelowFloorLeavesNoStateChange(t *testing.T) {
 			}},
 			{"followup", tailcfg.RegisterRequest{
 				NodeKey:  key.NewNode().Public(),
-				Followup: "http://localhost:8080/register/" + authID.String(),
+				Followup: "http://localhost:8080/register/" + authID.Raw(),
 			}},
 			{"logout", tailcfg.RegisterRequest{
 				NodeKey: key.NewNode().Public(),
@@ -909,7 +909,7 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 
 	url := fmt.Sprintf(
 		"/machine/ssh/action/%d/to/%d?local_user=%s&auth_id=%s",
-		srcOther.ID.Uint64(), dstOther.ID.Uint64(), sshTestLocalUser, authID.String(),
+		srcOther.ID.Uint64(), dstOther.ID.Uint64(), sshTestLocalUser, authID.Raw(),
 	)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 
@@ -1070,7 +1070,7 @@ func TestSSHActionFollowUp_RejectsVerdictAfterCheckRemoved(t *testing.T) {
 			// the policy changed while the user was authenticating.
 			action, err := ns.sshActionFollowUp(
 				t.Context(), zerolog.Nop(), &tailcfg.SSHAction{},
-				authID.String(), src.ID, dst.ID, tc.localUser,
+				authID.Raw(), src.ID, dst.ID, tc.localUser,
 			)
 			require.NoError(t, err)
 
@@ -1157,7 +1157,7 @@ func newSSHActionFollowUpRequest(t *testing.T, src, dst types.NodeID, authID typ
 	req := newSSHActionRequest(t, src, dst)
 
 	q := req.URL.Query()
-	q.Set("auth_id", authID.String())
+	q.Set("auth_id", authID.Raw())
 	req.URL.RawQuery = q.Encode()
 
 	return req
@@ -2107,7 +2107,7 @@ func TestRegistrationHandler_ValidatesClientReport(t *testing.T) {
 		ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
 		rec := serveRegister(t, ns, tailcfg.RegisterRequest{
 			Version: tailcfg.CurrentCapabilityVersion, NodeKey: key.NewNode().Public(),
-			Followup: "http://localhost:8080/register/" + types.MustAuthID().String(),
+			Followup: "http://localhost:8080/register/" + types.MustAuthID().Raw(),
 			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: "unused-followup-key"},
 			Hostinfo: &tailcfg.Hostinfo{
 				Hostname: "followup-node", OS: "linux", RequestTags: []string{"tag:test"},
@@ -2404,7 +2404,7 @@ func TestSSHActionFollowUp_ParksOneRequestPerSession(t *testing.T) {
 		go func() {
 			action, err := ns.sshActionFollowUp(
 				t.Context(), zerolog.Nop(), &tailcfg.SSHAction{},
-				authID.String(), src.ID, dst.ID, sshTestLocalUser,
+				authID.Raw(), src.ID, dst.ID, sshTestLocalUser,
 			)
 			answered <- answer{action, err}
 		}()

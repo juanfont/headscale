@@ -278,9 +278,9 @@ func newOIDCPendingProvider(t *testing.T, capacity int) *AuthProviderOIDC {
 func oidcPendingAuthRequest(t *testing.T, authID types.AuthID) *http.Request {
 	t.Helper()
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/register/"+authID.String(), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/register/"+authID.Raw(), nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("auth_id", authID.String())
+	rctx.URLParams.Add("auth_id", authID.Raw())
 
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
@@ -1155,7 +1155,7 @@ func (b *oidcBrowser) pendingNode(t *testing.T) (types.AuthID, string) {
 		Hostname:   "reload-victim",
 	})))
 
-	return authID, b.publicURL + "/register/" + authID.String()
+	return authID, b.publicURL + "/register/" + authID.Raw()
 }
 
 var (
@@ -1273,7 +1273,7 @@ func TestRegisterConfirmGETIsNotADeadEnd(t *testing.T) {
 	status, _, _ := b.get(t, registerURL)
 	require.Equal(t, http.StatusOK, status)
 
-	confirmStatus, _, body := b.get(t, b.srv.URL+"/register/confirm/"+authID.String())
+	confirmStatus, _, body := b.get(t, b.srv.URL+"/register/confirm/"+authID.Raw())
 
 	require.NotEqual(t, http.StatusMethodNotAllowed, confirmStatus,
 		"GET on the confirmation URL must not be a dead end for a user who "+
@@ -1311,7 +1311,7 @@ func TestRegisterConfirmNeedsTheCallbackCookie(t *testing.T) {
 	require.NoError(t, err)
 
 	attacker := &http.Client{Jar: jar}
-	confirmURL := b.srv.URL + "/register/confirm/" + authID.String()
+	confirmURL := b.srv.URL + "/register/confirm/" + authID.Raw()
 
 	//nolint:noctx,bodyclose // test client; closed below
 	viewed, err := attacker.Get(confirmURL)
@@ -1359,7 +1359,7 @@ func TestSetRegisterConfirmCookieSameSite(t *testing.T) {
 	assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite,
 		"the confirm cookie must survive the callback redirect")
 	assert.True(t, cookies[0].Secure, "https server_url must set Secure")
-	assert.Equal(t, "/register/confirm/"+authID.String(), cookies[0].Path)
+	assert.Equal(t, "/register/confirm/"+authID.Raw(), cookies[0].Path)
 }
 
 // TestRegisterConfirmURLFollowsServerURLPrefix covers the deployment
@@ -1374,7 +1374,7 @@ func TestRegisterConfirmURLFollowsServerURLPrefix(t *testing.T) {
 	status, landed, body := b.get(t, registerURL)
 	require.Equal(t, http.StatusOK, status,
 		"the prefixed callback must receive its state and nonce cookies")
-	assert.Equal(t, "/hs/register/confirm/"+authID.String(), landed.Path)
+	assert.Equal(t, "/hs/register/confirm/"+authID.Raw(), landed.Path)
 	assert.Contains(t, body, "Confirm node registration")
 }
 
@@ -1647,7 +1647,7 @@ func TestSSHCheckNeedsConfirmation(t *testing.T) {
 				Subject: src.User.Name, PreferredUsername: src.User.Name,
 			})
 
-			status, landed, body := b.get(t, b.publicURL+"/auth/"+authID.String())
+			status, landed, body := b.get(t, b.publicURL+"/auth/"+authID.Raw())
 			require.Equal(t, http.StatusOK, status)
 
 			select {
@@ -1656,7 +1656,7 @@ func TestSSHCheckNeedsConfirmation(t *testing.T) {
 			default:
 			}
 
-			require.Equal(t, "/register/confirm/"+authID.String(), landed.Path)
+			require.Equal(t, "/register/confirm/"+authID.Raw(), landed.Path)
 			require.Contains(t, body, "Confirm SSH session")
 			require.Contains(t, body, src.GivenName)
 			require.Contains(t, body, dst.GivenName)
@@ -1736,7 +1736,7 @@ func TestSSHCheckRejectsOtherUser(t *testing.T) {
 	require.True(t, ok)
 	b.idp.QueueUser(&mockoidc.MockUser{Subject: "other-ssh-user", PreferredUsername: "other"})
 
-	status, _, _ := b.get(t, b.publicURL+"/auth/"+authID.String())
+	status, _, _ := b.get(t, b.publicURL+"/auth/"+authID.Raw())
 	require.Equal(t, http.StatusForbidden, status)
 	require.Nil(t, auth.PendingConfirmation())
 
@@ -1759,7 +1759,7 @@ func TestOIDCConfirmationRejectsWrongRequestKind(t *testing.T) {
 				authID, _ = b.pendingSSHCheck(t)
 			}
 
-			status, _, _ := b.get(t, b.publicURL+"/"+path+"/"+authID.String())
+			status, _, _ := b.get(t, b.publicURL+"/"+path+"/"+authID.Raw())
 			require.Equal(t, http.StatusBadRequest, status)
 
 			auth, ok := b.app.state.GetAuthCacheEntry(authID)
@@ -1820,7 +1820,7 @@ func TestRegisterConfirmShowsExistingNode(t *testing.T) {
 			Subject: "existing-device", PreferredUsername: "device-owner",
 		})
 
-		status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+		status, landed, body := b.get(t, b.publicURL+"/register/"+authID.Raw())
 		require.Equal(t, http.StatusOK, status)
 
 		row := existingRow.FindStringSubmatch(body)
@@ -1866,7 +1866,7 @@ func TestRegisterConfirmShowsRequestedTags(t *testing.T) {
 	})))
 	b.idp.QueueUser(&mockoidc.MockUser{Subject: ownerName, PreferredUsername: ownerName})
 
-	status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+	status, landed, body := b.get(t, b.publicURL+"/register/"+authID.Raw())
 	require.Equal(t, http.StatusOK, status)
 
 	registered := regexp.MustCompile(`>Registered to</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
@@ -1908,7 +1908,7 @@ func TestRegisterConfirmShowsRequestedTags(t *testing.T) {
 		Hostname:   "different-client-name",
 	})))
 	b.idp.QueueUser(&mockoidc.MockUser{Subject: ownerName, PreferredUsername: ownerName})
-	status, _, body = b.get(t, b.publicURL+"/register/"+reloginID.String())
+	status, _, body = b.get(t, b.publicURL+"/register/"+reloginID.Raw())
 	require.Equal(t, http.StatusOK, status)
 
 	existing := regexp.MustCompile(`>Existing node</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
@@ -1935,7 +1935,7 @@ func TestRegisterConfirmEscapesAndRejectsUnownedTags(t *testing.T) {
 				Hostinfo:   &tailcfg.Hostinfo{RequestTags: []string{tt.tag}},
 			})))
 
-			status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+			status, landed, body := b.get(t, b.publicURL+"/register/"+authID.Raw())
 			require.Equal(t, http.StatusOK, status)
 
 			row := regexp.MustCompile(`>Registered to</td><td[^>]*>(.*?)</td>`).FindStringSubmatch(body)

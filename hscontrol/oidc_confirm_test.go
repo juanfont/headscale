@@ -20,7 +20,7 @@ func newConfirmRequest(t *testing.T, authID types.AuthID, formCSRF, cookieCSRF s
 	req := httptest.NewRequestWithContext(
 		context.Background(),
 		http.MethodPost,
-		"/register/confirm/"+authID.String(),
+		"/register/confirm/"+authID.Raw(),
 		form,
 	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -31,7 +31,7 @@ func newConfirmRequest(t *testing.T, authID types.AuthID, formCSRF, cookieCSRF s
 	})
 
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("auth_id", authID.String())
+	rctx.URLParams.Add("auth_id", authID.Raw())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	return req

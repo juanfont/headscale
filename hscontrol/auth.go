@@ -417,7 +417,7 @@ func (h *Headscale) reqToNewRegisterResponse(
 
 	authRegReq := types.NewRegisterAuthRequest(regData)
 
-	log.Info().Msgf("new followup node registration using auth id: %s", newAuthID)
+	log.Info().Msgf("new followup node registration using auth id: %s", newAuthID.Hidden())
 
 	err = h.state.SetAuthCacheEntry(newAuthID, authRegReq)
 	if err != nil {
@@ -576,7 +576,7 @@ func (h *Headscale) handleRegisterInteractive(
 		return nil, authAdmissionError(err)
 	}
 
-	log.Info().Msgf("starting node registration using auth id: %s", authID)
+	log.Info().Msgf("starting node registration using auth id: %s", authID.Hidden())
 
 	return &tailcfg.RegisterResponse{
 		AuthURL: h.authProvider.RegisterURL(authID),

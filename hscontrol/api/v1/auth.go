@@ -151,7 +151,7 @@ func pendingAuthRequest(b Backend, rawID string) (*types.AuthRequest, error) {
 
 	authReq, ok := b.State.GetAuthCacheEntry(authID)
 	if !ok {
-		return nil, huma.Error404NotFound("no pending auth session for auth_id " + authID.String())
+		return nil, huma.Error404NotFound("no pending auth session for auth_id")
 	}
 
 	return authReq, nil

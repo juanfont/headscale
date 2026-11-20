@@ -789,6 +789,25 @@ func (a *AndroidInContainer) WaitForAny(labels ...string) (string, error) {
 	return n.Desc, nil
 }
 
+// WaitForMatch waits until the text or content-desc of a node on screen
+// matches re, a page in the browser included, and returns re's first
+// submatch.
+func (a *AndroidInContainer) WaitForMatch(re *regexp.Regexp) (string, error) {
+	n, err := a.waitFor(re.String(), func(n uiNode) bool {
+		return re.MatchString(n.Text) || re.MatchString(n.Desc)
+	})
+	if err != nil {
+		return "", err
+	}
+
+	m := re.FindStringSubmatch(n.Text)
+	if m == nil {
+		m = re.FindStringSubmatch(n.Desc)
+	}
+
+	return m[len(m)-1], nil
+}
+
 // HasText reports whether a node whose text or content-desc equals label is
 // currently on screen.
 func (a *AndroidInContainer) HasText(label string) (bool, error) {

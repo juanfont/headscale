@@ -308,7 +308,7 @@ func TestDefaultBatcherWorkers(t *testing.T) {
 
 func TestAuthIDFromStringRejectsNonHex(t *testing.T) {
 	generated := MustAuthID()
-	parsed, err := AuthIDFromString(generated.String())
+	parsed, err := AuthIDFromString(generated.Raw())
 	require.NoError(t, err)
 	require.Equal(t, generated, parsed)
 
@@ -349,4 +349,41 @@ func TestAuthIDFromStringRejectsNonHex(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestAuthIDPrintsHidden: every way a value is printed or encoded by
+// default gives the hidden form; only Raw and a conversion give the ID. A
+// JSON map key is the one exception: encoding/json writes a key of string
+// kind as it is.
+func TestAuthIDPrintsHidden(t *testing.T) {
+	id := MustAuthID()
+	raw := string(id)
+
+	type holder struct{ ID AuthID }
+
+	js, err := json.Marshal(holder{id})
+	require.NoError(t, err)
+
+	for name, out := range map[string]string{
+		"String": id.String(),
+		"%s":     fmt.Sprintf("the %s", id),
+		"%v":     fmt.Sprintf("%v", id),
+		"%q":     fmt.Sprintf("%q", id),
+		"%x":     fmt.Sprintf("%x", id),
+		"%#v":    fmt.Sprintf("%#v", id),
+		"%+v":    fmt.Sprintf("%+v", holder{id}),
+		"%#v{}":  fmt.Sprintf("%#v", holder{id}),
+		"json":   string(js),
+		"error":  fmt.Errorf("%w: %v", ErrInvalidAuthIDChars, id).Error(),
+	} {
+		require.NotContains(t, out, raw, name)
+		require.NotContains(t, out, fmt.Sprintf("%x", raw), name)
+	}
+
+	require.Equal(t, raw, id.Raw())
+
+	var back holder
+
+	require.NoError(t, json.Unmarshal([]byte(`{"ID":"`+raw+`"}`), &back), "a decode keeps the ID")
+	require.Equal(t, id, back.ID)
 }
