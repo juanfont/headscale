@@ -440,6 +440,94 @@ func TestTimeout(t *testing.T) {
 		"The change may have been made: look before you run the command again.")
 }
 
+// TestLostAnswer: a request whose answer the server cuts says what the
+// CLI knows. A write may have been made from the moment it was sent until
+// its answer is read whole, so an answer cut after its headers is a write
+// that may have been made too; a dry run and a read changed nothing, and
+// none of them is a server the CLI cannot connect to.
+func TestLostAnswer(t *testing.T) {
+	t.Parallel()
+
+	// start is a server that hangs up on every request but the version:
+	// before the headers, or after them and half of the body.
+	start := func(t *testing.T, where string) string {
+		t.Helper()
+
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Headscale-Version", "dev")
+
+			if r.URL.Path == "/api/headscale/v0/version" {
+				return
+			}
+
+			rc := http.NewResponseController(w)
+
+			if where == "after the headers" {
+				w.Header().Set("Content-Length", "100")
+				_, _ = w.Write([]byte(`{"id": "3", `))
+				_ = rc.Flush()
+			}
+
+			conn, _, err := rc.Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+		}))
+		t.Cleanup(s.Close)
+
+		return s.URL
+	}
+
+	for _, tt := range []struct {
+		name string
+		call func(ctx context.Context, a *API) error
+		want string
+	}{
+		{
+			name: "a write",
+			call: func(ctx context.Context, a *API) error {
+				_, err := a.UpdateUser(ctx, "3", clientv0.UpdateUserBody{})
+
+				return err
+			},
+			want: "the server at {host} did not answer the change: the connection was closed.\n" +
+				"The change may have been made: look before you run the command again.",
+		},
+		{
+			name: "a dry run",
+			call: func(ctx context.Context, a *API) error {
+				_, err := a.DeleteUser(ctx, "3", false, true)
+
+				return err
+			},
+			want: "the server at {host} did not answer: the connection was closed.\nNothing was changed: run the command again.",
+		},
+		{
+			name: "a read",
+			call: func(ctx context.Context, a *API) error {
+				_, err := a.Me(ctx)
+
+				return err
+			},
+			want: "the server at {host} did not answer: the connection was closed.\nRun the command again.",
+		},
+	} {
+		for _, where := range []string{"before the headers", "after the headers"} {
+			t.Run(tt.name+" cut "+where, func(t *testing.T) {
+				t.Parallel()
+
+				url := start(t, where)
+
+				a, err := connect(&types.Config{CLI: types.CLIConfig{Address: url, APIKey: "key", Timeout: time.Minute}},
+					Env{Stderr: io.Discard, Version: types.GetVersionInfo()})
+				require.NoError(t, err)
+
+				require.EqualError(t, tt.call(t.Context(), a), strings.ReplaceAll(tt.want, "{host}", strings.TrimPrefix(url, "http://")))
+			})
+		}
+	}
+}
+
 // guarded is an entity with a revision, as a node is.
 type guarded struct {
 	ID       string `json:"id"`
