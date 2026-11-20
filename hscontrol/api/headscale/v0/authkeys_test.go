@@ -547,9 +547,9 @@ func TestDeleteAuthKey(t *testing.T) {
 	})
 
 	t.Run("a retention of 0 keeps it for ever", func(t *testing.T) {
-		b.Cfg.PreAuthKeys.RevokedRetention = 0
+		b.Cfg.Credentials.RevokedRetention = 0
 
-		t.Cleanup(func() { b.Cfg.PreAuthKeys.RevokedRetention = 7 * 24 * time.Hour })
+		t.Cleanup(func() { b.Cfg.Credentials.RevokedRetention = 7 * 24 * time.Hour })
 
 		require.Nil(t, getKey(t, api, auth, k.ID).Removal)
 	})

@@ -100,7 +100,7 @@ oidc:
 policy:
   mode: file
   path: /var/lib/headscale/policy.hujson
-preauth_keys:
+credentials:
   revoked_retention: 168h
 prefixes:
   allocation: sequential

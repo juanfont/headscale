@@ -360,7 +360,7 @@ func (b Backend) authKeys(ks []types.PreAuthKey, refs tsset.Set[uint64]) ([]Auth
 
 	for i := range ks {
 		k := ks[i].View()
-		a := authKeyFromView(k, refs.Contains(k.ID()), now, b.Cfg.PreAuthKeys.RevokedRetention)
+		a := authKeyFromView(k, refs.Contains(k.ID()), now, b.Cfg.Credentials.RevokedRetention)
 
 		if id, ok := keyCreator(&ks[i]); ok {
 			if u, ok := users[id]; ok {

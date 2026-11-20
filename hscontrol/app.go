@@ -366,7 +366,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 	var revokedKeyGCChan <-chan time.Time
 
-	if h.cfg.PreAuthKeys.RevokedRetention > 0 {
+	if h.cfg.Credentials.RevokedRetention > 0 {
 		revokedKeyTicker := time.NewTicker(time.Hour)
 		defer revokedKeyTicker.Stop()
 
@@ -385,7 +385,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			return
 
 		case <-revokedKeyGCChan:
-			cutoff := time.Now().Add(-h.cfg.PreAuthKeys.RevokedRetention)
+			cutoff := time.Now().Add(-h.cfg.Credentials.RevokedRetention)
 
 			reaped, err := h.state.DestroyRevokedPreAuthKeysBefore(cutoff)
 			if err != nil {

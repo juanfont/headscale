@@ -31,7 +31,7 @@ func Default() types.Config {
 				ProbeTimeout:  5 * time.Second,
 			}},
 		},
-		PreAuthKeys: types.PreAuthKeysConfig{RevokedRetention: 168 * time.Hour},
+		Credentials: types.CredentialsConfig{RevokedRetention: 168 * time.Hour},
 		DERP: types.DERPConfig{
 			Server: types.DERPServerConfig{
 				VerifyClients:                      true,
