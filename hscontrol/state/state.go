@@ -219,6 +219,10 @@ type State struct {
 	// nodeStore provides an in-memory cache for nodes.
 	nodeStore *NodeStore
 
+	// clientVersions is the newest stable Tailscale clients, nil until a
+	// list is read; see [State.UpdateAvailable].
+	clientVersions atomic.Pointer[ClientVersions]
+
 	// clientUpdates keeps one client update in flight for a node.
 	clientUpdates singleflight.Group
 

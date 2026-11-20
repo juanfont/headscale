@@ -21,8 +21,9 @@ func Default() types.Config {
 			V6:         new(netip.MustParsePrefix("fd7a:115c:a1e0::/48")),
 			Allocation: types.IPAllocationStrategySequential,
 		},
-		Policy: types.PolicyConfig{Mode: types.PolicyModeFile},
-		Log:    types.LogConfig{Level: "info", Format: types.TextLogFormat},
+		Policy:     types.PolicyConfig{Mode: types.PolicyModeFile},
+		AutoUpdate: types.AutoUpdateConfig{CheckVersions: true},
+		Log:        types.LogConfig{Level: "info", Format: types.TextLogFormat},
 		Node: types.NodeConfig{
 			Ephemeral: types.EphemeralConfig{InactivityTimeout: 30 * time.Minute},
 			Routes: types.RouteConfig{HA: types.HARouteConfig{

@@ -26,6 +26,8 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_DNS_NAMESERVERS_GLOBAL":            "127.0.0.11 1.1.1.1",
 		"HEADSCALE_NOISE_PRIVATE_KEY_PATH":            "/tmp/noise_private.key",
 		"HEADSCALE_METRICS_LISTEN_ADDR":               "0.0.0.0:9090",
+		// Tests never reach pkgs.tailscale.com.
+		"HEADSCALE_AUTO_UPDATE_CHECK_VERSIONS": "false",
 
 		// Embedded DERP is the default for test isolation.
 		// Tests should not depend on external DERP infrastructure.

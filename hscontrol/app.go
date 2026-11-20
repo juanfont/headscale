@@ -332,6 +332,10 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 		go h.refreshDERPMap(ctx)
 	}
 
+	if h.cfg.AutoUpdate.CheckVersions {
+		go h.refreshClientVersions(ctx)
+	}
+
 	var extraRecordsUpdate <-chan []tailcfg.DNSRecord
 	if h.extraRecordMan != nil {
 		extraRecordsUpdate = h.extraRecordMan.UpdateCh()
@@ -434,6 +438,34 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 		case <-haHealthChan:
 			haProber.ProbeOnce(ctx, h.Change)
+		}
+	}
+}
+
+// clientVersionsInterval is how often the newest Tailscale clients are read.
+const clientVersionsInterval = 6 * time.Hour
+
+// refreshClientVersions reads the newest stable Tailscale clients now and
+// every clientVersionsInterval until ctx ends. A failed read keeps the last
+// list.
+func (h *Headscale) refreshClientVersions(ctx context.Context) {
+	client := &http.Client{Timeout: time.Minute}
+
+	ticker := time.NewTicker(clientVersionsInterval)
+	defer ticker.Stop()
+
+	for {
+		v, err := state.FetchClientVersions(ctx, client, state.ClientVersionsURL)
+		if err != nil {
+			log.Warn().Err(err).Msg("reading the newest Tailscale client versions")
+		} else {
+			h.state.SetClientVersions(v)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 		}
 	}
 }

@@ -33,6 +33,7 @@ func newBackend(tb testing.TB) Backend {
 	cfg.Database.Type = types.DatabaseSqlite
 	cfg.Database.Sqlite.Path = tb.TempDir() + "/headscale.db"
 	cfg.Policy.Mode = types.PolicyModeDB
+	cfg.AutoUpdate.CheckVersions = false
 
 	st, err := state.NewState(&cfg)
 	require.NoError(tb, err)

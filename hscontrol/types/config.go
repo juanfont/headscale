@@ -879,6 +879,15 @@ type AutoUpdateConfig struct {
 	// chosen locally. Clients store the default they first see, so a
 	// later change reaches only new clients.
 	Enabled bool `koanf:"enabled"`
+
+	// CheckVersions reads the newest stable Tailscale client from
+	// https://pkgs.tailscale.com/stable/?mode=json at start and every six
+	// hours, for the `updateAvailable` of a node in the API. Set it to false
+	// for a server that must not call out, or that cannot reach the
+	// internet; `updateAvailable` is then always false.
+	// `disable_check_updates` is about Headscale's own version and does not
+	// change it.
+	CheckVersions bool `koanf:"check_versions"`
 }
 
 // CLIConfig is how the headscale CLI reaches the server: the local
