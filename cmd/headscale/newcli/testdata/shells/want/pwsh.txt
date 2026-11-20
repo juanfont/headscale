@@ -1,5 +1,5 @@
 LINE: headscale |
-  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [users       (Manage users)] [version     (Print the version)]
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [nodes       (Manage nodes)] [users       (Manage users)] [version     (Print the version)]
 LINE: headscale ve|
   [version ]
 LINE: headscale api |
@@ -43,11 +43,11 @@ LINE: headscale -o json -c x debug health --|
 LINE: headscale version -o json --|
   [--config  (Config file)] [--help    (Show this help)]
 LINE: headscale -c -o |
-  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [users       (Manage users)] [version     (Print the version)]
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [nodes       (Manage nodes)] [users       (Manage users)] [version     (Print the version)]
 LINE: headscale -c x ve|
   [version ]
 LINE: headscale nodez |
-  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [users       (Manage users)] [version     (Print the version)]
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [nodes       (Manage nodes)] [users       (Manage users)] [version     (Print the version)]
 LINE: headscale versoin --|
   [--config   (Config file)] [--help     (Show this help)] [--output   (Output format: json (the API object))] [--version  (Print the version line)]
 LINE: headscale version --bogus --|
@@ -71,4 +71,66 @@ LINE: headscale users set alice --|
 LINE: headscale -h ve|
   [version ]
 LINE: headscale --version |
-  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [users       (Manage users)] [version     (Print the version)]
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [nodes       (Manage nodes)] [users       (Manage users)] [version     (Print the version)]
+LINE: headscale no|
+  [nodes ]
+LINE: headscale nodes |
+  [delete         (Delete a node)] [expire         (Log a node out)] [get            (Show one node)] [list           (List the nodes)] [routes         (Manage the routes of a node)] [set            (Change the name or expiry of a node)] [tags           (Manage the tags of a node)] [update-client  (Ask a node to update its Tailscale client)]
+LINE: headscale nodes routes ap|
+  [approve ]
+LINE: headscale -c x no|
+  [nodes ]
+LINE: headscale nodes list --|
+  [--columns       (Columns to show: a list, or +name and -name to change the default)] [--config        (Config file)] [--filter        (Keep the rows that match; may be repeated)] [--help          (Show this help)] [--list-columns  (List the columns, the API field behind each, and exit)] [--output        (Output format: json (the API object))] [--sort          (Column to sort by; -name sorts in reverse)]
+LINE: headscale nodes list -o |
+  [json ]
+LINE: headscale nodes list --columns |
+  [advertised-routes] [auth-key         ] [created          ] [disco-key        ] [enabled-routes   ] [ephemeral        ] [expiry           ] [hostname         ] [id               ] [ip               ] [last-seen        ] [machine-key      ] [name             ] [node-key         ] [online           ] [os               ] [owner            ] [problems         ] [public-ip        ] [register-method  ] [serving-routes   ] [update-available ] [version          ]
+LINE: headscale nodes list --columns id,na|
+  [id`,name]
+LINE: headscale nodes list --columns=id,na|
+  [--columns=id`,name]
+LINE: headscale nodes list --columns id,|
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes list --sort la|
+  [last-seen ]
+LINE: headscale nodes list --sort -la|
+  [-last-seen ]
+LINE: headscale nodes list --filter=ow|
+  [--filter=owner]
+LINE: headscale nodes list |
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes delete |
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes rm --f|
+  [--force ]
+LINE: headscale nodes list -o=|
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes list --config |
+  [./config.yaml] [./policy.hujson]
+LINE: headscale nodes list --config=|
+  (none)
+LINE: headscale nodes set 12 --name |
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes routes |
+  [clear  (Remove all enabled routes of a node)] [list   (List routes)] [set    (Replace the enabled routes of a node)]
+LINE: headscale nodes list --s|
+  [--sort ]
+LINE: headscale nodes list -|
+  [--columns       (Columns to show: a list, or +name and -name to change the default)] [--config        (Config file)] [--filter        (Keep the rows that match; may be repeated)] [--help          (Show this help)] [--list-columns  (List the columns, the API field behind each, and exit)] [--output        (Output format: json (the API object))] [--sort          (Column to sort by; -name sorts in reverse)]
+LINE: headscale nodes list -c|
+  [-c ]
+LINE: headscale nodes list --bogus --l|
+  [--list-columns ]
+LINE: headscale nodes list --sort id --s|
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes list --filter id --f|
+  [--filter ]
+LINE: headscale nodes delete o |
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes routes set 12 -- --|
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes list --filter -ow|
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale nodes list --columns id,-ho|
+  [id`,-hostname]

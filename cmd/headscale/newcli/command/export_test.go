@@ -5,14 +5,23 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/cmdline"
+	"github.com/stretchr/testify/require"
 )
 
 // KitModel is the kit's tree of twelve commands, built with this builder:
-// a kit row that names a command the real tree lacks waits for it.
-func KitModel(tb testing.TB) *Tree {
+// a kit row that names a command the real tree lacks waits for it. Its
+// nodes list is the one of hs, so the kit's rows on columns run on
+// Headscale's own columns.
+func KitModel(tb testing.TB, hs *Tree) *Tree {
 	tb.Helper()
 
-	return corpusTree(tb, "")
+	list := hs.leaves["nodes list"]
+	require.NotNil(tb, list, "Headscale has no nodes list")
+
+	t, err := build("headscale", "Headscale control server", corpusAliases(), nil, kitTree(list)...)
+	require.NoError(tb, err)
+
+	return t
 }
 
 // Outcome is what the builder makes of argv, as the kit compares it.

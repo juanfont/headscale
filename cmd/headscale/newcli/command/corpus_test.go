@@ -52,8 +52,9 @@ type (
 	works      struct{}
 )
 
-// nodeRow is a node as the kit's nodes list shows it, with 001's columns,
-// so its list flags are the builder's.
+// nodeRow is a node as the corpus's nodes list shows it: a stand-in for
+// the corpus and the fuzz targets, which cannot import Headscale's tree.
+// The kit runs on Headscale's own nodes list (KitModel).
 type nodeRow struct {
 	ID        string         `json:"id"`
 	Name      string         `json:"name"`
@@ -211,15 +212,15 @@ func group(name, short string, nodes ...Node) Group {
 	return Group{Name: name, Short: short, Commands: nodes}
 }
 
-// testTrees are the trees of the corpus by name; "" is the kit's tree.
-var testTrees = map[string][]Node{
-	"": {
+// kitTree is the kit's tree of twelve commands, with the nodes list given.
+func kitTree(nodesList Node) []Node {
+	return []Node{
 		cmd[NoInput]("serve", "Run the control server", false, true),
 		cmd[NoInput]("version", "Print the version", true, true),
 		group("check", "Check files", cmd[checkConfigIn]("config", "Check a config file", false, true)),
 		cmd[completionIn]("completion", "Print a shell completion script", false, false),
 		group("nodes", "Manage nodes",
-			list[NoInput]("list", "List the nodes", nodeColumns, "ls"),
+			nodesList,
 			asking[nodesDeleteIn]("delete", "Delete a node", "rm"),
 			cmd[nodesSetIn]("set", "Change the name or expiry of a node", true, true),
 			group("routes", "Manage the routes of a node",
@@ -229,7 +230,13 @@ var testTrees = map[string][]Node{
 		group("auth", "Manage auth keys", group("keys", "Manage auth keys", cmd[authKeysCreateIn]("create", "Create an auth key", true, true))),
 		group("api", "Manage API access", group("keys", "Manage API keys", cmd[apiKeysCreateIn]("create", "Create an API key", true, true))),
 		group("policy", "Manage the policy", asking[policySetIn]("set", "Replace the policy")),
-	},
+	}
+}
+
+// testTrees are the trees of the corpus by name; "" is the kit's tree with
+// the stand-in nodes list.
+var testTrees = map[string][]Node{
+	"": kitTree(list[NoInput]("list", "List the nodes", nodeColumns, "ls")),
 	"pf": {
 		cmd[pfIn]("run", "Run", true, true, "r", "go"),
 		group("grp", "A group",
@@ -242,11 +249,14 @@ var testTrees = map[string][]Node{
 	"others": {cmd[othersIn]("test", "Test", false, false)},
 }
 
+// corpusAliases are the aliases the trees of the corpus may use.
+func corpusAliases() []string { return []string{"ls", "rm", "approve", "r", "go", "s", "sub2"} }
+
 // corpusTree builds a tree of the corpus.
 func corpusTree(tb testing.TB, name string) *Tree {
 	tb.Helper()
 
-	t, err := build("headscale", "Headscale control server", []string{"ls", "rm", "approve", "r", "go", "s", "sub2"}, nil, testTrees[name]...)
+	t, err := build("headscale", "Headscale control server", corpusAliases(), nil, testTrees[name]...)
 	require.NoError(tb, err)
 
 	return t
