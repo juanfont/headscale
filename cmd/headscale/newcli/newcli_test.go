@@ -506,6 +506,7 @@ func TestUntested(t *testing.T) {
 			command.New(command.Spec[command.NoInput, command.NoOutput]{
 				Name: "delete", Short: "Delete", Long: "Delete.", Local: true, Aliases: []string{"rm"},
 				Example: []string{"headscale items delete"},
+				Confirm: func(command.Ctx, command.NoInput) (command.Prompt, error) { return command.Prompt{}, nil },
 				Run:     func(command.Ctx, command.NoInput) (command.NoOutput, error) { return command.NoOutput{}, nil },
 			}),
 		}})

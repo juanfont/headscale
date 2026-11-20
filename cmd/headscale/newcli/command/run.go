@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
 	"github.com/juanfont/headscale/cmdline"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
 )
@@ -51,8 +53,14 @@ func Run(t *Tree, argv []string, env Env) int {
 	}
 
 	err := t.run(argv, env)
-	if err == nil {
+
+	switch {
+	case err == nil:
 		return 0
+	case errors.Is(err, errAborted):
+		fmt.Fprintln(env.Stderr, "Aborted.")
+
+		return 1
 	}
 
 	fmt.Fprintf(env.Stderr, "Error: %s\n", sentence(err))
@@ -113,6 +121,11 @@ func (t *Tree) run(argv []string, env Env) error {
 	own, _ := cmdline.Get[ownOutputFlags](line)
 	file, _ := cmdline.Get[configFlags](line)
 
+	stdin := env.Stdin
+	if stdin == nil {
+		stdin = strings.NewReader("")
+	}
+
 	c := &Ctx{
 		Context:    context.Background(),
 		ConfigFile: cmp.Or(string(file.Config), getenv(env.Environ, "HEADSCALE_CONFIG")),
@@ -122,6 +135,10 @@ func (t *Tree) run(argv []string, env Env) error {
 		Environ:    env.Environ,
 		terminal:   env.Terminal,
 		screen:     env.StdoutTerminal,
+		width:      env.Width,
+		colour:     env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
+		answers:    bufio.NewReader(stdin),
+		entities:   t.entities,
 		line:       line,
 		json:       output.Output != "" || own.Output != "",
 		now:        env.Now,
@@ -314,7 +331,7 @@ func jsonOf(c Ctx, v any) (json.RawMessage, error) {
 
 // printOne prints the result of a Spec: JSON as the server sent it, the
 // Done text, or a sheet.
-func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], done func() string) error {
+func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], blocks table.Blocks[Out], done func() string) error {
 	if reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]() {
 		if c.json {
 			return nil
@@ -336,7 +353,7 @@ func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], done func() stri
 		return writeText(c.stdout, text)
 	}
 
-	return table.Sheet(c.stdout, out, cols, nil, c.Now())
+	return table.Sheet(c.stdout, out, cols, blocks, c.Now())
 }
 
 // printList prints the rows of a ListSpec: the array of their bodies as
@@ -357,11 +374,111 @@ func printList[Row any](c Ctx, rows []Row, cols table.Columns[Row], noRows strin
 	switch {
 	case !c.json && len(rows) == 0 && c.screen:
 		return writeText(c.stdout, noRows)
+	case !c.json && c.screen:
+		return table.Render(c.stdout, rows, cols, c.Now(), &table.Screen{Width: c.width, Colour: c.colour})
 	case !c.json:
 		return table.Render(c.stdout, rows, cols, c.Now(), nil)
 	}
 
 	return writeJSON(c.stdout, append(append([]byte("["), bytes.Join(raws, []byte(","))...), ']'))
+}
+
+// errAborted is a question answered no: not done, and no error to explain.
+var errAborted = errors.New("aborted")
+
+// confirm asks p on stderr, after the line before when it is not "",
+// unless it asks nothing or --force answers it. Only y or yes goes on; with
+// no terminal to answer, nothing does. asked is a question that was shown.
+func (c Ctx) confirm(p Prompt, before string) (bool, error) {
+	force, _ := cmdline.Get[forceFlags](c.line)
+	if p.Question == "" || force.Force {
+		return false, nil
+	}
+
+	if !c.terminal {
+		return false, fmt.Errorf("confirmation needed, but there is no terminal.\nRun again with --force to %s.", p.Action) //nolint:err113,staticcheck // a sentence of the CLI
+	}
+
+	if before != "" {
+		_, _ = io.WriteString(c.stderr, before+"\n")
+	}
+
+	_, _ = io.WriteString(c.stderr, p.Question+" [y/N] ")
+
+	reply, _ := c.answers.ReadString('\n')
+	if r := strings.ToLower(strings.TrimSpace(reply)); r == "y" || r == "yes" {
+		return true, nil
+	}
+
+	return true, errAborted
+}
+
+// changed is a write the server refused because its target changed after
+// the CLI read it.
+func changed(err error) bool {
+	p, ok := errors.AsType[*ProblemError](err)
+
+	return ok && p.Problem.Code == clientv0.PreconditionFailed
+}
+
+// reread is in with its target read again by its ID: what a write runs on
+// after the server refused it because the target changed. ok is false
+// when the target's type has no read.
+func reread[In any](c Ctx, in In) (In, bool, error) {
+	e, ok := target(reflect.ValueOf(&in).Elem())
+	if !ok {
+		return in, false, nil
+	}
+
+	read := c.entities[e.Type()].read
+	if read == nil {
+		return in, false, nil
+	}
+
+	got, err := read(c, jsonText(e, "id"))
+	if err != nil {
+		return in, true, err
+	}
+
+	e.Set(reflect.ValueOf(got))
+
+	return in, true, nil
+}
+
+// named is the target of in as a message names it; "" for none.
+func (c Ctx) named(in any) string {
+	o, ok := c.object(in)
+	if !ok {
+		return ""
+	}
+
+	return table.Entity(string(o.Kind), o.Id, o.Name)
+}
+
+// object is the target of in as a problem names an object.
+func (c Ctx) object(in any) (clientv0.ProblemObject, bool) {
+	e, ok := target(reflect.ValueOf(in))
+	if !ok {
+		return clientv0.ProblemObject{}, false
+	}
+
+	ent, ok := c.entities[e.Type()]
+	if !ok {
+		return clientv0.ProblemObject{}, false
+	}
+
+	return clientv0.ProblemObject{Kind: clientv0.ProblemObjectKind(ent.kind), Id: jsonText(e, "id"), Name: ent.name(e.Interface())}, true
+}
+
+// about gives a problem of the server what the command knows of it: the
+// target as the command read it.
+func (c Ctx) about(err error, in any) error {
+	p, ok := errors.AsType[*ProblemError](err)
+	if ok {
+		p.target, _ = c.object(in)
+	}
+
+	return err
 }
 
 // kept are what the last filter on stderr and the Done text keeps: the

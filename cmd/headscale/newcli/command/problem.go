@@ -20,6 +20,10 @@ import (
 // table.Visible, so it cannot end the line and forge the next.
 type ProblemError struct {
 	Problem clientv0.Problem
+
+	// target is the command's target as it read it, for the sentences
+	// that the problem alone cannot write.
+	target clientv0.ProblemObject
 }
 
 func problemOf(status int, body []byte) error {
@@ -44,7 +48,7 @@ func (e *ProblemError) Error() string {
 	case clientv0.NotFound:
 		o, err := p.Object.Get()
 		if err == nil {
-			return table.Entity(string(o.Kind), o.Id, o.Name) + " no longer exists."
+			return e.entity(o) + " no longer exists."
 		}
 	case clientv0.NameTaken:
 		if s, ok := taken(p, "name"); ok {
@@ -54,7 +58,7 @@ func (e *ProblemError) Error() string {
 		if s, ok := taken(p, "email"); ok {
 			return s
 		}
-	case preconditionFailed:
+	case clientv0.PreconditionFailed:
 		o, err := p.Object.Get()
 		if err == nil {
 			return table.Entity(string(o.Kind), o.Id, o.Name) + " changed while the command ran. Run it again."
@@ -84,6 +88,17 @@ func (e *ProblemError) Error() string {
 
 	// A code this build does not know.
 	return table.Visible(p.Title, "") + " (" + table.Visible(string(p.Code), "") + ")."
+}
+
+// entity names o as messages do. The server names no object that is gone,
+// so an object with no name that is the command's target has the name the
+// command read.
+func (e *ProblemError) entity(o clientv0.ProblemObject) string {
+	if o.Name == "" && o.Kind == e.target.Kind && o.Id == e.target.Id {
+		o.Name = e.target.Name
+	}
+
+	return table.Entity(string(o.Kind), o.Id, o.Name)
 }
 
 // flagsOf names, in each entry of an invalid_field problem, the flag or the
@@ -134,11 +149,6 @@ func flagsOf[In any](err error) error {
 	return err
 }
 
-// preconditionFailed is a write whose If-Match no longer matches: the
-// target changed after the CLI read it. v0 has no write that takes
-// If-Match yet, so the code is not in the client.
-const preconditionFailed clientv0.ProblemCode = "precondition_failed"
-
 // forbidden names what the credential lacks, when the problem says it.
 func forbidden(details map[string]any) string {
 	var scopes []string
@@ -154,8 +164,8 @@ func forbidden(details map[string]any) string {
 	switch {
 	case len(scopes) > 0:
 		return "\nIt lacks the scope " + strings.Join(scopes, ", ") + "."
-	case tokenRules[rule] != "":
-		return "\n" + tokenRules[rule]
+	case tokenRule(rule) != "":
+		return "\n" + tokenRule(rule)
 	case rule != "":
 		return "\nA token rule refuses it: " + table.Visible(rule, "") + "."
 	}
@@ -163,10 +173,15 @@ func forbidden(details map[string]any) string {
 	return ""
 }
 
-// tokenRules are the sentences of the token rules the server names in
-// forbidden's details.rule; a rule this build does not know prints its word.
-var tokenRules = map[string]string{ //nolint:gosec // rule words and sentences, not credentials
-	"token_cannot_change_user_name_or_email": "An OAuth access token cannot change the name or the email of a user; an API key can.",
+// tokenRule is the sentence of a token rule the server names in
+// forbidden's details.rule; "" for a rule this build does not know, which
+// prints its word.
+func tokenRule(rule string) string {
+	if rule == "token_cannot_change_user_name_or_email" {
+		return "An OAuth access token cannot change the name or the email of a user; an API key can."
+	}
+
+	return ""
 }
 
 // taken is the sentence of name_taken or email_taken, whose details hold

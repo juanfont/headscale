@@ -11,15 +11,18 @@
 package command
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"net/http"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
 	"github.com/juanfont/headscale/cmdline"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"golang.org/x/term"
 )
 
 // Spec is a command that gives back one object, or [NoOutput].
@@ -51,8 +54,14 @@ type Spec[In, Out any] struct {
 	// a set: a line that gives none of them is refused before any call.
 	NeedsChange bool
 
-	// Columns show Out as a sheet.
+	// Columns show Out as a sheet; Blocks follow its lines.
 	Columns table.Columns[Out]
+	Blocks  table.Blocks[Out]
+	// Confirm is the question asked before Run, for a command whose change
+	// cannot be undone; a Prompt with no Question asks nothing this time. A
+	// command with Confirm takes --force, which answers yes. It runs again
+	// after a refused write, on the target as it is then.
+	Confirm func(c Ctx, in In) (Prompt, error)
 	// Run is the one function that does the work.
 	Run func(c Ctx, in In) (Out, error)
 	// Done is the text printed in place of Out, when not -o json. now is
@@ -78,6 +87,14 @@ type ListSpec[In, Row any] struct {
 	// NoRows is what a terminal shows when no row is left: "No users.".
 	NoRows string
 	Run    func(c Ctx, in In) ([]Row, error)
+}
+
+// Prompt is what a command asks: the Question, to which the builder adds
+// " [y/N]", and the Action that --force would take, for the error when no
+// terminal can answer: "delete Node 12 (mynode)".
+type Prompt struct {
+	Question string
+	Action   string
 }
 
 // NoInput is the input of a command that takes nothing.
@@ -113,8 +130,16 @@ type Ctx struct {
 	stdout   io.Writer
 	stderr   io.Writer
 	terminal bool
-	// screen is a stdout that is a terminal.
+	// screen is a stdout that is a terminal; width is its width in cells,
+	// 0 when unknown, and colour whether a table is drawn in colour.
 	screen bool
+	width  int
+	colour bool
+	// answers reads the replies to prompts from stdin.
+	answers *bufio.Reader
+	// entities are the tree's types of target: the retry of a write the
+	// server refused because the target changed reads one again by its ID.
+	entities map[reflect.Type]entity
 	// line is the command line, for the flags the builder adds.
 	line *cmdline.Line
 
@@ -158,8 +183,11 @@ type Env struct {
 	// Terminal reports whether stdin is a terminal, which a prompt needs.
 	Terminal bool
 	// StdoutTerminal reports whether stdout is a terminal: an empty list
-	// then says so in words.
+	// then says so in words, and a table is drawn in colour, unless
+	// NO_COLOR is set, and cut to Width.
 	StdoutTerminal bool
+	// Width is the width of the terminal in cells; 0 cuts nothing.
+	Width int
 	// PageSize is the rows of one page of a list walk; 0 is 1000, the most
 	// v0 takes. A test sets it small, to walk many pages.
 	PageSize int
@@ -184,6 +212,12 @@ func OSEnv() Env {
 		return err == nil && st.Mode()&os.ModeCharDevice != 0
 	}
 
+	// No terminal, or one that cannot say, is 0, which cuts nothing.
+	width, _, err := term.GetSize(int(os.Stdout.Fd())) //nolint:gosec // a file descriptor fits an int
+	if err != nil {
+		width = 0
+	}
+
 	return Env{
 		Stdin:          os.Stdin,
 		Stdout:         os.Stdout,
@@ -191,5 +225,6 @@ func OSEnv() Env {
 		Environ:        os.Environ(),
 		Terminal:       terminal(os.Stdin),
 		StdoutTerminal: terminal(os.Stdout),
+		Width:          width,
 	}
 }

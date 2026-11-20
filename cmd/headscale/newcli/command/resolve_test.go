@@ -23,7 +23,7 @@ func TestResolve(t *testing.T) {
 	}
 
 	find2 := func(rows []clientv0.User, word string) (string, error) {
-		u, err := resolve(rows, word, "user", userCandidates,
+		u, err := resolve(rows, word, "user", userCandidates(),
 			func(u clientv0.User) string { return u.Id },
 			func(u clientv0.User) []string { return []string{u.Email, u.Name, u.ProviderId} },
 		)
@@ -32,7 +32,7 @@ func TestResolve(t *testing.T) {
 	}
 
 	find := func(word string) (string, error) {
-		u, err := resolve(users, word, "user", userCandidates,
+		u, err := resolve(users, word, "user", userCandidates(),
 			func(u clientv0.User) string { return u.Id },
 			func(u clientv0.User) []string { return []string{u.Email, u.Name, u.ProviderId} },
 		)
@@ -76,7 +76,7 @@ func TestResolve(t *testing.T) {
   14  sub-13  -      local     -`)
 
 	both := append(slices.Clone(users), clientv0.User{Id: "20", Name: "x@y.z", Email: "x@y.z"})
-	u, err := resolve(both, "x@y.z", "user", userCandidates,
+	u, err := resolve(both, "x@y.z", "user", userCandidates(),
 		func(u clientv0.User) string { return u.Id },
 		func(u clientv0.User) []string { return []string{u.Email, u.Name, u.ProviderId} },
 	)
@@ -89,7 +89,7 @@ func TestResolve(t *testing.T) {
 func TestCandidatesChecked(t *testing.T) {
 	t.Parallel()
 
-	for _, c := range candidates {
-		require.NoError(t, c.Check())
+	for _, e := range entities() {
+		require.NoError(t, e.check(), e.kind)
 	}
 }
