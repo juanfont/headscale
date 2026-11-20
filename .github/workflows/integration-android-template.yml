@@ -20,6 +20,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Free disk space
         # The emulator image unpacks to >10 GB.
         run: |
@@ -56,8 +58,10 @@ jobs:
           chmod +x /tmp/artifacts/hi
       - name: Resolve APK
         id: apk
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          case "${{ inputs.version }}" in
+          case "${VERSION}" in
             head)
               echo "url=${GITHUB_WORKSPACE}/tailscale-debug.apk" >> "$GITHUB_OUTPUT"
               exit 0 ;;
@@ -71,7 +75,7 @@ jobs:
           # Release APKs share a signing key, so unstable can upgrade latest.
           # The unstable APK can lag a stable patch, and Android refuses
           # downgrades, so only upgrade from a strictly older stable.
-          if [ "${{ inputs.version }}" = unstable ]; then
+          if [ "${VERSION}" = unstable ]; then
             from=$(apk stable)
             if printf '%s\n' "${from}" "${file}" | sort -VCu; then
               echo "upgrade_from=https://pkgs.tailscale.com/stable/${from}" >> "$GITHUB_OUTPUT"
