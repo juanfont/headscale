@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/scope"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	tsset "tailscale.com/util/set"
 )
@@ -297,13 +298,13 @@ func (b Backend) createAuthKey(ctx context.Context, body CreateAuthKeyBody) (*cr
 		k.User = &id
 	}
 
-	stored, made, err := b.State.CreateAuthKeyIf(k, func() error {
-		p := b.tokenMayGive(ctx, want)
+	stored, made, err := b.State.CreateAuthKeyIf(k, func(pol state.TagPolicy) error {
+		p := b.tokenMayGive(ctx, pol, want)
 		if p != nil {
 			return p
 		}
 
-		p = tagsNotPermitted(b.State, want)
+		p = tagsNotPermitted(pol, want)
 		if p != nil {
 			return p
 		}

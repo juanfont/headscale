@@ -489,6 +489,7 @@ func TestSetNodeTags(t *testing.T) {
 
 		p := decodeProblem(t, putPath(`{"tags": ["tag:build"]}`, bearer), CodeForbidden)
 		require.Equal(t, "token_must_own_tags", p.Details["rule"], "a tag the token lacks, before the lookup")
+		require.Nil(t, p.Object, "a rule names no node")
 		decodeProblem(t, putPath(`{"tags": []}`, bearer), CodeTagsRequired)
 		decodeProblem(t, putPath(`{"tags": null}`, bearer), CodeInvalidField)
 		decodeProblem(t, putPath(`{"tags": ["tag:nope"]}`, auth), CodeTagsNotPermitted)

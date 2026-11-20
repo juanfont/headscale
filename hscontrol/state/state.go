@@ -240,8 +240,12 @@ type State struct {
 	polMan policy.PolicyManager
 
 	// policyMu makes storing, loading and installing a policy one step, so
-	// policies land in the database in the order they are installed.
-	policyMu sync.Mutex
+	// policies land in the database in the order they are installed: a
+	// change of the policy takes it exclusive. A check that reads the policy
+	// and the write it guards take it shared, so no policy change comes
+	// between them while checks and their writes run together. It is taken
+	// before any other lock and never while holding it shared.
+	policyMu sync.RWMutex
 
 	// authCache holds pending Web, OIDC and SSH authentication requests.
 	// Admission preserves unexpired entries at capacity. Expiry resolves the
@@ -1683,12 +1687,30 @@ func (s *State) deleteNodeRow(node types.NodeView) error {
 // Once a node is tagged, it cannot be un-tagged (only tags can be changed).
 // Setting tags clears UserID since tagged nodes are owned by their tags.
 func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, change.Change, error) {
-	return s.setNodeTags(nodeID, tags, "")
+	return s.SetNodeTagsIf(nodeID, tags, func(TagPolicy) (string, error) { return "", nil })
 }
 
-// SetNodeTagsIf is [State.SetNodeTags] when the node still has revision;
-// else it writes nothing and returns [ErrNodeRevisionChanged].
-func (s *State) SetNodeTagsIf(nodeID types.NodeID, tags []string, revision string) (types.NodeView, change.Change, error) {
+// SetNodeTagsIf is [State.SetNodeTags] when check passes, and the node still
+// has the revision check returns ("" guards nothing); else it writes nothing
+// and returns check's error or [ErrNodeRevisionChanged]. check runs with the
+// policy under the lock of every policy write, which the write holds too;
+// see [underPolicy].
+func (s *State) SetNodeTagsIf(
+	nodeID types.NodeID,
+	tags []string,
+	check func(TagPolicy) (string, error),
+) (types.NodeView, change.Change, error) {
+	// The NodeStore's writer and persistMu are taken under policyMu here, as
+	// a policy reload does; neither ever waits for policyMu. Shared, so tag
+	// writes share a batch of the writer.
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
+
+	revision, err := check(TagPolicy{s.polMan})
+	if err != nil {
+		return types.NodeView{}, change.Change{}, err
+	}
+
 	return s.setNodeTags(nodeID, tags, revision)
 }
 
@@ -2539,7 +2561,7 @@ func (s *State) CreatePreAuthKey(userID *types.UserID, reusable bool, ephemeral 
 
 // CreateAuthKeyIf makes the key k describes when check passes, and returns
 // it as stored and once with its secret. See [underPolicy].
-func (s *State) CreateAuthKeyIf(k hsdb.NewPreAuthKey, check func() error) (*types.PreAuthKey, *types.PreAuthKeyNew, error) {
+func (s *State) CreateAuthKeyIf(k hsdb.NewPreAuthKey, check func(TagPolicy) error) (*types.PreAuthKey, *types.PreAuthKeyNew, error) {
 	type made struct {
 		stored *types.PreAuthKey
 		new    *types.PreAuthKeyNew
@@ -2556,7 +2578,7 @@ func (s *State) CreateAuthKeyIf(k hsdb.NewPreAuthKey, check func() error) (*type
 
 // CreateOAuthClientIf makes the client c describes when check passes, and
 // returns it as stored and once its secret. See [underPolicy].
-func (s *State) CreateOAuthClientIf(c hsdb.NewOAuthClient, check func() error) (*types.Credential, string, error) {
+func (s *State) CreateOAuthClientIf(c hsdb.NewOAuthClient, check func(TagPolicy) error) (*types.Credential, string, error) {
 	type made struct {
 		stored *types.Credential
 		secret string
@@ -2571,15 +2593,16 @@ func (s *State) CreateOAuthClientIf(c hsdb.NewOAuthClient, check func() error) (
 	return m.stored, m.secret, err
 }
 
-// underPolicy runs check, then write in one transaction, under the lock that
-// every policy write takes. A check that reads the policy, such as which
-// tags a token may give, then holds for the write: a policy that took a tag
-// from the caller has either not been installed yet, or the check sees it.
-func underPolicy[T any](s *State, check func() error, write func(tx *gorm.DB) (T, error)) (T, error) {
-	s.policyMu.Lock()
-	defer s.policyMu.Unlock()
+// underPolicy runs check with the policy, then write in one transaction,
+// under the lock that every policy write takes. What the check reads of the
+// policy, such as which tags a token may give, then holds for the write: a
+// policy that took a tag from the caller has either not been installed yet,
+// or the check sees it.
+func underPolicy[T any](s *State, check func(TagPolicy) error, write func(tx *gorm.DB) (T, error)) (T, error) {
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
 
-	err := check()
+	err := check(TagPolicy{s.polMan})
 	if err != nil {
 		var none T
 
@@ -2780,15 +2803,35 @@ func (s *State) AuthenticateAccessToken(token string) (*types.OAuthAccessToken, 
 	return s.db.AuthenticateAccessToken(token)
 }
 
-// TagOwnedByTags reports whether a credential holding ownerTags may apply tag,
-// per the policy's tag-to-tag ownership. Used to authorise the tags an OAuth
-// access token sets on the auth keys it mints.
-func (s *State) TagOwnedByTags(tag string, ownerTags []string) bool {
-	return s.polMan.TagOwnedByTags(tag, ownerTags)
+// TagPolicy is what a check reads of the policy. A State …If call hands it to
+// its check under the lock of every policy write, and the write follows
+// under the same lock, so the check and the write see one policy. State has
+// no other way to read it but [State.TagsOwnedByTags], which is for answers.
+//
+// It is a struct, not the policy manager, so a check cannot reach more of
+// the policy than these reads.
+type TagPolicy struct {
+	pm policy.PolicyManager
+}
+
+// TagExists reports whether tag is in the policy's tagOwners.
+func (p TagPolicy) TagExists(tag string) bool { return p.pm.TagExists(tag) }
+
+// TagOwnedByTags reports whether a credential holding ownerTags may apply
+// tag, per the policy's tag-to-tag ownership.
+func (p TagPolicy) TagOwnedByTags(tag string, ownerTags []string) bool {
+	return p.pm.TagOwnedByTags(tag, ownerTags)
+}
+
+// TagsOwnedByTags is every tag a credential holding ownerTags may apply,
+// sorted.
+func (p TagPolicy) TagsOwnedByTags(ownerTags []string) []string {
+	return p.pm.TagsOwnedByTags(ownerTags)
 }
 
 // TagsOwnedByTags returns every tag a credential holding ownerTags may apply,
-// sorted; see [State.TagOwnedByTags].
+// sorted, for an answer that shows them. A check before a write reads them
+// from the [TagPolicy] its …If call hands it.
 func (s *State) TagsOwnedByTags(ownerTags []string) []string {
 	return s.polMan.TagsOwnedByTags(ownerTags)
 }
@@ -2824,13 +2867,6 @@ func (s *State) GetUsersByIDs(ids []types.UserID) (map[types.UserID]types.UserVi
 	}
 
 	return out, nil
-}
-
-// TagExists reports whether tag is defined in the policy's tagOwners. Used to
-// reject OAuth clients and auth keys carrying tags that no policy authorises,
-// matching SetNodeTags.
-func (s *State) TagExists(tag string) bool {
-	return s.polMan.TagExists(tag)
 }
 
 // DeleteExpiredAccessTokens hard-deletes OAuth access tokens that expired before

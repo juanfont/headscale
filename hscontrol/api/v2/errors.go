@@ -125,11 +125,11 @@ func policyRefusal(err error) (string, []apiErrorData) {
 }
 
 // unownedTags returns the tags a token holding tokenTags may not apply.
-func unownedTags(b Backend, tags, tokenTags []string) []string {
+func unownedTags(pol state.TagPolicy, tags, tokenTags []string) []string {
 	var out []string
 
 	for _, tag := range tags {
-		if !b.State.TagOwnedByTags(tag, tokenTags) {
+		if !pol.TagOwnedByTags(tag, tokenTags) {
 			out = append(out, tag)
 		}
 	}
@@ -139,11 +139,11 @@ func unownedTags(b Backend, tags, tokenTags []string) []string {
 
 // undefinedTagsRefused refuses the tags no policy defines, as Tailscale does
 // for any caller (probe-A A1, probe-R).
-func undefinedTagsRefused(b Backend, tags []string) error {
+func undefinedTagsRefused(pol state.TagPolicy, tags []string) error {
 	var refused []string
 
 	for _, tag := range tags {
-		if !b.State.TagExists(tag) {
+		if !pol.TagExists(tag) {
 			refused = append(refused, tag)
 		}
 	}

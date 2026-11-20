@@ -458,58 +458,69 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 	}, nodeNotFound...), func(ctx context.Context, in *setTagsInput) (*nodeOutput, error) {
 		want := in.Body.Tags
 
-		// What the request shows comes first: the tags it names, then
-		// the node.
-		p := b.tokenMayGive(ctx, want)
-		if p != nil {
-			return nil, p
-		}
+		// Answered in the check, after the tags.
+		id, sent, idErr := nodeWrite(in.ID, in.IfMatch)
 
-		refused := tagsNotPermitted(b.State, want)
-		if refused != nil {
-			return nil, refused
-		}
+		// What the request shows comes first: the tags it names, then the
+		// node. The checks read the policy, so they run under its lock,
+		// with the write.
+		check := func(pol state.TagPolicy) (string, error) {
+			p := b.tokenMayGive(ctx, pol, want)
+			if p != nil {
+				return "", p
+			}
 
-		id, rev, err := nodeWrite(in.ID, in.IfMatch)
-		if err != nil {
-			return nil, err
-		}
+			p = tagsNotPermitted(pol, want)
+			if p != nil {
+				return "", p
+			}
 
-		if isToken(ctx) {
+			if idErr != nil || !isToken(ctx) {
+				return sent, idErr
+			}
+
 			nv, ok := b.State.GetNodeByID(id)
 			if !ok {
-				return nil, about(state.ErrNodeNotInNodeStore, ProblemObject{Kind: "node", ID: in.ID})
+				return "", about(state.ErrNodeNotInNodeStore, ProblemObject{Kind: "node", ID: in.ID})
 			}
 
 			// The rules read this node, so the write is guarded by its
 			// revision whether or not the caller sent one: a change
 			// between the check and the write is refused, not written.
-			rev, err = checkedRevision(rev, nv)
+			rev, err := checkedRevision(sent, nv)
 			if err != nil {
-				return nil, about(err, nodeObject(id, b.State))
+				return "", about(err, nodeObject(id, b.State))
 			}
 
-			p = b.tokenMayGive(ctx, nv.Tags().AsSlice())
+			p = b.tokenMayGive(ctx, pol, nv.Tags().AsSlice())
 			if p != nil {
-				return nil, p
+				return "", p
 			}
+
+			return rev, nil
 		}
 
-		nv, c, err := b.State.SetNodeTagsIf(id, want, rev)
-		if errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted) {
-			// The policy changed since the check above.
-			refused = tagsNotPermitted(b.State, want)
-			if refused != nil {
-				return nil, refused
-			}
+		// The check's errors are answered as it made them.
+		var refused error
 
+		nv, c, err := b.State.SetNodeTagsIf(id, want, func(pol state.TagPolicy) (string, error) {
+			rev, err := check(pol)
+			refused = err
+
+			return rev, err
+		})
+
+		switch {
+		case refused != nil:
+			return nil, refused
+		case errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted):
+			// Only a policy installed without the lock, as a test harness
+			// does, can drop a tag after the check.
 			p := newProblem(CodeTagsNotPermitted, "Every tag must be in tagOwners of the policy; details.tags names the others.")
 			p.Details["tags"] = want
 
 			return nil, p
-		}
-
-		if err != nil {
+		case err != nil:
 			return nil, about(err, nodeObject(id, b.State))
 		}
 
@@ -570,12 +581,12 @@ func isToken(ctx context.Context) bool {
 // lists as authorization.tags. Nil for an API key and the socket. A check
 // before a write that the policy must still allow runs under the policy's
 // lock, in the check of a State …If call.
-func (b Backend) tokenMayGive(ctx context.Context, tags []string) *Problem {
+func (b Backend) tokenMayGive(ctx context.Context, pol state.TagPolicy, tags []string) *Problem {
 	if !isToken(ctx) {
 		return nil
 	}
 
-	owned := b.State.TagsOwnedByTags(callerFrom(ctx).tags)
+	owned := pol.TagsOwnedByTags(callerFrom(ctx).tags)
 	if slices.ContainsFunc(tags, func(t string) bool { return !slices.Contains(owned, t) }) {
 		return ruleForbidden(&tokenMustOwnTags)
 	}
@@ -585,11 +596,11 @@ func (b Backend) tokenMayGive(ctx context.Context, tags []string) *Problem {
 
 // tagsNotPermitted is tags_not_permitted naming each tag of want that the
 // policy does not name, or nil when it names them all.
-func tagsNotPermitted(s *state.State, want []string) *Problem {
+func tagsNotPermitted(pol state.TagPolicy, want []string) *Problem {
 	var unknown []string
 
 	for _, t := range want {
-		if !s.TagExists(t) && !slices.Contains(unknown, t) {
+		if !pol.TagExists(t) && !slices.Contains(unknown, t) {
 			unknown = append(unknown, t)
 		}
 	}

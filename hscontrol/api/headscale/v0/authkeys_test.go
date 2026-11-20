@@ -494,7 +494,7 @@ func TestGetAuthKey(t *testing.T) {
 
 		_, _, err := b.State.UpdatePolicy([]byte(strings.Replace(authKeysPolicy, `, "tag:prod": []`, "", 1)))
 		require.NoError(t, err)
-		require.False(t, b.State.TagExists("tag:prod"))
+		require.NotContains(t, b.State.PolicyTags(), "tag:prod")
 
 		got := getKey(t, api, auth, k.ID)
 		require.Equal(t, []string{"tag:prod"}, got.Owner.Tags)

@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/scope"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 )
 
@@ -266,13 +267,13 @@ func (b Backend) createOAuthClient(ctx context.Context, body CreateOAuthClientBo
 		c.CreatedBy = new(types.UserID(*cr.credential.owner))
 	}
 
-	stored, secret, err := b.State.CreateOAuthClientIf(c, func() error {
-		p := b.tokenMayGive(ctx, want)
+	stored, secret, err := b.State.CreateOAuthClientIf(c, func(pol state.TagPolicy) error {
+		p := b.tokenMayGive(ctx, pol, want)
 		if p != nil {
 			return p
 		}
 
-		p = tagsNotPermitted(b.State, want)
+		p = tagsNotPermitted(pol, want)
 		if p != nil {
 			return p
 		}

@@ -11,10 +11,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	clientv2 "github.com/juanfont/headscale/gen/client/v2"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
@@ -956,4 +958,67 @@ func TestAPIv2RevokedAPIKey(t *testing.T) {
 	require.Equal(t, http.StatusOK, apiGet(t, baseURL+"/api/v2/tailnet/-/keys", secret))
 	require.NoError(t, app.state.RevokeAPIKey(key.ID))
 	require.Equal(t, http.StatusUnauthorized, apiGet(t, baseURL+"/api/v2/tailnet/-/keys", secret))
+}
+
+// changeOnFirstAsk runs between once, the first time a check asks whether a
+// token owns a tag: after the check read the device, before the write.
+type changeOnFirstAsk struct {
+	policy.PolicyManager
+
+	once    sync.Once
+	between func()
+}
+
+func (c *changeOnFirstAsk) TagOwnedByTags(tag string, ownerTags []string) bool {
+	c.once.Do(c.between)
+
+	return c.PolicyManager.TagOwnedByTags(tag, ownerTags)
+}
+
+// TestAPIv2SetDeviceTagsGuarded: a token's tag write of a device is guarded
+// by the device its check read. A change of the device's tags between the
+// check and the write, by a re-registration or by another tag write at the
+// same moment, refuses the write, which is checked again on the device as it
+// is now: the token never takes off a tag it does not own.
+func TestAPIv2SetDeviceTagsGuarded(t *testing.T) {
+	for name, between := range map[string]func(app *Headscale, id types.NodeID, url, admin string){
+		"a re-registration": func(app *Headscale, id types.NodeID, _, _ string) {
+			nv, ok := app.state.GetNodeByID(id)
+			require.True(t, ok)
+
+			n := nv.AsStruct()
+			n.Tags = []string{"tag:c"}
+			app.state.PutNodeInStoreForTest(*n)
+		},
+		"another tag write at the same moment": func(_ *Headscale, _ types.NodeID, url, admin string) {
+			st, body := apiPost(t, url, admin, map[string]any{"tags": []string{"tag:c"}})
+			require.Equalf(t, http.StatusOK, st, "%s", body)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			app, baseURL, admin := newOAuthTestServer(t)
+
+			node := app.state.CreateRegisteredNodeForTest(app.state.CreateUserForTest("dut"), "dut")
+			view := app.state.PutNodeInStoreForTest(*node)
+			devURL := baseURL + "/api/v2/device/" + view.StringID() + "/tags"
+
+			st, body := apiPost(t, devURL, admin, map[string]any{"tags": []string{"tag:a"}})
+			require.Equalf(t, http.StatusOK, st, "%s", body)
+
+			_, secret := createClient(t, baseURL, admin, []string{"devices:core"}, []string{"tag:a", "tag:b"})
+			tok := tokenFor(t, baseURL, secret)
+
+			app.state.WrapPolicyManagerForTest(func(pm policy.PolicyManager) policy.PolicyManager {
+				return &changeOnFirstAsk{PolicyManager: pm, between: func() { between(app, view.ID(), devURL, admin) }}
+			})
+
+			st, body = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:b"}})
+			assert.Equal(t, http.StatusBadRequest, st)
+			assert.Contains(t, string(body), "cannot remove current tags: requested tags [tag:c]")
+
+			got, ok := app.state.GetNodeByID(view.ID())
+			require.True(t, ok)
+			assert.Equal(t, []string{"tag:c"}, got.Tags().AsSlice())
+		})
+	}
 }
