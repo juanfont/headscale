@@ -1,10 +1,12 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"tailscale.com/types/key"
 )
 
 func TestCreatePreAuthKey(t *testing.T) {
@@ -163,13 +166,22 @@ func TestDestroyPreAuthKeyKeepsReferencedEphemeralKey(t *testing.T) {
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 }
 
+// createTokenKey makes a key as a token's create does.
+func createTokenKey(db *HSDatabase) (*types.PreAuthKeyNew, error) {
+	return Write(db.DB, func(tx *gorm.DB) (*types.PreAuthKeyNew, error) {
+		_, made, err := CreatePreAuthKeyFrom(tx, NewPreAuthKey{Tags: []string{"tag:ci"}, Reusable: true, ByToken: true})
+
+		return made, err
+	})
+}
+
 // TestCreateTokenPreAuthKeyIsAtomic: a key a token makes is marked in the
-// transaction that creates it, so a failed mark leaves no unmarked key.
+// insert that creates it, so no key exists without its mark.
 func TestCreateTokenPreAuthKeyIsAtomic(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	require.NoError(t, err)
 
-	pak, err := db.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	pak, err := createTokenKey(db)
 	require.NoError(t, err)
 
 	got, err := db.GetPreAuthKeyByID(pak.ID)
@@ -177,10 +189,10 @@ func TestCreateTokenPreAuthKeyIsAtomic(t *testing.T) {
 	assert.True(t, got.CreatedByToken)
 
 	require.NoError(t, db.DB.Exec(`CREATE TRIGGER refuse_mark
-		BEFORE UPDATE OF created_by_token ON credentials
+		BEFORE INSERT ON credentials WHEN NEW.created_by_token
 		BEGIN SELECT RAISE(ABORT, 'refused'); END`).Error)
 
-	_, err = db.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	_, err = createTokenKey(db)
 	require.Error(t, err)
 
 	keys, err := db.ListPreAuthKeys()
@@ -550,6 +562,164 @@ func TestClaimPreAuthKeyAfterRevoke(t *testing.T) {
 		t.Run("a removed key", func(t *testing.T) {
 			require.ErrorIs(t, claim(&types.PreAuthKey{ID: 99999}, false), ErrPreAuthKeyNotFound)
 		})
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
+}
+
+// TestListPreAuthKeysPage: a page holds the keys its filters both match,
+// in ID order, revoked ones too, and names the keys a node refers to.
+func TestListPreAuthKeysPage(t *testing.T) {
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		alice, err := db.CreateUser(types.User{Name: "alice"})
+		require.NoError(t, err)
+
+		bob, err := db.CreateUser(types.User{Name: "bob"})
+		require.NoError(t, err)
+
+		ids := make([]uint64, 0, 7)
+
+		for _, k := range []struct {
+			user *types.UserID
+			tags []string
+		}{
+			{alice.TypedID(), nil},
+			{alice.TypedID(), []string{"tag:ci"}}, // a legacy tagged key: its maker in the owner column
+			{bob.TypedID(), nil},
+			{nil, []string{"tag:ci", "tag:web"}},
+			{alice.TypedID(), nil},
+			{nil, []string{"tag:CI"}},
+			{nil, []string{"tag:cid"}},
+		} {
+			made, err := db.CreatePreAuthKey(k.user, false, false, nil, k.tags)
+			require.NoError(t, err)
+
+			ids = append(ids, made.ID)
+		}
+
+		require.NoError(t, db.RevokePreAuthKey(ids[2]))
+
+		node := types.Node{Hostname: "n", UserID: &alice.ID, AuthKeyID: &ids[4], MachineKey: key.NewMachine().Public(), NodeKey: key.NewNode().Public()}
+		require.NoError(t, db.DB.Save(&node).Error)
+
+		for _, tt := range []struct {
+			name string
+			f    PreAuthKeyFilter
+			want []uint64
+		}{
+			{"every key", PreAuthKeyFilter{}, ids},
+			{"a user's keys, not the tagged key it made", PreAuthKeyFilter{User: *alice.TypedID()}, []uint64{ids[0], ids[4]}},
+			{"a revoked key", PreAuthKeyFilter{User: *bob.TypedID()}, []uint64{ids[2]}},
+			{"a tag, exactly", PreAuthKeyFilter{Tag: "tag:ci"}, []uint64{ids[1], ids[3]}},
+			{"both must match", PreAuthKeyFilter{User: *alice.TypedID(), Tag: "tag:ci"}, nil},
+			{"an unknown user", PreAuthKeyFilter{User: 99999}, nil},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				var (
+					got   []uint64
+					after uint64
+				)
+
+				for {
+					page, refs, err := db.ListPreAuthKeysPage(t.Context(), after, 1, tt.f)
+					require.NoError(t, err)
+
+					for _, k := range page {
+						got = append(got, k.ID)
+						require.Equal(t, k.ID == ids[4], refs.Contains(k.ID))
+					}
+
+					if len(page) < 1 {
+						break
+					}
+
+					after = page[len(page)-1].ID
+				}
+
+				require.Equal(t, tt.want, got)
+			})
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, _, err = db.ListPreAuthKeysPage(ctx, 0, 2, PreAuthKeyFilter{})
+		require.ErrorIs(t, err, context.Canceled, "the list ends with its request")
+
+		k, referenced, err := db.GetPreAuthKeyWithReference(ids[4])
+		require.NoError(t, err)
+		require.True(t, referenced)
+		require.Equal(t, ids[4], k.ID)
+
+		_, _, err = db.GetPreAuthKeyWithReference(99999)
+		require.ErrorIs(t, err, ErrPreAuthKeyNotFound)
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
+}
+
+// TestListPreAuthKeysPageQueries: what a page costs does not grow with how
+// few keys its filter matches. A filter that matches none of many keys is
+// one query; rows the SQL selects and Go drops are read in batches that
+// grow, whatever the page size.
+func TestListPreAuthKeysPageQueries(t *testing.T) {
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		user, err := db.CreateUser(types.User{Name: "many"})
+		require.NoError(t, err)
+
+		const keys = 3000
+
+		creds := make([]types.Credential, keys)
+		for i := range creds {
+			creds[i] = types.Credential{
+				Kind: types.CredentialPreAuthKey, Identifier: fmt.Sprintf("many-%d", i), Hash: []byte("$x"),
+				UserID: &user.ID, Tags: []string{"tag:other"},
+			}
+		}
+
+		require.NoError(t, db.DB.CreateInBatches(creds, 500).Error)
+
+		var queries atomic.Int64
+
+		require.NoError(t, db.DB.Callback().Query().Before("gorm:query").Register("test:count", func(tx *gorm.DB) {
+			if tx.Statement.Table == "credentials" {
+				queries.Add(1)
+			}
+		}))
+
+		for _, f := range []PreAuthKeyFilter{{Tag: "tag:none"}, {User: *user.TypedID()}, {User: 99999}} {
+			queries.Store(0)
+
+			page, _, err := db.ListPreAuthKeysPage(t.Context(), 0, 2, f)
+			require.NoError(t, err)
+			require.Empty(t, page)
+			require.LessOrEqual(t, queries.Load(), int64(1), "%+v", f)
+		}
+
+		queries.Store(0)
+
+		kept, err := Read(db.DB, func(rx *gorm.DB) ([]types.Credential, error) {
+			return pageCredentials(rx, types.CredentialPreAuthKey, 0, 2,
+				func(rx *gorm.DB) *gorm.DB { return rx },
+				func(*types.Credential) bool { return false })
+		})
+		require.NoError(t, err)
+		require.Empty(t, kept)
+		require.LessOrEqual(t, queries.Load(), int64(15), "a walk of %d rows the SQL selects and Go drops", keys)
 	}
 
 	t.Run("sqlite", func(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -419,26 +420,34 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 
 	var userID *types.UserID
 
+	// checkTags reads the policy; it runs under the lock of every policy
+	// write, so the key is stored under the policy that allowed it.
+	checkTags := func() error { return nil }
+
 	switch {
 	case len(create.Tags) > 0:
 		// Every tag must be defined in policy, also for an admin key (probe-A
 		// A1). A key minted by an OAuth token may only carry tags within the
 		// token's grant (held directly, or owned by a held tag), matching
 		// SetNodeTags. An admin key records its user as the key's creator.
-		err = undefinedTagsRefused(b, create.Tags)
-		if err != nil {
-			return nil, err
+		checkTags = func() error {
+			err := undefinedTagsRefused(b, create.Tags)
+			if err != nil {
+				return err
+			}
+
+			if isOAuth {
+				if refused := unownedTags(b, create.Tags, tokenTags); len(refused) > 0 {
+					return tagsRefused("", refused)
+				}
+			}
+
+			return nil
 		}
 
 		if !isOAuth {
 			if uid, ok := ownerUser(ctx); ok {
 				userID = &uid
-			}
-		}
-
-		if isOAuth {
-			if refused := unownedTags(b, create.Tags, tokenTags); len(refused) > 0 {
-				return nil, tagsRefused("", refused)
 			}
 		}
 
@@ -460,27 +469,34 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 
 	expiration := time.Now().Add(expiryDuration(body.ExpirySeconds))
 
-	createKey := b.State.CreatePreAuthKey
-	if isOAuth {
-		createKey = b.State.CreateTokenPreAuthKey
+	k := db.NewPreAuthKey{
+		User:        userID,
+		Tags:        create.Tags,
+		Reusable:    create.Reusable,
+		Ephemeral:   create.Ephemeral,
+		Expiration:  &expiration,
+		Description: body.Description,
+		ByToken:     isOAuth,
 	}
 
-	pak, err := createKey(
-		userID,
-		create.Reusable,
-		create.Ephemeral,
-		&expiration,
-		create.Tags,
-	)
-	if err != nil {
+	// The maker, for /api/headscale/v0's createdBy; no answer here shows it.
+	if uid, ok := ownerUser(ctx); ok && !isOAuth {
+		k.CreatedBy = &uid
+	}
+
+	var refused error
+
+	_, pak, err := b.State.CreateAuthKeyIf(k, func() error {
+		refused = checkTags()
+
+		return refused
+	})
+
+	switch {
+	case refused != nil:
+		return nil, refused
+	case err != nil:
 		return nil, mapError("creating auth key", err)
-	}
-
-	if body.Description != "" {
-		err := b.State.SetPreAuthKeyDescription(pak.ID, body.Description)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("setting auth key description", err)
-		}
 	}
 
 	return &keyOutput{Body: keyFromNew(pak, body)}, nil

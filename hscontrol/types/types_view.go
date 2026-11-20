@@ -458,6 +458,13 @@ func (v PreAuthKeyView) Tags() views.Slice[string] { return views.SliceOf(v.ж.T
 
 // CreatedByToken is set when an OAuth access token made the key.
 func (v PreAuthKeyView) CreatedByToken() bool { return v.ж.CreatedByToken }
+
+// CreatedByUserID is the user who owns the credential that made the key;
+// see [Credential.CreatedByUserID].
+func (v PreAuthKeyView) CreatedByUserID() views.ValuePointer[uint] {
+	return views.ValuePointerOf(v.ж.CreatedByUserID)
+}
+
 func (v PreAuthKeyView) CreatedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.CreatedAt)
 }
@@ -475,20 +482,21 @@ func (v PreAuthKeyView) Revoked() views.ValuePointer[time.Time] {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _PreAuthKeyViewNeedsRegeneration = PreAuthKey(struct {
-	ID             uint64
-	Prefix         string
-	Hash           []byte
-	UserID         *uint
-	User           *User
-	Description    string
-	Reusable       bool
-	Ephemeral      bool
-	Used           bool
-	Tags           []string
-	CreatedByToken bool
-	CreatedAt      *time.Time
-	Expiration     *time.Time
-	Revoked        *time.Time
+	ID              uint64
+	Prefix          string
+	Hash            []byte
+	UserID          *uint
+	User            *User
+	Description     string
+	Reusable        bool
+	Ephemeral       bool
+	Used            bool
+	Tags            []string
+	CreatedByToken  bool
+	CreatedByUserID *uint
+	CreatedAt       *time.Time
+	Expiration      *time.Time
+	Revoked         *time.Time
 }{})
 
 // View returns a read-only view of Credential.

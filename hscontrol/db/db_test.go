@@ -740,7 +740,7 @@ func TestSQLiteMigrationAddsCreatedByToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, got.CreatedByToken)
 
-	made, err := hsdb.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	made, err := createTokenKey(hsdb)
 	require.NoError(t, err)
 	got, err = hsdb.GetPreAuthKeyByID(made.ID)
 	require.NoError(t, err)

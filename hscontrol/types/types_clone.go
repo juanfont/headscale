@@ -140,6 +140,9 @@ func (src *PreAuthKey) Clone() *PreAuthKey {
 		dst.User = new(*src.User)
 	}
 	dst.Tags = append(src.Tags[:0:0], src.Tags...)
+	if dst.CreatedByUserID != nil {
+		dst.CreatedByUserID = new(*src.CreatedByUserID)
+	}
 	if dst.CreatedAt != nil {
 		dst.CreatedAt = new(*src.CreatedAt)
 	}
@@ -154,20 +157,21 @@ func (src *PreAuthKey) Clone() *PreAuthKey {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _PreAuthKeyCloneNeedsRegeneration = PreAuthKey(struct {
-	ID             uint64
-	Prefix         string
-	Hash           []byte
-	UserID         *uint
-	User           *User
-	Description    string
-	Reusable       bool
-	Ephemeral      bool
-	Used           bool
-	Tags           []string
-	CreatedByToken bool
-	CreatedAt      *time.Time
-	Expiration     *time.Time
-	Revoked        *time.Time
+	ID              uint64
+	Prefix          string
+	Hash            []byte
+	UserID          *uint
+	User            *User
+	Description     string
+	Reusable        bool
+	Ephemeral       bool
+	Used            bool
+	Tags            []string
+	CreatedByToken  bool
+	CreatedByUserID *uint
+	CreatedAt       *time.Time
+	Expiration      *time.Time
+	Revoked         *time.Time
 }{})
 
 // Clone makes a deep copy of Credential.

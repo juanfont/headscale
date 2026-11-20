@@ -2531,9 +2531,47 @@ func (s *State) CreatePreAuthKey(userID *types.UserID, reusable bool, ephemeral 
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
 }
 
-// CreateTokenPreAuthKey creates a key an OAuth access token makes.
-func (s *State) CreateTokenPreAuthKey(userID *types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKeyNew, error) {
-	return s.db.CreateTokenPreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
+// CreateAuthKeyIf makes the key k describes when check passes, and returns
+// it as stored and once with its secret. check runs under the lock that
+// every policy write takes, so a key is stored under the policy check read:
+// a policy that took a tag from the caller has either not been installed
+// yet, or the check already sees it.
+func (s *State) CreateAuthKeyIf(k hsdb.NewPreAuthKey, check func() error) (*types.PreAuthKey, *types.PreAuthKeyNew, error) {
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+
+	err := check()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var stored *types.PreAuthKey
+
+	made, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.PreAuthKeyNew, error) {
+		var (
+			made *types.PreAuthKeyNew
+			err  error
+		)
+
+		stored, made, err = hsdb.CreatePreAuthKeyFrom(tx, k)
+
+		return made, err
+	})
+
+	return stored, made, err
+}
+
+// ListAuthKeysPage is up to limit auth keys with an ID above after, in ID
+// order, revoked ones too, that f matches; and the IDs among them that a
+// node refers to. See [hsdb.HSDatabase.ListPreAuthKeysPage].
+func (s *State) ListAuthKeysPage(ctx context.Context, after uint64, limit int, f hsdb.PreAuthKeyFilter) ([]types.PreAuthKey, set.Set[uint64], error) {
+	return s.db.ListPreAuthKeysPage(ctx, after, limit, f)
+}
+
+// GetAuthKey is the auth key with id, revoked or not, and whether a node
+// refers to it.
+func (s *State) GetAuthKey(id uint64) (*types.PreAuthKey, bool, error) {
+	return s.db.GetPreAuthKeyWithReference(id)
 }
 
 // Test helpers for the state layer
@@ -2625,11 +2663,6 @@ func (s *State) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, error) {
 // ListPreAuthKeys returns all pre-authentication keys for a user.
 func (s *State) ListPreAuthKeys() ([]types.PreAuthKey, error) {
 	return s.db.ListPreAuthKeys()
-}
-
-// SetPreAuthKeyDescription sets the free-text description on a pre-auth key.
-func (s *State) SetPreAuthKeyDescription(id uint64, description string) error {
-	return s.db.SetPreAuthKeyDescription(id, description)
 }
 
 // ExpirePreAuthKey marks a pre-authentication key as expired.
@@ -3180,8 +3213,14 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		nodeToRegister.AuthKeyID = &params.PreAuthKey.ID
 		nodeToRegister.Ephemeral = params.PreAuthKey.Ephemeral
 		// The key's user: the owner of a user's key, the maker of a tagged
-		// one; none for a key a token made.
-		if uid := params.PreAuthKey.UserID; uid != nil {
+		// one, which the legacy APIs record as the owner and v0 apart;
+		// none for a key a token made.
+		uid := params.PreAuthKey.UserID
+		if uid == nil {
+			uid = params.PreAuthKey.CreatedByUserID
+		}
+
+		if uid != nil {
 			nodeToRegister.CreatedByUserID = new(*uid)
 		}
 	} else {

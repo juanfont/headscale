@@ -2253,9 +2253,13 @@ func TestRegistrationRecordsCreator(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, new(user.ID), creator(viaKey(t, taggedKey)), "the maker of a tagged key")
 
-	tokenKey, err := s.CreateTokenPreAuthKey(nil, false, false, nil, []string{"tag:ci"})
+	_, tokenKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, ByToken: true}, func() error { return nil })
 	require.NoError(t, err)
 	assert.Nil(t, creator(viaKey(t, tokenKey)), "a key a token made")
+
+	_, apiKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, CreatedBy: user.TypedID()}, func() error { return nil })
+	require.NoError(t, err)
+	assert.Equal(t, new(user.ID), creator(viaKey(t, apiKey)), "the maker of a tagged key that records it apart")
 
 	authID := types.MustAuthID()
 	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
@@ -2267,6 +2271,67 @@ func TestRegistrationRecordsCreator(t *testing.T) {
 	byLogin, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodCLI)
 	require.NoError(t, err)
 	assert.Equal(t, new(user.ID), creator(byLogin), "a login")
+}
+
+var errRefused = errors.New("tag:ci does not own tag:prod")
+
+// TestCreateAuthKeyIfHoldsThePolicy: a key's check reads the policy and the
+// key is stored later. A policy write that would refuse the key waits for
+// it, so no key is stored under a policy its check did not read. Without
+// the lock the policy write finishes first.
+func TestCreateAuthKeyIfHoldsThePolicy(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": [], "tag:prod": ["tag:ci"]}}`))
+	require.NoError(t, err)
+
+	k := db.NewPreAuthKey{Tags: []string{"tag:prod"}, Expiration: new(time.Now().Add(time.Hour)), ByToken: true}
+
+	checked, release := make(chan struct{}), make(chan struct{})
+	made := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.CreateAuthKeyIf(k, func() error {
+			if !s.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
+				return errRefused
+			}
+
+			close(checked)
+			<-release
+
+			return nil
+		})
+		made <- err
+	}()
+
+	<-checked
+
+	policyDone := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": [], "tag:prod": []}}`))
+		policyDone <- err
+	}()
+
+	select {
+	case err := <-policyDone:
+		t.Fatalf("the policy changed between a key's check and its write (%v)", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(release)
+	require.NoError(t, <-made)
+	require.NoError(t, <-policyDone)
+
+	_, _, err = s.CreateAuthKeyIf(k, func() error {
+		if !s.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
+			return errRefused
+		}
+
+		return nil
+	})
+	require.ErrorIs(t, err, errRefused, "the new policy holds for the next key")
 }
 
 // TestLoadedExpiryIsUTC proves an expiry the database returns in another zone is
