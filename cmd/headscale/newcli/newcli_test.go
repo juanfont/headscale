@@ -175,7 +175,7 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		pageSize = 0
 	}
 
-	code := command.Run(Tree(), words(f.expand(tc.args)), command.Env{
+	code := command.Run(Tree(), words(shell(f.expand(tc.args))), command.Env{
 		Stdin:          strings.NewReader(f.expand(tc.stdin)),
 		Stdout:         &out,
 		Stderr:         &errOut,
@@ -374,6 +374,12 @@ func indent(tb testing.TB, body []byte) string {
 	require.NoError(tb, json.Indent(&b, bytes.TrimSpace(body), "", "  "))
 
 	return b.String() + "\n"
+}
+
+// shell runs the command substitutions an example may hold, as a shell
+// would, so the example runs as it is written; the walk sees it unrun.
+func shell(line string) string {
+	return strings.ReplaceAll(line, "$(openssl rand -hex 12)", string(types.MustAuthID())[len("hskey-authreq-"):])
 }
 
 // words splits a line as a shell does, for the quotes the examples use.
@@ -673,6 +679,9 @@ Server commands (talk to a running headscale):
   users create <name>   Create a local user
   users set <user>   Change a local user
   users delete <user>   Delete a user with its keys (alias: rm)
+  auth register <auth-id> <user>   Register a node that waits to join
+  auth approve <auth-id>   Let an SSH check pass
+  auth reject <auth-id>   Refuse a registration or an SSH check
   auth keys list   List the auth keys (alias: ls)
   auth keys get <key>   Show one auth key
   auth keys create <owner>   Create an auth key
@@ -690,6 +699,7 @@ Server commands (talk to a running headscale):
 Debug:
 
   debug health   Check that the server is healthy
+  debug create-node   Make a registration of a made-up node, for tests
 
 Server commands take -o json, which prints the API object.
 See ` + "`headscale <command> --help`" + ` for examples.

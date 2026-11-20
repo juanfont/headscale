@@ -13,6 +13,9 @@ var authGroup = command.Group{
 	Name:  "auth",
 	Short: "Authentication of nodes to headscale",
 	Commands: []command.Node{
+		authRegister,
+		authApprove,
+		authReject,
 		command.Group{
 			Name: "keys", Short: "Manage auth keys", OldNames: []string{"preauthkeys", "preauth"},
 			Commands: []command.Node{authKeysList, authKeysGet, authKeysCreate, authKeysDelete},

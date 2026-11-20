@@ -2,6 +2,7 @@ package newcli
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 var debugGroup = command.Group{
 	Name:     "debug",
 	Short:    "A health check and test tools",
-	Commands: []command.Node{debugHealth},
+	Commands: []command.Node{debugHealth, debugCreateNode},
 }
 
 // errUnhealthy is a 200 whose body says the server is not healthy; a
@@ -63,4 +64,55 @@ included, and writes no warning on stderr.`,
 		return h, nil
 	},
 	Done: func(command.NoInput, clientv0.Health, time.Time) string { return "healthy" },
+})
+
+type debugCreateNodeIn struct {
+	Hostname command.Opt[string]         `flag:"name"  help:"The hostname of the made-up node; required"`
+	AuthID   command.Opt[command.AuthID] `flag:"key"   help:"The auth ID it waits under, hskey-authreq- and the rest; required"`
+	Routes   []string                    `flag:"route" help:"Routes it advertises once it is registered, comma separated"`
+}
+
+var (
+	errNoName = errors.New("--name is required: the hostname of the made-up node.") //nolint:staticcheck // a sentence of the CLI
+	errNoKey  = errors.New("--key is required: the auth ID it waits under.")        //nolint:staticcheck // a sentence of the CLI
+)
+
+var debugCreateNode = command.New(command.Spec[debugCreateNodeIn, command.NoOutput]{
+	Name:  "create-node",
+	Short: "Make a registration of a made-up node, for tests",
+	Long: `Make a registration that waits under the auth ID given with --key, as a
+node that wants to join would. auth register answers it with a user; the
+node never connects. It is a test tool: it is unstable, and it prints one
+fixed sentence, with no -o json.
+
+The auth ID is yours: hskey-authreq- and 24 lower-case hex digits, as the
+first example makes one. The command does not print it back, and the help
+shows an ID it holds as hskey-authreq-***.`,
+	Example: []string{
+		`headscale debug create-node --name fake-1 --key "hskey-authreq-$(openssl rand -hex 12)"`,
+		"headscale debug create-node --name fake-2 --key hskey-authreq-0123456789abcdef01234567 --route 10.0.0.0/8,192.168.0.0/24",
+	},
+	NoJSON: true,
+	Valid: func(in debugCreateNodeIn) error {
+		if _, ok := in.Hostname.Get(); !ok {
+			return errNoName
+		}
+
+		if _, ok := in.AuthID.Get(); !ok {
+			return errNoKey
+		}
+
+		return nil
+	},
+	Run: func(c command.Ctx, in debugCreateNodeIn) (command.NoOutput, error) {
+		name, _ := in.Hostname.Get()
+		id, _ := in.AuthID.Get()
+
+		return command.NoOutput{}, c.API.CreateDebugNode(c, id, name, in.Routes)
+	},
+	Done: func(in debugCreateNodeIn, _ command.NoOutput, _ time.Time) string {
+		name, _ := in.Hostname.Get()
+
+		return "Registration of " + strconv.Quote(name) + " waits: headscale auth register <auth-id> <user> answers it."
+	},
 })
