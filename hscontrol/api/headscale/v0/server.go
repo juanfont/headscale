@@ -194,16 +194,7 @@ func whoAmI(b Backend, c *caller) (Me, error) {
 		}
 
 		uv := u.View()
-		me.Credential.Owner = &Owner{
-			User: &OwnerUser{
-				ID:          strconv.FormatUint(uint64(uv.ID()), 10),
-				Name:        uv.Name(),
-				LoginName:   uv.Username(),
-				DisplayName: uv.DisplayName(),
-				Email:       uv.Email(),
-			},
-			Tags: []string{},
-		}
+		me.Credential.Owner = &Owner{User: ownerUser(uv), Tags: []string{}}
 	}
 
 	if cred.clientID != "" {

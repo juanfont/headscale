@@ -292,9 +292,9 @@ func TestGuardFails(t *testing.T) {
 
 	register(api, huma.Operation{Method: http.MethodGet, Path: Prefix + "/noid"}, needs(scope.UsersRead), nil, noop)
 
-	register(api, huma.Operation{OperationID: "listNodes", Method: http.MethodGet, Path: Prefix + "/nodes"}, anyCredential, nil, noop)
+	register(api, huma.Operation{OperationID: "listGadgets", Method: http.MethodGet, Path: Prefix + "/gadgets"}, anyCredential, nil, noop)
 
-	register(api, huma.Operation{OperationID: "listTags", Method: http.MethodGet, Path: Prefix + "/tags"}, needs(scope.DevicesCoreRead), nil,
+	register(api, huma.Operation{OperationID: "listLabels", Method: http.MethodGet, Path: Prefix + "/labels"}, needs(scope.DevicesCoreRead), nil,
 		func(context.Context, *struct{}) (*struct{ Body []string }, error) { return nil, nil }) //nolint:nilnil
 
 	huma.Register(api, huma.Operation{OperationID: "listThings", Method: http.MethodGet, Path: Prefix + "/things"},
@@ -336,9 +336,9 @@ func TestGuardFails(t *testing.T) {
 		"InnerStruct.items: a list must be nullable",
 		"HEAD " + Prefix + "/things: declares no access",
 		"GET " + Prefix + "/noid: operation ID \"\" is not explicit",
-		"GET " + Prefix + "/nodes: only getVersion is public",
-		"GET " + Prefix + "/tags 200: a list must be nullable",
-		"GET " + Prefix + "/tags 200: a list is an object, never a bare array",
+		"GET " + Prefix + "/gadgets: only getVersion is public",
+		"GET " + Prefix + "/labels 200: a list must be nullable",
+		"GET " + Prefix + "/labels 200: a list is an object, never a bare array",
 		"GET " + Prefix + "/things: a list takes pageSize",
 		"GET " + Prefix + "/things: a list takes pageToken",
 		"GET " + Prefix + "/things: a list declares invalid_page_token",
