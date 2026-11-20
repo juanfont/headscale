@@ -1230,11 +1230,12 @@ func (s *State) DeleteNode(node types.NodeView) ([]change.Change, error) {
 
 	genBefore := s.polMan.NodesGeneration()
 
-	s.persistMu.Lock()
+	err := func() error {
+		s.persistMu.Lock()
+		defer s.persistMu.Unlock()
 
-	err := s.db.DeleteNode(node.AsStruct())
-	s.persistMu.Unlock()
-
+		return s.db.DeleteNode(node.AsStruct())
+	}()
 	if err != nil {
 		if errors.Is(err, hsdb.ErrNodeNotFound) {
 			return nil, nil
@@ -2146,14 +2147,38 @@ func (s *State) WarnNodesHoldingExtraRecords() []types.NodeID {
 func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 	genBefore := s.polMan.NodesGeneration()
 
-	// Hold persistMu until NodeStore has the new addresses, or a concurrent
-	// persist writes the old ones back from NodeStore in between.
+	changes, readdressed, err := s.backfillNodeIPsLocked()
+	if err != nil {
+		return changes, nil, err
+	}
+
+	// IPs are policy inputs: without this, clients only learned the new
+	// addresses from whichever unrelated write next refreshed the policy.
+	c, err := s.updatePolicyManagerNodes(genBefore)
+
+	// A policy change carries no self node, so a readdressed node would
+	// not learn its own new addresses from it.
+	cs := make([]change.Change, 0, len(readdressed)+1)
+	if !c.IsEmpty() {
+		cs = append(cs, c)
+	}
+
+	for _, id := range readdressed {
+		cs = append(cs, change.NodeAdded(id))
+	}
+
+	return changes, cs, err
+}
+
+// backfillNodeIPsLocked is the part of [State.BackfillNodeIPs] under
+// persistMu, held until NodeStore has the new addresses, or a concurrent
+// persist writes the old ones back from NodeStore in between.
+func (s *State) backfillNodeIPsLocked() ([]string, []types.NodeID, error) {
 	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
 
 	changes, err := s.db.BackfillNodeIPs(s.ipAlloc)
 	if err != nil {
-		s.persistMu.Unlock()
-
 		return nil, nil, err
 	}
 
@@ -2164,8 +2189,6 @@ func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 	if len(changes) > 0 {
 		nodes, err := s.db.ListNodes()
 		if err != nil {
-			s.persistMu.Unlock()
-
 			return changes, nil, fmt.Errorf("refreshing NodeStore after IP backfill: %w", err)
 		}
 
@@ -2185,24 +2208,7 @@ func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 		s.nodeStore.UpdateNodes(updates)
 	}
 
-	s.persistMu.Unlock()
-
-	// IPs are policy inputs: without this, clients only learned the new
-	// addresses from whichever unrelated write next refreshed the policy.
-	c, err := s.updatePolicyManagerNodes(genBefore)
-
-	// A policy change carries no self node, so a readdressed node would
-	// not learn its own new addresses from it.
-	cs := make([]change.Change, 0, len(readdressed)+1)
-	if !c.IsEmpty() {
-		cs = append(cs, c)
-	}
-
-	for _, id := range readdressed {
-		cs = append(cs, change.NodeAdded(id))
-	}
-
-	return changes, cs, err
+	return changes, readdressed, nil
 }
 
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
