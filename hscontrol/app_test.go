@@ -1,6 +1,7 @@
 package hscontrol
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/libdns/cloudflare"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -626,4 +628,43 @@ func TestAPIv0Paths(t *testing.T) {
 			require.Regexp(t, `"requestId":"[A-Z2-7]{12}"`, rec.Body.String(), "%s %s", name, path)
 		}
 	}
+}
+
+// TestAccessLogHidesSecrets: a secret sent as a path segment, in any case,
+// through the real router, reaches the request log as its kind only.
+func TestAccessLogHidesSecrets(t *testing.T) {
+	var logged bytes.Buffer
+
+	old, oldLevel := log.Logger, zerolog.GlobalLevel()
+	log.Logger = zerolog.New(&logged)
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	t.Cleanup(func() {
+		log.Logger = old
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	legacy := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	app := &Headscale{cfg: &types.Config{}, authProvider: NewAuthProviderWeb("")}
+	router := app.createRouter(legacy, legacy, apiv0.Handler(apiv0.Backend{}))
+
+	const secret = "0123456789ab-SECRETSECRETSECRETSECRETSECRETSECRETSECRET"
+
+	for _, path := range []string{
+		apiv0.Prefix + "/auth-keys/hskey-auth-" + secret,
+		"/register/hskey-authreq-" + secret,
+		"/api/v1/x/hskey-api-" + secret + "/y",
+		apiv0.Prefix + "/auth-keys/HSKey-Auth-" + secret,
+	} {
+		logged.Reset()
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+
+		require.NotContains(t, logged.String(), "SECRET", path)
+		require.Contains(t, logged.String(), "http request", path)
+	}
+
+	require.Equal(t, "/api/v1/x/hskey-api-***/y", hideSecrets("/api/v1/x/hskey-api-"+secret+"/y"))
+	require.Equal(t, "/a/b", hideSecrets("/a/b"))
 }

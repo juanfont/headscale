@@ -1555,12 +1555,47 @@ func (z *zerologRequestLogger) NewLogEntry(
 ) middleware.LogEntry {
 	return &zerologLogEntry{
 		method:    clipForLog(r.Method),
-		path:      clipForLog(r.URL.Path),
+		path:      clipForLog(hideSecrets(r.URL.Path)),
 		proto:     r.Proto,
 		remote:    r.RemoteAddr,
 		requestID: middleware.GetReqID(r.Context()),
 	}
 }
+
+// hideSecrets is path with each segment that holds a Headscale secret
+// (hskey-<kind>-…, in any case) cut to its kind: a client may send a key, or
+// an ID that is a secret, as a path segment. It keeps the secret out of the
+// request log only; what a handler logs is its own.
+func hideSecrets(path string) string {
+	if secretAt(path) < 0 {
+		return path
+	}
+
+	segs := strings.Split(path, "/")
+	for i, seg := range segs {
+		at := secretAt(seg)
+		if at >= 0 {
+			kind, _, _ := strings.Cut(seg[at+len(secretPrefix):], "-")
+			segs[i] = seg[:at] + secretPrefix + kind + "-***"
+		}
+	}
+
+	return strings.Join(segs, "/")
+}
+
+// secretAt is the index of secretPrefix in s, in any case, or -1.
+func secretAt(s string) int {
+	for i := 0; i+len(secretPrefix) <= len(s); i++ {
+		if strings.EqualFold(s[i:i+len(secretPrefix)], secretPrefix) {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// secretPrefix starts every secret Headscale makes.
+const secretPrefix = "hskey-"
 
 type zerologLogEntry struct {
 	method    string
