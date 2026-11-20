@@ -1067,7 +1067,7 @@ func TestServerStateCleanup(t *testing.T) {
 
 	database, err := srv.State().DB().DB.DB()
 	require.NoError(t, err)
-	require.ErrorContains(t, database.Ping(), "database is closed")
+	require.ErrorContains(t, database.PingContext(t.Context()), "database is closed")
 }
 
 // TestTsnetRestartWithAnotherKey drives a real tsnet program that joins and
