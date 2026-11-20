@@ -115,6 +115,12 @@ linters:
       - path: hscontrol/(types/config|config/(keys|validate))\.go
         linters:
           - goconst
+      # The hook runs --fix, and dupword --fix rewrites a string literal: in a
+      # test that is an input or a golden, and the test then checks
+      # something else.
+      - path: _test\.go
+        linters:
+          - dupword
     paths:
       - third_party$
       - builtin$
