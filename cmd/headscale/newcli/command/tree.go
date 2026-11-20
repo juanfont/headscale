@@ -59,7 +59,8 @@ type leaf struct {
 	// emptyList follows the sentence of an empty list argument.
 	hint      func(args []string) string
 	emptyList string
-	// valid checks the line, read but not looked up, before any call.
+	// valid checks the line, read but not looked up, before any call: the
+	// rule on the way in, then Spec.Valid.
 	valid func(*cmdline.Line) error
 	// target is the type of the command's target: the first argument that
 	// is an entity; nil for none.
@@ -139,7 +140,9 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
 	l.output = !noOut || !s.Local || s.NeedsServer != nil
 	l.own = !noOut && s.Local && s.NeedsServer == nil
-	l.check = func() error { return checkSpec(s) }
+	rule, ruleErr := inputRule[In]()
+	l.valid = rule
+	l.check = func() error { return errors.Join(checkSpec(s), ruleErr) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
 	l.secret = s.Secret != nil
@@ -149,6 +152,11 @@ func New[In, Out any](s Spec[In, Out]) Node {
 
 	if s.Valid != nil {
 		l.valid = func(line *cmdline.Line) error {
+			err := rule(line)
+			if err != nil {
+				return err
+			}
+
 			in, _ := cmdline.Get[In](line)
 
 			return s.Valid(in)
@@ -279,8 +287,10 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 	l.only = s.Only
 	l.filter = filterExample(s.Example)
 	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
+	rule, ruleErr := inputRule[In]()
+	l.valid = rule
 	l.check = func() error {
-		var errs []error
+		errs := []error{ruleErr}
 
 		if s.Run == nil {
 			errs = append(errs, errNoRun)

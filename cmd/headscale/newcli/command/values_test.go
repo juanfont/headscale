@@ -137,6 +137,7 @@ func TestOwner(t *testing.T) {
 		{line: "a user with space", argv: []string{"make", " alice "}, stdout: "user 3\n", calls: 1},
 		{line: "an item of space", argv: []string{"make", "tag:ci, ,tag:b"}, stderr: "Error: the owner list has an empty item.\n"},
 		{line: "space alone", argv: []string{"make", " "}, stderr: "Error: an empty word names no owner.\n"},
+		{line: "make tag:ci,tag:hskey-api-ab12cd345678-s3cret", stderr: "Error: <owner> takes no credential: hskey-api-*** is not sent.\n"},
 	} {
 		mu.Lock()
 		asked = 0

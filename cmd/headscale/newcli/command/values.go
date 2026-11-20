@@ -216,6 +216,13 @@ func findOwner(ctx context.Context, word string) (Owner, error) {
 		case w == "":
 			return Owner{}, &lookupError{text: "the owner list has an empty item."}
 		case strings.HasPrefix(w, "tag:"):
+			// A tag is sent as it is typed, so it is held to the rule on
+			// the way in; a user is only looked up.
+			err := typedCredential(textField{word: "<owner>"}, w)
+			if err != nil {
+				return Owner{}, err
+			}
+
 			tags = append(tags, w)
 		default:
 			users = append(users, table.Visible(w, ""))

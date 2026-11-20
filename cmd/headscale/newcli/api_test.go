@@ -710,13 +710,6 @@ func TestSecretOnce(t *testing.T) {
 			f.vars["dashed"] = head + secret[:20] + "-" + secret[21:]
 			upper := strings.ToUpper(f.vars["key"])
 
-			// Lines whose words a request carries as they are typed: the
-			// CLI writes no secret, and the server is told it, so these
-			// are held to the output only.
-			sent := []string{
-				"api oauth-clients create {key}", "api oauth-clients create devices:core --tags {key}",
-			}
-
 			lines := []string{
 				"{group} list", "{group} list --all", "{group} list --all -o json", "{group} list --list-columns", "{group} list --list-columns -o json",
 				"{group} get {prefix}", "{group} get {id} -o json", "{group} get {key}", "{group} get {dashed}", "{group} get " + upper,
@@ -729,10 +722,17 @@ func TestSecretOnce(t *testing.T) {
 				"nodes get {key}", "users get {key}", "auth keys create {key}", "auth keys create {dashed}", "auth keys create alice,{key}",
 				"auth keys create tag:ci,{key}", "auth keys list --filter owner={key}", "api keys create --user {key}",
 				"auth keys create alice,bob -d " + secret,
+				// A value the server would store or answer back: a name, a
+				// display name, a description, a scope, a tag.
+				"users create {key}", "users create dave --display-name {key}", "users set alice --name {key}",
+				"auth keys create alice -d {key}", "api oauth-clients create devices:core --tags tag:ci -d {key}",
+				"api oauth-clients create {key}", "api oauth-clients create devices:core,{key} --tags tag:ci",
+				"api oauth-clients create devices:core --tags {key}", "api oauth-clients create devices:core --tags tag:ci,{dashed}",
+				"auth keys create tag:{key}", "auth keys create tag:ci,tag:{dashed}",
 				"{group} delete {id} --force", "{group} list --filter id={id} --all",
 			}
 
-			for _, args := range append(lines, sent...) {
+			for _, args := range lines {
 				r := f.run(t, cliCase{args: args})
 				require.NotContains(t, r.stdout, secret, args)
 				require.NotContains(t, r.stderr, secret, args)
@@ -740,20 +740,19 @@ func TestSecretOnce(t *testing.T) {
 
 				for path, bodies := range r.answers {
 					for _, b := range bodies {
-						if !slices.Contains(sent, args) {
-							require.NotContains(t, string(b), secret, "%s: the answer of %s", args, path)
-						}
+						require.NotContains(t, string(b), secret, "%s: the answer of %s", args, path)
 					}
-				}
-
-				if slices.Contains(sent, args) {
-					continue
 				}
 
 				for _, req := range r.sent {
 					require.NotContains(t, req, secret, "%s: a request", args)
 					require.NotContains(t, req, secret[21:], "%s: a request", args)
 				}
+			}
+
+			// Nothing typed was stored: no user, key or client holds it.
+			for _, list := range []string{"users list -o json", "auth keys list --all -o json", "api oauth-clients list --all -o json"} {
+				require.NotContains(t, f.run(t, cliCase{args: list}).stdout, secret, list)
 			}
 
 			r = f.run(t, cliCase{args: k.create + " -o json"})

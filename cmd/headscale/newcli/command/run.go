@@ -136,11 +136,9 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
 	file, _ := cmdline.Get[configFlags](line)
 
 	// A value that the parser takes as any word is checked before any call.
-	if l.valid != nil {
-		err := l.valid(line)
-		if err != nil {
-			return err
-		}
+	err = l.valid(line)
+	if err != nil {
+		return err
 	}
 
 	stdin := env.Stdin
