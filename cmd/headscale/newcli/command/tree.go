@@ -51,6 +51,8 @@ type leaf struct {
 	set bool
 	// force is a command that can ask, and so takes --force.
 	force bool
+	// secret is a command that prints a secret once: Spec.Secret.
+	secret bool
 	// hint follows a wrong argument count or an empty list argument;
 	// emptyList follows the sentence of an empty list argument.
 	hint      func(args []string) string
@@ -135,28 +137,10 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
 	l.output = !noOut || !s.Local || s.NeedsServer != nil
 	l.own = !noOut && s.Local && s.NeedsServer == nil
-	l.check = func() error {
-		var errs []error
-
-		if s.Run == nil {
-			errs = append(errs, errNoRun)
-		}
-
-		switch {
-		case !noOut && s.Columns == nil && s.Done == nil:
-			errs = append(errs, errNoShow)
-		case s.Columns != nil && s.Done != nil:
-			errs = append(errs, errBoth)
-		}
-
-		if s.Blocks != nil && s.Columns == nil {
-			errs = append(errs, errBlocks)
-		}
-
-		return errors.Join(append(errs, s.Columns.Check(), s.Blocks.Check())...)
-	}
+	l.check = func() error { return checkSpec(s) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
+	l.secret = s.Secret != nil
 	l.hint = s.Hint
 	l.emptyList = s.EmptyList
 	l.target, _ = targetType(reflect.TypeFor[In]())
@@ -221,21 +205,66 @@ func New[In, Out any](s Spec[In, Out]) Node {
 				}
 			}
 
-			if err != nil {
+			notRead := errors.Is(err, ErrNotRead)
+
+			switch {
+			case err != nil && !notRead && s.Secret != nil:
+				return c.lostAnswer(flagsOf[In](c.about(err, in)))
+			case err != nil && !notRead:
 				return flagsOf[In](c.about(err, in))
+			case s.Secret != nil:
+				return printSecret(c, out, s.Secret(out), func() string { return s.Done(in, out, c.Now()) })
 			}
 
-			return printOne(c, out, s.Columns, s.Blocks, func() string {
+			done := func() string {
 				if s.Done == nil {
 					return ""
 				}
 
 				return s.Done(in, out, c.Now())
-			})
+			}
+
+			// The change is made and there is no object: JSON has nothing
+			// to print.
+			if notRead {
+				if c.json {
+					return nil
+				}
+
+				return writeText(c.stdout, done())
+			}
+
+			return printOne(c, out, s.Columns, s.Blocks, done)
 		}}
 	}
 
 	return l
+}
+
+// checkSpec reports what is wrong with a spec, for the tree to name.
+func checkSpec[In, Out any](s Spec[In, Out]) error {
+	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
+
+	var errs []error
+
+	if s.Run == nil {
+		errs = append(errs, errNoRun)
+	}
+
+	switch {
+	case !noOut && s.Columns == nil && s.Done == nil:
+		errs = append(errs, errNoShow)
+	case s.Columns != nil && s.Done != nil:
+		errs = append(errs, errBoth)
+	}
+
+	errs = append(errs, checkSecret(reflect.TypeFor[Out](), s.Secret != nil, s.Done != nil, s.Columns != nil)...)
+
+	if s.Blocks != nil && s.Columns == nil {
+		errs = append(errs, errBlocks)
+	}
+
+	return errors.Join(append(errs, s.Columns.Check(), s.Blocks.Check())...)
 }
 
 // NewList makes the command of a list spec.
@@ -274,6 +303,7 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 		}
 
 		errs = append(errs, checkOnly(s.Columns, s.Only, s.Long)...)
+		errs = append(errs, checkRows(reflect.TypeFor[Row]())...)
 
 		return errors.Join(append(errs, s.Columns.Check())...)
 	}
@@ -452,6 +482,8 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 				g.Commands = append(g.Commands, build(append(slices.Clip(path), nameOf(c)), c))
 			}
 
+			errs = append(errs, secretEnds(path, n.Commands)...)
+
 			return g
 		case *leaf:
 			for _, f := range [][2]string{{"Name", n.name}, {"Short", n.short}, {"Long", n.long}} {
@@ -497,6 +529,8 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 	for _, n := range nodes {
 		root.Commands = append(root.Commands, build([]string{nameOf(n)}, n))
 	}
+
+	errs = append(errs, secretEnds(nil, nodes)...)
 
 	parser, err := cmdline.New(root, opts...)
 	if err != nil {

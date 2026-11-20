@@ -220,6 +220,9 @@ func TestJSONIsTheAnswer(t *testing.T) {
 			return h, err
 		}),
 		spec("made", func(Ctx, NoInput) (clientv0.Health, error) { return clientv0.Health{Healthy: true}, nil }),
+		// A zero value is no answer either: only ErrNotRead says that
+		// there is nothing to print.
+		spec("zero", func(Ctx, NoInput) (clientv0.Health, error) { return clientv0.Health{}, nil }),
 		New(Spec[NoInput, clientv0.Health]{
 			Name: "local", Short: "S", Long: "S.", Example: []string{"prog local"}, Local: true,
 			Run:  func(c Ctx, _ NoInput) (clientv0.Health, error) { return c.API.Health(c) },
@@ -283,6 +286,8 @@ func TestJSONIsTheAnswer(t *testing.T) {
 		{line: "changed -o json", stderr: notAnswer, code: 1},
 		{line: "made", stderr: notAnswer, code: 1},
 		{line: "made -o json", stderr: notAnswer, code: 1},
+		{line: "zero", stderr: notAnswer, code: 1},
+		{line: "zero -o json", stderr: notAnswer, code: 1},
 		{line: "local", stderr: "Error: this command is Local and has no server to call\n", code: 1},
 		{line: "items -o json", stdout: "[\n  {\n    \"id\": \"2\",\n    \"name\": \"b\",\n    \"x\": 2\n  },\n  {\n    \"id\": \"1\",\n    \"name\": \"a\",\n    \"x\": 1\n  }\n]\n"},
 		{line: "items", stdout: "ID  NAME\n2   b\n1   a\n"},

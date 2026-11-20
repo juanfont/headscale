@@ -72,11 +72,19 @@ type Spec[In, Out any] struct {
 	// route, once the line is read and before any call or lookup; its error
 	// is the sentence. The lookups have not run, so it sees no entity.
 	Valid func(in In) error
-	// Run is the one function that does the work.
+	// Run is the one function that does the work. A Run whose change is
+	// made and whose object to print cannot be read returns ErrNotRead.
 	Run func(c Ctx, in In) (Out, error)
 	// Done is the text printed in place of Out, when not -o json. now is
 	// the time the command runs at, for a relative time.
 	Done func(in In, out Out, now time.Time) string
+	// Secret is the secret of a result shown once, such as a new key: Done
+	// goes to stderr first, then the secret alone to stdout. -o json prints
+	// the result. Each is written past the rule that shows a credential as
+	// its kind (credential.go). A result that holds a field key or secret,
+	// at any depth, needs Secret, and no other may have it; the command
+	// needs list and delete beside it, which a lost secret names.
+	Secret func(out Out) string
 }
 
 // ListSpec is a command that gives back rows, printed as a table.
@@ -146,9 +154,11 @@ type Ctx struct {
 	stdout io.Writer
 	stderr io.Writer
 	// raw is stdout past the rule at the edge (credential.go), for the JSON
-	// of a result, which the server sent.
+	// of a result, which the server sent, and the secret of Spec.Secret.
 	raw      io.Writer
 	terminal bool
+	// program is the name of the program, for a command line in a message.
+	program string
 	// screen is a stdout that is a terminal; width is its width in cells,
 	// 0 when unknown, and colour whether a table is drawn in colour.
 	screen bool

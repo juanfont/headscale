@@ -12,8 +12,13 @@ import (
 // hskey- in any case and anywhere in a word, leaves the CLI as its kind
 // and no more, hskey-auth-***. Run holds it on stdout and stderr, so no
 // error, note, prompt, cell or sheet line repeats a secret, whether the
-// server sent it or a person typed it. The JSON of a result is the server's
-// data, not the CLI's sentence, and is written as it came, past the rule.
+// server sent it or a person typed it. Three ways lead past the rule: the
+// secret that a Spec.Secret command declares, on stdout; the -o json of
+// that command; and the JSON of any result, which is the server's data and
+// not the CLI's sentence, so it is printed as the server sent it. That last
+// way rests on the start-up check (secret.go): no type that holds a field
+// key or secret, at any depth, is printed by a command that does not
+// declare it, and no list row holds one.
 //
 // A key from before 0.28 is 48 hex characters with no hskey-: it has no
 // form to tell it from other text, and the rule does not see it.

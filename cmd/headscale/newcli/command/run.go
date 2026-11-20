@@ -155,6 +155,7 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
 		stdout:     env.Stdout,
 		raw:        raw,
 		stderr:     env.Stderr,
+		program:    t.name,
 		Environ:    env.Environ,
 		terminal:   env.Terminal,
 		screen:     env.StdoutTerminal,
@@ -352,6 +353,11 @@ func versionLine(v *types.VersionInfo) string {
 
 	return line
 }
+
+// ErrNotRead is what a Run returns, with the zero result, when its change
+// is made and the object to print cannot be read: text prints Done alone,
+// and -o json nothing. Any other zero result is a fault of the command.
+var ErrNotRead = errors.New("the change is made, and the object to print cannot be read")
 
 // errNotAnswer is a Run of a server command that returns a value no answer
 // of the server holds: one it made or changed. -o json prints an answer as

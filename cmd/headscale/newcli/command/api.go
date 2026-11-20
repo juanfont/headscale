@@ -358,8 +358,14 @@ func (a *API) do(do func(*clientv0.Client) (*http.Response, error)) ([]byte, err
 
 func (a *API) unreadable(err error) error {
 	// The decoder quotes what it could not read, which the server wrote.
-	return fmt.Errorf("the server at %s sent an answer this CLI cannot read: %s", a.target, table.Visible(err.Error(), "")) //nolint:err113 // a sentence of the CLI
+	return &unreadableError{text: "the server at " + a.target + " sent an answer this CLI cannot read: " + table.Visible(err.Error(), "")}
 }
+
+// unreadableError is an answer the CLI cannot read: what the server did is
+// not known.
+type unreadableError struct{ text string }
+
+func (e *unreadableError) Error() string { return e.text }
 
 // callError keeps an error of the version check, which already says what
 // to do, and names the server for any other.
