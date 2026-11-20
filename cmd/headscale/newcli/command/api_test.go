@@ -771,14 +771,10 @@ func TestEveryGuardIsSent(t *testing.T) {
 		return true
 	})
 
-	// op is a method of the client that takes a guard: where its id and
-	// its parameters are among the arguments, and their type.
-	type op struct {
-		id, params int
-		typ        string
-	}
-
-	ops := map[string]op{}
+	// A write made on an entity sends that entity's guard. A write with no
+	// entity, such as the policy, which is one document, sends no If-Match:
+	// it is for a client that reads, changes and writes back.
+	ops := map[string]guardOp{}
 
 	for _, d := range gen.Decls {
 		fn, ok := d.(*ast.FuncDecl)
@@ -786,24 +782,8 @@ func TestEveryGuardIsSent(t *testing.T) {
 			continue
 		}
 
-		o, i := op{id: -1, params: -1}, 0
-
-		for _, f := range fn.Type.Params.List {
-			for _, name := range f.Names {
-				if star, ok := f.Type.(*ast.StarExpr); ok && takes[gotypes.ExprString(star.X)] != "" {
-					o.params, o.typ = i, gotypes.ExprString(star.X)
-				}
-
-				if name.Name == "id" {
-					o.id = i
-				}
-
-				i++
-			}
-		}
-
-		if o.params >= 0 {
-			require.GreaterOrEqual(t, o.id, 0, "%s takes a guard and no id to ask it for", fn.Name.Name)
+		if o := guardedOp(fn, takes); o.params >= 0 {
+			require.True(t, o.id >= 0 || takes[o.typ] == "IfMatch", "%s takes %s and no id to ask it for", fn.Name.Name, takes[o.typ])
 			ops[fn.Name.Name] = o
 		}
 	}
@@ -846,6 +826,12 @@ func TestEveryGuardIsSent(t *testing.T) {
 		lit, _ := un.X.(*ast.CompositeLit)
 		require.NotNil(t, lit, "%s: the parameters, which take %s, are not written out in the call", where, field)
 
+		if o.id < 0 {
+			require.False(t, setsField(lit, field), "%s has no entity and sends %s", where, field)
+
+			return true
+		}
+
 		has := slices.ContainsFunc(lit.Elts, func(e ast.Expr) bool {
 			kv, ok := e.(*ast.KeyValueExpr)
 			if !ok || gotypes.ExprString(kv.Key) != field {
@@ -872,6 +858,45 @@ func TestEveryGuardIsSent(t *testing.T) {
 	for field := range guards {
 		require.Positive(t, sent[field], "no operation that takes %s", field)
 	}
+}
+
+// guardOp is a method of the client that takes a guard: where its id and
+// its parameters are among the arguments, and their type; id is -1 for a
+// write with no entity, params -1 for a method that takes no guard.
+type guardOp struct {
+	id, params int
+	typ        string
+}
+
+// guardedOp is fn as a [guardOp]; takes is the guard field of each Params
+// type that has one.
+func guardedOp(fn *ast.FuncDecl, takes map[string]string) guardOp {
+	o, i := guardOp{id: -1, params: -1}, 0
+
+	for _, f := range fn.Type.Params.List {
+		for _, name := range f.Names {
+			if star, ok := f.Type.(*ast.StarExpr); ok && takes[gotypes.ExprString(star.X)] != "" {
+				o.params, o.typ = i, gotypes.ExprString(star.X)
+			}
+
+			if name.Name == "id" {
+				o.id = i
+			}
+
+			i++
+		}
+	}
+
+	return o
+}
+
+// setsField reports whether lit sets field.
+func setsField(lit *ast.CompositeLit, field string) bool {
+	return slices.ContainsFunc(lit.Elts, func(e ast.Expr) bool {
+		kv, ok := e.(*ast.KeyValueExpr)
+
+		return ok && gotypes.ExprString(kv.Key) == field
+	})
 }
 
 // TestGuardOf: the target is the first argument that is an entity; one
