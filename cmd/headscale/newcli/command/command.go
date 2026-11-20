@@ -142,9 +142,12 @@ type Ctx struct {
 	// The streams are the builder's: a command returns what it prints, so
 	// nothing it writes can break -o json, and the prompt is asked by the
 	// builder.
-	stdin    io.Reader
-	stdout   io.Writer
-	stderr   io.Writer
+	stdin  io.Reader
+	stdout io.Writer
+	stderr io.Writer
+	// raw is stdout past the rule at the edge (credential.go), for the JSON
+	// of a result, which the server sent.
+	raw      io.Writer
 	terminal bool
 	// screen is a stdout that is a terminal; width is its width in cells,
 	// 0 when unknown, and colour whether a table is drawn in colour.
