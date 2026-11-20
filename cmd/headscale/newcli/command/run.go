@@ -168,6 +168,7 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer, whole *[]wholeWord) er
 		askWidth:   env.StderrWidth,
 		colour:     env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
 		answers:    bufio.NewReader(stdin),
+		stdinFile:  fromStdin(line),
 		entities:   t.entities,
 		line:       line,
 		json:       output.Output != "" || own.Output != "",
@@ -471,7 +472,10 @@ func (c Ctx) confirm(p Prompt, before string) (bool, error) {
 		action += " " + warning
 	}
 
-	if !c.terminal {
+	switch {
+	case c.stdinFile:
+		return false, fmt.Errorf("confirmation needed, but stdin is the file given as -, so it cannot answer.\n%s", action) //nolint:err113 // a sentence of the CLI
+	case !c.terminal:
 		return false, fmt.Errorf("confirmation needed, but there is no terminal.\n%s", action) //nolint:err113 // a sentence of the CLI
 	}
 
