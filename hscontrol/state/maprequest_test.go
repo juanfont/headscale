@@ -260,6 +260,7 @@ func TestNoOpMapRequestEmitsNoPeerChange(t *testing.T) {
 
 	req := func() tailcfg.MapRequest {
 		return tailcfg.MapRequest{
+			Version:  tailcfg.CurrentCapabilityVersion,
 			NodeKey:  stored.NodeKey,
 			DiscoKey: stored.DiscoKey,
 			Hostinfo: &tailcfg.Hostinfo{
@@ -285,6 +286,14 @@ func TestNoOpMapRequestEmitsNoPeerChange(t *testing.T) {
 
 	require.True(t, mustLastSeen(t, s, nodeID).After(beforeSeen),
 		"no-op request must still stamp LastSeen in the NodeStore")
+
+	// Peers read the version as Cap, so a client upgrade resends the node.
+	upgraded := req()
+	upgraded.Version++
+
+	c, err = s.UpdateNodeFromMapRequest(nodeID, upgraded)
+	require.NoError(t, err)
+	require.Equal(t, change.NodeAdded(nodeID), c, "a new capability version must reach peers")
 }
 
 // TestSTUNOnlyEndpointUpdateEmitsNoPeerChange ensures endpoint churn that
