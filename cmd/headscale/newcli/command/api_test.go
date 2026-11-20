@@ -7,13 +7,16 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/cmdline"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
@@ -250,4 +253,302 @@ func TestFirstWrite(t *testing.T) {
 	seen, err = run(t, "0.29.0", http.MethodPost)
 	require.ErrorContains(t, err, "this headscale is 0.30.1, the server is 0.29.0.")
 	require.Equal(t, []string{"GET /api/headscale/v0/version"}, seen)
+}
+
+// TestWalk: a walk asks for its page size, reads every page, and starts
+// again once when the server refuses a token, as after a restart.
+func TestWalk(t *testing.T) {
+	t.Parallel()
+
+	users := func(ids ...string) string {
+		rows := make([]string, 0, len(ids))
+		for _, id := range ids {
+			rows = append(rows, `{"id": "`+id+`", "name": "u`+id+`"}`)
+		}
+
+		return `"users": [` + strings.Join(rows, ", ") + `]`
+	}
+
+	walkOf := func(t *testing.T, refuse int) ([]clientv0.User, []string, error) {
+		t.Helper()
+
+		var (
+			mu      sync.Mutex
+			asked   []string
+			refused int
+		)
+
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			q := r.URL.Query()
+			asked = append(asked, q.Get("pageSize")+" "+q.Get("pageToken"))
+
+			switch q.Get("pageToken") {
+			case "":
+				_, _ = w.Write([]byte(`{` + users("1", "2") + `, "nextPageToken": "t2"}`))
+			case "t2":
+				if refused < refuse {
+					refused++
+
+					w.WriteHeader(http.StatusUnprocessableEntity)
+					_, _ = w.Write([]byte(`{"code": "invalid_page_token", "status": 422, "title": "The page token is not valid"}`))
+
+					return
+				}
+
+				_, _ = w.Write([]byte(`{` + users("3") + `}`))
+			}
+		}))
+		t.Cleanup(s.Close)
+
+		c, err := clientv0.NewClient(s.URL)
+		require.NoError(t, err)
+
+		got, err := (&API{c: c, target: "x", pageSize: 2}).ListUsers(t.Context())
+
+		return got, asked, err
+	}
+
+	ids := func(us []clientv0.User) []string {
+		out := make([]string, 0, len(us))
+		for _, u := range us {
+			out = append(out, u.Id)
+		}
+
+		return out
+	}
+
+	got, asked, err := walkOf(t, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"1", "2", "3"}, ids(got))
+	require.Equal(t, []string{"2 ", "2 t2"}, asked)
+
+	got, asked, err = walkOf(t, 1)
+	require.NoError(t, err)
+	require.Equal(t, []string{"1", "2", "3"}, ids(got), "the restart keeps no row twice")
+	require.Equal(t, []string{"2 ", "2 t2", "2 ", "2 t2"}, asked)
+
+	_, _, err = walkOf(t, 2)
+	require.EqualError(t, err, "the server restarted while the list was read. Run the command again.")
+}
+
+// TestWalkEnds: a token that leads nowhere new is a fault of the server,
+// said at once, not a walk that asks until the time is up.
+func TestWalkEnds(t *testing.T) {
+	t.Parallel()
+
+	for next, want := range map[string]string{
+		`"same"`: "the server at x sent a page token it had sent before, so the list would never end. This is a fault of the server.",
+		`""`:     "the server at x sent an empty page token. This is a fault of the server.",
+		`null`:   "the server at x sent an empty page token. This is a fault of the server.",
+	} {
+		var asked atomic.Int32
+
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			asked.Add(1)
+
+			_, _ = w.Write([]byte(`{"users": [{"id": "1"}], "nextPageToken": ` + next + `}`))
+		}))
+		t.Cleanup(s.Close)
+
+		c, err := clientv0.NewClient(s.URL)
+		require.NoError(t, err)
+
+		_, err = (&API{c: c, target: "x", pageSize: 2}).ListUsers(t.Context())
+		require.EqualError(t, err, want, next)
+		require.LessOrEqual(t, asked.Load(), int32(2), next)
+	}
+}
+
+// TestTimeout: cli.timeout bounds each request, not the command, and a
+// request that runs out of it says what the CLI knows: a write may have
+// been made, a slow page is no stopped server.
+func TestTimeout(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 300 * time.Millisecond
+
+	// Each page takes half the timeout, so four of them take two.
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Headscale-Version", "dev")
+
+		token := r.URL.Query().Get("pageToken")
+
+		// The server is slow on purpose; a request the CLI gave up on ends
+		// the wait.
+		wait := func(d time.Duration) {
+			select {
+			case <-time.After(d):
+			case <-r.Context().Done():
+			}
+		}
+
+		switch {
+		case r.Method == http.MethodPatch:
+			wait(2 * timeout)
+		case r.URL.Path == "/api/headscale/v0/users" && token == "slow":
+			wait(2 * timeout)
+		case r.URL.Path == "/api/headscale/v0/users":
+			wait(timeout / 2)
+
+			next := map[string]string{"": "p2", "p2": "p3", "p3": "p4"}[token]
+			if r.URL.Query().Get("pageSize") == "1" && token == "p2" {
+				next = "slow"
+			}
+
+			if next == "" {
+				_, _ = w.Write([]byte(`{"users": [{"id": "` + token + `"}]}`)) //nolint:gosec // a test server echoes its own tokens
+
+				return
+			}
+
+			_, _ = w.Write([]byte(`{"users": [{"id": "` + token + `"}], "nextPageToken": "` + next + `"}`)) //nolint:gosec // a test server echoes its own tokens
+		}
+	}))
+	t.Cleanup(s.Close)
+
+	api := func(t *testing.T, size int) *API {
+		t.Helper()
+
+		a, err := connect(&types.Config{CLI: types.CLIConfig{Address: s.URL, APIKey: "key", Timeout: timeout}},
+			Env{Stderr: io.Discard, Version: types.GetVersionInfo(), PageSize: size})
+		require.NoError(t, err)
+
+		return a
+	}
+
+	target := strings.TrimPrefix(s.URL, "http://")
+
+	start := time.Now()
+	rows, err := api(t, 2).ListUsers(t.Context())
+	require.NoError(t, err)
+	require.Len(t, rows, 4)
+	require.Greater(t, time.Since(start), timeout, "the walk took longer than one timeout and was not cut")
+
+	_, err = api(t, 1).ListUsers(t.Context())
+	require.EqualError(t, err, "the server at "+target+" did not send the next page of the list in 300ms.\n"+
+		"Run the command again, or wait longer with HEADSCALE_CLI_TIMEOUT or cli.timeout.")
+
+	_, err = api(t, 2).UpdateUser(t.Context(), "3", clientv0.UpdateUserBody{})
+	require.EqualError(t, err, "the server at "+target+" did not answer the change: no answer in time.\n"+
+		"The change may have been made: look before you run the command again.")
+}
+
+// guarded is an entity with a revision, as a node is.
+type guarded struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Revision string `json:"revision"`
+}
+
+// TestIfMatch: a write on the target carries the target's revision, which
+// the command does not pass itself; no other request does, and a server
+// that holds another revision is the CLI's sentence.
+func TestIfMatch(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu   sync.Mutex
+		seen []string
+	)
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+
+		seen = append(seen, r.Method+" "+r.URL.Path+" "+r.Header.Get("If-Match"))
+		mu.Unlock()
+
+		w.Header().Set("Headscale-Version", "dev")
+
+		switch {
+		case r.Method == http.MethodPatch && r.Header.Get("If-Match") != `"r2"`:
+			w.WriteHeader(http.StatusPreconditionFailed)
+			_, _ = w.Write([]byte(`{"code": "precondition_failed", "status": 412, "title": "Precondition failed", "object": {"kind": "node", "id": "12", "name": "mynode"}}`))
+		case r.Method == http.MethodPatch:
+			_, _ = w.Write([]byte(`{"id": "12", "name": "web", "revision": "r3"}`))
+		}
+	}))
+	t.Cleanup(s.Close)
+
+	type in struct {
+		Node guarded `arg:"node"`
+	}
+
+	send := func(c Ctx, method, path string) error {
+		_, err := call[NoOutput](c.API, func(cl *clientv0.Client) (*http.Response, error) {
+			req, err := http.NewRequestWithContext(c, method, cl.Server+path, nil)
+			if err != nil {
+				return nil, err
+			}
+
+			return cl.Client.Do(req)
+		})
+
+		return err
+	}
+
+	lookup := cmdline.LateReader(func(_ context.Context, word string) (guarded, error) {
+		return guarded{ID: "12", Name: "mynode", Revision: word}, nil
+	})
+
+	tree, err := build("prog", "A program", allowedAliases, []cmdline.Option{lookup}, New(Spec[in, NoOutput]{
+		Name: "rename", Short: "S", Long: "S.", Example: []string{"prog rename r2"},
+		Run: func(c Ctx, _ in) (NoOutput, error) {
+			err := send(c, http.MethodPost, "other")
+			if err != nil {
+				return NoOutput{}, err
+			}
+
+			return NoOutput{}, send(c, http.MethodPatch, "nodes/12")
+		},
+		Done: func(in, NoOutput, time.Time) string { return "renamed" },
+	}))
+	require.NoError(t, err)
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	run := func(rev string) (string, string) {
+		mu.Lock()
+		seen = nil
+		mu.Unlock()
+
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, []string{"rename", rev}, Env{
+			Stdout: &stdout, Stderr: &stderr, Version: &types.VersionInfo{Version: "dev"},
+			Environ: []string{"HEADSCALE_CONFIG=" + file, "HEADSCALE_CLI_ADDRESS=" + s.URL, "HEADSCALE_CLI_API_KEY=key"},
+		})
+
+		return stdout.String(), stderr.String()
+	}
+
+	stdout, stderr := run("r2")
+	require.Empty(t, stderr)
+	require.Equal(t, "renamed\n", stdout)
+	require.Equal(t, []string{"GET /api/headscale/v0/version ", "POST /other ", `PATCH /nodes/12 "r2"`}, seen)
+
+	_, stderr = run("r1")
+	require.Equal(t, "Error: Node 12 (mynode) changed while the command ran. Run it again.\n", stderr)
+}
+
+// TestGuardOf: the target is the first argument that is an entity; one
+// with no revision guards nothing.
+func TestGuardOf(t *testing.T) {
+	t.Parallel()
+
+	type routes struct {
+		Prefix netip.Prefix `arg:"prefix"`
+		Node   guarded      `arg:"node"`
+		Other  guarded      `arg:"other"`
+	}
+
+	require.Equal(t, &revision{id: "12", rev: "r1"}, guardOf(routes{Node: guarded{ID: "12", Revision: "r1"}, Other: guarded{ID: "13", Revision: "r9"}}))
+	require.Nil(t, guardOf(routes{Node: guarded{ID: "12"}, Other: guarded{ID: "13", Revision: "r9"}}), "a target with no revision guards nothing")
+	require.Nil(t, guardOf(struct {
+		User clientv0.User `arg:"user"`
+	}{User: clientv0.User{Id: "3"}}))
+	require.Nil(t, guardOf(NoInput{}))
 }

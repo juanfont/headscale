@@ -35,7 +35,18 @@ func Run(t *Tree, argv []string, env Env) int {
 		env.Version = types.GetVersionInfo()
 	}
 
-	if t.parser.Serve(env.Stdout, argv) {
+	// Text of the server is made visible where it enters a sentence or a
+	// cell. stderr and the Done text pass once more through a filter that
+	// keeps line breaks, tabs and backslashes, so a sentence that forgets
+	// can at worst break a line, never drive the terminal.
+	if env.Stderr != nil {
+		env.Stderr = visible{env.Stderr}
+	}
+
+	var tab strings.Builder
+	if t.parser.Serve(&tab, argv) {
+		_, _ = io.WriteString(env.Stdout, t.columnNames(argv, tab.String()))
+
 		return 0
 	}
 
@@ -65,6 +76,14 @@ func sentence(err error) string {
 		return v.Error()
 	}
 
+	if s, ok := errors.AsType[*slowError](err); ok {
+		return s.Error()
+	}
+
+	if w, ok := errors.AsType[*writeError](err); ok {
+		return w.Error()
+	}
+
 	return err.Error()
 }
 
@@ -82,6 +101,10 @@ func (t *Tree) run(argv []string, env Env) error {
 		_, err := fmt.Fprintln(env.Stdout, versionLine(env.Version))
 
 		return err
+	case stepColumns:
+		output, _ := cmdline.Get[outputFlags](line)
+
+		return listColumns(env.Stdout, t.leaves[strings.Join(line.Command.Path, " ")].info, output.Output != "")
 	case stepRun:
 	}
 
@@ -98,6 +121,8 @@ func (t *Tree) run(argv []string, env Env) error {
 		stderr:     env.Stderr,
 		Environ:    env.Environ,
 		terminal:   env.Terminal,
+		screen:     env.StdoutTerminal,
+		line:       line,
 		json:       output.Output != "" || own.Output != "",
 		now:        env.Now,
 		build:      env.Version,
@@ -115,16 +140,13 @@ func (t *Tree) run(argv []string, env Env) error {
 
 	ctx := context.Background()
 
+	// cli.timeout bounds each request, in connect, not the whole command:
+	// a walk of many pages, then a write, may take longer than one wait.
 	if l.server(line) {
 		cfg, err := loadConfig(c.ConfigFile, env.Environ)
 		if err != nil {
 			return err
 		}
-
-		var cancel context.CancelFunc
-
-		ctx, cancel = context.WithTimeout(ctx, cfg.CLI.Timeout)
-		defer cancel()
 
 		c.API, err = connect(cfg, env)
 		if err != nil {
@@ -156,6 +178,8 @@ const (
 	stepRun step = iota
 	stepHelp
 	stepVersion
+	// stepColumns prints the columns of a list: --list-columns.
+	stepColumns
 )
 
 // check reads a line and decides its step. A mistake on the line, the
@@ -176,17 +200,51 @@ func (t *Tree) check(argv []string) (*cmdline.Line, step, error) {
 
 	help, _ := cmdline.Get[helpFlags](line)
 	version, _ := cmdline.Get[versionFlags](line)
+	l := t.leaves[strings.Join(line.Command.Path, " ")]
 
 	switch {
 	case help.Help, len(line.Command.Commands) > 0 && !version.Version:
 		return line, stepHelp, nil
 	case version.Version:
 		return line, stepVersion, nil
+	case l != nil && l.list && slices.ContainsFunc(line.Flags, func(g cmdline.Given) bool { return g.Name == "list-columns" && g.Value == "true" }):
+		return line, stepColumns, nil
 	case ue != nil:
 		return line, stepRun, countError(line)
+	case l != nil && l.set:
+		return line, stepRun, nothingToChange(line)
 	}
 
 	return line, stepRun, nil
+}
+
+// nothingGiven is the builder's own kind: a set with none of the flags
+// it changes.
+const nothingGiven cmdline.Kind = -2
+
+// nothingToChange refuses a set that gives none of its Opt flags, the
+// fields it changes; a set with no Opt flag replaces a value it takes as an
+// argument.
+func nothingToChange(line *cmdline.Line) error {
+	var opts []string
+
+	for _, f := range line.Command.Flags {
+		if f.Optional {
+			opts = append(opts, "--"+f.Name)
+		}
+	}
+
+	for _, g := range line.Flags {
+		if slices.Contains(opts, "--"+g.Name) {
+			return nil
+		}
+	}
+
+	if len(opts) == 0 {
+		return nil
+	}
+
+	return usagef(nothingGiven, line.Command.Path, strings.Join(opts, ", "), "nothing to change. Give at least one of\n  %s", strings.Join(opts, ", "))
 }
 
 type ctxKey struct{}
@@ -282,8 +340,9 @@ func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], done func() stri
 }
 
 // printList prints the rows of a ListSpec: the array of their bodies as
-// they came, in the order of rows, or a table.
-func printList[Row any](c Ctx, rows []Row, cols table.Columns[Row]) error {
+// they came, in the order of rows, or a table. A table with no rows is the
+// list's sentence on a terminal, and the header alone in a pipe.
+func printList[Row any](c Ctx, rows []Row, cols table.Columns[Row], noRows string) error {
 	raws := make([][]byte, 0, len(rows))
 
 	for _, r := range rows {
@@ -295,11 +354,29 @@ func printList[Row any](c Ctx, rows []Row, cols table.Columns[Row]) error {
 		raws = append(raws, raw)
 	}
 
-	if !c.json {
+	switch {
+	case !c.json && len(rows) == 0 && c.screen:
+		return writeText(c.stdout, noRows)
+	case !c.json:
 		return table.Render(c.stdout, rows, cols, c.Now())
 	}
 
 	return writeJSON(c.stdout, append(append([]byte("["), bytes.Join(raws, []byte(","))...), ']'))
+}
+
+// kept are what the last filter on stderr and the Done text keeps: the
+// sentence's own line breaks and tabs, and backslashes, which the text of
+// the server already has doubled.
+const kept = "\n\t\\"
+
+// visible makes control characters in what it writes visible, as
+// [table.Visible] does, keeping kept.
+type visible struct{ w io.Writer }
+
+func (v visible) Write(p []byte) (int, error) {
+	_, err := io.WriteString(v.w, table.Visible(string(p), kept))
+
+	return len(p), err
 }
 
 // writeText writes the Done text, ending in one newline.
@@ -308,12 +385,14 @@ func writeText(w io.Writer, text string) error {
 		return nil
 	}
 
-	_, err := fmt.Fprintln(w, strings.TrimSuffix(text, "\n"))
+	_, err := fmt.Fprintln(w, table.Visible(strings.TrimSuffix(text, "\n"), kept))
 
 	return err
 }
 
-// writeJSON writes raw indented.
+// writeJSON writes raw indented, with the controls that JSON leaves raw
+// written as escapes: the values are the same, and a terminal does not
+// act on them.
 func writeJSON(w io.Writer, raw json.RawMessage) error {
 	var b bytes.Buffer
 
@@ -324,7 +403,7 @@ func writeJSON(w io.Writer, raw json.RawMessage) error {
 
 	b.WriteByte('\n')
 
-	_, err = b.WriteTo(w)
+	_, err = w.Write(table.VisibleJSON(b.Bytes()))
 
 	return err
 }
@@ -389,6 +468,13 @@ func (t *Tree) mistake(line *cmdline.Line, ue *cmdline.UsageError) error {
 			version = g.At
 		} else if g.Name != "version" {
 			others++
+		}
+	}
+
+	if l := t.leaves[strings.Join(line.Command.Path, " ")]; l != nil && l.list {
+		pos, err := l.checkList(line, t.line(line.Command.Path))
+		if err != nil {
+			found(err, pos, false)
 		}
 	}
 
@@ -468,7 +554,7 @@ func (t *Tree) unknownCommand(path []string, word string) error {
 		}
 	}
 
-	if best := closest(word, names); best != "" {
+	if best := table.Closest(word, names); best != "" {
 		return usagef(cmdline.UnknownCommand, path, word, "unknown command %q. Did you mean %q?\nRun `%s --help`.",
 			typed, strings.Join(append(slices.Clone(path), best), " "), t.line(path))
 	}
@@ -516,44 +602,4 @@ func countError(line *cmdline.Line) error {
 	}
 
 	return usagef(cmdline.ArgCount, line.Command.Path, fmt.Sprintf("%s, got %d", what, n), "`%s` %s, got %d.\n\n  %s", strings.Join(line.Command.Path, " "), what, n, line.Command.Usage)
-}
-
-// closest is the name nearest to word, within two edits, for "Did you
-// mean"; "" when none is that near.
-func closest(word string, names []string) string {
-	best, dist := "", 3
-
-	for _, n := range names {
-		if d := distance(word, n); d < dist {
-			best, dist = n, d
-		}
-	}
-
-	return best
-}
-
-// distance is the Levenshtein distance of a and b.
-func distance(a, b string) int {
-	prev := make([]int, len(b)+1)
-	for j := range prev {
-		prev[j] = j
-	}
-
-	for i := range len(a) {
-		cur := make([]int, len(b)+1)
-		cur[0] = i + 1
-
-		for j := range len(b) {
-			cost := 1
-			if a[i] == b[j] {
-				cost = 0
-			}
-
-			cur[j+1] = min(prev[j+1]+1, cur[j]+1, prev[j]+cost)
-		}
-
-		prev = cur
-	}
-
-	return prev[len(b)]
 }

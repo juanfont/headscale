@@ -33,7 +33,7 @@ func testTree(t *testing.T) *Tree {
 		Group{Name: "items", Short: "Manage items", OldNames: []string{"item"}, Commands: []Node{
 			NewList(ListSpec[NoInput, item]{
 				Name: "list", Short: "List items", Long: "List items.", Example: []string{"prog items list"}, Aliases: []string{"ls"},
-				Local: true, Columns: itemColumns,
+				Local: true, Columns: itemColumns, NoRows: "No items.",
 				Run: func(Ctx, NoInput) ([]item, error) { return []item{{"1", "apple"}, {"2", ""}}, nil },
 			}),
 			New(Spec[getIn, item]{
@@ -133,20 +133,9 @@ Examples:
 	}
 }
 
-func TestClosest(t *testing.T) {
-	t.Parallel()
-
-	names := []string{"nodes", "users", "version"}
-	require.Equal(t, "nodes", closest("nodse", names))
-	require.Equal(t, "users", closest("user", names))
-	require.Empty(t, closest("policy", names))
-	require.Equal(t, 0, distance("", ""))
-	require.Equal(t, 3, distance("abc", ""))
-}
-
 // fakeServer answers like v0, with a field this build does not know in
-// every object: /health changes with each call, /items has two pages, and
-// DELETE /thing has no body.
+// every object: /health changes with each call, /items has two pages,
+// /broken fails on its second page, and DELETE /thing has no body.
 func fakeServer(t *testing.T) string {
 	t.Helper()
 
@@ -163,6 +152,11 @@ func fakeServer(t *testing.T) string {
 			_, _ = w.Write([]byte(`{"items": [{"id": "1", "name": "a", "x": 1}], "nextPageToken": "p2"}`))
 		case r.URL.Path == "/items":
 			_, _ = w.Write([]byte(`{"items": [{"id": "2", "name": "b", "x": 2}]}`))
+		case r.URL.Path == "/broken" && r.URL.Query().Get("pageToken") == "":
+			_, _ = w.Write([]byte(`{"broken": [{"id": "1", "name": "a"}], "nextPageToken": "p2"}`))
+		case r.URL.Path == "/broken":
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"code": "internal", "status": 500, "title": "Internal", "requestId": "r1"}`))
 		default:
 			n := calls.Add(1)
 			_, _ = fmt.Fprintf(w, `{"healthy": true, "databaseConnectivity": %t, "warnings": [], "call": %d}`, n == 1, n)
@@ -173,9 +167,16 @@ func fakeServer(t *testing.T) string {
 	return s.URL
 }
 
-func listItems(c Ctx) ([]item, error) {
-	return walk[item](c.API, "items", func(cl *clientv0.Client, token string) (*http.Response, error) {
-		req, err := http.NewRequestWithContext(c, http.MethodGet, cl.Server+"items?pageToken="+token, nil)
+func listItems(c Ctx) ([]item, error) { return listOfPath(c, "items") }
+
+func listOfPath(c Ctx, path string) ([]item, error) {
+	return walk[item](c.API, path, func(cl *clientv0.Client, p page) (*http.Response, error) {
+		token := ""
+		if p.token != nil {
+			token = *p.token
+		}
+
+		req, err := http.NewRequestWithContext(c, http.MethodGet, cl.Server+path+"?pageToken="+token, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -220,13 +221,17 @@ func TestJSONIsTheAnswer(t *testing.T) {
 			Done: func(NoInput, clientv0.Health, time.Time) string { return "done" },
 		}),
 		NewList(ListSpec[NoInput, item]{
-			Name: "items", Short: "S", Long: "S.", Example: []string{"prog items"}, Columns: itemColumns,
+			Name: "items", Short: "S", Long: "S.", Example: []string{"prog items"}, Columns: itemColumns, NoRows: "No items.",
 			Run: func(c Ctx, _ NoInput) ([]item, error) {
 				rows, err := listItems(c)
 				slices.Reverse(rows)
 
 				return rows, err
 			},
+		}),
+		NewList(ListSpec[NoInput, item]{
+			Name: "broken", Short: "S", Long: "S.", Example: []string{"prog broken"}, Columns: itemColumns, NoRows: "No items.",
+			Run: func(c Ctx, _ NoInput) ([]item, error) { return listOfPath(c, "broken") },
 		}),
 		New(Spec[NoInput, item]{
 			Name: "item", Short: "S", Long: "S.", Example: []string{"prog item"}, Columns: itemColumns,
@@ -277,6 +282,9 @@ func TestJSONIsTheAnswer(t *testing.T) {
 		{line: "items -o json", stdout: "[\n  {\n    \"id\": \"2\",\n    \"name\": \"b\",\n    \"x\": 2\n  },\n  {\n    \"id\": \"1\",\n    \"name\": \"a\",\n    \"x\": 1\n  }\n]\n"},
 		{line: "items", stdout: "ID  NAME\n2   b\n1   a\n"},
 		{line: "item -o json", stdout: "{\n  \"id\": \"2\",\n  \"name\": \"b\",\n  \"x\": 2\n}\n"},
+		// A page that fails in the middle prints no part of the list.
+		{line: "broken", stderr: "Error: the server had an internal error. Its log has the request r1.\n", code: 1},
+		{line: "broken -o json", stderr: "Error: the server had an internal error. Its log has the request r1.\n", code: 1},
 		{line: "remove", stdout: "removed\n"},
 		{line: "remove -o json"},
 	} {
@@ -359,4 +367,86 @@ func TestSentence(t *testing.T) {
 	require.Equal(t, "the server did not accept the API key.", sentence(fmt.Errorf("getting user: %w", p)))
 	require.Equal(t, "cannot connect to x: it broke", sentence(fmt.Errorf("listing: %w", &connectError{target: "x", err: errBroken})))
 	require.Equal(t, "listing: it broke", sentence(fmt.Errorf("listing: %w", errBroken)))
+}
+
+// TestNothingToChange: a set needs one of the flags it changes; a set with
+// no such flag replaces its argument, and a wrong count comes first.
+func TestNothingToChange(t *testing.T) {
+	t.Parallel()
+
+	type setIn struct {
+		Name  string      `arg:"name"`
+		New   Opt[string] `flag:"new-name" help:"New name"`
+		Email Opt[string] `flag:"email"    help:"New email"`
+		Force bool        `flag:"force"    help:"Do not ask"`
+	}
+
+	type replaceIn struct {
+		Name string `arg:"name"`
+	}
+
+	done := func(setIn, NoOutput, time.Time) string { return "set" }
+	tree, err := Build("prog", "A program", Group{Name: "items", Short: "Items", Commands: []Node{
+		New(Spec[setIn, NoOutput]{Name: "set", Short: "S", Long: "S.", Example: []string{"prog items set a --email x"}, Local: true, NeedsChange: true, Run: noop[setIn, NoOutput], Done: done}),
+		// A set that does not say NeedsChange takes a line with no flag.
+		New(Spec[setIn, NoOutput]{Name: "replace", Short: "S", Long: "S.", Example: []string{"prog items replace a"}, Local: true, Run: noop[setIn, NoOutput], Done: done}),
+		Group{Name: "tags", Short: "Tags", Commands: []Node{
+			New(Spec[replaceIn, NoOutput]{Name: "set", Short: "S", Long: "S.", Example: []string{"prog items tags set a"}, Local: true, Run: noop[replaceIn, NoOutput]}),
+		}},
+	}})
+	require.NoError(t, err)
+
+	for line, want := range map[string]string{
+		"items set a":              "Error: nothing to change. Give at least one of\n  --new-name, --email\n",
+		"items set a --force":      "Error: nothing to change. Give at least one of\n  --new-name, --email\n",
+		"items set":                "Error: `items set` needs 1 argument, got 0.\n\n  prog items set <name>\n",
+		"items set a --new-name=":  "",
+		"items set a --email x":    "",
+		"items tags set a":         "",
+		"items replace a":          "",
+		"items set a -h --force=x": "Error: --force takes true or false, not \"x\".\n",
+	} {
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, strings.Fields(line), Env{Stdout: &stdout, Stderr: &stderr})
+		require.Equal(t, want, stderr.String(), line)
+	}
+}
+
+// TestNeedsChangeNeedsAFlag: NeedsChange on a command with no Opt flag is
+// a wrong spec.
+func TestNeedsChangeNeedsAFlag(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Name string `arg:"name"`
+	}
+
+	_, err := Build("prog", "A program", New(Spec[in, NoOutput]{
+		Name: "set", Short: "S", Long: "S.", Example: []string{"prog set a"}, Local: true, NeedsChange: true, Run: noop[in, NoOutput],
+	}))
+	require.EqualError(t, err, "set: NeedsChange and no Opt flag that changes a field")
+}
+
+// TestVisibleText: a Done text and everything on stderr show control
+// characters of the server as escapes; JSON escapes them itself.
+func TestVisibleText(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+
+	require.Equal(t, 0, Run(testTree(t), []string{"items", "rename", "a\x1b[31m\u202e"}, Env{Stdout: &stdout, Stderr: &stderr}))
+	require.Equal(t, `Item 1 is a\x1b[31m\u202e.`+"\n", stdout.String())
+
+	stdout.Reset()
+	require.Equal(t, 0, Run(testTree(t), []string{"items", "rename", "a\x1b\u202e\u0085", "-o", "json"}, Env{Stdout: &stdout, Stderr: &stderr}))
+	require.Contains(t, stdout.String(), `"name": "a\u001b\u202e\u0085"`)
+
+	// The last filter keeps the sentence's own breaks and the backslashes
+	// that the text of the server already has doubled.
+	var b bytes.Buffer
+
+	_, err := visible{&b}.Write([]byte("Error: \x1b[2J\u202e \\\\x\n\tnext\n"))
+	require.NoError(t, err)
+	require.Equal(t, `Error: \x1b[2J\u202e \\x`+"\n\tnext\n", b.String())
 }

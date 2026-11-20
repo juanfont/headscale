@@ -37,6 +37,17 @@ type leaf struct {
 	local, output, config bool
 	// own is a result that is the CLI's own object, not one of the API.
 	own bool
+	// list is a list: it takes the list flags. info is its columns, and
+	// checkList checks the values of the list flags against them.
+	list      bool
+	info      []table.ColumnInfo
+	checkList func(line *cmdline.Line, command string) (int, error)
+	// noRows is what a list with no rows says on a terminal; filter is an
+	// example of --filter for its help.
+	noRows, filter string
+	// set is a command that changes the fields its Opt flags name, so a
+	// line gives at least one of them: NeedsChange.
+	set bool
 	// server reports whether this line talks to the server.
 	server func(*cmdline.Line) bool
 	check  func() error
@@ -72,6 +83,7 @@ var (
 	errNoColumns = errors.New("a list with no columns")
 	errBoth      = errors.New("both Columns and Done; Done is printed in place of the sheet")
 	errNoDefault = errors.New("a list with no Default column")
+	errNoRows    = errors.New("a list with no NoRows sentence")
 )
 
 // specError is a spec that is wrong, named by its path.
@@ -120,13 +132,19 @@ func New[In, Out any](s Spec[In, Out]) Node {
 
 		return errors.Join(append(errs, s.Columns.Check())...)
 	}
+	l.set = s.NeedsChange
+
 	l.cmd = func(flags []any) cmdline.Node {
 		return cmdline.Command[In]{Name: s.Name, Aliases: s.Aliases, Help: s.Short, Flags: flags, Run: func(ctx context.Context, in In) error {
 			c := ctxOf(ctx)
 
+			if c.API != nil {
+				c.API.guard.Store(guardOf(in))
+			}
+
 			out, err := s.Run(c, in)
 			if err != nil {
-				return err
+				return flagsOf[In](err)
 			}
 
 			return printOne(c, out, s.Columns, func() string {
@@ -146,6 +164,11 @@ func New[In, Out any](s Spec[In, Out]) Node {
 func NewList[In, Row any](s ListSpec[In, Row]) Node {
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
 	l.output = true
+	l.list = true
+	l.info = s.Columns.Info()
+	l.noRows = s.NoRows
+	l.filter = filterExample(s.Example)
+	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
 	l.check = func() error {
 		var errs []error
 
@@ -160,18 +183,33 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 			errs = append(errs, errNoDefault)
 		}
 
+		if s.NoRows == "" {
+			errs = append(errs, errNoRows)
+		}
+
 		return errors.Join(append(errs, s.Columns.Check())...)
 	}
 	l.cmd = func(flags []any) cmdline.Node {
 		return cmdline.Command[In]{Name: s.Name, Aliases: s.Aliases, Help: s.Short, Flags: flags, Run: func(ctx context.Context, in In) error {
 			c := ctxOf(ctx)
+			f, _ := cmdline.Get[listFlags](c.line)
 
-			rows, err := s.Run(c, in)
+			conds, err := filters(c, s.Columns, f)
 			if err != nil {
 				return err
 			}
 
-			return printList(c, rows, s.Columns)
+			rows, err := s.Run(c, in)
+			if err != nil {
+				return flagsOf[In](err)
+			}
+
+			rows, err = listOf(c, s.Columns, rows, conds, f.Sort)
+			if err != nil {
+				return err
+			}
+
+			return printList(c, rows, s.Columns.Pick(f.words()), s.NoRows)
 		}}
 	}
 
@@ -199,10 +237,15 @@ func common[In any](name, short, long string, example, aliases, oldNames []strin
 	}
 }
 
-// flags are the structs of flags the builder gives the command: --output
-// and --config as its spec derives them, and --help.
+// flags are the structs of flags the builder gives the command: the list
+// flags of a list, --output and --config as its spec derives them, and
+// --help.
 func (l *leaf) flags() []any {
 	var f []any
+
+	if l.list {
+		f = append(f, listFlags{})
+	}
 
 	switch {
 	case l.output && l.own:
@@ -242,7 +285,7 @@ var allowedAliases = []string{"ls", "rm", "approve"}
 // Build checks every spec and makes the tree. The error names every
 // command and field that is wrong.
 func Build(name, short string, nodes ...Node) (*Tree, error) {
-	return build(name, short, allowedAliases, nil, nodes...)
+	return build(name, short, allowedAliases, lookups, nodes...)
 }
 
 // build is Build with the aliases a tree may use and the parser's options
@@ -339,6 +382,14 @@ func build(name, short string, aliases []string, opts []cmdline.Option, nodes ..
 	}
 
 	errs = append(errs, t.checkFlags()...)
+
+	for _, c := range candidates {
+		err := c.Check()
+		if err != nil {
+			errs = append(errs, specError("the candidates of a lookup: "+err.Error()))
+		}
+	}
+
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
@@ -356,6 +407,10 @@ func (t *Tree) checkFlags() []error {
 	var walk func(*cmdline.Info)
 
 	walk = func(c *cmdline.Info) {
+		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && l.set && !slices.ContainsFunc(c.Flags, func(f cmdline.Flag) bool { return f.Optional }) {
+			errs = append(errs, specError(strings.Join(c.Path, " ")+": NeedsChange and no Opt flag that changes a field"))
+		}
+
 		for _, f := range c.Flags {
 			if f.Name == rootOnly {
 				if len(c.Path) > 0 {

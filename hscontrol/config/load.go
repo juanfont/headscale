@@ -1282,8 +1282,6 @@ func scalarHook(from, to reflect.Value) (any, error) {
 }
 
 func toDuration(v reflect.Value) (any, error) {
-	unit := &types.ConfigError{Reason: "needs a unit", Hint: `write the unit, e.g. "30s", "5m" or "90d"`}
-
 	if v.Kind() != reflect.String {
 		if _, ok := util.ScalarText(v); !ok || v.Kind() == reflect.Bool {
 			return v.Interface(), nil
@@ -1293,11 +1291,26 @@ func toDuration(v reflect.Value) (any, error) {
 			return time.Duration(0), nil
 		}
 
-		return nil, unit
+		return nil, noUnit()
 	}
 
-	s := v.String()
+	d, err := ParseDuration(v.String())
+	if err != nil {
+		return nil, err
+	}
 
+	return d, nil
+}
+
+const unitHint = `write the unit, e.g. "30s", "5m" or "90d"`
+
+func noUnit() error { return &types.ConfigError{Reason: "needs a unit", Hint: unitHint} }
+
+// ParseDuration reads a duration as the config file writes it: the units
+// of Go (ns to h) and of Prometheus (d, w, y), combined from large to
+// small. The CLI reads its time values with it too, so a duration means
+// the same in both.
+func ParseDuration(s string) (time.Duration, error) {
 	d, err := time.ParseDuration(s)
 	if err == nil {
 		return d, nil
@@ -1310,10 +1323,10 @@ func toDuration(v reflect.Value) (any, error) {
 
 	_, err = strconv.ParseFloat(s, 64)
 	if err == nil {
-		return nil, unit
+		return 0, noUnit()
 	}
 
-	return nil, &types.ConfigError{Reason: "is not a duration", Hint: unit.Hint}
+	return 0, &types.ConfigError{Reason: "is not a duration", Hint: unitHint}
 }
 
 func toBool(v reflect.Value) (any, error) {

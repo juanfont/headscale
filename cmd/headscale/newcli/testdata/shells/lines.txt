@@ -38,6 +38,14 @@ headscale nodez |
 headscale versoin --|
 headscale version --bogus --|
 headscale completion bash -c|
+# The list flags and their columns, on users list
+headscale users |
+headscale users list --|
+headscale users list --columns id,na|
+headscale users list --columns +lo|
+headscale users list --sort -co|
+headscale users list --filter=pro|
+headscale users set alice --|
 # Help and --version are ordinary flags on Tab
 headscale -h ve|
 headscale --version |

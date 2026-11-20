@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -45,6 +48,15 @@ type API struct {
 	answered func(req *http.Request, body []byte)
 	// socket is the unix socket; nil for a remote server.
 	socket *socket
+	// pageSize is the rows of one page of a walk.
+	pageSize int64
+	// check is the version check, which also knows whether the server
+	// answered before and whether a write is out; timeout is cli.timeout.
+	check   *versionCheck
+	timeout time.Duration
+	// guard is the revision of the target, sent in If-Match with every
+	// write on it; see guardOf.
+	guard atomic.Pointer[revision]
 
 	mu      sync.Mutex
 	answers map[answerKey]json.RawMessage
@@ -110,6 +122,25 @@ func (a *API) Health(ctx context.Context) (clientv0.Health, error) {
 	return call[clientv0.Health](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetHealth(ctx) })
 }
 
+// ListUsers is every page of GET /users.
+func (a *API) ListUsers(ctx context.Context) ([]clientv0.User, error) {
+	return walk[clientv0.User](a, "users", func(c *clientv0.Client, p page) (*http.Response, error) {
+		return c.ListUsers(ctx, &clientv0.ListUsersParams{PageSize: &p.size, PageToken: p.token})
+	})
+}
+
+// CreateUser is POST /users.
+func (a *API) CreateUser(ctx context.Context, body clientv0.CreateUserBody) (clientv0.User, error) {
+	return call[clientv0.User](a, func(c *clientv0.Client) (*http.Response, error) { return c.CreateUser(ctx, body) })
+}
+
+// UpdateUser is PATCH /users/{id}, as a merge patch.
+func (a *API) UpdateUser(ctx context.Context, id string, body clientv0.UpdateUserBody) (clientv0.User, error) {
+	return call[clientv0.User](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.UpdateUserWithApplicationMergePatchPlusJSONBody(ctx, id, body)
+	})
+}
+
 // call makes one request and reads its answer: a 2xx body as T, kept for
 // -o json; no body (a 204) as the zero T; any other status as a problem.
 func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, error) {
@@ -130,32 +161,66 @@ func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, 
 	return out, nil
 }
 
+// page is the request of one page of a walk: its size, and the token of
+// the page before; nil for the first.
+type page struct {
+	size  int64
+	token *string
+}
+
+// errRestarted is a walk whose token the server refused twice.
+var errRestarted = errors.New("the server restarted while the list was read. Run the command again.") //nolint:staticcheck // a sentence of the CLI
+
 // walk reads every page of a list, from the first to the one with no
 // nextPageToken; items is the key of the rows in a page. Each row keeps
 // its own body, so -o json prints the rows as they came, in the order
-// that Run returns them.
-func walk[Row any](a *API, items string, page func(c *clientv0.Client, token string) (*http.Response, error)) ([]Row, error) {
-	var (
-		rows  []Row
-		token string
-	)
+// that Run returns them. A server that refuses a token, as after a
+// restart, is walked again from the first page, once.
+func walk[Row any](a *API, items string, get func(c *clientv0.Client, p page) (*http.Response, error)) ([]Row, error) {
+	refused := func(err error) bool {
+		p, ok := errors.AsType[*ProblemError](err)
+
+		return ok && p.Problem.Code == clientv0.InvalidPageToken
+	}
+
+	rows, err := pages[Row](a, items, get)
+	if refused(err) {
+		rows, err = pages[Row](a, items, get)
+	}
+
+	if refused(err) {
+		return nil, errRestarted
+	}
+
+	return rows, err
+}
+
+func pages[Row any](a *API, items string, get func(c *clientv0.Client, p page) (*http.Response, error)) ([]Row, error) {
+	var rows []Row
+
+	p := page{size: a.pageSize}
+	seen := map[string]bool{}
 
 	for {
-		body, err := a.do(func(c *clientv0.Client) (*http.Response, error) { return page(c, token) })
+		body, err := a.do(func(c *clientv0.Client) (*http.Response, error) { return get(c, p) })
+		if s, ok := errors.AsType[*slowError](err); ok {
+			s.list = true
+		}
+
 		if err != nil {
 			return nil, err
 		}
 
-		var p map[string]json.RawMessage
+		var list map[string]json.RawMessage
 
-		err = json.Unmarshal(body, &p)
+		err = json.Unmarshal(body, &list)
 		if err != nil {
 			return nil, a.unreadable(err)
 		}
 
 		var raws []json.RawMessage
 
-		err = json.Unmarshal(p[items], &raws)
+		err = json.Unmarshal(list[items], &raws)
 		if err != nil {
 			return nil, a.unreadable(err)
 		}
@@ -172,15 +237,28 @@ func walk[Row any](a *API, items string, page func(c *clientv0.Client, token str
 			rows = append(rows, r)
 		}
 
-		next, ok := p["nextPageToken"]
+		next, ok := list["nextPageToken"]
 		if !ok {
 			return rows, nil
 		}
 
+		var token string
+
 		err = json.Unmarshal(next, &token)
-		if err != nil {
+
+		// A walk ends only on a page with no token, so a token that leads
+		// nowhere new would ask for ever.
+		switch {
+		case err != nil:
 			return nil, a.unreadable(err)
+		case token == "":
+			return nil, fmt.Errorf("the server at %s sent an empty page token. This is a fault of the server.", a.target) //nolint:err113,staticcheck // a sentence of the CLI
+		case seen[token]:
+			return nil, fmt.Errorf("the server at %s sent a page token it had sent before, so the list would never end. This is a fault of the server.", a.target) //nolint:err113,staticcheck // a sentence of the CLI
 		}
+
+		seen[token] = true
+		p.token = &token
 	}
 }
 
@@ -213,7 +291,8 @@ func (a *API) do(do func(*clientv0.Client) (*http.Response, error)) ([]byte, err
 }
 
 func (a *API) unreadable(err error) error {
-	return fmt.Errorf("the server at %s sent an answer this CLI cannot read: %w", a.target, err)
+	// The decoder quotes what it could not read, which the server wrote.
+	return fmt.Errorf("the server at %s sent an answer this CLI cannot read: %s", a.target, table.Visible(err.Error(), "")) //nolint:err113 // a sentence of the CLI
 }
 
 // callError keeps an error of the version check, which already says what
@@ -223,13 +302,103 @@ func (a *API) callError(err error) error {
 		return v
 	}
 
+	deadline := errors.Is(err, context.DeadlineExceeded)
+
+	switch {
+	// A write that was sent may have been made, whatever went wrong after.
+	case a.check != nil && a.check.writing.Load():
+		return &writeError{target: a.target, err: err}
+	// A server that answered before is reached: it is slow, not gone.
+	case deadline && a.check != nil && a.check.checked.Load():
+		return &slowError{target: a.target, timeout: a.timeout}
 	// A request that ran out of time while the socket was not there says
 	// why the dial failed, not that the time was up.
-	if a.socket != nil && errors.Is(err, context.DeadlineExceeded) {
+	case deadline && a.socket != nil:
 		err = cmp.Or(a.socket.failed(), err)
 	}
 
 	return &connectError{target: a.target, err: err}
+}
+
+// slowError is a server that answered before, and not this request in
+// time.
+type slowError struct {
+	target  string
+	timeout time.Duration
+	// list is a page of a walk.
+	list bool
+}
+
+func (e *slowError) Error() string {
+	what := "answer"
+	if e.list {
+		what = "send the next page of the list"
+	}
+
+	return "the server at " + e.target + " did not " + what + " in " + e.timeout.String() + ".\n" +
+		"Run the command again, or wait longer with HEADSCALE_CLI_TIMEOUT or cli.timeout."
+}
+
+// writeError is a write that was sent and got no answer: the server may
+// have made the change.
+type writeError struct {
+	target string
+	err    error
+}
+
+func (e *writeError) Error() string {
+	return "the server at " + e.target + " did not answer the change: " + causeOf(e.err) + ".\n" +
+		"The change may have been made: look before you run the command again."
+}
+
+func (e *writeError) Unwrap() error { return e.err }
+
+// each is what every request of a run gets, whichever method made it: a
+// write on the target carries its revision in If-Match, and cli.timeout
+// bounds the dial, the answer and its body. The time of a command is the
+// sum of its requests, so a walk is not cut while its pages arrive. A
+// timeout of 0 bounds nothing.
+type each struct {
+	next    http.RoundTripper
+	timeout time.Duration
+	guard   *atomic.Pointer[revision]
+}
+
+func (t each) RoundTrip(req *http.Request) (*http.Response, error) {
+	if g := t.guard.Load(); g != nil && g.on(req) {
+		req = req.Clone(req.Context())
+		req.Header.Set("If-Match", strconv.Quote(g.rev))
+	}
+
+	if t.timeout <= 0 {
+		return t.next.RoundTrip(req)
+	}
+
+	ctx, cancel := context.WithTimeout(req.Context(), t.timeout)
+
+	resp, err := t.next.RoundTrip(req.WithContext(ctx))
+	if err != nil {
+		cancel()
+
+		return nil, err
+	}
+
+	resp.Body = cancelOnClose{resp.Body, cancel}
+
+	return resp, nil
+}
+
+// cancelOnClose ends the time of a request when its body is read.
+type cancelOnClose struct {
+	io.ReadCloser
+
+	cancel context.CancelFunc
+}
+
+func (c cancelOnClose) Close() error {
+	defer c.cancel()
+
+	return c.ReadCloser.Close()
 }
 
 // connectError is a server that cannot be reached, with what was wrong.
@@ -254,8 +423,14 @@ func (e *connectError) Error() string {
 }
 
 // causeOf is the part of a dial or request error that says what was wrong,
-// without the operation and the address that the message already names.
+// without the operation and the address that the message already names. A
+// TLS error can quote a name from the server's certificate, so it is made
+// visible.
 func causeOf(err error) string {
+	return table.Visible(cause(err), "")
+}
+
+func cause(err error) string {
 	var (
 		errno syscall.Errno
 		uerr  *url.Error
@@ -274,6 +449,10 @@ func causeOf(err error) string {
 }
 
 func (e *connectError) Unwrap() error { return e.err }
+
+// maxPage is the most rows v0 gives on one page; a walk asks for it, so a
+// list of up to 1000 rows is one call.
+const maxPage = 1000
 
 var errNoAPIKey = errors.New("a remote server needs an API key: set HEADSCALE_CLI_API_KEY, or cli.api_key in the config")
 
@@ -325,8 +504,11 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 
 	check := &versionCheck{next: base, own: env.Version, target: target, server: server, warn: env.Stderr}
 
+	// Each request reads the guard of the API it serves.
+	a := &API{}
+
 	c, err := clientv0.NewClient(server,
-		clientv0.WithHTTPClient(&http.Client{Transport: check}),
+		clientv0.WithHTTPClient(&http.Client{Transport: each{next: check, timeout: cfg.CLI.Timeout, guard: &a.guard}}),
 		clientv0.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 			if key != "" {
 				req.Header.Set("Authorization", "Bearer "+key)
@@ -339,7 +521,76 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 		return nil, err
 	}
 
-	return &API{c: c, target: target, answered: env.Answered, socket: sock}, nil
+	size := int64(env.PageSize)
+	if size == 0 {
+		size = maxPage
+	}
+
+	a.c, a.target, a.answered, a.socket, a.pageSize, a.check, a.timeout = c, target, env.Answered, sock, size, check, cfg.CLI.Timeout
+
+	return a, nil
+}
+
+// revision is the target of a command and its revision, which a write on
+// the target sends back in If-Match: a server that holds another revision
+// refuses the write with precondition_failed, so a change made in between
+// is not lost.
+type revision struct{ id, rev string }
+
+// on reports whether req is a write on the target: not a GET, and a path
+// that has the target's ID as one of its segments.
+func (g *revision) on(req *http.Request) bool {
+	return req.Method != http.MethodGet && slices.Contains(strings.Split(req.URL.Path, "/"), g.id)
+}
+
+// guardOf is the revision of the target of in: its first argument that is
+// an entity, when that entity has an id and a revision. A command does not
+// send it itself; the builder sets it before Run, so no write can leave it
+// out.
+func guardOf[In any](in In) *revision {
+	v := reflect.ValueOf(in)
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+
+	for i := range v.NumField() {
+		if v.Type().Field(i).Tag.Get("arg") == "" {
+			continue
+		}
+
+		e := v.Field(i)
+		if e.Kind() != reflect.Struct {
+			continue
+		}
+
+		// The first argument that is an entity, a struct with an id, is
+		// the target; one with no revision has nothing to guard.
+		id, rev := jsonText(e, "id"), jsonText(e, "revision")
+
+		switch {
+		case id == "":
+			continue
+		case rev == "":
+			return nil
+		}
+
+		return &revision{id: id, rev: rev}
+	}
+
+	return nil
+}
+
+// jsonText is the string field of struct v under the JSON key name; "" for
+// none.
+func jsonText(v reflect.Value, name string) string {
+	for i := range v.NumField() {
+		tag, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("json"), ",")
+		if tag == name && v.Field(i).Kind() == reflect.String {
+			return v.Field(i).String()
+		}
+	}
+
+	return ""
 }
 
 var errNoSocket = errors.New("unix_socket is empty")
@@ -354,7 +605,7 @@ type socket struct {
 }
 
 // dial connects to the socket, and tries again until it appears or the
-// time of the command is up: a command run right after the server starts
+// time of the request is up: a command run right after the server starts
 // can come before the socket. A socket the user may not open does not get
 // better by waiting.
 func (s *socket) dial(ctx context.Context) (net.Conn, error) {
@@ -404,6 +655,9 @@ type versionCheck struct {
 	server string
 	// checked is set once an answer has passed the check.
 	checked atomic.Bool
+	// writing is set while a write is out: sent, and its answer not yet
+	// come.
+	writing atomic.Bool
 	// warn is stderr, also with -o json, unlike Ctx.Note: the warning says
 	// whether what is read can be trusted, so a script must see it too.
 	warn   io.Writer
@@ -425,16 +679,25 @@ func (v *versionCheck) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp.Body.Close()
 	}
 
+	write := req.Method != http.MethodGet
+	if write {
+		v.writing.Store(true)
+	}
+
 	resp, err := v.next.RoundTrip(req)
 	if err != nil {
 		return nil, err
+	}
+
+	if write {
+		v.writing.Store(false)
 	}
 
 	server := resp.Header.Get("Headscale-Version")
 	if server == "" {
 		resp.Body.Close()
 
-		return nil, &versionError{tooOld: resp.StatusCode == http.StatusNotFound, status: resp.Status, target: v.target}
+		return nil, &versionError{tooOld: resp.StatusCode == http.StatusNotFound, status: table.Visible(resp.Status, ""), target: v.target}
 	}
 
 	own, ownCommit := v.own.Version, shortCommit(v.own.Commit)
@@ -506,8 +769,9 @@ func shortCommit(c string) string {
 }
 
 // named is a version as the messages write it, with the commit when the
-// build knows it.
+// build knows it. Both can come from the server's headers.
 func named(version, commit string) string {
+	version, commit = table.Visible(version, ""), table.Visible(commit, "")
 	if commit == "" {
 		return version
 	}

@@ -1,6 +1,6 @@
 # headscale: 76 rows: pass 5 waits 71
 # model: 76 rows: fails 2 pass 74
-headscale	C01	waits	serve, check, nodes, users, auth, policy
+headscale	C01	waits	serve, check, nodes, auth, policy
 headscale	C02	waits	nodes
 headscale	C03	waits	nodes, nodes list, nodes delete, nodes set, nodes routes
 headscale	C04	waits	nodes routes, nodes routes set
@@ -23,7 +23,7 @@ headscale	C20	waits	nodes list
 headscale	N01	waits	nodes, nodes list, nodes delete, nodes set, nodes routes
 headscale	N02	waits	nodes, nodes list
 headscale	N03	waits	nodes, nodes routes
-headscale	N04	waits	users, users delete
+headscale	N04	waits	users delete
 headscale	N05	waits	nodes routes, nodes routes set
 headscale	N06	waits	nodes, nodes list
 headscale	N07	waits	nodes delete
@@ -123,7 +123,7 @@ model	Q03	pass
 model	Q04	pass
 model	Q05	pass
 model	Q06	pass
-model	Q07	fails	"--columns\tColumns to show\n--sort\tColumn to sort by\n--filter\tRows to keep\n--list-columns\tList the columns\n--output\tOutput format: json (the API object)\n--config\tConfig file\n--help\tShow this help\n:4\n"
+model	Q07	fails	"--columns\tColumns to show: a list, or +name and -name to change the default\n--list-columns\tList the columns, the API field behind each, and exit\n--filter\tKeep the rows that match; may be repeated\n--sort\tColumn to sort by; -name sorts in reverse\n--output\tOutput format: json (the API object)\n--config\tConfig file\n--help\tShow this help\n:4\n"
 model	Q08	fails	"-o\tOutput format: json (the API object)\n:4\n"
 model	Q09	pass
 model	Q10	pass

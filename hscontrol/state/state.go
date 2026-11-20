@@ -632,6 +632,34 @@ func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) 
 		return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
 	}
 
+	return s.userCreated(user)
+}
+
+// CreateLocalUser creates a user that Headscale owns. Its name and email
+// must not equal a text of another user ([hsdb.CheckLocalUserTexts]); the
+// check and the insert run under the lock of every user write, as no unique
+// index holds the rule.
+func (s *State) CreateLocalUser(user types.User) (*types.User, change.Change, error) {
+	s.userUpdateMu.Lock()
+	defer s.userUpdateMu.Unlock()
+
+	created, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
+		err := hsdb.CheckLocalUserTexts(tx, 0, user.Name, user.Email)
+		if err != nil {
+			return nil, err
+		}
+
+		return hsdb.CreateUser(tx, user)
+	})
+	if err != nil {
+		return nil, change.Change{}, err
+	}
+
+	return s.userCreated(*created)
+}
+
+// userCreated brings the policy up to a user that was just stored.
+func (s *State) userCreated(user types.User) (*types.User, change.Change, error) {
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerUsers()
 	if err != nil {
@@ -656,6 +684,12 @@ func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) 
 // UpdateUser modifies an existing user using the provided update function within a transaction.
 // Returns the updated user, change set, and any error.
 func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, change.Change, error) {
+	return s.updateUser(userID, func(_ *gorm.DB, u *types.User) error { return updateFn(u) })
+}
+
+// updateUser is [State.UpdateUser], with the transaction for updateFn's own
+// reads.
+func (s *State) updateUser(userID types.UserID, updateFn func(*gorm.DB, *types.User) error) (*types.User, change.Change, error) {
 	s.userUpdateMu.Lock()
 	defer s.userUpdateMu.Unlock()
 
@@ -669,15 +703,20 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 
 		previous = *user
 
-		if err := updateFn(user); err != nil { //nolint:noinlineerr
+		if err := updateFn(tx, user); err != nil { //nolint:noinlineerr
 			return nil, err
 		}
 
 		// Select every column so cleared fields are written. Save would also
 		// insert the row again if a delete removed it meanwhile.
-		err = tx.Select("*").Updates(user).Error //nolint:unqueryvet // UPDATE, not a read
-		if err != nil {
-			return nil, fmt.Errorf("updating user: %w", err)
+		res := tx.Select("*").Updates(user) //nolint:unqueryvet // UPDATE, not a read
+		if res.Error != nil {
+			return nil, fmt.Errorf("updating user: %w", res.Error)
+		}
+
+		// A delete that committed after the read leaves nothing to update.
+		if res.RowsAffected == 0 {
+			return nil, hsdb.ErrUserNotFound
 		}
 
 		return user, nil
@@ -818,6 +857,32 @@ func (s *State) RenameUser(userID types.UserID, newName string) (*types.User, ch
 	})
 }
 
+// UpdateLocalUser changes a user that Headscale owns, in one transaction.
+// A user from an identity provider is refused: the provider owns its
+// fields. A name or an email that changes must not equal a text of another
+// user ([hsdb.CheckLocalUserTexts]).
+func (s *State) UpdateLocalUser(userID types.UserID, updateFn func(*types.User)) (*types.User, change.Change, error) {
+	return s.updateUser(userID, func(tx *gorm.DB, user *types.User) error {
+		if user.FromIdentityProvider() {
+			return hsdb.ErrCannotChangeOIDCUser
+		}
+
+		before := *user
+		updateFn(user)
+
+		var name, email string
+		if user.Name != before.Name {
+			name = user.Name
+		}
+
+		if user.Email != before.Email {
+			email = user.Email
+		}
+
+		return hsdb.CheckLocalUserTexts(tx, userID, name, email)
+	})
+}
+
 // GetUserByID retrieves a user by ID.
 func (s *State) GetUserByID(userID types.UserID) (*types.User, error) {
 	return s.db.GetUserByID(userID)
@@ -836,6 +901,18 @@ func (s *State) GetUserByOIDCIdentifier(id string) (*types.User, error) {
 // ListUsersWithFilter retrieves users matching the specified filter criteria.
 func (s *State) ListUsersWithFilter(filter *types.User) ([]types.User, error) {
 	return s.db.ListUsers(filter)
+}
+
+// ListNodesByUsers returns the nodes each user in ids owns, all from one
+// snapshot of the NodeStore, so a page of users shows one moment.
+func (s *State) ListNodesByUsers(ids []types.UserID) map[types.UserID]views.Slice[types.NodeView] {
+	return s.nodeStore.ListNodesByUsers(ids)
+}
+
+// ListUsersPage retrieves at most limit users matching filter, in ID order,
+// after the user with ID after.
+func (s *State) ListUsersPage(filter *types.User, after types.UserID, limit int) ([]types.User, error) {
+	return hsdb.ListUsersPage(s.db.DB, filter, after, limit)
 }
 
 // ListAllUsers retrieves all users in the system.

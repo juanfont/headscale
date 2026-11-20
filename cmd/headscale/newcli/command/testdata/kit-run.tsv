@@ -1,5 +1,5 @@
-# headscale: 204 rows: pass 31 waits 173
-# model: 204 rows: pass 201 seen 3
+# headscale: 206 rows: pass 31 waits 175
+# model: 206 rows: pass 203 seen 3
 headscale	T01	waits	nodes routes set
 headscale	T02	waits	nodes routes set
 headscale	T03	waits	nodes delete
@@ -78,6 +78,7 @@ headscale	F25	waits	api keys create
 headscale	F26	waits	nodes set
 headscale	F27	waits	nodes list
 headscale	F28	waits	nodes list
+headscale	F29	waits	nodes list
 headscale	B01	waits	nodes delete
 headscale	B02	waits	nodes delete
 headscale	B03	waits	nodes delete
@@ -139,6 +140,7 @@ headscale	E23	waits	nodes list
 headscale	E24	waits	nodes delete
 headscale	E25	pass
 headscale	E26	waits	nodes
+headscale	E27	waits	nodes list
 headscale	P01	waits	check config
 headscale	P02	waits	check config
 headscale	P03	waits	nodes delete
@@ -282,6 +284,7 @@ model	F25	pass
 model	F26	pass
 model	F27	pass
 model	F28	seen	unknown-flag [nodes list] "ho"
+model	F29	pass
 model	B01	pass
 model	B02	pass
 model	B03	pass
@@ -343,6 +346,7 @@ model	E23	pass
 model	E24	pass
 model	E25	pass
 model	E26	pass
+model	E27	pass
 model	P01	pass
 model	P02	pass
 model	P03	pass

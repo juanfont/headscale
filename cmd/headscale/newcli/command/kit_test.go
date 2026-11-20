@@ -203,8 +203,11 @@ var runCases = []runCase{
 	{"F24", Must, "G05", sh("users delete --force -- -alice"), ran("users delete", []string{"-alice"}, "force", "true")},
 	{"F25", Must, "R46", sh("api keys create -u alice --expiry 90d"), ran("api keys create", nil, "user", "alice", "expiry", "90d")},
 	{"F26", Must, "D20", sh("nodes set 12 --name -e"), ran("nodes set", a1, "name", "-e")},
-	{"F27", Must, "D20", sh("nodes list --sort --filter x"), usage(ArgCount, "nodes list", "takes no arguments, got 1")},
+	// The lists are the builder's, so --filter, the value of --sort, is a bad
+	// one: no column has that name. F29 keeps the count with a value that is.
+	{"F27", Must, "D20", sh("nodes list --sort --filter x"), usage(BadValue, "nodes list", "sort")},
 	{"F28", Observe, "G21 D11", sh("nodes list -ho json"), seen()},
+	{"F29", Must, "D20", sh("nodes list --sort -id x"), usage(ArgCount, "nodes list", "takes no arguments, got 1")},
 
 	// Bool forms (D9).
 	{"B01", Must, "D9", sh("nodes delete 12 --force=true"), ran("nodes delete", a1, "force", "true")},
@@ -241,7 +244,7 @@ var runCases = []runCase{
 	{"L05", Must, "001-lists", sh("nodes list --filter="), usage(BadValue, "nodes list", "filter")},
 	{"L06", Must, "001-lists", sh("nodes list --columns ''"), usage(BadValue, "nodes list", "columns")},
 	{"L07", Must, "001-lists", sh("nodes list --filter a --filter ''"), usage(BadValue, "nodes list", "filter")},
-	{"L08", Must, "D6", sh("nodes list --filter a --filter b"), ran("nodes list", nil, "filter", "a", "filter", "b")},
+	{"L08", Must, "D6", sh("nodes list --filter id=1 --filter name:a"), ran("nodes list", nil, "filter", "id=1", "filter", "name:a")},
 	{"L09", Asked, "001-lists", sh("nodes list --columns id,,name"), usage(BadValue, "nodes list", "columns")},
 	{"L10", Asked, "001-lists", sh("nodes routes set 12 a,,b"), usage(BadValue, "nodes routes set", "routes")},
 	{"L11", Asked, "001-lists", sh("auth keys create alice --tags tag:a,"), usage(BadValue, "auth keys create", "tags")},
@@ -272,10 +275,11 @@ var runCases = []runCase{
 	{"E21", Must, "D35", sh("--bogus nodes list"), usage(UnknownFlag, "", "bogus")},
 	// v3: which mistake is reported when there are several.
 	{"E22", Must, "D35", sh("nodes list -o json -o json --sort"), usage(FlagRepeated, "nodes list", "output")}, // v4: json, D49
-	{"E23", Must, "D35", sh("nodes list --sort a --sort b -o x -o y"), usage(FlagRepeated, "nodes list", "sort")},
+	{"E23", Must, "D35", sh("nodes list --sort id --sort name -o x -o y"), usage(FlagRepeated, "nodes list", "sort")},
 	{"E24", Must, "D35", sh("nodes delete 12 13 --force=maybe"), usage(BadValue, "nodes delete", "force")},
 	{"E25", Must, "D35", sh("nodez --bogus"), usage(UnknownCommand, "", "nodez")},
 	{"E26", Must, "D35", sh("nodes lst --bogus"), usage(UnknownCommand, "nodes", "lst")},
+	{"E27", Must, "D35", sh("nodes list --sort a --sort b"), usage(BadValue, "nodes list", "sort")},
 	// v3: D35, the first mistake on the line, whatever its kind.
 	{"P01", Must, "D35", sh("-o a -o b check config"), usage(UnknownFlag, "check config", "output")},
 	{"P02", Must, "D35", sh("-c a -o j -c b check config"), usage(UnknownFlag, "check config", "output")},
@@ -758,7 +762,7 @@ func TestKitTab(t *testing.T) {
 // beyondKit are the commands of Headscale that the kit's tree does not
 // have. A kit command that Headscale gets under another name would leave
 // its rows waiting for ever; here it is a command of neither list.
-var beyondKit = []string{"api whoami", "debug", "debug health"}
+var beyondKit = []string{"api whoami", "debug", "debug health", "users list", "users get", "users create", "users set"}
 
 func TestKitKnowsHeadscale(t *testing.T) {
 	t.Parallel()
