@@ -198,9 +198,40 @@ func (t *Tree) check(argv []string) (*cmdline.Line, step, error) {
 		return line, stepColumns, nil
 	case ue != nil:
 		return line, stepRun, countError(line)
+	case l != nil && l.set:
+		return line, stepRun, nothingToChange(line)
 	}
 
 	return line, stepRun, nil
+}
+
+// nothingGiven is the builder's own kind: a set with none of the flags
+// it changes.
+const nothingGiven cmdline.Kind = -2
+
+// nothingToChange refuses a set that gives none of its Opt flags, the
+// fields it changes; a set with no Opt flag replaces a value it takes as an
+// argument.
+func nothingToChange(line *cmdline.Line) error {
+	var opts []string
+
+	for _, f := range line.Command.Flags {
+		if f.Optional {
+			opts = append(opts, "--"+f.Name)
+		}
+	}
+
+	for _, g := range line.Flags {
+		if slices.Contains(opts, "--"+g.Name) {
+			return nil
+		}
+	}
+
+	if len(opts) == 0 {
+		return nil
+	}
+
+	return usagef(nothingGiven, line.Command.Path, strings.Join(opts, ", "), "nothing to change. Give at least one of\n  %s", strings.Join(opts, ", "))
 }
 
 type ctxKey struct{}

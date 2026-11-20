@@ -368,3 +368,62 @@ func TestSentence(t *testing.T) {
 	require.Equal(t, "cannot connect to x: it broke", sentence(fmt.Errorf("listing: %w", &connectError{target: "x", err: errBroken})))
 	require.Equal(t, "listing: it broke", sentence(fmt.Errorf("listing: %w", errBroken)))
 }
+
+// TestNothingToChange: a set needs one of the flags it changes; a set with
+// no such flag replaces its argument, and a wrong count comes first.
+func TestNothingToChange(t *testing.T) {
+	t.Parallel()
+
+	type setIn struct {
+		Name  string      `arg:"name"`
+		New   Opt[string] `flag:"new-name" help:"New name"`
+		Email Opt[string] `flag:"email"    help:"New email"`
+		Force bool        `flag:"force"    help:"Do not ask"`
+	}
+
+	type replaceIn struct {
+		Name string `arg:"name"`
+	}
+
+	done := func(setIn, NoOutput, time.Time) string { return "set" }
+	tree, err := Build("prog", "A program", Group{Name: "items", Short: "Items", Commands: []Node{
+		New(Spec[setIn, NoOutput]{Name: "set", Short: "S", Long: "S.", Example: []string{"prog items set a --email x"}, Local: true, NeedsChange: true, Run: noop[setIn, NoOutput], Done: done}),
+		// A set that does not say NeedsChange takes a line with no flag.
+		New(Spec[setIn, NoOutput]{Name: "replace", Short: "S", Long: "S.", Example: []string{"prog items replace a"}, Local: true, Run: noop[setIn, NoOutput], Done: done}),
+		Group{Name: "tags", Short: "Tags", Commands: []Node{
+			New(Spec[replaceIn, NoOutput]{Name: "set", Short: "S", Long: "S.", Example: []string{"prog items tags set a"}, Local: true, Run: noop[replaceIn, NoOutput]}),
+		}},
+	}})
+	require.NoError(t, err)
+
+	for line, want := range map[string]string{
+		"items set a":              "Error: nothing to change. Give at least one of\n  --new-name, --email\n",
+		"items set a --force":      "Error: nothing to change. Give at least one of\n  --new-name, --email\n",
+		"items set":                "Error: `items set` needs 1 argument, got 0.\n\n  prog items set <name>\n",
+		"items set a --new-name=":  "",
+		"items set a --email x":    "",
+		"items tags set a":         "",
+		"items replace a":          "",
+		"items set a -h --force=x": "Error: --force takes true or false, not \"x\".\n",
+	} {
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, strings.Fields(line), Env{Stdout: &stdout, Stderr: &stderr})
+		require.Equal(t, want, stderr.String(), line)
+	}
+}
+
+// TestNeedsChangeNeedsAFlag: NeedsChange on a command with no Opt flag is
+// a wrong spec.
+func TestNeedsChangeNeedsAFlag(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Name string `arg:"name"`
+	}
+
+	_, err := Build("prog", "A program", New(Spec[in, NoOutput]{
+		Name: "set", Short: "S", Long: "S.", Example: []string{"prog set a"}, Local: true, NeedsChange: true, Run: noop[in, NoOutput],
+	}))
+	require.EqualError(t, err, "set: NeedsChange and no Opt flag that changes a field")
+}

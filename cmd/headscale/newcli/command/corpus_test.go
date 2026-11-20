@@ -728,7 +728,7 @@ func TestBuilderLacksPrompt(t *testing.T) {
 		return out
 	}
 
-	known := []string{"Name", "Short", "Long", "Example", "Aliases", "OldNames", "Local", "NeedsServer", "ReadsConfig", "Columns", "NoRows", "Run", "Done"}
+	known := []string{"Name", "Short", "Long", "Example", "Aliases", "OldNames", "Local", "NeedsServer", "ReadsConfig", "NeedsChange", "Columns", "NoRows", "Run", "Done"}
 	for _, typ := range []reflect.Type{reflect.TypeFor[Spec[NoInput, NoOutput]](), reflect.TypeFor[ListSpec[NoInput, item]]()} {
 		require.Subset(t, known, fields(typ),
 			"%s has a new field: if it is the prompt (and --force), make testTrees use it in place of their own field; then add it here", typ.Name())

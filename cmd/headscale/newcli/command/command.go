@@ -47,6 +47,9 @@ type Spec[In, Out any] struct {
 	NeedsServer func(in In) bool
 	// ReadsConfig gives a Local command --config.
 	ReadsConfig bool
+	// NeedsChange is a command whose Opt flags each change a field, such as
+	// a set: a line that gives none of them is refused before any call.
+	NeedsChange bool
 
 	// Columns show Out as a sheet.
 	Columns table.Columns[Out]

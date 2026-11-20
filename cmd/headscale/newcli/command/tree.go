@@ -45,6 +45,9 @@ type leaf struct {
 	// noRows is what a list with no rows says on a terminal; filter is an
 	// example of --filter for its help.
 	noRows, filter string
+	// set is a command that changes the fields its Opt flags name, so a
+	// line gives at least one of them: NeedsChange.
+	set bool
 	// server reports whether this line talks to the server.
 	server func(*cmdline.Line) bool
 	check  func() error
@@ -129,6 +132,8 @@ func New[In, Out any](s Spec[In, Out]) Node {
 
 		return errors.Join(append(errs, s.Columns.Check())...)
 	}
+	l.set = s.NeedsChange
+
 	l.cmd = func(flags []any) cmdline.Node {
 		return cmdline.Command[In]{Name: s.Name, Aliases: s.Aliases, Help: s.Short, Flags: flags, Run: func(ctx context.Context, in In) error {
 			c := ctxOf(ctx)
@@ -398,6 +403,10 @@ func (t *Tree) checkFlags() []error {
 	var walk func(*cmdline.Info)
 
 	walk = func(c *cmdline.Info) {
+		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && l.set && !slices.ContainsFunc(c.Flags, func(f cmdline.Flag) bool { return f.Optional }) {
+			errs = append(errs, specError(strings.Join(c.Path, " ")+": NeedsChange and no Opt flag that changes a field"))
+		}
+
 		for _, f := range c.Flags {
 			if f.Name == rootOnly {
 				if len(c.Path) > 0 {
