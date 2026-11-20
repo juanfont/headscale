@@ -136,6 +136,7 @@ func TestFlagsOf(t *testing.T) {
 		Name          string      `arg:"name"`
 		DisplayName   Opt[string] `flag:"display-name" help:"x"`
 		ProfilePicURL string      `flag:"picture-url"  help:"x"`
+		Owner         Owner       `arg:"owner"`
 	}
 
 	p := &ProblemError{Problem: clientv0.Problem{Code: clientv0.ProblemCodeInvalidField, Errors: []clientv0.FieldError{
@@ -144,10 +145,12 @@ func TestFlagsOf(t *testing.T) {
 		{Location: "body.profilePicUrl", Message: "c"},
 		{Location: "body.other", Message: "d"},
 		{Location: "query.pageSize", Message: "e"},
+		{Location: "body.userId", Message: "f"},
+		{Location: "body.tags[1]", Message: "g"},
 	}}}
 
 	require.Equal(t, "the server refused a value:\n"+
-		"  <name>: a\n  --display-name: b\n  --picture-url: c\n  body.other: d\n  query.pageSize: e",
+		"  <name>: a\n  --display-name: b\n  --picture-url: c\n  body.other: d\n  query.pageSize: e\n  <owner>: f\n  <owner>: g",
 		sentence(flagsOf[in](fmt.Errorf("wrapped: %w", p))))
 	require.Equal(t, errBroken, flagsOf[in](errBroken))
 }

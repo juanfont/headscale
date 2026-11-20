@@ -113,6 +113,10 @@ func (t *Tree) commandHelp(w io.Writer, c *cmdline.Info, l *leaf) {
 			help += ", not only " + l.only
 		}
 
+		if f.Default != "" {
+			help += " (default " + f.Default + ")"
+		}
+
 		fmt.Fprintf(tw, "  %s%s\t%s\n", short, name, help)
 	}
 

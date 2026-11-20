@@ -161,7 +161,11 @@ func flagsOf[In any](err error) error {
 				continue
 			}
 
-			if strings.EqualFold(sf.Name, key) || strings.EqualFold(strings.ReplaceAll(name, "-", ""), key) {
+			// An owner fills the user or the tags.
+			root, _, _ := strings.Cut(key, "[")
+			owner := sf.Type == reflect.TypeFor[Owner]() && (root == "userId" || root == "tags")
+
+			if owner || strings.EqualFold(sf.Name, key) || strings.EqualFold(strings.ReplaceAll(name, "-", ""), key) {
 				p.Problem.Errors[i].Location = word
 
 				break

@@ -409,7 +409,9 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 
 	var errs []error
 
-	opts := make([]cmdline.Option, 0, len(ents))
+	// An owner is no entity, so it has no candidates and no read; it has a
+	// lookup all the same.
+	opts := append(make([]cmdline.Option, 0, len(ents)+1), cmdline.LateReader(findOwner))
 
 	for _, e := range ents {
 		t.entities[e.t] = e
