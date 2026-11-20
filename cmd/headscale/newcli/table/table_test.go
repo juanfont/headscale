@@ -2,6 +2,7 @@ package table
 
 import (
 	"bytes"
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -265,4 +266,45 @@ func TestEntity(t *testing.T) {
 	require.Equal(t, "API key 2 (tr81ys)", Entity("apiKey", "2", "tr81ys"))
 	require.Equal(t, "OAuth client c9f2", Entity("oauthClient", "c9f2", "CI"))
 	require.Equal(t, "widget 7", Entity("widget", "7", ""))
+	require.Equal(t, `User 5 (x\x0afake\u202e)`, Entity("user", "5", "x\nfake\u202e"), "a name of the server is made visible")
+}
+
+// TestVisible: text of the server cannot drive the terminal, in a cell of a
+// table or a sheet, whatever command shows it.
+func TestVisible(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, `a\x1b[2Jb\u202ec\x07\x9b`, Visible("a\x1b[2Jb\u202ec\a\u009b", ""))
+	require.Equal(t, "line\n\ttab", Visible("line\n\ttab", "\n\t"))
+	require.Equal(t, `line\x0a`, Visible("line\n", ""))
+	require.Equal(t, "plain ünïcode", Visible("plain ünïcode", ""))
+	// The text of an escape cannot pass for one.
+	require.Equal(t, `a\\x1b`, Visible(`a\x1b`, ""))
+	require.Equal(t, `a\x1b\x1b`, Visible("a\\x1b\x1b", "\\"))
+
+	r := rows()[0]
+	r.Name = "evil\x1b]0;owned\x07\u2066"
+
+	var b bytes.Buffer
+	require.NoError(t, Render(&b, []row{r}, cols[1:2], now))
+	require.Equal(t, "NAME\n"+`evil\x1b]0;owned\x07\u2066`+"\n", b.String())
+
+	b.Reset()
+	require.NoError(t, Sheet(&b, r, cols[1:2], now))
+	require.Equal(t, `Name:  evil\x1b]0;owned\x07\u2066`+"\n", b.String())
+}
+
+// TestVisibleJSON: JSON keeps every value, and no control a terminal acts
+// on stays raw.
+func TestVisibleJSON(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte("{\"a\": \"x\u202ey\u0085\u007f\\u001b\u00e9\"}\n")
+	got := VisibleJSON(raw)
+	require.Equal(t, `{"a": "x\u202ey\u0085\u007f\u001bé"}`+"\n", string(got)) //nolint:testifylint // the bytes, not the values: the escapes are the point
+
+	var a, b map[string]string
+	require.NoError(t, json.Unmarshal(raw, &a))
+	require.NoError(t, json.Unmarshal(got, &b))
+	require.Equal(t, a, b)
 }

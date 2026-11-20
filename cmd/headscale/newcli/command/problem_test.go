@@ -18,6 +18,18 @@ func TestProblemSentence(t *testing.T) {
 		want string
 	}{
 		{"unauthorized", clientv0.Problem{Code: clientv0.Unauthorized}, "the server did not accept the API key."},
+		// Text of the server cannot end the line and write one of its own.
+		{"a title with a line break", clientv0.Problem{Code: "new_code", Title: "New\nError: fake"}, `New\x0aError: fake (new_code).`},
+		{
+			"a reason with a line break",
+			clientv0.Problem{Code: clientv0.Unhealthy, Details: map[string]any{"reasons": []any{map[string]any{"message": "db\nfake"}}}},
+			"the server is not healthy:\n  " + `db\x0afake`,
+		},
+		{
+			"a field message with a line break",
+			clientv0.Problem{Code: clientv0.InvalidField, Errors: []clientv0.FieldError{{Location: "body.x", Message: "bad\nError: fake"}}},
+			"the server refused a value:\n  body.x: " + `bad\x0aError: fake`,
+		},
 		{"forbidden", clientv0.Problem{Code: clientv0.Forbidden}, "this credential may not do that."},
 		{
 			"forbidden for scopes",

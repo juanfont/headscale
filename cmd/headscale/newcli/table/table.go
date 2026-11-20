@@ -8,6 +8,7 @@
 package table
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Kind says how a column is shown, filtered and sorted.
@@ -286,6 +288,10 @@ func (c Column[R]) label() string {
 // cell is the text of the column for row. A null field is "never" for a
 // time and "-" for any other kind.
 func (c Column[R]) cell(row R, now time.Time, sheet bool) string {
+	return Visible(c.text(row, now, sheet), "")
+}
+
+func (c Column[R]) text(row R, now time.Time, sheet bool) string {
 	v, ok := field(reflect.ValueOf(row), c.Field)
 	if !ok {
 		t, _ := fieldType(reflect.TypeFor[R](), c.Field)
@@ -358,6 +364,76 @@ func ownerCell(v reflect.Value, sheet bool) string {
 	return strings.Join(out, ", ")
 }
 
+// Visible is s with every control character and every bidirectional
+// control made visible as an escape, and a backslash doubled so that the
+// text \x1b cannot pass for an escape, except the runes in keep. Text from
+// the server, which a caller with a narrow token may have set, cannot then
+// move the cursor, recolour or reorder an admin's terminal, nor end a line
+// and forge the next: every place where such text enters a sentence or a
+// cell passes it through Visible with nothing kept.
+func Visible(s, keep string) string {
+	escaped := func(r rune) bool { return (hidden(r) || r == '\\') && !strings.ContainsRune(keep, r) }
+	if !strings.ContainsFunc(s, escaped) {
+		return s
+	}
+
+	var b strings.Builder
+
+	for _, r := range s {
+		switch {
+		case !escaped(r):
+			b.WriteRune(r)
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r <= 0xff:
+			fmt.Fprintf(&b, "\\x%02x", r)
+		default:
+			fmt.Fprintf(&b, "\\u%04x", r)
+		}
+	}
+
+	return b.String()
+}
+
+// VisibleJSON is raw JSON with every control that JSON does not escape
+// itself, DEL, C1 and the bidirectional controls, written as \uXXXX. Such a
+// rune stands only inside a string, so the JSON stays valid and every
+// value the same, but no terminal acts on it.
+func VisibleJSON(raw []byte) []byte {
+	if !bytes.ContainsFunc(raw, hidden) {
+		return raw
+	}
+
+	var b bytes.Buffer
+
+	for len(raw) > 0 {
+		r, n := utf8.DecodeRune(raw)
+		if hidden(r) && r >= 0x7f {
+			fmt.Fprintf(&b, "\\u%04x", r)
+		} else {
+			b.Write(raw[:n])
+		}
+
+		raw = raw[n:]
+	}
+
+	return b.Bytes()
+}
+
+// hidden is a rune that a terminal acts on rather than shows: the C0 and
+// C1 controls, DEL, and the marks, embeddings, overrides and isolates of
+// bidirectional text.
+func hidden(r rune) bool {
+	switch {
+	case unicode.IsControl(r), r == 0x061c, r == 0x200e, r == 0x200f:
+		return true
+	case r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+		return true
+	}
+
+	return false
+}
+
 // Entity names an entity as every message does: the kind, the ID, and in
 // brackets the name that tables show for it. kind is the kind of a problem
 // object of v0.
@@ -376,6 +452,8 @@ func Entity(kind, id, name string) string {
 	if !ok {
 		w = kind
 	}
+
+	id, name = Visible(id, ""), Visible(name, "")
 
 	if name == "" || kind == "oauthClient" {
 		return w + " " + id

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -277,7 +278,8 @@ func (a *API) do(do func(*clientv0.Client) (*http.Response, error)) ([]byte, err
 }
 
 func (a *API) unreadable(err error) error {
-	return fmt.Errorf("the server at %s sent an answer this CLI cannot read: %w", a.target, err)
+	// The decoder quotes what it could not read, which the server wrote.
+	return fmt.Errorf("the server at %s sent an answer this CLI cannot read: %s", a.target, table.Visible(err.Error(), "")) //nolint:err113 // a sentence of the CLI
 }
 
 // callError keeps an error of the version check, which already says what
@@ -318,8 +320,14 @@ func (e *connectError) Error() string {
 }
 
 // causeOf is the part of a dial or request error that says what was wrong,
-// without the operation and the address that the message already names.
+// without the operation and the address that the message already names. A
+// TLS error can quote a name from the server's certificate, so it is made
+// visible.
 func causeOf(err error) string {
+	return table.Visible(cause(err), "")
+}
+
+func cause(err error) string {
 	var (
 		errno syscall.Errno
 		uerr  *url.Error
@@ -507,7 +515,7 @@ func (v *versionCheck) RoundTrip(req *http.Request) (*http.Response, error) {
 	if server == "" {
 		resp.Body.Close()
 
-		return nil, &versionError{tooOld: resp.StatusCode == http.StatusNotFound, status: resp.Status, target: v.target}
+		return nil, &versionError{tooOld: resp.StatusCode == http.StatusNotFound, status: table.Visible(resp.Status, ""), target: v.target}
 	}
 
 	own, ownCommit := v.own.Version, shortCommit(v.own.Commit)
@@ -579,8 +587,9 @@ func shortCommit(c string) string {
 }
 
 // named is a version as the messages write it, with the commit when the
-// build knows it.
+// build knows it. Both can come from the server's headers.
 func named(version, commit string) string {
+	version, commit = table.Visible(version, ""), table.Visible(commit, "")
 	if commit == "" {
 		return version
 	}

@@ -427,3 +427,26 @@ func TestNeedsChangeNeedsAFlag(t *testing.T) {
 	}))
 	require.EqualError(t, err, "set: NeedsChange and no Opt flag that changes a field")
 }
+
+// TestVisibleText: a Done text and everything on stderr show control
+// characters of the server as escapes; JSON escapes them itself.
+func TestVisibleText(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+
+	require.Equal(t, 0, Run(testTree(t), []string{"items", "rename", "a\x1b[31m\u202e"}, Env{Stdout: &stdout, Stderr: &stderr}))
+	require.Equal(t, `Item 1 is a\x1b[31m\u202e.`+"\n", stdout.String())
+
+	stdout.Reset()
+	require.Equal(t, 0, Run(testTree(t), []string{"items", "rename", "a\x1b\u202e\u0085", "-o", "json"}, Env{Stdout: &stdout, Stderr: &stderr}))
+	require.Contains(t, stdout.String(), `"name": "a\u001b\u202e\u0085"`)
+
+	// The last filter keeps the sentence's own breaks and the backslashes
+	// that the text of the server already has doubled.
+	var b bytes.Buffer
+
+	_, err := visible{&b}.Write([]byte("Error: \x1b[2J\u202e \\\\x\n\tnext\n"))
+	require.NoError(t, err)
+	require.Equal(t, `Error: \x1b[2J\u202e \\x`+"\n\tnext\n", b.String())
+}

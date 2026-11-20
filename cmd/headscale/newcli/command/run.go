@@ -35,6 +35,14 @@ func Run(t *Tree, argv []string, env Env) int {
 		env.Version = types.GetVersionInfo()
 	}
 
+	// Text of the server is made visible where it enters a sentence or a
+	// cell. stderr and the Done text pass once more through a filter that
+	// keeps line breaks, tabs and backslashes, so a sentence that forgets
+	// can at worst break a line, never drive the terminal.
+	if env.Stderr != nil {
+		env.Stderr = visible{env.Stderr}
+	}
+
 	var tab strings.Builder
 	if t.parser.Serve(&tab, argv) {
 		_, _ = io.WriteString(env.Stdout, t.columnNames(argv, tab.String()))
@@ -351,18 +359,35 @@ func printList[Row any](c Ctx, rows []Row, cols table.Columns[Row], noRows strin
 	return writeJSON(c.stdout, append(append([]byte("["), bytes.Join(raws, []byte(","))...), ']'))
 }
 
+// kept are what the last filter on stderr and the Done text keeps: the
+// sentence's own line breaks and tabs, and backslashes, which the text of
+// the server already has doubled.
+const kept = "\n\t\\"
+
+// visible makes control characters in what it writes visible, as
+// [table.Visible] does, keeping kept.
+type visible struct{ w io.Writer }
+
+func (v visible) Write(p []byte) (int, error) {
+	_, err := io.WriteString(v.w, table.Visible(string(p), kept))
+
+	return len(p), err
+}
+
 // writeText writes the Done text, ending in one newline.
 func writeText(w io.Writer, text string) error {
 	if text == "" {
 		return nil
 	}
 
-	_, err := fmt.Fprintln(w, strings.TrimSuffix(text, "\n"))
+	_, err := fmt.Fprintln(w, table.Visible(strings.TrimSuffix(text, "\n"), kept))
 
 	return err
 }
 
-// writeJSON writes raw indented.
+// writeJSON writes raw indented, with the controls that JSON leaves raw
+// written as escapes: the values are the same, and a terminal does not
+// act on them.
 func writeJSON(w io.Writer, raw json.RawMessage) error {
 	var b bytes.Buffer
 
@@ -373,7 +398,7 @@ func writeJSON(w io.Writer, raw json.RawMessage) error {
 
 	b.WriteByte('\n')
 
-	_, err = b.WriteTo(w)
+	_, err = w.Write(table.VisibleJSON(b.Bytes()))
 
 	return err
 }

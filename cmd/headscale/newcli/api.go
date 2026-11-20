@@ -54,7 +54,7 @@ func whoami(_ command.NoInput, me clientv0.Me, now time.Time) string {
 		clientv0.PrincipalKindOauthClient: "OAuth client",
 		clientv0.PrincipalKindLocal:       "local (unix socket)",
 	}
-	line("Principal", cmp.Or(principals[me.Principal.Kind], string(me.Principal.Kind)))
+	line("Principal", cmp.Or(principals[me.Principal.Kind], table.Visible(string(me.Principal.Kind), "")))
 
 	cred, err := me.Credential.Get()
 	hasCred := err == nil
@@ -68,11 +68,11 @@ func whoami(_ command.NoInput, me clientv0.Me, now time.Time) string {
 
 		client, err := cred.Client.Get()
 		if err == nil {
-			line("Client", client.Id+described(client.Description))
+			line("Client", table.Visible(client.Id, "")+described(client.Description))
 		}
 	}
 
-	line("Scopes", strings.Join(me.Authorization.Scopes, ", "))
+	line("Scopes", table.Visible(strings.Join(me.Authorization.Scopes, ", "), ""))
 
 	tags, err := me.Authorization.Tags.Get()
 
@@ -82,10 +82,10 @@ func whoami(_ command.NoInput, me clientv0.Me, now time.Time) string {
 	case len(tags) == 0:
 		line("Tags", "none")
 	default:
-		line("Tags", strings.Join(tags, ", "))
+		line("Tags", table.Visible(strings.Join(tags, ", "), ""))
 	}
 
-	line("Resources", string(me.Authorization.Resources))
+	line("Resources", table.Visible(string(me.Authorization.Resources), ""))
 
 	if hasCred {
 		expiry, _ := cred.Expiry.Get()
@@ -109,7 +109,7 @@ func keyOwner(cred clientv0.Credential) string {
 	}
 
 	if len(o.Tags) > 0 {
-		return strings.Join(o.Tags, ", ")
+		return table.Visible(strings.Join(o.Tags, ", "), "")
 	}
 
 	return "none"
@@ -120,5 +120,5 @@ func described(d string) string {
 		return ""
 	}
 
-	return " (" + d + ")"
+	return " (" + table.Visible(d, "") + ")"
 }

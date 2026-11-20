@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 )
@@ -239,6 +241,27 @@ func TestUsersList(t *testing.T) {
 }
 
 var usersGetCases = []cliCase{
+	{
+		name: "text of the server cannot drive the terminal", setup: escapes, args: "users get alice --output json",
+		// JSON escapes a control below 0x20 itself; the CLI writes the
+		// others as \uXXXX too, and every value stays the same.
+		want: func(tb testing.TB, f *fixture, r result) string {
+			tb.Helper()
+
+			return string(table.VisibleJSON([]byte(users.row(only("id", "3"))(tb, f, r))))
+		},
+		check: func(tb testing.TB, f *fixture, r result) {
+			tb.Helper()
+			require.Contains(tb, r.stdout, `"displayName": "Alice\u001b[2J\u202e\\x1b\u0085"`)
+
+			var u clientv0.User
+			require.NoError(tb, json.Unmarshal([]byte(r.stdout), &u))
+			require.Equal(tb, "Alice\x1b[2J\u202e\\x1b\u0085", u.DisplayName)
+
+			r = f.run(tb, cliCase{args: "users get alice"})
+			require.Contains(tb, r.stdout, `Display name:     Alice\x1b[2J\u202e\\x1b\x85`+"\n")
+		},
+	},
 	{name: "an empty word is no user", args: "users get ''", stderr: "Error: an empty word names no user.\n", code: 1, check: noCall},
 	{
 		name: "a word that is one user's provider identifier and another's name", setup: namedLikeProviderID, args: "users get https://idp.example.com/d",
@@ -282,6 +305,35 @@ Created:          100d ago ({aliceCreated})
 	{name: "one user", args: "users get alice bob", stderr: "Error: `users get` needs 1 argument, got 2.\n\n  headscale users get <user>\n", code: 1},
 	{name: "a get has no list flags", args: "users get alice --columns id", stderr: "Error: --columns does not apply to `users get`.\nRun `headscale users get --help`.\n", code: 1},
 	{name: "the old name points here", args: "user get alice", stderr: "Error: unknown command \"user\". It is now \"users\".\nRun `headscale users --help`.\n", code: 1},
+}
+
+// escapes gives alice a display name with a terminal escape, a
+// right-to-left override, the text of an escape and a C1 control.
+func escapes(tb testing.TB, f *fixture) {
+	tb.Helper()
+
+	_, _, err := f.srv.State().UpdateUser(3, func(u *types.User) error {
+		u.DisplayName = "Alice\x1b[2J\u202e\\x1b\u0085"
+
+		return nil
+	})
+	require.NoError(tb, err)
+}
+
+// forged is a user from OIDC whose login name ends a line and writes one
+// of its own: the identity provider, not the admin, chose it.
+func forged(tb testing.TB, f *fixture) {
+	tb.Helper()
+
+	for _, u := range []types.User{
+		{ID: 23, Name: "x\x1b[31mred\nfake line", Provider: "oidc", ProviderIdentifier: sql.NullString{String: "https://idp.example.com/x", Valid: true}},
+		// A local user cannot get such a name through the API; a v1 write
+		// or an old row can hold one.
+		{ID: 24, Name: "y\nfake line"},
+	} {
+		_, _, err := f.srv.State().CreateUser(u)
+		require.NoError(tb, err)
+	}
 }
 
 // namedLikeProviderID adds a user whose name is the provider
@@ -463,6 +515,14 @@ var usersSetCases = []cliCase{
 		},
 	},
 	{name: "a user that is not there", args: "users set nope --name x", stderr: "Error: no user matches \"nope\".\n", code: 1},
+	{
+		name: "a line break of the server cannot forge a line", setup: forged, args: "users set 23 --display-name x",
+		stderr: `Error: User 23 (x\x1b[31mred\x0afake line) is managed by OIDC and cannot be edited here.` + "\n", code: 1,
+	},
+	{
+		name: "a line break of the server cannot forge a line of a Done", setup: forged, args: "users set 24 --display-name x",
+		stdout: `User 24 (y\x0afake line) updated: display name.` + "\n",
+	},
 }
 
 // usersToken is an access token of an OAuth client with the scope users.

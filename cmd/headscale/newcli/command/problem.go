@@ -16,7 +16,8 @@ import (
 // ProblemError is a problem the server answered. Its text is the CLI's own
 // sentence, written from the code, the object and the details; the detail
 // text of the server is never shown, so an error reads the same whatever
-// server version words it.
+// server version words it. Every text of the server in it passes through
+// table.Visible, so it cannot end the line and forge the next.
 type ProblemError struct {
 	Problem clientv0.Problem
 }
@@ -66,18 +67,18 @@ func (e *ProblemError) Error() string {
 		b.WriteString("the server refused a value:")
 
 		for _, f := range p.Errors {
-			b.WriteString("\n  " + f.Location + ": " + f.Message)
+			b.WriteString("\n  " + table.Visible(f.Location, "") + ": " + table.Visible(f.Message, ""))
 		}
 
 		return b.String()
 	case clientv0.TooLarge:
 		return "the file is too large for the server."
 	case clientv0.Internal:
-		return "the server had an internal error. Its log has the request " + p.RequestId + "."
+		return "the server had an internal error. Its log has the request " + table.Visible(p.RequestId, "") + "."
 	}
 
 	// A code this build does not know.
-	return p.Title + " (" + string(p.Code) + ")."
+	return table.Visible(p.Title, "") + " (" + table.Visible(string(p.Code), "") + ")."
 }
 
 // flagsOf names, in each entry of an invalid_field problem, the flag or the
@@ -134,7 +135,7 @@ func forbidden(details map[string]any) string {
 
 	if list, ok := details["scopes"].([]any); ok {
 		for _, s := range list {
-			scopes = append(scopes, fmt.Sprint(s))
+			scopes = append(scopes, table.Visible(fmt.Sprint(s), ""))
 		}
 	}
 
@@ -146,7 +147,7 @@ func forbidden(details map[string]any) string {
 	case tokenRules[rule] != "":
 		return "\n" + tokenRules[rule]
 	case rule != "":
-		return "\nA token rule refuses it: " + rule + "."
+		return "\nA token rule refuses it: " + table.Visible(rule, "") + "."
 	}
 
 	return ""
@@ -191,7 +192,7 @@ func messages(v any) string {
 			text, _ = m["code"].(string)
 		}
 
-		b.WriteString("\n  " + text)
+		b.WriteString("\n  " + table.Visible(text, ""))
 	}
 
 	return b.String()
