@@ -484,18 +484,52 @@ func (hsdb *HSDatabase) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, 
 // guard the previous code (Update("used", true) with no WHERE) would
 // silently let both transactions claim the key.
 func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
-	res := tx.Model(&types.Credential{}).
-		Where("kind = ? AND id = ? AND used = ?", types.CredentialPreAuthKey, k.ID, false).
-		Update("used", true)
+	return ClaimPreAuthKey(tx, k, true)
+}
+
+// ClaimPreAuthKey is the last check of a registration with k, made in the
+// registration's transaction: a revoked or expired key is refused, and with
+// consume a single-use key another node took. The key was read and checked
+// before; a revoke or expire that answered since then must still hold. The
+// UPDATE locks the key's row, so one that committed is seen, and one that
+// has not waits for this registration and answers after the node exists.
+func ClaimPreAuthKey(tx *gorm.DB, k *types.PreAuthKey, consume bool) error {
+	q := tx.Model(&types.Credential{}).
+		Where("kind = ? AND id = ? AND revoked IS NULL", types.CredentialPreAuthKey, k.ID)
+
+	// A reusable key's row is written as it is, for the lock and the count.
+	var used any = gorm.Expr("used")
+	if consume {
+		q, used = q.Where("used = ?", false), true
+	}
+
+	res := q.Update("used", used)
 	if res.Error != nil {
 		return fmt.Errorf("updating key used status in database: %w", res.Error)
 	}
 
-	if res.RowsAffected == 0 {
+	// Read after the UPDATE holds the row. The expiry is compared here, not
+	// in SQL: SQLite compares stored times as text, in whatever zone wrote them.
+	var cred types.Credential
+
+	err := tx.Select("revoked", "expiration").First(&cred, "kind = ? AND id = ?", types.CredentialPreAuthKey, k.ID).Error
+
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return ErrPreAuthKeyNotFound
+	case err != nil:
+		return fmt.Errorf("reading key: %w", err)
+	case cred.Revoked != nil:
+		return types.PAKError("authkey revoked")
+	case cred.Expiration != nil && cred.Expiration.Before(time.Now()):
+		return types.PAKError("authkey expired")
+	case res.RowsAffected == 0:
 		return types.PAKError("authkey already used")
 	}
 
-	k.Used = true
+	if consume {
+		k.Used = true
+	}
 
 	return nil
 }

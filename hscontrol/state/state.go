@@ -3261,13 +3261,13 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 			return nil, fmt.Errorf("saving node: %w", err)
 		}
 
-		if params.PreAuthKey != nil && !params.PreAuthKey.Reusable {
-			err := hsdb.UsePreAuthKey(tx, params.PreAuthKey)
+		if params.PreAuthKey != nil {
+			err := hsdb.ClaimPreAuthKey(tx, params.PreAuthKey, !params.PreAuthKey.Reusable)
 			if err != nil {
 				return nil, fmt.Errorf("using pre auth key: %w", err)
 			}
 
-			// UsePreAuthKey marked the key used; refresh the node's in-memory
+			// A claim may mark the key used; refresh the node's in-memory
 			// AuthKey so the NodeStore copy matches the database.
 			nodeToRegister.AuthKey = params.PreAuthKey.AsCredential()
 		}
@@ -3275,6 +3275,9 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		return &nodeToRegister, nil
 	})
 	if err != nil {
+		// The row rolled back and the NodeStore never had the node.
+		s.ipAlloc.FreeIPs(nodeToRegister.IPs())
+
 		return types.NodeView{}, err
 	}
 
@@ -4250,11 +4253,12 @@ func (s *State) reregisterNodeWithPAK(
 	_, err := s.persistNodeWith(updatedNodeView, reregColumns, func(tx *gorm.DB) error {
 		// Only mark the key used on the *first* registration. On
 		// re-registration the same key is already used and the
-		// atomic compare-and-set in [hsdb.UsePreAuthKey] would otherwise
+		// atomic compare-and-set in [hsdb.ClaimPreAuthKey] would otherwise
 		// reject it as "authkey already used", locking out containers
-		// that restart with the same one-shot key.
-		if reauth && shouldConsumePreAuthKey(pak) {
-			err := hsdb.UsePreAuthKey(tx, pak)
+		// that restart with the same one-shot key. A revoke since the
+		// check holds either way.
+		if reauth {
+			err := hsdb.ClaimPreAuthKey(tx, pak, shouldConsumePreAuthKey(pak))
 			if err != nil {
 				return fmt.Errorf("using pre auth key: %w", err)
 			}

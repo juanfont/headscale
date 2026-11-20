@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -487,6 +488,78 @@ func TestUsePreAuthKeyAtomicCAS(t *testing.T) {
 	assert.Equal(t, "authkey already used", pakErr.Error())
 }
 
+// TestClaimPreAuthKeyAfterRevoke: a registration read and checked its key,
+// then the key was revoked or expired. The claim in the registration's
+// transaction refuses it, so an end that answered holds for every key.
+func TestClaimPreAuthKeyAfterRevoke(t *testing.T) {
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		user, err := db.CreateUser(types.User{Name: "claim"})
+		require.NoError(t, err)
+
+		claim := func(k *types.PreAuthKey, consume bool) error {
+			return db.Write(func(tx *gorm.DB) error { return ClaimPreAuthKey(tx, k, consume) })
+		}
+
+		ends := []struct {
+			end  func(uint64) error
+			want string
+		}{
+			{db.RevokePreAuthKey, "authkey revoked"},
+			{db.ExpirePreAuthKey, "authkey expired"},
+		}
+
+		for _, end := range ends {
+			for _, reusable := range []bool{false, true} {
+				made, err := db.CreatePreAuthKey(user.TypedID(), reusable, false, new(time.Now().Add(time.Hour)), nil)
+				require.NoError(t, err)
+
+				read, err := db.GetPreAuthKey(made.Key)
+				require.NoError(t, err)
+				require.NoError(t, read.Validate(), "checked before the end")
+
+				require.NoError(t, end.end(read.ID))
+
+				err = claim(read, !reusable)
+
+				var pakErr types.PAKError
+				require.ErrorAs(t, err, &pakErr)
+				require.Equal(t, end.want, pakErr.Error())
+
+				after, err := db.GetPreAuthKeyByID(read.ID)
+				require.NoError(t, err)
+				require.False(t, after.Used, "a refused claim uses nothing")
+			}
+		}
+
+		t.Run("a reusable key stays unused", func(t *testing.T) {
+			made, err := db.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+			require.NoError(t, err)
+
+			read, err := db.GetPreAuthKey(made.Key)
+			require.NoError(t, err)
+			require.NoError(t, claim(read, false))
+			require.NoError(t, claim(read, false))
+
+			after, err := db.GetPreAuthKeyByID(read.ID)
+			require.NoError(t, err)
+			require.False(t, after.Used)
+		})
+
+		t.Run("a removed key", func(t *testing.T) {
+			require.ErrorIs(t, claim(&types.PreAuthKey{ID: 99999}, false), ErrPreAuthKeyNotFound)
+		})
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
+}
+
 // TestGetPreAuthKeyUnknownMapsToRecordNotFound ensures an unknown (or deleted)
 // pre-auth key resolves to a record-not-found error, which the registration
 // handler maps to a 401 rather than a raw server error.
@@ -639,4 +712,70 @@ func TestPreAuthKeyInvalidatedWhileQueuedOnLegacyLimiter(t *testing.T) {
 			require.ErrorIs(t, pak.Validate(), tt.wantErr)
 		})
 	}
+}
+
+// TestClaimPreAuthKeyWaitsForAnEnd: an end (revoke, expire) written but not
+// yet committed holds the key's row when the claim runs. The claim waits for
+// it, then refuses. On PostgreSQL that needs the claim to read the key after
+// its UPDATE took the row lock; read before, it sees the key as it was and
+// lets the node in. SQLite runs one write transaction at a time, so there the
+// claim's whole transaction waits and the order inside it does not show.
+func TestClaimPreAuthKeyWaitsForAnEnd(t *testing.T) {
+	test := func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		user, err := db.CreateUser(types.User{Name: "wait"})
+		require.NoError(t, err)
+
+		ends := []struct {
+			name string
+			end  func(*gorm.DB, uint64) error
+			want string
+		}{
+			{"revoke", RevokePreAuthKey, "authkey revoked"},
+			{"expire", ExpirePreAuthKey, "authkey expired"},
+		}
+
+		for _, end := range ends {
+			for _, reusable := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s, reusable %t", end.name, reusable), func(t *testing.T) {
+					made, err := db.CreatePreAuthKey(user.TypedID(), reusable, false, new(time.Now().Add(time.Hour)), nil)
+					require.NoError(t, err)
+
+					read, err := db.GetPreAuthKey(made.Key)
+					require.NoError(t, err)
+
+					tx := db.DB.Begin()
+					require.NoError(t, tx.Error)
+					require.NoError(t, end.end(tx, read.ID))
+
+					claimed := make(chan error, 1)
+
+					go func() {
+						claimed <- db.Write(func(tx *gorm.DB) error { return ClaimPreAuthKey(tx, read, !reusable) })
+					}()
+
+					select {
+					case err := <-claimed:
+						tx.Rollback()
+						t.Fatalf("the claim did not wait for the end (%v)", err)
+					case <-time.After(200 * time.Millisecond):
+					}
+
+					require.NoError(t, tx.Commit().Error)
+
+					var pakErr types.PAKError
+					require.ErrorAs(t, <-claimed, &pakErr)
+					require.Equal(t, end.want, pakErr.Error())
+				})
+			}
+		}
+	}
+
+	t.Run("sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		test(t, db)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresTestDB(t)) })
 }
