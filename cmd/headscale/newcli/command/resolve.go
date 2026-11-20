@@ -80,7 +80,7 @@ func findUser(ctx context.Context, word string) (clientv0.User, error) {
 		return clientv0.User{}, err
 	}
 
-	return resolve(users, word, "user", userCandidates(),
+	return resolve(users, word, word, "user", userCandidates(),
 		func(u clientv0.User) string { return u.Id },
 		func(u clientv0.User) []string { return []string{u.Email, u.Name, u.ProviderId} },
 	)
@@ -121,7 +121,7 @@ func findNode(ctx context.Context, word string) (clientv0.Node, error) {
 		}
 	}
 
-	return resolve(nodes, word, "node", nodeCandidates(),
+	return resolve(nodes, word, word, "node", nodeCandidates(),
 		func(n clientv0.Node) string { return n.Id },
 		func(n clientv0.Node) []string { return []string{n.Name, n.Hostname} },
 	)
@@ -136,7 +136,7 @@ func findAuthKey(ctx context.Context, word string) (clientv0.AuthKey, error) {
 		return clientv0.AuthKey{}, emptyWord("auth key")
 	}
 
-	word, err := authKeyWord(word)
+	part, err := credentialWord(authKeyTyped(), word)
 	if err != nil {
 		return clientv0.AuthKey{}, err
 	}
@@ -146,15 +146,39 @@ func findAuthKey(ctx context.Context, word string) (clientv0.AuthKey, error) {
 		return clientv0.AuthKey{}, err
 	}
 
-	return matchAuthKey(keys, word)
+	return matchAuthKey(keys, part, word)
 }
 
-// authKeyWord is the ID or prefix a typed word names: the word, or the
-// prefix of the masked form hskey-auth-<prefix>-***. A whole key is
-// refused: matched by the prefix inside it, a wrong secret behind a right
-// prefix would show a key that works, and delete would revoke it.
-func authKeyWord(word string) (string, error) {
-	const kind = "hskey-auth-"
+// typed is a kind of credential as a person types it to name one: the kind
+// in its secret, the sentence that refuses the whole secret, the word for
+// the part of it that names it, and whether its masked form names it: only
+// a form that some output printed does.
+type typed struct {
+	kind, refused, part string
+	masked              bool
+}
+
+func authKeyTyped() typed {
+	return typed{"auth", "a key is named by its ID or its prefix, never by the whole key.", "prefix", true}
+}
+
+func apiKeyTyped() typed {
+	return typed{"api", "a key is named by its ID or its prefix, never by the whole key.", "prefix", true}
+}
+
+func oauthClientTyped() typed {
+	return typed{"client", "an OAuth client is named by its ID, never by its secret.", "ID", false}
+}
+
+// credentialWord is the word that names a credential of kind k: the word,
+// or the part of the masked form hskey-<kind>-<part>-*** that names it. A
+// whole secret is refused before any call: matched by the part inside it,
+// a wrong secret behind a right prefix would show a key that works, and
+// delete would revoke it. The part is matched, never quoted: a secret typed
+// in the masked form is a part that holds the secret, so a message names
+// the word as it was typed, which the edge masks.
+func credentialWord(k typed, word string) (string, error) {
+	kind := hskey + k.kind + "-"
 
 	if indexFold(word, hskey) != 0 {
 		return word, nil
@@ -165,26 +189,28 @@ func authKeyWord(word string) (string, error) {
 		rest = word[len(kind):]
 	}
 
-	if prefix, masked := strings.CutSuffix(rest, "-***"); masked {
-		return prefix, nil
+	if part, masked := strings.CutSuffix(rest, "-***"); masked && k.masked {
+		return part, nil
 	}
 
-	text := "a key is named by its ID or its prefix, never by the whole key."
+	text := k.refused
 
-	// A key of today is hskey-auth-<prefix>-<secret>, and its prefix is no
+	// A secret of today is hskey-<kind>-<part>-<secret>, and its part is no
 	// secret.
 	if len(rest) > keyPrefixLength && rest[keyPrefixLength] == '-' {
-		text += " Its prefix is " + rest[:keyPrefixLength] + "."
+		text += " Its " + k.part + " is " + rest[:keyPrefixLength] + "."
 	}
 
 	return "", &lookupError{text: text}
 }
 
-// keyPrefixLength is the length of the prefix of a key of today.
+// keyPrefixLength is the length of the prefix of a key, and of the ID of
+// an OAuth client, of today.
 const keyPrefixLength = 12
 
-func matchAuthKey(keys []clientv0.AuthKey, word string) (clientv0.AuthKey, error) {
-	return resolve(keys, word, "auth key", authKeyCandidates(),
+// matchAuthKey is the key that part names; said is the word as typed.
+func matchAuthKey(keys []clientv0.AuthKey, part, said string) (clientv0.AuthKey, error) {
+	return resolve(keys, part, said, "auth key", authKeyCandidates(),
 		func(k clientv0.AuthKey) string { return k.Id },
 		func(k clientv0.AuthKey) []string { return []string{k.Prefix} },
 	)
@@ -215,7 +241,8 @@ func nodeCandidates() table.Columns[clientv0.Node] {
 // once however many fields it matches in; more than one is an error that
 // lists them, with the default columns of cols, and each other column of
 // cols that word equals in a candidate, so the list says why it matched.
-func resolve[T any](rows []T, word, kind string, cols table.Columns[T], id func(T) string, fields func(T) []string) (T, error) {
+// The errors quote said, the word as the person typed it.
+func resolve[T any](rows []T, word, said, kind string, cols table.Columns[T], id func(T) string, fields func(T) []string) (T, error) {
 	var zero T
 
 	if i := slices.IndexFunc(rows, func(r T) bool { return id(r) == word }); i >= 0 {
@@ -234,7 +261,7 @@ func resolve[T any](rows []T, word, kind string, cols table.Columns[T], id func(
 	case 1:
 		return matches[0], nil
 	case 0:
-		return zero, &lookupError{text: "no " + kind + " matches " + strconv.Quote(word) + "."}
+		return zero, &lookupError{text: "no " + kind + " matches " + strconv.Quote(said) + "."}
 	}
 
 	var b bytes.Buffer
@@ -248,7 +275,7 @@ func resolve[T any](rows []T, word, kind string, cols table.Columns[T], id func(
 		list.WriteString("  " + line)
 	}
 
-	return zero, &lookupError{text: strconv.Quote(word) + " matches " + strconv.Itoa(len(matches)) + " " + kind + "s. Use the ID to select one:\n\n" +
+	return zero, &lookupError{text: strconv.Quote(said) + " matches " + strconv.Itoa(len(matches)) + " " + kind + "s. Use the ID to select one:\n\n" +
 		strings.TrimSuffix(list.String(), "\n")}
 }
 
