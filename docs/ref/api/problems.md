@@ -24,6 +24,13 @@ code, and is `{}` when the code has none.
 - **When:** A `PATCH` with no fields.
 - **`details`:** `{}`
 
+## expiry_in_past { #expiry_in_past }
+
+- **Status:** 422
+- **Title:** The expiry is in the past
+- **When:** An expiry before now. Send `"now"` to expire at the server's clock.
+- **`details`:** `{}`
+
 ## forbidden { #forbidden }
 
 - **Status:** 403
@@ -90,11 +97,33 @@ code, and is `{}` when the code has none.
 - **When:** The resource does not exist, or no longer exists; also a path that no operation has.
 - **`details`:** `{}`
 
+## precondition_failed { #precondition_failed }
+
+- **Status:** 412
+- **Title:** The resource changed
+- **When:** `If-Match` does not match: the resource changed since it was read, such as a node since its `revision` was read. Nothing was written; read it again.
+- **`details`:** `{}`
+
 ## request_timeout { #request_timeout }
 
 - **Status:** 408
 - **Title:** The body did not arrive in time
 - **When:** The request did not arrive in time.
+- **`details`:** `{}`
+
+## tags_not_permitted { #tags_not_permitted }
+
+- **Status:** 422
+- **Title:** The tags are not in the policy
+- **When:** Tags that are not in `tagOwners` of the policy.
+- **`details`:**
+    - `tags`: every tag of the request that the policy does not name
+
+## tags_required { #tags_required }
+
+- **Status:** 422
+- **Title:** Tags are required
+- **When:** An empty tag list where one is needed, such as the tags of a node.
 - **`details`:** `{}`
 
 ## too_large { #too_large }
@@ -126,6 +155,15 @@ code, and is `{}` when the code has none.
 - **When:** The body is not JSON.
 - **`details`:** `{}`
 
+## update_refused { #update_refused }
+
+- **Status:** 409
+- **Title:** The node did not start the update
+- **When:** The node did not start an update of its Tailscale client.
+- **`details`:**
+    - `reason`: `notConnected`, `updatesNotAllowed`, `clientRefused` or `timeout`; a client must accept a reason it does not know
+    - `clientError`: with `clientRefused`, the text the Tailscale client sent; `""` when it sent none
+
 ## user_managed_by_oidc { #user_managed_by_oidc }
 
 - **Status:** 409
@@ -140,6 +178,10 @@ The `rule` of a `forbidden` problem: what an OAuth access token may not do altho
 ### token_cannot_change_user_name_or_email { #token_cannot_change_user_name_or_email }
 
 An OAuth access token cannot change the name or the email of a user that exists, because a policy names a user by them. It can create a user, and change the display name and the picture. Use an API key.
+
+### token_must_own_tags { #token_must_own_tags }
+
+An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives and every tag the node has now. An API key may give any tag of the policy.
 
 ## Reasons of unhealthy { #reasons }
 
