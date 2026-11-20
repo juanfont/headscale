@@ -250,8 +250,10 @@ func forbidden(details map[string]any, node bool) string {
 	rule, _ := details["rule"].(string)
 
 	switch {
-	case len(scopes) > 0:
-		return "\nIt lacks the scope " + strings.Join(scopes, ", ") + "."
+	case len(scopes) == 1:
+		return "\nIt lacks the scope " + scopes[0] + "."
+	case len(scopes) > 1:
+		return "\nIt lacks the scopes " + strings.Join(scopes[:len(scopes)-1], ", ") + " and " + scopes[len(scopes)-1] + "."
 	case tokenRule(rule, node) != "":
 		return "\n" + tokenRule(rule, node)
 	case rule != "":

@@ -34,7 +34,12 @@ func TestProblemSentence(t *testing.T) {
 		{
 			"forbidden for scopes",
 			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{"users", "devices:core"}, "rule": nil}},
-			"this credential may not do that.\nIt lacks the scope users, devices:core.",
+			"this credential may not do that.\nIt lacks the scopes users and devices:core.",
+		},
+		{
+			"forbidden for three scopes",
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{"users", "devices:core", "auth_keys"}}},
+			"this credential may not do that.\nIt lacks the scopes users, devices:core and auth_keys.",
 		},
 		{
 			"forbidden by a rule",
