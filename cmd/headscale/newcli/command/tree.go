@@ -34,6 +34,10 @@ type leaf struct {
 	name, short, long          string
 	example, aliases, oldNames []string
 
+	// local is a command that needs no server as it is typed with no
+	// flag, as the root help lists it: a command that talks to the server
+	// unless a flag says otherwise, such as policy get with the database
+	// bypass, is a server command there.
 	local, output, config bool
 	// own is a result that is the CLI's own object, not one of the API.
 	own bool
@@ -380,9 +384,11 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 }
 
 func common[In any](name, short, long string, example, aliases, oldNames []string, local bool, needs func(In) bool, readsConfig bool) *leaf {
+	var zero In
+
 	return &leaf{
 		name: name, short: short, long: long, example: example, aliases: aliases, oldNames: oldNames,
-		local:  local,
+		local:  local && (needs == nil || !needs(zero)),
 		config: !local || needs != nil || readsConfig,
 		server: func(line *cmdline.Line) bool {
 			if !local {
