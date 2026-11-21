@@ -42,8 +42,12 @@ func Run(t *Tree, argv []string, env Env) int {
 	// keeps line breaks, tabs and backslashes, so a sentence that forgets
 	// can at worst break a line, never drive the terminal. Both streams
 	// write a credential as its kind (credential.go).
+	// Under both, and under the JSON written past the rule, no write repeats
+	// a secret the line gave whole (withheld), whatever form the rule sees.
+	var whole []wholeWord
+
 	if env.Stderr != nil {
-		errOut := &masking{w: visible{env.Stderr}}
+		errOut := &masking{w: visible{withheld{env.Stderr, &whole}}}
 		defer func() { _ = errOut.Flush() }()
 
 		env.Stderr = errOut
@@ -51,9 +55,9 @@ func Run(t *Tree, argv []string, env Env) int {
 
 	// JSON is the server's data, not the CLI's sentence: it is written past
 	// the rule.
-	raw := env.Stdout
+	raw := withheld{env.Stdout, &whole}
 
-	out := &masking{w: env.Stdout}
+	out := &masking{w: withheld{env.Stdout, &whole}}
 	defer func() { _ = out.Flush() }()
 
 	env.Stdout = out
@@ -65,7 +69,7 @@ func Run(t *Tree, argv []string, env Env) int {
 		return 0
 	}
 
-	err := t.run(argv, env, raw)
+	err := t.run(argv, env, raw, &whole)
 
 	switch {
 	case err == nil:
@@ -109,8 +113,9 @@ func sentence(err error) string {
 }
 
 // run is the builder: the steps of every command, in one order. raw is
-// stdout as it is, for the JSON of a result.
-func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
+// stdout as it is, for the JSON of a result; whole gets the words the line
+// gives as secrets typed whole, once they are checked.
+func (t *Tree) run(argv []string, env Env, raw io.Writer, whole *[]wholeWord) error {
 	line, step, err := t.check(argv)
 	if err != nil {
 		return err
@@ -140,6 +145,8 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
 	if err != nil {
 		return err
 	}
+
+	*whole = l.whole(line)
 
 	stdin := env.Stdin
 	if stdin == nil {
@@ -205,7 +212,7 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
 	case !ok:
 		return err
 	case ue.Kind == cmdline.Unresolved:
-		return ue.Err
+		return t.hinted(line, ue.Err)
 	}
 
 	return t.usage(ue)
@@ -258,12 +265,21 @@ func (t *Tree) check(argv []string) (*cmdline.Line, step, error) {
 	return line, stepRun, nil
 }
 
-// hinted is err with the command's hint, when err is a wrong argument count
-// or an empty list argument.
+// hinted is err with the command's hint, when err is a wrong argument count,
+// an empty list argument, or a word of another kind than its lookup takes.
 func (t *Tree) hinted(line *cmdline.Line, err error) error {
 	l := t.leaves[strings.Join(line.Command.Path, " ")]
-	ue, ok := errors.AsType[*usageError](err)
 
+	le, ok := errors.AsType[*lookupError](err)
+	if ok && le.hinted && l != nil && l.hint != nil {
+		if h := l.hint(line.Args); h != "" {
+			le.text += "\n" + h
+		}
+
+		return err
+	}
+
+	ue, ok := errors.AsType[*usageError](err)
 	if l == nil || l.hint == nil || !ok || ue.kind != cmdline.ArgCount && !ue.empty {
 		return err
 	}
@@ -382,7 +398,7 @@ func jsonOf(c Ctx, v any) (json.RawMessage, error) {
 // printOne prints the result of a Spec: JSON as the server sent it, the
 // Done text, or a sheet.
 func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], blocks table.Blocks[Out], done func() string) error {
-	if reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]() {
+	if isNoOutput[Out]() {
 		if c.json {
 			return nil
 		}

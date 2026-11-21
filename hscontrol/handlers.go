@@ -342,7 +342,7 @@ func NewAuthProviderWeb(serverURL string) *AuthProviderWeb {
 // authPathURL builds an auth-flow URL of the form
 // "<serverURL>/<kind>/<id>".
 func authPathURL(serverURL, kind string, authID types.AuthID) string {
-	return fmt.Sprintf("%s/%s/%s", serverURL, kind, authID.String())
+	return fmt.Sprintf("%s/%s/%s", serverURL, kind, authID.Raw())
 }
 
 func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {
@@ -366,10 +366,10 @@ func (a *AuthProviderWeb) AuthHandler(
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
-	_, err = writer.Write([]byte(templates.AuthWeb(
+	_, err = writer.Write([]byte(templates.AuthWeb( //nolint:gosec // the ID is validated hex, and the template escapes
 		"Authentication check",
 		"Run the command below in the headscale server to approve this authentication request:",
-		"headscale auth approve --auth-id "+authID.String(),
+		"headscale auth approve --auth-id "+authID.Raw(),
 	).Render()))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to write auth response")
@@ -408,10 +408,10 @@ func (a *AuthProviderWeb) RegisterHandler(
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
-	_, err = writer.Write([]byte(templates.AuthWeb(
+	_, err = writer.Write([]byte(templates.AuthWeb( //nolint:gosec // the ID is validated hex, and the template escapes
 		"Node registration",
 		"Run the command below in the headscale server to add this node to your network:",
-		fmt.Sprintf("headscale auth register --auth-id %s --user USERNAME", authId.String()),
+		fmt.Sprintf("headscale auth register --auth-id %s --user USERNAME", authId.Raw()),
 	).Render()))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to write register response")

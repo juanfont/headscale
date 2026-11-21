@@ -731,7 +731,7 @@ func (a *AuthProviderOIDC) setRegisterConfirmCookie(
 ) {
 	// Scope the cookie to the browser-facing path, which carries the
 	// reverse proxy's prefix; the routed path does not.
-	path := "/register/confirm/" + authID.String()
+	path := "/register/confirm/" + authID.Raw()
 	if u, err := url.Parse(a.registerConfirmURL(authID)); err == nil { //nolint:noinlineerr
 		path = u.Path
 	}
@@ -761,7 +761,7 @@ func (a *AuthProviderOIDC) sshCheckSource(
 ) (types.NodeView, error) {
 	if !authReq.IsSSHCheck() {
 		log.Warn().Caller().
-			Str("auth_id", authID.String()).
+			Str("auth_id", authID.Hidden()).
 			Msg("OIDC callback hit non-registration path with auth request that is not an SSH check binding")
 
 		return types.NodeView{}, NewHTTPError(http.StatusBadRequest, "auth session is not for SSH check", nil)
@@ -772,7 +772,7 @@ func (a *AuthProviderOIDC) sshCheckSource(
 	srcNode, ok := a.h.state.GetNodeByID(binding.SrcNodeID)
 	if !ok {
 		log.Warn().Caller().
-			Str("auth_id", authID.String()).
+			Str("auth_id", authID.Hidden()).
 			Uint64("src_node_id", binding.SrcNodeID.Uint64()).
 			Msg("SSH check src node no longer exists")
 
@@ -784,7 +784,7 @@ func (a *AuthProviderOIDC) sshCheckSource(
 	// rejected because they have no user owner to compare against.
 	if srcNode.IsTagged() || !srcNode.UserID().Valid() {
 		log.Warn().Caller().
-			Str("auth_id", authID.String()).
+			Str("auth_id", authID.Hidden()).
 			Uint64("src_node_id", binding.SrcNodeID.Uint64()).
 			Bool("src_is_tagged", srcNode.IsTagged()).
 			Str("oidc_user", user.Username()).
@@ -795,7 +795,7 @@ func (a *AuthProviderOIDC) sshCheckSource(
 
 	if srcNode.UserID().Get() != user.ID {
 		log.Warn().Caller().
-			Str("auth_id", authID.String()).
+			Str("auth_id", authID.Hidden()).
 			Uint64("src_node_id", binding.SrcNodeID.Uint64()).
 			Uint("src_owner_id", srcNode.UserID().Get()).
 			Uint("oidc_user_id", user.ID).
@@ -830,7 +830,7 @@ func (a *AuthProviderOIDC) beginConfirmation(
 ) {
 	authReq, ok := a.h.state.GetAuthCacheEntry(authID)
 	if !ok {
-		log.Debug().Caller().Str("auth_id", authID.String()).Msg("auth session expired before authorization completed")
+		log.Debug().Caller().Str("auth_id", authID.Hidden()).Msg("auth session expired before authorization completed")
 		httpUserError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
 
 		return
@@ -838,7 +838,7 @@ func (a *AuthProviderOIDC) beginConfirmation(
 
 	if registration && !authReq.IsRegistration() {
 		log.Warn().Caller().
-			Str("auth_id", authID.String()).
+			Str("auth_id", authID.Hidden()).
 			Msg("OIDC callback hit registration path with auth request that is not a node registration")
 		httpUserError(writer, NewHTTPError(http.StatusBadRequest, "auth session is not for node registration", nil))
 
@@ -1063,7 +1063,18 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 			return
 		}
 
-		authReq.FinishAuth(types.AuthVerdict{})
+		// The page says what the machine was told: an answer that came
+		// first leaves this one spent.
+		err = a.h.state.AnswerAuthRequest(authID, true)
+		if err != nil {
+			if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
+				err = errRegistrationLinkSpent
+			}
+
+			httpUserError(writer, err)
+
+			return
+		}
 
 		content = renderAuthSuccessTemplate(user)
 	} else {

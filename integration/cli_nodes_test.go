@@ -36,11 +36,11 @@ func TestNodeCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	regIDs := []string{
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
 	}
 	nodes := make([]*clientv1.Node, len(regIDs))
 
@@ -124,8 +124,8 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, "node-5", listAll[4].Name)
 
 	otherUserRegIDs := []string{
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
 	}
 	otherUserMachines := make([]*clientv1.Node, len(otherUserRegIDs))
 
@@ -297,11 +297,11 @@ func TestNodeExpireCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	regIDs := []string{
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
 	}
 	nodes := make([]*clientv1.Node, len(regIDs))
 
@@ -436,11 +436,11 @@ func TestNodeRenameCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	regIDs := []string{
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
-		types.MustAuthID().String(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
+		types.MustAuthID().Raw(),
 	}
 	nodes := make([]*clientv1.Node, len(regIDs))
 
@@ -850,7 +850,7 @@ func TestNodeExpireFlagsCommand(t *testing.T) {
 	scenario, headscale := setupCLIScenario(t, "cli-nodeexpireflags", []string{"expire-flags-user"}, 0)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	regID := types.MustAuthID().String()
+	regID := types.MustAuthID().Raw()
 
 	_, err := headscale.Execute([]string{
 		"headscale", "debug", "create-node",
@@ -958,7 +958,7 @@ func TestNodeCommandValidation(t *testing.T) {
 	scenario, headscale := setupCLIScenario(t, "cli-nodeval", []string{"user1"}, 0)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	regID := types.MustAuthID().String()
+	regID := types.MustAuthID().Raw()
 
 	_, err := headscale.Execute([]string{
 		"headscale", "debug", "create-node",
@@ -1002,7 +1002,7 @@ func TestNodeCommandValidation(t *testing.T) {
 		{"approve invalid cidr", []string{"nodes", "approve-routes", "--identifier", id, "--routes", "notacidr"}, "parsing route"},
 		// The deprecated `nodes register` alias drives its own RegisterNode path;
 		// cover its error cases (the happy path is covered via `auth register`).
-		{"register nonexistent user", []string{"nodes", "register", "--user", "ghost", "--key", types.MustAuthID().String()}, ""},
+		{"register nonexistent user", []string{"nodes", "register", "--user", "ghost", "--key", types.MustAuthID().Raw()}, ""},
 		{"register invalid key", []string{"nodes", "register", "--user", "user1", "--key", "badkey"}, ""},
 	}
 

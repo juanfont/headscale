@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -783,10 +784,13 @@ func doSSHCheckWithTimeout(
 
 	peerFQDN, _ := peer.FQDN()
 
+	// stderr also goes to a file while ssh runs: the check's banner names
+	// the auth URL, which findSSHCheckAuthID reads from there.
 	command := []string{
-		"/usr/bin/ssh", "-o StrictHostKeyChecking=no", "-o ConnectTimeout=30",
-		fmt.Sprintf("%s@%s", "ssh-it-user", peerFQDN),
-		"'hostname'",
+		"sh", "-c", fmt.Sprintf(
+			"/usr/bin/ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 %s@%s hostname 2>%s; rc=$?; cat %s >&2; exit $rc",
+			"ssh-it-user", peerFQDN, sshCheckStderr, sshCheckStderr,
+		),
 	}
 
 	log.Printf(
@@ -808,37 +812,37 @@ func doSSHCheckWithTimeout(
 	return ch
 }
 
-// findSSHCheckAuthID polls headscale container logs for the SSH action auth-id.
-// The SSH action handler logs "SSH action follow-up" with the auth_id on the
-// follow-up request (where auth_id is non-empty).
-func findSSHCheckAuthID(t *testing.T, headscale ControlServer) string {
+// sshCheckStderr is where doSSHCheck keeps the stderr of ssh as it runs.
+const sshCheckStderr = "/tmp/ssh-check.stderr"
+
+// sshCheckAuthIDs is every auth ID in the banners client's running SSH
+// check printed, oldest first. The server writes the ID nowhere else a test
+// can read: it is a secret, and its log names the kind only.
+func sshCheckAuthIDs(client TailscaleClient) ([]string, error) {
+	stdout, _, err := client.Execute([]string{"cat", sshCheckStderr})
+
+	return sshAuthIDPattern.FindAllString(stdout, -1), err
+}
+
+var sshAuthIDPattern = regexp.MustCompile(`hskey-authreq-[0-9a-f]{24}`)
+
+// findSSHCheckAuthID polls the stderr of client's SSH check for the auth
+// ID the check's banner names.
+func findSSHCheckAuthID(t *testing.T, client TailscaleClient) string {
 	t.Helper()
 
 	var authID string
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		_, stderr, err := headscale.ReadLog()
+		ids, err := sshCheckAuthIDs(client)
 		assert.NoError(c, err)
 
-		for line := range strings.SplitSeq(stderr, "\n") {
-			if !strings.Contains(line, "SSH action follow-up") {
-				continue
-			}
-
-			if idx := strings.Index(line, "auth_id="); idx != -1 {
-				start := idx + len("auth_id=")
-
-				end := strings.IndexByte(line[start:], ' ')
-				if end == -1 {
-					end = len(line[start:])
-				}
-
-				authID = line[start : start+end]
-			}
+		if len(ids) > 0 {
+			authID = ids[len(ids)-1]
 		}
 
-		assert.NotEmpty(c, authID, "auth-id not found in headscale logs")
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "waiting for SSH check auth-id in headscale logs")
+		assert.NotEmpty(c, authID, "auth-id not found in the SSH check banner")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "waiting for SSH check auth-id in the banner")
 
 	return authID
 }
@@ -911,12 +915,11 @@ func sshCheckPolicyWithPeriod(period time.Duration) *policyv2.Policy {
 	}
 }
 
-// findNewSSHCheckAuthID polls headscale logs for an SSH check auth-id
-// that differs from excludeID. Used to verify re-authentication after
-// session expiry.
+// findNewSSHCheckAuthID polls the stderr of client's SSH check for an
+// auth ID that differs from excludeID. Used to verify re-authentication.
 func findNewSSHCheckAuthID(
 	t *testing.T,
-	headscale ControlServer,
+	client TailscaleClient,
 	excludeID string,
 ) string {
 	t.Helper()
@@ -924,30 +927,16 @@ func findNewSSHCheckAuthID(
 	var authID string
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		_, stderr, err := headscale.ReadLog()
+		ids, err := sshCheckAuthIDs(client)
 		assert.NoError(c, err)
 
-		for line := range strings.SplitSeq(stderr, "\n") {
-			if !strings.Contains(line, "SSH action follow-up") {
-				continue
-			}
-
-			if idx := strings.Index(line, "auth_id="); idx != -1 {
-				start := idx + len("auth_id=")
-
-				end := strings.IndexByte(line[start:], ' ')
-				if end == -1 {
-					end = len(line[start:])
-				}
-
-				id := line[start : start+end]
-				if id != excludeID {
-					authID = id
-				}
+		for _, id := range ids {
+			if id != excludeID {
+				authID = id
 			}
 		}
 
-		assert.NotEmpty(c, authID, "new auth-id not found in headscale logs")
+		assert.NotEmpty(c, authID, "new auth-id not found in the SSH check banner")
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "waiting for new SSH check auth-id")
 
 	return authID
@@ -986,7 +975,7 @@ func TestSSHOneUserToOneCheckModeCLI(t *testing.T) {
 	sshResult := doSSHCheck(t, client, peer)
 
 	// Find the auth-id from headscale logs
-	authID := findSSHCheckAuthID(t, headscale)
+	authID := findSSHCheckAuthID(t, client)
 
 	// Approve via CLI
 	_, err = headscale.Execute(
@@ -1104,7 +1093,7 @@ func TestSSHOneUserToOneCheckModeOIDC(t *testing.T) {
 	sshResult := doSSHCheck(t, client, peer)
 
 	// Find the auth-id from headscale logs
-	authID := findSSHCheckAuthID(t, headscale)
+	authID := findSSHCheckAuthID(t, client)
 
 	// Build auth URL and visit it to trigger OIDC flow.
 	// The mock OIDC server auto-authenticates from the user queue.
@@ -1187,9 +1176,6 @@ func TestSSHCheckModeUnapprovedTimeout(t *testing.T) {
 	user2Clients, err := scenario.ListTailscaleClients("user2")
 	requireNoErrListClients(t, err)
 
-	headscale, err := scenario.Headscale()
-	require.NoError(t, err)
-
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
@@ -1204,7 +1190,7 @@ func TestSSHCheckModeUnapprovedTimeout(t *testing.T) {
 	sshResult := doSSHCheck(t, client, peer)
 
 	// Confirm the check flow was entered
-	_ = findSSHCheckAuthID(t, headscale)
+	_ = findSSHCheckAuthID(t, client)
 
 	// Do NOT approve — wait for cache expiry and SSH rejection
 	select {
@@ -1254,7 +1240,7 @@ func TestSSHCheckModeCheckPeriodCLI(t *testing.T) {
 
 	// === Phase 1: First SSH check — approve, verify success ===
 	sshResult := doSSHCheck(t, client, peer)
-	firstAuthID := findSSHCheckAuthID(t, headscale)
+	firstAuthID := findSSHCheckAuthID(t, client)
 
 	_, err = headscale.Execute(
 		[]string{
@@ -1285,7 +1271,7 @@ func TestSSHCheckModeCheckPeriodCLI(t *testing.T) {
 
 	// === Phase 3: Second SSH — must re-authenticate ===
 	sshResult2 := doSSHCheck(t, client, peer)
-	secondAuthID := findNewSSHCheckAuthID(t, headscale, firstAuthID)
+	secondAuthID := findNewSSHCheckAuthID(t, client, firstAuthID)
 
 	require.NotEqual(
 		t,
@@ -1341,7 +1327,7 @@ func TestSSHCheckModeAutoApprove(t *testing.T) {
 
 	// === Phase 1: First SSH check — approve, verify success ===
 	sshResult := doSSHCheck(t, client, peer)
-	firstAuthID := findSSHCheckAuthID(t, headscale)
+	firstAuthID := findSSHCheckAuthID(t, client)
 
 	_, err = headscale.Execute(
 		[]string{
@@ -1406,7 +1392,7 @@ func TestSSHCheckModeSessionLossReDelegates(t *testing.T) {
 	// generous window: the flow spans a full control-plane restart.
 	sshResult := doSSHCheckWithTimeout(t, client, peer, 120*time.Second)
 
-	firstAuthID := findSSHCheckAuthID(t, headscale)
+	firstAuthID := findSSHCheckAuthID(t, client)
 
 	// Restart the control plane: the in-memory auth cache is dropped
 	// (the on-disk database and keys persist), so the auth_id the
@@ -1421,7 +1407,7 @@ func TestSSHCheckModeSessionLossReDelegates(t *testing.T) {
 	// server re-delegates a fresh session instead of returning an error
 	// the client cannot recover from. A new auth_id only appears if the
 	// re-delegation happened.
-	secondAuthID := findNewSSHCheckAuthID(t, headscale, firstAuthID)
+	secondAuthID := findNewSSHCheckAuthID(t, client, firstAuthID)
 	require.NotEqual(t, firstAuthID, secondAuthID,
 		"a lost session under an active check must re-delegate with a new auth_id")
 
@@ -1473,7 +1459,7 @@ func TestSSHCheckModeNegativeCLI(t *testing.T) {
 	client, peer := user1Clients[0], user1Clients[1]
 
 	sshResult := doSSHCheck(t, client, peer)
-	authID := findSSHCheckAuthID(t, headscale)
+	authID := findSSHCheckAuthID(t, client)
 
 	// Reject via CLI
 	_, err = headscale.Execute(

@@ -2,14 +2,20 @@ package command
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/require"
 )
@@ -125,11 +131,12 @@ func TestCredentialAtTheEdge(t *testing.T) {
 				return NoOutput{}, fmt.Errorf("no thing matches %q.", in.Word) //nolint:err113 // a sentence of the test
 			},
 		}),
-		// An auth request is named by its secret, which its field takes.
+		// A problem's object that a server names by a secret: an auth
+		// request has a sentence of its own, so a user stands in for it.
 		New(Spec[requestIn, NoOutput]{
 			Name: "gone", Short: "Gone", Long: "Gone.", Example: []string{"prog gone x"}, Local: true,
 			Run: func(_ Ctx, in requestIn) (NoOutput, error) {
-				o := clientv0.ProblemObject{Kind: "authRequest", Id: string(in.ID)}
+				o := clientv0.ProblemObject{Kind: "user", Id: string(in.ID)}
 				return NoOutput{}, &ProblemError{Problem: clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Object: nullable.NewNullableWithValue(o)}}
 			},
 		}),
@@ -183,7 +190,7 @@ func TestCredentialAtTheEdge(t *testing.T) {
 	var stderr bytes.Buffer
 
 	Run(tree, []string{"gone", "hskey-authreq-S3cr3t"}, Env{Stdout: &stderr, Stderr: &stderr})
-	require.Equal(t, "Error: Auth request hskey-authreq-*** no longer exists.\n", stderr.String())
+	require.Equal(t, "Error: User hskey-authreq-*** no longer exists.\n", stderr.String())
 }
 
 // requestID is a value that is a credential of one kind.
@@ -214,6 +221,126 @@ type typedIn struct {
 	Note Opt[string]    `flag:"note" help:"Note"`
 	File Path           `flag:"file" help:"File"`
 	ID   Opt[requestID] `flag:"id"   help:"ID"`
+}
+
+type wholeIn struct {
+	ID   AuthID      `arg:"id"`
+	Key  Opt[AuthID] `flag:"key"  help:"Key"`
+	More []AuthID    `flag:"more" help:"More"`
+}
+
+// numberID is a credential typed whole that is no text.
+type numberID int
+
+func (numberID) Credential() string { return "authreq" }
+func (numberID) Whole(string) error { return nil }
+
+// TestWholeCredential: a field that takes a credential whole refuses a word
+// of another kind with the rule's sentence, and any other word that is not
+// of its form with its own, before Run, quoting neither; a word of its form
+// is taken as it is typed. Commands lists the field.
+func TestWholeCredential(t *testing.T) {
+	t.Parallel()
+
+	const id = "hskey-authreq-s3cr3ts3cr3t"
+
+	notID := "Error: <id> " + errNotAuthID.Error() + ".\n"
+
+	for _, tt := range []struct {
+		args   []string
+		stderr string
+		// got is the ID Run gets; "" is args[0].
+		got string
+	}{
+		{args: []string{id}},
+		{args: []string{id + "x", "--key", id, "--more", id + "a," + id + "b"}},
+		{args: []string{"hskey-authreq-"}, stderr: notID},
+		{args: []string{"12"}, stderr: notID},
+		{args: []string{""}, stderr: notID},
+		{args: []string{strings.ToUpper(id)}, stderr: notID},
+		// The URL the node shows is pasted whole: the ID is taken from it.
+		{args: []string{"https://hs.example.com/register/" + id}, got: id},
+		{args: []string{"hs.example.com/a/b/" + id}, got: id},
+		{args: []string{"https://hs.example.com/register/" + id + "?x=1"}, stderr: notID},
+		{args: []string{id, "--key", "s3cr3t"}, stderr: "Error: --key " + errNotAuthID.Error() + ".\n"},
+		{args: []string{id, "--more", id + ",s3cr3t"}, stderr: "Error: --more " + errNotAuthID.Error() + ".\n"},
+		{args: []string{"hskey-api-ab12cd345678-s3cr3t"}, stderr: "Error: <id> takes only a credential hskey-authreq-: hskey-api-*** is not sent.\n"},
+		// What the edge could not mask whole, if it came back.
+		{args: []string{"hskey-authreq-hskey-api-ab12cd345678-s3cr3t"}, stderr: notID},
+		{args: []string{"hskey-authreq-s3cr3t-HSKEY-auth-x"}, stderr: notID},
+		{args: []string{id + ".def"}, stderr: notID},
+		{args: []string{id + ")"}, stderr: notID},
+		{args: []string{id + "/"}, stderr: notID},
+		{args: []string{id + "?x=1"}, stderr: notID},
+		{args: []string{id + "#f"}, stderr: notID},
+		{args: []string{id + " x"}, stderr: notID},
+		{args: []string{id + "\nx"}, stderr: notID},
+		{args: []string{id + "é"}, stderr: notID},
+		{args: []string{"hskey-authreq-***"}, stderr: notID},
+		{args: []string{"hskey-authreq-" + strings.Repeat("s3cr3t", 15)}, stderr: notID},
+		{args: []string{"hskey-authreq-" + strings.Repeat("a", maxAuthID-len(authIDPrefix))}},
+		{args: []string{"hskey-authreq-" + strings.Repeat("a", 10000)}, stderr: notID},
+	} {
+		var got AuthID
+
+		tree, err := Build("prog", "A program", New(Spec[wholeIn, NoOutput]{
+			Name: "run", Short: "Run", Long: "Run.", Example: []string{"prog run x"}, Local: true,
+			Run: func(_ Ctx, in wholeIn) (NoOutput, error) { got = in.ID; return NoOutput{}, nil },
+		}))
+		require.NoError(t, err)
+
+		var stderr bytes.Buffer
+
+		code := Run(tree, append([]string{"run"}, tt.args...), Env{Stdout: io.Discard, Stderr: &stderr})
+		require.Equal(t, tt.stderr, stderr.String(), tt.args)
+		require.Equal(t, map[bool]int{true: 0, false: 1}[tt.stderr == ""], code, tt.args)
+		require.NotContains(t, stderr.String(), "s3cr3t", tt.args)
+
+		if tt.stderr == "" {
+			require.Equal(t, AuthID(cmp.Or(tt.got, tt.args[0])), got)
+			require.NotContains(t, stderr.String(), "example", tt.args)
+		}
+
+		require.Equal(t, []Command{{Path: "run", Example: []string{"prog run x"}, Whole: []string{"<id>", "--key", "--more"}}}, tree.Commands())
+	}
+
+	t.Run("a credential typed whole is text", func(t *testing.T) {
+		t.Parallel()
+
+		type in struct {
+			N numberID `arg:"n"`
+		}
+
+		_, err := Build("prog", "A program", New(Spec[in, NoOutput]{
+			Name: "run", Short: "Run", Long: "Run.", Example: []string{"prog run x"}, Local: true, Run: noop[in, NoOutput],
+		}))
+		require.ErrorContains(t, err, "<n> "+errWholeKind.Error())
+	})
+}
+
+// FuzzWhole holds the input rule of a secret typed whole to the edge: a
+// word the rule takes is masked whole wherever it stands, so the CLI can
+// promise never to print it.
+func FuzzWhole(f *testing.F) {
+	for _, s := range []string{"hskey-authreq-0123", "hskey-authreq-a.b", "hskey-authreq-hskey-api-x", "hskey-authreq-***", "hskey-authreq-a_b-C", "hskey-authreq-é"} {
+		f.Add(s, "x ", ".")
+	}
+
+	f.Fuzz(func(t *testing.T, word, before, after string) {
+		if AuthID("").Whole(word) != nil {
+			return
+		}
+
+		require.Equal(t, authIDPrefix+"***", masked(word))
+
+		// A text around it that does not run into it: what a sentence or a
+		// cell of JSON has.
+		if before != "" && credentialRune(rune(before[len(before)-1])) || after != "" && (credentialRune(rune(after[0])) || after[0] == '*') {
+			return
+		}
+
+		require.NotContains(t, masked(before+word+after), word)
+	})
 }
 
 // TestInputRule: a value that holds a credential is refused before Run,
@@ -257,4 +384,87 @@ func TestInputRule(t *testing.T) {
 		Name: "run", Short: "Run", Long: "Run.", Example: []string{"prog run x"}, Local: true, Run: noop[wrongIn, NoOutput],
 	}))
 	require.ErrorContains(t, err, "run: <id> "+errCredentialKind.Error())
+}
+
+// TestWithheld: a run that took a secret typed whole never writes it, raw
+// JSON included: an answer that repeats it, in any case or behind an escape
+// of JSON, is not printed, and the error says the command was done.
+func TestWithheld(t *testing.T) {
+	t.Parallel()
+
+	const id = "hskey-authreq-0123456789abcdef01234567"
+
+	type in struct {
+		ID AuthID `arg:"id"`
+	}
+
+	tree, err := Build("prog", "A program", New(Spec[in, item]{
+		Name: "get", Short: "S", Long: "S.", Example: []string{"prog get x"},
+		Run: func(c Ctx, _ in) (item, error) {
+			return call[item](c.API, func(cl *clientv0.Client) (*http.Response, error) {
+				req, err := http.NewRequestWithContext(c, http.MethodGet, cl.Server+"echo", nil)
+				if err != nil {
+					return nil, err
+				}
+
+				return cl.Client.Do(req)
+			})
+		},
+		Done: func(_ in, out item, _ time.Time) string { return "Item " + out.Name + "." },
+	}))
+	require.NoError(t, err)
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	repeated := "Error: the command was done, but the server's answer repeats <id>, a secret, so it is not printed. This is a fault of the server.\n"
+
+	for _, tt := range []struct {
+		name, name2, args, stdout, stderr string
+	}{
+		{name: "an answer that holds no ID", name2: "apple", args: "get " + id + " -o json", stdout: "{\n  \"id\": \"1\",\n  \"name\": \"apple\"\n}\n"},
+		{name: "the ID in -o json", name2: id, args: "get " + id + " -o json", stderr: repeated},
+		{name: "the ID in upper case", name2: strings.ToUpper(id), args: "get " + id + " -o json", stderr: repeated},
+		{name: "the ID behind an escape", name2: `hskey\u002dauthreq-0123456789abcdef01234567`, args: "get " + id + " -o json", stderr: repeated},
+		{name: "the ID in text goes through the edge", name2: id, args: "get " + id, stdout: "Item hskey-authreq-***.\n"},
+		{name: "another ID is no secret of this run", name2: "hskey-authreq-ffff", args: "get " + id + " -o json", stdout: "{\n  \"id\": \"1\",\n  \"name\": \"hskey-authreq-ffff\"\n}\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Headscale-Version", "dev")
+				_, _ = w.Write([]byte(`{"id": "1", "name": "` + tt.name2 + `"}`))
+			}))
+			t.Cleanup(s.Close)
+
+			var stdout, stderr bytes.Buffer
+
+			Run(tree, strings.Fields(tt.args), Env{
+				Stdout: &stdout, Stderr: &stderr, Version: &types.VersionInfo{Version: "dev"},
+				Environ: []string{"HEADSCALE_CONFIG=" + file, "HEADSCALE_CLI_ADDRESS=" + s.URL + "/", "HEADSCALE_CLI_API_KEY=key"},
+			})
+			require.Equal(t, tt.stdout, stdout.String())
+			require.Equal(t, tt.stderr, stderr.String())
+		})
+	}
+}
+
+// TestRepeats: a word is found in any case, and in JSON behind escapes,
+// which a reader of -o json decodes.
+func TestRepeats(t *testing.T) {
+	t.Parallel()
+
+	const w = "hskey-authreq-0123"
+
+	for p, want := range map[string]bool{
+		`x hskey-authreq-0123 y`:              true,
+		`HSKEY-AUTHREQ-0123`:                  true,
+		`{"a": "hskey\u002dauthreq-0123"}`:    true,
+		`{"hskey\u002dauthreq\u002d0123": 1}`: true,
+		`{"a": "hskey-authreq-0124"}`:         false,
+		`hskey\u002dauthreq-0123`:             false,
+	} {
+		require.Equal(t, want, repeats([]byte(p), w), p)
+	}
 }

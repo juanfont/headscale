@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -68,9 +70,25 @@ func AuthIDFromString(str string) (AuthID, error) {
 	return r, nil
 }
 
-func (r AuthID) String() string {
+// Raw is the ID itself, for what must carry it: a URL, a page or an answer
+// to the one who holds it. Whoever holds an auth ID may answer its request.
+func (r AuthID) Raw() string {
 	return string(r)
 }
+
+// Hidden is the ID as a log line or an error carries it: its kind and no
+// more, as the request log writes a secret in a path.
+func (AuthID) Hidden() string {
+	return authIDPrefix + "***"
+}
+
+// String, GoString and MarshalText are [AuthID.Hidden], so that formatting,
+// a struct dump and JSON never print the secret by default.
+func (r AuthID) String() string { return r.Hidden() }
+
+func (r AuthID) GoString() string { return strconv.Quote(r.Hidden()) }
+
+func (r AuthID) MarshalText() ([]byte, error) { return []byte(r.Hidden()), nil }
 
 func (r AuthID) Validate() error {
 	if !strings.HasPrefix(string(r), authIDPrefix) {
@@ -161,6 +179,18 @@ type AuthRequest struct {
 	// waiter is closed once a newer request parks on this session; see
 	// [AuthRequest.Park].
 	waiter atomic.Pointer[chan struct{}]
+
+	// answer is held by an answer from its claim to its verdict; see
+	// [AuthRequest.Claim].
+	answer sync.Mutex
+
+	// expiry is the verdict of a timeout that found rn held; see
+	// [AuthRequest.Expire].
+	expiry atomic.Pointer[AuthVerdict]
+
+	// beforeUnlock runs in a release between its own check of expiry and
+	// the unlock; tests hold that window with it.
+	beforeUnlock func()
 }
 
 // NewAuthRequest creates a pending auth request with no payload, suitable
@@ -291,14 +321,81 @@ func (rn *AuthRequest) PendingConfirmation() *PendingRegistrationConfirmation {
 	return rn.pendingConfirmation
 }
 
-func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
-	if rn.closed.Swap(true) {
+// Claim makes the caller the one answer to rn until it calls release, and
+// is false, holding nothing, once a verdict resolved rn. An answer that
+// claims while another holds rn waits, then finds it resolved: two answers
+// at once end as one verdict and one refusal. The holder gives its verdict
+// with [AuthRequest.FinishAuth] before it releases; one that ends without a
+// verdict after rn timed out gives the timeout's. Release may be called
+// more than once.
+//
+// Claim does not check for a timeout itself: a timeout either finishes rn
+// at once or finds it held, and then the release hands its verdict on, so
+// a claim can win only a timeout that is still finishing, and its own
+// release then gives that verdict if it gives none.
+func (rn *AuthRequest) Claim() (func(), bool) {
+	rn.answer.Lock()
+
+	if rn.IsFinished() {
+		rn.answer.Unlock()
+
+		return nil, false
+	}
+
+	var once sync.Once
+
+	return func() {
+		once.Do(func() {
+			rn.finishExpired()
+
+			if rn.beforeUnlock != nil {
+				rn.beforeUnlock()
+			}
+
+			rn.answer.Unlock()
+			// A timeout that came after the check above found rn held, and
+			// left its verdict to this release.
+			rn.expireUnheld()
+		})
+	}, true
+}
+
+// Expire gives rn the verdict of its timeout, v. It never waits: while an
+// answer holds rn, that answer gives v itself if it ends without a verdict.
+func (rn *AuthRequest) Expire(v AuthVerdict) {
+	rn.expiry.Store(&v)
+	rn.expireUnheld()
+}
+
+func (rn *AuthRequest) expireUnheld() {
+	if rn.expiry.Load() == nil || !rn.answer.TryLock() {
 		return
+	}
+
+	rn.finishExpired()
+	rn.answer.Unlock()
+}
+
+// finishExpired gives the timeout's verdict if rn timed out; the caller
+// holds rn.
+func (rn *AuthRequest) finishExpired() {
+	if v := rn.expiry.Load(); v != nil {
+		rn.FinishAuth(*v)
+	}
+}
+
+// FinishAuth gives rn its verdict, and reports whether it did: only the
+// first verdict counts.
+func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) bool {
+	if rn.closed.Swap(true) {
+		return false
 	}
 
 	rn.finished <- verdict
 
 	close(rn.finished)
+
+	return true
 }
 
 func (rn *AuthRequest) WaitForAuth() <-chan AuthVerdict {

@@ -51,6 +51,9 @@ type Spec[In, Out any] struct {
 	NeedsServer func(in In) bool
 	// ReadsConfig gives a Local command --config.
 	ReadsConfig bool
+	// NoJSON is a test tool that prints one fixed format: it takes no
+	// --output.
+	NoJSON bool
 	// NeedsChange is a command whose Opt flags each change a field, such as
 	// a set: a line that gives none of them is refused before any call.
 	NeedsChange bool
@@ -73,8 +76,9 @@ type Spec[In, Out any] struct {
 	// refuses it. The builder tries again only a refusal of a guard it
 	// stored, never one a command sends itself.
 	Changed clientv0.ProblemCode
-	// Hint is a line of what to do after a wrong argument count or an empty
-	// list argument, from the arguments as typed; "" adds nothing.
+	// Hint is a line of what to do after a wrong argument count, an empty
+	// list argument, or a word of another kind than its lookup takes, such
+	// as a tag for a user, from the arguments as typed; "" adds nothing.
 	Hint func(args []string) string
 	// EmptyList is why an empty list argument is refused, said after "the
 	// tag list is empty.", so the CLI's refusal reads as the server's.
@@ -150,6 +154,11 @@ type NoInput struct{}
 
 // NoOutput is the result of a command that gives nothing back.
 type NoOutput struct{}
+
+// Said is the result of a write whose answer has no body, such as a 204:
+// What is what the command read before it acted, for Done to name. -o json
+// prints nothing, as for NoOutput.
+type Said struct{ What string }
 
 // Opt is a value that may be left out; [Opt.Get] says whether it was given.
 // As an argument it makes the argument optional.
@@ -255,6 +264,10 @@ type Env struct {
 	// Answered, when set, is told every answer of the server as it came, so
 	// a test compares -o json with what the server sent in that run.
 	Answered func(req *http.Request, body []byte)
+	// Sent, when set, is told every request as it leaves for the server,
+	// before any answer, with its headers: GET /version before a first
+	// write, and a request that gets no answer, too.
+	Sent func(req *http.Request)
 	// Version is the build the run is; nil is this binary's. A test sets
 	// it to run as a release.
 	Version *types.VersionInfo

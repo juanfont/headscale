@@ -56,6 +56,8 @@ type leaf struct {
 	changed bool
 	// secret is a command that prints a secret once: Spec.Secret.
 	secret bool
+	// noJSON is a test tool with no --output: Spec.NoJSON.
+	noJSON bool
 	// end is the delete of a credential, made by NewEnd.
 	end bool
 	// hint follows a wrong argument count or an empty list argument;
@@ -65,6 +67,9 @@ type leaf struct {
 	// valid checks the line, read but not looked up, before any call: the
 	// rule on the way in, then Spec.Valid.
 	valid func(*cmdline.Line) error
+	// whole are the words of a checked line that it takes as secrets typed
+	// whole, which no output of the run may repeat.
+	whole func(*cmdline.Line) []wholeWord
 	// target is the type of the command's target: the first argument that
 	// is an entity; nil for none.
 	target reflect.Type
@@ -118,6 +123,8 @@ var (
 	errNoGuardTarget = errors.New("a refusal named in Changed and no target that is an entity: the guard of the question would reach no write")
 	errGuardMix      = errors.New("a refusal named in Changed on a target with a revision: the write takes one guard, and the token would drop the revision")
 	errNoSay         = errors.New("is cut to the width of the terminal, and Long does not say so")
+	errSaid          = errors.New("a result Said needs Done, which prints it, and no Columns")
+	errNoJSON        = errors.New("NoJSON is a test tool that prints one sentence: it needs Done and no Columns")
 )
 
 // specError is a spec that is wrong, named by its path.
@@ -145,18 +152,20 @@ func (format) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Direct
 
 // New makes the command of a spec.
 func New[In, Out any](s Spec[In, Out]) Node {
-	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
+	noOut := isNoOutput[Out]()
 
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
-	l.output = !noOut || !s.Local || s.NeedsServer != nil
+	l.output = (!noOut || !s.Local || s.NeedsServer != nil) && !s.NoJSON
 	l.own = !noOut && s.Local && s.NeedsServer == nil
-	rule, ruleErr := inputRule[In]()
+	rule, whole, ruleErr := inputRule[In]()
 	l.valid = rule
+	l.whole = whole
 	l.check = func() error { return errors.Join(checkSpec(s), ruleErr) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
 	l.changed = s.Changed != ""
 	l.secret = s.Secret != nil
+	l.noJSON = s.NoJSON
 	l.hint = s.Hint
 	l.emptyList = s.EmptyList
 	l.target, _ = targetType(reflect.TypeFor[In]())
@@ -234,14 +243,32 @@ func checkTarget(n *leaf, ents map[reflect.Type]entity) error {
 	return nil
 }
 
+// isNoOutput reports whether Out prints no object: NoOutput, or Said, whose
+// text only Done prints.
+func isNoOutput[Out any]() bool {
+	t := reflect.TypeFor[Out]()
+
+	return t == reflect.TypeFor[NoOutput]() || t == reflect.TypeFor[Said]()
+}
+
 // checkSpec reports what is wrong with a spec, for the tree to name.
 func checkSpec[In, Out any](s Spec[In, Out]) error {
-	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
+	noOut := isNoOutput[Out]()
 
 	var errs []error
 
 	if s.Run == nil {
 		errs = append(errs, errNoRun)
+	}
+
+	// What it said is printed by Done or not at all; a test tool prints its
+	// one sentence.
+	if reflect.TypeFor[Out]() == reflect.TypeFor[Said]() && (s.Done == nil || s.Columns != nil) {
+		errs = append(errs, errSaid)
+	}
+
+	if s.NoJSON && (s.Done == nil || s.Columns != nil) {
+		errs = append(errs, errNoJSON)
 	}
 
 	switch {
@@ -274,8 +301,9 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 	l.only = s.Only
 	l.filter = filterExample(s.Example)
 	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
-	rule, ruleErr := inputRule[In]()
+	rule, whole, ruleErr := inputRule[In]()
 	l.valid = rule
+	l.whole = whole
 	l.check = func() error {
 		errs := []error{ruleErr}
 
@@ -641,6 +669,13 @@ type Command struct {
 	// Secret prints a secret once: it makes a credential, whose group the
 	// tests of every kind of credential run on.
 	Secret bool
+	// NoJSON is a test tool that takes no --output: a test lists each, with
+	// why.
+	NoJSON bool
+	// Whole are the arguments and flags that take a secret typed whole, such
+	// as <auth-id>: the tests that it leaves in one request and comes back
+	// in nothing run on each.
+	Whole []string
 }
 
 // Commands lists every command that runs, in the order of the tree.
@@ -651,7 +686,7 @@ func (t *Tree) Commands() []Command {
 
 	walk = func(c *cmdline.Info) {
 		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && len(c.Commands) == 0 {
-			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret})
+			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret, NoJSON: l.noJSON, Whole: wholeArgs(c)})
 		}
 
 		for _, s := range c.Commands {
@@ -659,6 +694,36 @@ func (t *Tree) Commands() []Command {
 		}
 	}
 	walk(t.parser.Root())
+
+	return out
+}
+
+// wholeArgs are the arguments and flags of c whose type, or the type of
+// whose items, is a [TakesWhole].
+func wholeArgs(c *cmdline.Info) []string {
+	var out []string
+
+	takes := func(t reflect.Type) bool {
+		if t.Kind() == reflect.Slice {
+			t = t.Elem()
+		}
+
+		_, ok := reflect.TypeAssert[TakesWhole](reflect.Zero(t))
+
+		return ok
+	}
+
+	for _, a := range c.Args {
+		if takes(a.Type) {
+			out = append(out, "<"+a.Name+">")
+		}
+	}
+
+	for _, f := range c.Flags {
+		if takes(f.Type) {
+			out = append(out, "--"+f.Name)
+		}
+	}
 
 	return out
 }

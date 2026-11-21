@@ -203,7 +203,7 @@ func (h *Headscale) handleLogout(
 	if node.IsExpired() {
 		log.Trace().
 			EmbedObject(node).
-			Interface("reg.req", req).
+			Interface("reg.req", registerRequestForLog(req)).
 			Bool("unexpected", true).
 			Msg("Node key expired, forcing re-authentication")
 
@@ -417,7 +417,7 @@ func (h *Headscale) reqToNewRegisterResponse(
 
 	authRegReq := types.NewRegisterAuthRequest(regData)
 
-	log.Info().Msgf("new followup node registration using auth id: %s", newAuthID)
+	log.Info().Msgf("new followup node registration using auth id: %s", newAuthID.Hidden())
 
 	err = h.state.SetAuthCacheEntry(newAuthID, authRegReq)
 	if err != nil {
@@ -427,6 +427,24 @@ func (h *Headscale) reqToNewRegisterResponse(
 	return &tailcfg.RegisterResponse{
 		AuthURL: h.authProvider.RegisterURL(newAuthID),
 	}, nil
+}
+
+// registerRequestForLog is req without what lets a reader of the log act as
+// the node: the auth key, an OAuth token, and the auth ID in the follow-up
+// URL, each cut to its kind as the request log cuts a secret.
+func registerRequestForLog(req tailcfg.RegisterRequest) tailcfg.RegisterRequest {
+	if req.Auth != nil {
+		authKey := hideSecrets(req.Auth.AuthKey)
+		if authKey == req.Auth.AuthKey && authKey != "" {
+			authKey = "***" // a key of the old form has no kind
+		}
+
+		req.Auth = &tailcfg.RegisterResponseAuth{AuthKey: authKey}
+	}
+
+	req.Followup = hideSecrets(req.Followup)
+
+	return req
 }
 
 // registrationDataFromRequest keeps only auth and confirmation metadata;
@@ -521,7 +539,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	log.Trace().
 		Caller().
 		Interface("reg.resp", resp).
-		Interface("reg.req", req).
+		Interface("reg.req", registerRequestForLog(req)).
 		EmbedObject(node).
 		Msg("RegisterResponse")
 
@@ -558,7 +576,7 @@ func (h *Headscale) handleRegisterInteractive(
 		return nil, authAdmissionError(err)
 	}
 
-	log.Info().Msgf("starting node registration using auth id: %s", authID)
+	log.Info().Msgf("starting node registration using auth id: %s", authID.Hidden())
 
 	return &tailcfg.RegisterResponse{
 		AuthURL: h.authProvider.RegisterURL(authID),

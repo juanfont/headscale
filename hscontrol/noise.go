@@ -641,7 +641,7 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 	// and tailssh only expands it literally.
 	q := holdURL.Query()
 	q.Set("local_user", localUser)
-	q.Set("auth_id", authID.String())
+	q.Set("auth_id", authID.Raw())
 	holdURL.RawQuery = q.Encode()
 
 	action.HoldAndDelegate = holdURL.String()
@@ -656,7 +656,7 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 	)
 
 	reqLog.Info().Caller().
-		Str("auth_id", authID.String()).
+		Str("auth_id", authID.Hidden()).
 		Msg("SSH check pending, waiting for auth")
 
 	return action, nil
@@ -683,7 +683,7 @@ func (ns *noiseServer) sshActionFollowUp(
 		)
 	}
 
-	reqLog = reqLog.With().Str("auth_id", authID.String()).Logger()
+	reqLog = reqLog.With().Str("auth_id", authID.Hidden()).Logger()
 
 	// A missing session or consumed verdict must never approve access.
 	// The caller checked that the policy still requires authentication;
@@ -709,7 +709,7 @@ func (ns *noiseServer) sshActionFollowUp(
 		return nil, NewHTTPError(
 			http.StatusBadRequest,
 			"auth session is not for SSH check",
-			fmt.Errorf("%w: %s", ErrSSHAuthSessionNotBound, authID),
+			fmt.Errorf("%w: %s", ErrSSHAuthSessionNotBound, authID.Hidden()),
 		)
 	}
 

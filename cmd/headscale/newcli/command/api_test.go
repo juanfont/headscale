@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -438,6 +439,171 @@ func TestTimeout(t *testing.T) {
 	_, err = api(t, 2).UpdateUser(t.Context(), "3", clientv0.UpdateUserBody{})
 	require.EqualError(t, err, "the server at "+target+" did not answer the change: no answer in time.\n"+
 		"The change may have been made: look before you run the command again.")
+}
+
+// TestSent: a test is told every request as it leaves, with its headers:
+// the GET /version before a first write, and a write that got no answer.
+func TestSent(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Headscale-Version", "dev")
+
+		if r.URL.Path == "/api/headscale/v0/version" {
+			_, _ = w.Write([]byte(`{}`))
+
+			return
+		}
+
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}))
+	t.Cleanup(s.Close)
+
+	var (
+		mu   sync.Mutex
+		sent []string
+	)
+
+	a, err := connect(&types.Config{CLI: types.CLIConfig{Address: s.URL, APIKey: "key", Timeout: time.Minute}},
+		Env{Stderr: io.Discard, Version: types.GetVersionInfo(), Sent: func(req *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			sent = append(sent, req.Method+" "+req.URL.Path+" "+req.Header.Get("Authorization"))
+		}})
+	require.NoError(t, err)
+
+	_, err = a.UpdateUser(t.Context(), "3", clientv0.UpdateUserBody{})
+	require.Error(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// GET /version is asked with no credential.
+	require.Equal(t, []string{"GET /api/headscale/v0/version ", "PATCH /api/headscale/v0/users/3 Bearer key"}, sent)
+}
+
+// TestNotTheAPI: an answer of success that is not JSON, though it carries
+// Headscale-Version, is an error, also for a call that reads no body; a 204
+// has none.
+func TestNotTheAPI(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name, ctype, body string
+		status            int
+		wantErr           bool
+	}{
+		{name: "a page of HTML", ctype: "text/html", body: "<html>hi</html>", status: 200, wantErr: true},
+		{name: "a 201 with no body", status: 201, wantErr: true},
+		{name: "JSON", ctype: "application/json", body: `{"id": "1"}`, status: 201},
+		{name: "a 204", status: 204},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Headscale-Version", "dev")
+
+				if tt.ctype != "" {
+					w.Header().Set("Content-Type", tt.ctype)
+				}
+
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(s.Close)
+
+			a, err := connect(&types.Config{CLI: types.CLIConfig{Address: s.URL, APIKey: "key", Timeout: time.Minute}},
+				Env{Stderr: io.Discard, Version: types.GetVersionInfo()})
+			require.NoError(t, err)
+
+			// A write that reads no body, as debug create-node is.
+			_, err = a.do(func(c *clientv0.Client) (*http.Response, error) { return c.DeleteNode(t.Context(), "3", nil) })
+			if !tt.wantErr {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.EqualError(t, err, "the server at "+strings.TrimPrefix(s.URL, "http://")+" sent an answer this CLI cannot read: it is not JSON.")
+		})
+	}
+}
+
+// TestRedirect: no request follows a redirect, whatever its method and its
+// status, so nothing reaches the host the answer points to; the error names
+// that host by scheme and host only.
+func TestRedirect(t *testing.T) {
+	t.Parallel()
+
+	calls := map[string]func(ctx context.Context, a *API) error{
+		"GET": func(ctx context.Context, a *API) error { _, err := a.Me(ctx); return err },
+		"POST": func(ctx context.Context, a *API) error {
+			_, err := a.CreateUser(ctx, clientv0.CreateUserBody{Name: "u"})
+			return err
+		},
+		"PATCH": func(ctx context.Context, a *API) error {
+			_, err := a.UpdateUser(ctx, "3", clientv0.UpdateUserBody{})
+			return err
+		},
+		"PUT": func(ctx context.Context, a *API) error {
+			_, err := a.SetNodeTags(ctx, "3", []string{"tag:a"})
+			return err
+		},
+		"DELETE": func(ctx context.Context, a *API) error { return a.DeleteNode(ctx, "3") },
+	}
+
+	for method, call := range calls {
+		for _, status := range []int{301, 302, 303, 307, 308} {
+			for _, where := range []string{"another host", "the same host", "no Location", "the version"} {
+				t.Run(method+" "+strconv.Itoa(status)+" to "+where, func(t *testing.T) {
+					t.Parallel()
+
+					var other atomic.Int32
+
+					second := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { other.Add(1) }))
+					t.Cleanup(second.Close)
+
+					first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.Header().Set("Headscale-Version", "dev")
+
+						if r.URL.Path == "/api/headscale/v0/version" && where != "the version" {
+							return
+						}
+
+						switch where {
+						case "another host", "the version":
+							w.Header().Set("Location", second.URL+"/landing"+r.URL.Path)
+						case "the same host":
+							w.Header().Set("Location", "/landing"+r.URL.Path)
+						}
+
+						w.WriteHeader(status)
+					}))
+					t.Cleanup(first.Close)
+
+					a, err := connect(&types.Config{CLI: types.CLIConfig{Address: first.URL, APIKey: "key", Timeout: time.Minute}},
+						Env{Stderr: io.Discard, Version: types.GetVersionInfo()})
+					require.NoError(t, err)
+
+					host := strings.TrimPrefix(first.URL, "http://")
+					want := "the server at " + host + " answered with a redirect, which this CLI does not follow."
+
+					if where == "another host" || where == "the version" {
+						want = "the server at " + host + " answered with a redirect to " + second.URL + ", which this CLI does not follow.\n" +
+							"If that is the server, set it as the address: HEADSCALE_CLI_ADDRESS, or cli.address in the config."
+					}
+
+					require.EqualError(t, call(t.Context(), a), want)
+					require.Zero(t, other.Load(), "a request reached the host the redirect points to")
+				})
+			}
+		}
+	}
 }
 
 // TestLostAnswer: a request whose answer the server cuts says what the

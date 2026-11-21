@@ -82,10 +82,17 @@ func findUser(ctx context.Context, word string) (clientv0.User, error) {
 		return clientv0.User{}, err
 	}
 
-	return resolve(users, word, word, "user", userCandidates(),
+	u, err := resolve(users, word, word, "user", userCandidates(),
 		func(u clientv0.User) string { return u.Id },
 		func(u clientv0.User) []string { return []string{u.Email, u.Name, u.ProviderId} },
 	)
+	// No username has a colon: a tag where a user is wanted is a mistake of
+	// the kind, which a command's hint may say more of.
+	if err != nil && strings.HasPrefix(word, "tag:") {
+		return u, &lookupError{text: "a tag is not a user.", hinted: true}
+	}
+
+	return u, err
 }
 
 // userCandidates are the columns of the users an ambiguous word matches;
@@ -350,7 +357,11 @@ func resolve[T any](rows []T, word, said, kind string, cols table.Columns[T], id
 		strings.TrimSuffix(list.String(), "\n")}
 }
 
-// lookupError is a word that names no entity, or more than one.
-type lookupError struct{ text string }
+// lookupError is a word that names no entity, or more than one. hinted is
+// a word of another kind, which the command's hint follows.
+type lookupError struct {
+	text   string
+	hinted bool
+}
 
 func (e *lookupError) Error() string { return e.text }

@@ -64,6 +64,8 @@ type API struct {
 
 	mu      sync.Mutex
 	answers map[answerKey]json.RawMessage
+	// requests are the auth requests read in this run; see GetAuthRequest.
+	requests map[AuthID]clientv0.AuthRequest
 }
 
 // answerKey is a decoded object: its type, and its value in a canonical
@@ -304,6 +306,68 @@ func (a *API) DeleteOAuthClient(ctx context.Context, id string) error {
 	return err
 }
 
+// GetAuthRequest is GET /auth-requests/{id}, read once a run: the
+// question of a command and its message say the same, and the secret goes
+// out once more only for the answer itself.
+func (a *API) GetAuthRequest(ctx context.Context, id AuthID) (clientv0.AuthRequest, error) {
+	a.mu.Lock()
+	r, ok := a.requests[id]
+	a.mu.Unlock()
+
+	if ok {
+		return r, nil
+	}
+
+	r, err := call[clientv0.AuthRequest](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetAuthRequest(ctx, string(id)) })
+	if err != nil {
+		return r, err
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.requests == nil {
+		a.requests = map[AuthID]clientv0.AuthRequest{}
+	}
+
+	a.requests[id] = r
+
+	return r, nil
+}
+
+// RegisterAuthRequest is POST /auth-requests/{id}/register: the new node.
+func (a *API) RegisterAuthRequest(ctx context.Context, id AuthID, userID string) (clientv0.Node, error) {
+	return call[clientv0.Node](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.RegisterAuthRequest(ctx, string(id), clientv0.RegisterAuthRequestBody{UserId: userID})
+	})
+}
+
+// ApproveAuthRequest is POST /auth-requests/{id}/approve.
+func (a *API) ApproveAuthRequest(ctx context.Context, id AuthID) error {
+	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) { return c.ApproveAuthRequest(ctx, string(id)) })
+
+	return err
+}
+
+// RejectAuthRequest is POST /auth-requests/{id}/reject.
+func (a *API) RejectAuthRequest(ctx context.Context, id AuthID) error {
+	_, err := call[NoOutput](a, func(c *clientv0.Client) (*http.Response, error) { return c.RejectAuthRequest(ctx, string(id)) })
+
+	return err
+}
+
+// CreateDebugNode is POST /debug/nodes: a registration of a made-up node,
+// waiting under id. Its answer, an auth request, holds id and is not
+// returned.
+func (a *API) CreateDebugNode(ctx context.Context, id AuthID, hostname string, routes []string) error {
+	// routes is required, so none is the empty list, not null.
+	body := clientv0.CreateDebugNodeBody{AuthId: string(id), Hostname: hostname, Routes: append([]string{}, routes...)}
+
+	_, err := a.do(func(c *clientv0.Client) (*http.Response, error) { return c.CreateDebugNode(ctx, body) })
+
+	return err
+}
+
 // call makes one request and reads its answer: a 2xx body as T, kept for
 // -o json; no body (a 204) as the zero T; any other status as a problem.
 func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, error) {
@@ -450,6 +514,13 @@ func (a *API) do(do func(*clientv0.Client) (*http.Response, error)) ([]byte, err
 		return nil, problemOf(resp.StatusCode, body)
 	}
 
+	// Headscale-Version is no proof that the answer is the API's: a page in
+	// front of the server can carry it. Every answer of v0 but a 204 is JSON,
+	// so a call that reads no body cannot take another for success.
+	if resp.StatusCode != http.StatusNoContent && !json.Valid(body) {
+		return nil, &unreadableError{text: "the server at " + a.target + " sent an answer this CLI cannot read: it is not JSON."}
+	}
+
 	return bytes.TrimSpace(body), nil
 }
 
@@ -469,6 +540,10 @@ func (e *unreadableError) Error() string { return e.text }
 func (a *API) callError(err error) error {
 	if v, ok := errors.AsType[*versionError](err); ok {
 		return v
+	}
+
+	if r, ok := errors.AsType[*redirectError](err); ok {
+		return r
 	}
 
 	deadline := errors.Is(err, context.DeadlineExceeded)
@@ -694,6 +769,10 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 		base = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.CLI.Insecure}} //nolint:gosec
 	}
 
+	if env.Sent != nil {
+		base = told{next: base, sent: env.Sent}
+	}
+
 	check := &versionCheck{next: base, own: env.Version, target: target, server: server, warn: env.Stderr}
 
 	a := &API{}
@@ -720,6 +799,20 @@ func connect(cfg *types.Config, env Env) (*API, error) {
 	a.c, a.target, a.answered, a.socket, a.pageSize, a.check, a.timeout = c, target, env.Answered, sock, size, check, cfg.CLI.Timeout
 
 	return a, nil
+}
+
+// told tells sent of every request as it leaves, below the version check
+// and any other step, so a test sees what goes over the wire: each request,
+// answered or not, with its headers.
+type told struct {
+	next http.RoundTripper
+	sent func(req *http.Request)
+}
+
+func (t told) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.sent(req)
+
+	return t.next.RoundTrip(req)
 }
 
 // revision is the guard of a write on the target of a command: what the
@@ -933,6 +1026,15 @@ func (v *versionCheck) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
+	// v0 answers no redirect. A client that followed one would send the
+	// request again, a secret in its path or its body among it, to wherever
+	// the answer points; and a 301 or 302 would turn a write into a read.
+	if resp.StatusCode/100 == 3 {
+		resp.Body.Close()
+
+		return nil, redirectOf(v.target, req.URL, resp)
+	}
+
 	server := resp.Header.Get("Headscale-Version")
 	if server == "" {
 		resp.Body.Close()
@@ -962,6 +1064,31 @@ func (v *versionCheck) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp.Body = &answerBody{ReadCloser: resp.Body, write: write, dryRun: req.Method != http.MethodGet && !write}
 
 	return resp, nil
+}
+
+// redirectError is an answer that points elsewhere, as a proxy answers an
+// address it moved. It names where by scheme and host only: the rest of the
+// Location may hold what was sent.
+type redirectError struct{ target, to string }
+
+func (e *redirectError) Error() string {
+	if e.to == "" {
+		return "the server at " + e.target + " answered with a redirect, which this CLI does not follow."
+	}
+
+	return "the server at " + e.target + " answered with a redirect to " + e.to + ", which this CLI does not follow.\n" +
+		"If that is the server, set it as the address: HEADSCALE_CLI_ADDRESS, or cli.address in the config."
+}
+
+// redirectOf is the error of resp, a redirect of a request to from. A
+// Location on the same scheme and host names no other address.
+func redirectOf(target string, from *url.URL, resp *http.Response) error {
+	to, err := resp.Location()
+	if err != nil || to.Host == "" || to.Scheme == from.Scheme && to.Host == from.Host {
+		return &redirectError{target: target}
+	}
+
+	return &redirectError{target: target, to: table.Visible(to.Scheme+"://"+to.Host, "")}
 }
 
 // unanswered is a request that was sent and whose answer did not come

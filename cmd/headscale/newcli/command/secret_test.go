@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
+	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/require"
 )
 
@@ -179,6 +181,42 @@ func TestSecretChecks(t *testing.T) {
 		}
 	)
 
+	type (
+		requestRow struct {
+			ID       string                                    `json:"id"`
+			Requests nullable.Nullable[[]clientv0.AuthRequest] `json:"requests"`
+		}
+		definedRequest clientv0.AuthRequest
+		// shapeRequest is an auth request copied field by field.
+		shapeRequest struct {
+			Destination nullable.Nullable[clientv0.SSHCheckNodeReference] `json:"destination"`
+			Hostname    string                                            `json:"hostname"`
+			Id          string                                            `json:"id"` //nolint:revive // the copy of a generated field
+			Kind        clientv0.AuthRequestKind                          `json:"kind"`
+			Source      nullable.Nullable[clientv0.SSHCheckNodeReference] `json:"source"`
+		}
+		opaque struct {
+			R any `json:"r"`
+		}
+	)
+
+	get := func(out any) Node {
+		switch out.(type) {
+		case definedRequest:
+			return New(Spec[NoInput, definedRequest]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, definedRequest], Done: func(NoInput, definedRequest, time.Time) string { return "" }})
+		case shapeRequest:
+			return New(Spec[NoInput, []shapeRequest]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, []shapeRequest], Done: func(NoInput, []shapeRequest, time.Time) string { return "" }})
+		case opaque:
+			return New(Spec[NoInput, opaque]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, opaque], Done: func(NoInput, opaque, time.Time) string { return "" }})
+		case map[string]any:
+			return New(Spec[NoInput, map[string]any]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, map[string]any], Done: func(NoInput, map[string]any, time.Time) string { return "" }})
+		case []any:
+			return New(Spec[NoInput, []any]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, []any], Done: func(NoInput, []any, time.Time) string { return "" }})
+		}
+
+		return New(Spec[NoInput, clientv0.Health]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, clientv0.Health], Done: func(NoInput, clientv0.Health, time.Time) string { return "" }})
+	}
+
 	beside := func(n Node) []Node {
 		return []Node{Group{Name: "keys", Short: "Keys", Commands: []Node{
 			n,
@@ -247,13 +285,46 @@ func TestSecretChecks(t *testing.T) {
 			})},
 			"list: " + errSecretRow.Error(),
 		},
+		// The ID of an auth request is its secret, under no name a check
+		// of field names knows.
+		{
+			"an auth request as a result",
+			[]Node{New(Spec[NoInput, clientv0.AuthRequest]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Run: noop[NoInput, clientv0.AuthRequest], Done: func(NoInput, clientv0.AuthRequest, time.Time) string { return "" }})},
+			"get: " + errAuthReq.Error(),
+		},
+		{
+			"an auth request as a Secret's result",
+			beside(New(Spec[NoInput, clientv0.AuthRequest]{
+				Name: "create", Short: "S", Long: "S.", Example: []string{"prog keys create"}, Run: noop[NoInput, clientv0.AuthRequest],
+				Done: func(NoInput, clientv0.AuthRequest, time.Time) string { return "" }, Secret: func(clientv0.AuthRequest) string { return "" },
+			})),
+			"keys create: " + errAuthReq.Error(),
+		},
+		{
+			"rows that hold auth requests in a nullable list",
+			[]Node{NewList(ListSpec[NoInput, requestRow]{
+				Name: "list", Short: "S", Long: "S.", Example: []string{"prog list"}, NoRows: "None.", Run: noop[NoInput, []requestRow],
+				Columns: table.Columns[requestRow]{{Name: "id", Field: "id", Default: true}},
+			})},
+			"list: " + errAuthReq.Error(),
+		},
+		{"a defined type on an auth request", []Node{get(definedRequest{})}, "get: " + errAuthReq.Error()},
+		{"a list of copies of an auth request", []Node{get(shapeRequest{})}, "get: " + errAuthReq.Error()},
+		{"an interface a struct down", []Node{get(opaque{})}, "get: command.opaque holds a field that " + errOpaque.Error()},
+		{"a map of any", []Node{get(map[string]any{})}, "get: map[string]interface {} " + errOpaque.Error()},
+		{"a list of any", []Node{get([]any{})}, "get: []interface {} " + errOpaque.Error()},
 	} {
 		_, err := Build("prog", "A program", tt.nodes...)
 		require.EqualError(t, err, tt.want, tt.name)
 	}
 
+	// The details of a health warning are an interface that openFields lets
+	// through: the one a result of today needs.
+	_, err := Build("prog", "A program", get(nil))
+	require.NoError(t, err)
+
 	// A pointer to a result is walked, not a panic.
-	_, err := Build("prog", "A program", New(Spec[NoInput, *item]{
+	_, err = Build("prog", "A program", New(Spec[NoInput, *item]{
 		Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, *item],
 		Done: func(NoInput, *item, time.Time) string { return "" },
 	}))

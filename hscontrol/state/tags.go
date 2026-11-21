@@ -20,6 +20,18 @@ var (
 	ErrRequestedTagsInvalidOrNotPermitted = errors.New("requested tags")
 )
 
+// TagsNotPermittedError is [ErrRequestedTagsInvalidOrNotPermitted] for a
+// registration, with the tags it refused.
+type TagsNotPermittedError struct {
+	Tags []string
+}
+
+func (e *TagsNotPermittedError) Error() string {
+	return fmt.Sprintf("%s %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, e.Tags)
+}
+
+func (e *TagsNotPermittedError) Unwrap() error { return ErrRequestedTagsInvalidOrNotPermitted }
+
 // ErrTaggedNodeHasUser is returned when a tagged node has a [types.Node.UserID] set.
 var ErrTaggedNodeHasUser = errors.New("tagged node must not have user_id set")
 
