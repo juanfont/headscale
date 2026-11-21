@@ -1,0 +1,192 @@
+name: Windows client
+
+# The Windows Tailscale GUI is closed source and only runs on Windows, so the
+# only way to see what it shows against headscale is to run it. A headscale
+# built from this tree runs on the runner beside an exit node; the installed
+# client joins, and its tray menu must offer the exit node both when the GUI
+# starts and after the exit node reconnects under a running GUI. Nightly
+# against the newest stable and unstable clients, so a client release that
+# stops showing headscale data is caught before users report it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable client version, e.g. 1.104.5 (empty tests the newest stable and unstable)
+        required: false
+  schedule:
+    - cron: "17 4 * * *"
+  pull_request:
+    paths:
+      - ".github/workflows/windows-client.yml"
+      - ".github/workflows/windows-tray-menu.py"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  exit-node-menu:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        track: ${{ fromJSON(inputs.version && '["stable"]' || '["stable", "unstable"]') }}
+    env:
+      TS: C:\Program Files\Tailscale
+      # A second tailscaled outside the service must listen under this prefix.
+      EXIT_SOCKET: \\.\pipe\ProtectedPrefix\Administrators\Tailscale\exitnode
+      LOGIN_SERVER: http://127.0.0.1:8080
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build headscale
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\hs" | Out-Null
+          go build -o "$env:RUNNER_TEMP\hs\headscale.exe" ./cmd/headscale
+
+      - name: Install Tailscale (${{ matrix.track }})
+        env:
+          TRACK: ${{ matrix.track }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $base = "https://pkgs.tailscale.com/$env:TRACK"
+          $msi = if ($env:VERSION) { "tailscale-setup-$env:VERSION-amd64.msi" } else { (Invoke-RestMethod "$base/?mode=json").MSIs.amd64 }
+          Write-Output "installing $msi"
+          Invoke-WebRequest -UseBasicParsing "$base/$msi" -OutFile "$env:RUNNER_TEMP\tailscale.msi"
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
+            '/i', "$env:RUNNER_TEMP\tailscale.msi", '/qn', '/norestart', '/l*v', "$env:RUNNER_TEMP\msi.log",
+            'TS_NOLAUNCH=1', 'TS_UNATTENDEDMODE=always', 'TS_ONBOARDING_FLOW=hide', "TS_LOGINURL=$env:LOGIN_SERVER")
+          if ($p.ExitCode -ne 0) { throw "msiexec exited $($p.ExitCode)" }
+
+      # One step: the runner kills a step's processes when it ends, and
+      # headscale, the exit node and the GUI must outlive each phase.
+      - name: Tray menu offers the exit node
+        run: |
+          $hs = "$env:RUNNER_TEMP\hs"
+          $cfg = "$hs\config.yaml"
+          $ts = "$env:TS\tailscale.exe"
+          $d = $hs.Replace('\', '/')
+          @"
+          server_url: $env:LOGIN_SERVER
+          listen_addr: 127.0.0.1:8080
+          unix_socket: $d/headscale.sock
+          disable_check_updates: true
+          noise:
+            private_key_path: $d/noise.key
+          database:
+            type: sqlite
+            sqlite:
+              path: $d/db.sqlite
+          dns:
+            base_domain: ci.internal
+            override_local_dns: false
+          policy:
+            path: $d/policy.hujson
+          "@ | Set-Content $cfg
+          @'
+          {
+            "tagOwners": { "tag:exit": [] },
+            "acls": [ { "action": "accept", "src": ["*"], "dst": ["*:*"] } ],
+            "autoApprovers": { "exitNode": ["tag:exit"] }
+          }
+          '@ | Set-Content "$hs\policy.hujson"
+
+          function Retry([scriptblock]$cmd) {
+            foreach ($i in 1..15) { & $cmd; if ($LASTEXITCODE -eq 0) { return }; Start-Sleep 2 }
+            throw "gave up: $cmd"
+          }
+          function Exit1Online {
+            $st = & $ts status --json | ConvertFrom-Json
+            ($st.Peer.PSObject.Properties.Value | Where-Object HostName -eq 'exit1').Online
+          }
+          # TS_UNATTENDEDMODE is machine policy, so every `tailscale up` must pass --unattended.
+          $upExit = {
+            & $ts --socket=$env:EXIT_SOCKET up --login-server=$env:LOGIN_SERVER --authkey=$exitKey `
+              --hostname=exit1 --advertise-exit-node --unattended --timeout=30s
+          }
+
+          Write-Output "::group::start headscale"
+          Start-Process "$hs\headscale.exe" -WindowStyle Hidden -ArgumentList @('serve', '-c', $cfg) `
+            -RedirectStandardOutput "$hs\serve.out.log" -RedirectStandardError "$hs\serve.log"
+          Retry { curl.exe -sf "$env:LOGIN_SERVER/health" }
+          & "$hs\headscale.exe" -c $cfg users create ci
+          $key = "$(& "$hs\headscale.exe" -c $cfg preauthkeys create --user ci --reusable)".Trim()
+          $exitKey = "$(& "$hs\headscale.exe" -c $cfg preauthkeys create --user ci --reusable --tags tag:exit)".Trim()
+          if (-not $key -or -not $exitKey) { throw "no pre-auth keys" }
+          Write-Output "::endgroup::"
+
+          Write-Output "::group::start the exit node"
+          $dir = "$env:RUNNER_TEMP\exit"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Start-Process "$env:TS\tailscaled.exe" -WindowStyle Hidden `
+            -ArgumentList @('--tun=userspace-networking', "--statedir=$dir", "--socket=$env:EXIT_SOCKET", '--port=41642') `
+            -RedirectStandardOutput "$dir\tailscaled.out.log" -RedirectStandardError "$dir\tailscaled.log"
+          Retry $upExit
+          Write-Output "::endgroup::"
+
+          Write-Output "::group::join the client"
+          Retry { & $ts up --login-server=$env:LOGIN_SERVER --authkey=$key --hostname=winclient --accept-dns=false --unattended --timeout=30s }
+          # The CLI reads the same peer data as the GUI; a miss here is headscale's, not the GUI's.
+          foreach ($i in 1..60) {
+            $list = & $ts exit-node list | Out-String
+            if ($list -match 'exit1') { break }
+            Start-Sleep 2
+          }
+          $list
+          if ($list -notmatch 'exit1') { & $ts status --json; throw "exit1 is not in tailscale exit-node list" }
+          Write-Output "::endgroup::"
+
+          Write-Output "::group::tray menu at GUI start"
+          Start-Process "$env:TS\tailscale-ipn.exe"
+          python .github/workflows/windows-tray-menu.py --expect exit1 --out "$env:RUNNER_TEMP\artifacts\gui-start"
+          $atStart = $LASTEXITCODE -eq 0
+          Write-Output "::endgroup::"
+
+          Write-Output "::group::tray menu after the exit node reconnects"
+          & $ts --socket=$env:EXIT_SOCKET down
+          foreach ($i in 1..60) { if (-not (Exit1Online)) { break }; Start-Sleep 2 }
+          Retry $upExit
+          python .github/workflows/windows-tray-menu.py --expect exit1 --out "$env:RUNNER_TEMP\artifacts\gui-reconnect"
+          $afterReconnect = $LASTEXITCODE -eq 0
+          Write-Output "::endgroup::"
+
+          if (-not ($atStart -and $afterReconnect)) { throw "tray menu: at start=$atStart, after reconnect=$afterReconnect" }
+
+      - name: Collect logs
+        if: always()
+        run: |
+          $a = "$env:RUNNER_TEMP\artifacts"
+          New-Item -ItemType Directory -Force $a | Out-Null
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$a\screen.png")
+          & "$env:TS\tailscale.exe" status --json > "$a\status.json"
+          # Logs only: the state directories hold node and server keys.
+          Copy-Item "$env:RUNNER_TEMP\hs\*.log", "$env:RUNNER_TEMP\exit\*.log", "$env:RUNNER_TEMP\msi.log" $a -ErrorAction SilentlyContinue
+          Copy-Item "$env:ProgramData\Tailscale\Logs" "$a\service-logs" -Recurse -ErrorAction SilentlyContinue
+          Copy-Item "$env:LOCALAPPDATA\Tailscale" "$a\gui-logs" -Recurse -Include *.log, *.txt -ErrorAction SilentlyContinue
+          exit 0
+
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: windows-client-${{ matrix.track }}
+          path: ${{ runner.temp }}/artifacts
+          if-no-files-found: ignore
