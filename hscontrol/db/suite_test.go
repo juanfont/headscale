@@ -72,30 +72,33 @@ func newPostgresDBForTest(t *testing.T) *url.URL {
 func newHeadscaleDBFromPostgresURL(t *testing.T, pu *url.URL) *HSDatabase {
 	t.Helper()
 
-	pass, _ := pu.User.Password()
-	port, _ := strconv.Atoi(pu.Port())
-
-	db, err := NewHeadscaleDatabase(
-		&types.Config{
-			Database: types.DatabaseConfig{
-				Type: types.DatabasePostgres,
-				Postgres: types.PostgresConfig{
-					Host: pu.Hostname(),
-					User: pu.User.Username(),
-					Name: strings.TrimLeft(pu.Path, "/"),
-					Pass: types.Secret(pass),
-					Port: port,
-					Ssl:  "disable",
-				},
-			},
-			Policy: types.PolicyConfig{
-				Mode: types.PolicyModeDB,
-			},
-		},
-	)
+	db, err := NewHeadscaleDatabase(postgresTestConfig(pu))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	return db
+}
+
+// postgresTestConfig is the config of the test database at pu.
+func postgresTestConfig(pu *url.URL) *types.Config {
+	pass, _ := pu.User.Password()
+	port, _ := strconv.Atoi(pu.Port())
+
+	return &types.Config{
+		Database: types.DatabaseConfig{
+			Type: types.DatabasePostgres,
+			Postgres: types.PostgresConfig{
+				Host: pu.Hostname(),
+				User: pu.User.Username(),
+				Name: strings.TrimLeft(pu.Path, "/"),
+				Pass: types.Secret(pass),
+				Port: port,
+				Ssl:  "disable",
+			},
+		},
+		Policy: types.PolicyConfig{
+			Mode: types.PolicyModeDB,
+		},
+	}
 }
