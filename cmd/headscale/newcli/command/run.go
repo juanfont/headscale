@@ -23,12 +23,18 @@ import (
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog"
 )
 
 // Run runs one command line, argv without the program name, and returns
 // the exit code. The hidden completion entry point is answered before
 // anything else, so Tab reads no config and calls no server.
 func Run(t *Tree, argv []string, env Env) int {
+	// The server's packages log through zerolog's global logger, which a
+	// command does not own: what it says goes past the edge, in the
+	// server's words. The command that is the server sets its own log.
+	zerolog.SetGlobalLevel(zerolog.Disabled)
+
 	if env.Now == nil {
 		env.Now = time.Now
 	}
