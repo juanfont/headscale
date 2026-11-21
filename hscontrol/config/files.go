@@ -133,6 +133,40 @@ func CheckPolicyFile(path string) error {
 	return policyv2.CheckPolicy(b)
 }
 
+// PolicyRefusal is err, which refused the policy pol, as the details of
+// policy_invalid in the form API v0 writes them: a command that checks a
+// policy with no server says why as the server would.
+func PolicyRefusal(pol []byte, err error) map[string]any {
+	ex := policyv2.Explain(pol, err)
+
+	place := func(m map[string]any, line, column int) map[string]any {
+		m["line"], m["column"] = nil, nil
+		if line > 0 {
+			m["line"], m["column"] = line, column
+		}
+
+		return m
+	}
+
+	errs := make([]any, 0, len(ex.Errors))
+	for _, e := range ex.Errors {
+		errs = append(errs, place(map[string]any{"message": e.Message}, e.Line, e.Column))
+	}
+
+	tests := make([]any, 0, len(ex.FailedTests))
+
+	for _, f := range ex.FailedTests {
+		m := map[string]any{"kind": f.Kind, "index": f.Index, "src": f.Src, "dst": f.Dst, "user": nil, "want": f.Want, "got": f.Got}
+		if f.Kind == "ssh" {
+			m["user"] = f.User
+		}
+
+		tests = append(tests, place(m, f.Line, f.Column))
+	}
+
+	return map[string]any{"policyErrors": errs, "policyErrorCount": ex.ErrorCount, "failedTests": tests, "failedTestCount": ex.FailedTestCount, "testsNotRun": ex.TestsNotRun}
+}
+
 // CheckDERPMapFile parses a DERP map file as startup loads derp.paths.
 func CheckDERPMapFile(path string) error {
 	_, err := derp.GetDERPMap(types.DERPConfig{Paths: []string{path}}, "")
