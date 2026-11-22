@@ -61,6 +61,12 @@ func (h *Headscale) handleRegister(
 
 	req.Expiry = expiry
 
+	// Clients send the key as it was typed or pasted, and show no error
+	// when it is refused.
+	if req.Auth != nil {
+		req.Auth.AuthKey = strings.TrimSpace(req.Auth.AuthKey)
+	}
+
 	// Check for logout/expiry FIRST, before checking auth key.
 	// Tailscale clients may send logout requests with BOTH a past expiry AND an auth key.
 	// A past expiry takes precedence - it's a logout regardless of other fields.

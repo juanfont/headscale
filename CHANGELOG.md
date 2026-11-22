@@ -209,6 +209,7 @@ the `tailscale.com/cap/tailsql` app capability lets a user query it; see
 
 ### Changes
 
+- A pre-auth key is accepted with whitespace around it. The Android app sends a pasted key untrimmed and shows no error when it is refused. [#3726](https://github.com/juanfont/headscale/pull/3726)
 - A SIGHUP now reloads the certificate from `tls.cert_path` and `tls.key_path` without a restart; a certificate that cannot be loaded or is not valid now is logged as an error and the previous one keeps serving [#3027](https://github.com/juanfont/headscale/issues/3027)
 - The NixOS module's `headscale` service now supports `systemctl reload`
 - Peers now carry their own capability version, not the version of the node that receives the map. Newer clients use it to pick per-peer features such as hybrid WireGuard handshakes; with the wrong version, a newer client could not connect to an older one
