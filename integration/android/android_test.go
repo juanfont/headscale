@@ -590,6 +590,20 @@ func (e *env) loginAuthKey(t *testing.T) *clientv1.Node {
 	return node
 }
 
+// TestAndroidLoginAuthKeyPadded logs in with a key carrying the trailing
+// space a paste or a keyboard leaves. The app sends the field untrimmed and
+// shows no error for a refused key.
+func TestAndroidLoginAuthKeyPadded(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, noTLS)
+	require.NoError(t, e.android.Launch())
+
+	e.useControlURL(t)
+	e.enterAuthKey(t, e.authKey(t)+" ")
+
+	e.assertReachable(t, e.androidNode(t))
+}
+
 // TestAndroidLoginAuthKeyBeforeControlURL enters an auth key before the
 // alternate server. The app sends that key to its default control server
 // and drops it, so setting the server afterwards starts an interactive
