@@ -42,6 +42,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
@@ -87,6 +88,13 @@ var ErrNodeNotInNodeStore = errors.New("node no longer exists in NodeStore")
 // ErrNodeNameNotUnique is returned when a node name is not unique, wrapped
 // as `name "X" is already taken`.
 var ErrNodeNameNotUnique = errors.New("already taken")
+
+// ErrNodeAddressShared refuses a database where two nodes hold one address.
+var ErrNodeAddressShared = errors.New("nodes share a tailnet address")
+
+// ErrNodeAddressMissing refuses a database with a node that has neither an
+// IPv4 nor an IPv6 address.
+var ErrNodeAddressMissing = errors.New("node has no tailnet address")
 
 // nodeUpdateColumns lists all Node columns that should be written
 // during a struct-based GORM Updates() call.  Listing them explicitly
@@ -347,6 +355,50 @@ func (s *State) lockRegistration(machineKey key.MachinePublic) func() {
 	}
 }
 
+// checkNodeAddresses refuses address states only a hand edit of the database
+// can produce. Policy, routes and SSH find a node by its address, so a shared
+// address serves one node's grants to the other, and a node without one cannot
+// be served. An address outside the Tailscale ranges comes from prefixes
+// configured outside them, unsupported but allowed, so it only warns.
+func checkNodeAddresses(nodes types.Nodes) error {
+	var errs []error
+
+	holder := make(map[netip.Addr]*types.Node, 2*len(nodes))
+
+	for _, node := range nodes {
+		ips := node.IPs()
+		if len(ips) == 0 {
+			errs = append(errs, fmt.Errorf(
+				"%w: node %d %q; set its ipv4 or ipv6 column in the nodes table to an unused address from the configured prefixes",
+				ErrNodeAddressMissing, node.ID, node.Hostname))
+		}
+
+		outside := false
+
+		for _, ip := range ips {
+			if other, ok := holder[ip]; ok {
+				errs = append(errs, fmt.Errorf(
+					"%w: %s is held by node %d %q and node %d %q; give one of them an unused address from the configured prefixes in the nodes table",
+					ErrNodeAddressShared, ip, other.ID, other.Hostname, node.ID, node.Hostname))
+			} else {
+				holder[ip] = node
+			}
+
+			if !tsaddr.CGNATRange().Contains(ip) && !tsaddr.TailscaleULARange().Contains(ip) {
+				outside = true
+			}
+		}
+
+		if outside {
+			log.Warn().Uint64(zf.NodeID, node.ID.Uint64()).Str(zf.NodeHostname, node.Hostname).
+				Strs("addresses", node.IPsAsString()).
+				Msg("node address is outside the Tailscale ranges 100.64.0.0/10 and fd7a:115c:a1e0::/48, which the Tailscale client is not designed for")
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
 // NewState creates and initializes a new [State] instance, setting up the database,
 // IP allocator, DERP map, policy manager, and loading existing users and nodes.
 func NewState(cfg *types.Config) (*State, error) {
@@ -418,6 +470,11 @@ func NewState(cfg *types.Config) (*State, error) {
 			log.Warn().Uint64(zf.NodeID, node.ID.Uint64()).Err(err).Msg("discarding stored Hostinfo until the node reports again")
 			node.Hostinfo = nil
 		}
+	}
+
+	err = checkNodeAddresses(nodes)
+	if err != nil {
+		return nil, fmt.Errorf("checking node addresses: %w", err)
 	}
 
 	users, err := db.ListUsers(nil)
