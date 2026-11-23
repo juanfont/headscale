@@ -3101,7 +3101,7 @@ func (s *State) processReauthTags(
 				Bool(zf.WasAuthKeyTagged, wasAuthKeyTagged).
 				Msg("Reauth: removing all tags, returning node ownership to user")
 
-			node.Tags = []string{}
+			node.Tags = nil
 			node.UserID = &user.ID
 			node.User = user
 
