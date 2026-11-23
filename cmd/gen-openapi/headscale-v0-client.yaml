@@ -10,7 +10,17 @@ generate:
   client: true
 output: gen/client/headscale/v0/client.gen.go
 output-options:
+  user-templates:
+    typedef.tmpl: cmd/gen-openapi/headscale-v0-types.tmpl
   nullable-type: true
   skip-prune: true
 compatibility:
   always-prefix-enum-values: true
+
+additional-imports:
+  - alias: jsonv2
+    package: github.com/go-json-experiment/json
+  - alias: jsonv1
+    package: github.com/go-json-experiment/json/v1
+  - alias: jsontext
+    package: github.com/go-json-experiment/json/jsontext
