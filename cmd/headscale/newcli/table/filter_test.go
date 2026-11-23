@@ -335,3 +335,47 @@ func TestMatchFold(t *testing.T) {
 		require.Equal(t, tt.hf, got, tt.filter)
 	}
 }
+
+func TestAdjacentLargeIDs(t *testing.T) {
+	const lower, upper = "9007199254740992", "9007199254740993"
+
+	t.Run("ascending", func(t *testing.T) {
+		rs := []row{{ID: upper}, {ID: lower}}
+		listCols.Sort(rs, "id", now)
+		require.Equal(t, []string{lower, upper}, ids(rs))
+	})
+
+	t.Run("descending", func(t *testing.T) {
+		rs := []row{{ID: lower}, {ID: upper}}
+		listCols.Sort(rs, "-id", now)
+		require.Equal(t, []string{upper, lower}, ids(rs))
+	})
+
+	for condition, id := range map[string]string{"id>" + lower: upper, "id<" + upper: lower} {
+		t.Run(condition, func(t *testing.T) {
+			f, err := listCols.ParseFilter(condition)
+			require.NoError(t, err)
+			match, err := f.Match(row{ID: id}, now)
+			require.NoError(t, err)
+			require.True(t, match)
+		})
+	}
+}
+
+func TestSortMissingID(t *testing.T) {
+	t.Parallel()
+
+	type item struct {
+		ID *string `json:"id"`
+	}
+
+	cols := Columns[item]{{Name: "id", Field: "id"}}
+	low, high, missing := item{new("2")}, item{new("10")}, item{}
+
+	rs := []item{high, missing, low}
+	cols.Sort(rs, "id", now)
+	require.Equal(t, []item{low, high, missing}, rs)
+
+	cols.Sort(rs, "-id", now)
+	require.Equal(t, []item{high, low, missing}, rs)
+}

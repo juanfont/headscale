@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"reflect"
 	"regexp"
 	"slices"
@@ -341,6 +342,10 @@ func (f Filter[R]) Match(row R, now time.Time) (bool, error) {
 			return false, mistake("column %q holds IDs that are not numbers. It works with = only.", f.col.Name)
 		}
 
+		if n == f.num {
+			return compare(float64(compareTiedIDs(v.String(), f.text)), 0, f.op), nil
+		}
+
 		return compare(n, f.num, f.op), nil
 	case Number:
 		return compare(number(v), f.num, f.op), nil
@@ -439,7 +444,11 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 	kind := c.kind(t)
 
 	numeric := kind == Number || kind == ID && !slices.ContainsFunc(rows, func(r R) bool {
-		v, _ := field(reflect.ValueOf(r), c.Field)
+		v, ok := field(reflect.ValueOf(r), c.Field)
+		if !ok {
+			return false
+		}
+
 		_, err := strconv.ParseFloat(v.String(), 64)
 
 		return err != nil
@@ -478,6 +487,10 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 			x, _ := strconv.ParseFloat(va.String(), 64)
 			y, _ := strconv.ParseFloat(vb.String(), 64)
 
+			if x == y {
+				return compareTiedIDs(va.String(), vb.String())
+			}
+
 			return cmp.Compare(x, y)
 		case numeric:
 			return cmp.Compare(number(va), number(vb))
@@ -510,6 +523,24 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 
 		return by(a, b)
 	})
+}
+
+// Distinct decimal IDs can round to the same float64. Four bits per input
+// digit also keep fractional and hexadecimal filter thresholds distinguishable.
+func compareTiedIDs(a, b string) int {
+	if a == b {
+		return 0
+	}
+
+	precision := uint(64 + 4*max(len(a), len(b)))
+	x, _, errX := big.ParseFloat(a, 0, precision, big.ToNearestEven)
+	y, _, errY := big.ParseFloat(b, 0, precision, big.ToNearestEven)
+
+	if errX != nil || errY != nil {
+		return 0
+	}
+
+	return x.Cmp(y)
 }
 
 func btoi(b bool) int {
