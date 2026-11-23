@@ -393,3 +393,40 @@ func TestSortMissingID(t *testing.T) {
 	cols.Sort(rs, "-id", now)
 	require.Equal(t, []item{high, low, missing}, rs)
 }
+
+func TestIntegerColumnPrecision(t *testing.T) {
+	type item struct {
+		Count int64 `json:"count"`
+	}
+
+	cols := Columns[item]{{Name: "count", Field: "count"}}
+	rs := []item{{9007199254740993}, {9007199254740992}}
+	cols.Sort(rs, "count", time.Time{})
+	require.Equal(t, int64(9007199254740992), rs[0].Count)
+}
+
+func TestIntegerFilterNearOne(t *testing.T) {
+	type item struct {
+		Count int64 `json:"count"`
+	}
+
+	cols := Columns[item]{{Name: "count", Field: "count"}}
+	filter, err := cols.ParseFilter("count>0.99999999999999999")
+	require.NoError(t, err)
+	match, err := filter.Match(item{1}, time.Time{})
+	require.NoError(t, err)
+	require.True(t, match)
+}
+
+func TestIntegerFilterTinyNonzero(t *testing.T) {
+	type item struct {
+		Count int64 `json:"count"`
+	}
+
+	cols := Columns[item]{{Name: "count", Field: "count"}}
+	filter, err := cols.ParseFilter("count<1e-2147483650")
+	require.NoError(t, err)
+	match, err := filter.Match(item{}, time.Time{})
+	require.NoError(t, err)
+	require.True(t, match)
+}

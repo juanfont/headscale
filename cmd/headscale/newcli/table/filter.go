@@ -343,12 +343,12 @@ func (f Filter[R]) Match(row R, now time.Time) (bool, error) {
 		}
 
 		if n == f.num {
-			return compare(float64(compareTiedIDs(v.String(), f.text)), 0, f.op), nil
+			return compare(float64(compareTiedNumbers(v.String(), f.text)), 0, f.op), nil
 		}
 
 		return compare(n, f.num, f.op), nil
 	case Number:
-		return compare(number(v), f.num, f.op), nil
+		return f.matchNumber(v), nil
 	case Bool:
 		return v.Bool() == f.yes, nil
 	case Version:
@@ -362,6 +362,30 @@ func (f Filter[R]) Match(row R, now time.Time) (bool, error) {
 	}
 
 	return f.textMatch(v.String()), nil
+}
+
+func (f Filter[R]) matchNumber(v reflect.Value) bool {
+	n := number(v)
+	if n != f.num || (!v.CanInt() && !v.CanUint()) {
+		return compare(n, f.num, f.op)
+	}
+
+	var digits string
+	if v.CanInt() {
+		digits = strconv.FormatInt(v.Int(), 10)
+	} else {
+		digits = strconv.FormatUint(v.Uint(), 10)
+	}
+
+	text := f.text
+	if n == 0 {
+		// Scaling cannot change the sign, even outside big.Float's exponent range.
+		if i := strings.LastIndexAny(text, "eEpP"); i >= 0 {
+			text = text[:i]
+		}
+	}
+
+	return compare(float64(compareTiedNumbers(digits, text)), 0, f.op)
 }
 
 func (f Filter[R]) textMatch(s string) bool {
@@ -492,12 +516,19 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 			y, _ := strconv.ParseFloat(vb.String(), 64)
 
 			if x == y {
-				return compareTiedIDs(va.String(), vb.String())
+				return compareTiedNumbers(va.String(), vb.String())
 			}
 
 			return cmp.Compare(x, y)
 		case numeric:
-			return cmp.Compare(number(va), number(vb))
+			switch {
+			case va.CanInt():
+				return cmp.Compare(va.Int(), vb.Int())
+			case va.CanUint():
+				return cmp.Compare(va.Uint(), vb.Uint())
+			default:
+				return cmp.Compare(number(va), number(vb))
+			}
 		case kind == Bool:
 			return cmp.Compare(btoi(va.Bool()), btoi(vb.Bool()))
 		case kind == Time:
@@ -529,9 +560,9 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 	})
 }
 
-// Distinct decimal IDs can round to the same float64. Four bits per input
+// Distinct numeric values can round to the same float64. Four bits per input
 // digit also keep fractional and hexadecimal filter thresholds distinguishable.
-func compareTiedIDs(a, b string) int {
+func compareTiedNumbers(a, b string) int {
 	if a == b {
 		return 0
 	}
