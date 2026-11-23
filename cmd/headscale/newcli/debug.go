@@ -55,9 +55,8 @@ included, and writes no warning on stderr.`,
 		for _, w := range h.Warnings {
 			c.Note("warning: " + table.Visible(w.Message, ""))
 
-			// A check of one node is a code that nodes list has in problems.
-			if code := string(w.Code); strings.HasPrefix(code, "node_") {
-				c.Note("  To see them: headscale nodes list --filter problems=" + table.Visible(code, ""))
+			if hint := healthHint(w.Code); hint != "" {
+				c.Note("  " + hint)
 			}
 		}
 
@@ -65,6 +64,25 @@ included, and writes no warning on stderr.`,
 	},
 	Done: func(command.NoInput, clientv0.Health, time.Time) string { return "healthy" },
 })
+
+// healthHint is what to run about a warning; "" for none.
+func healthHint(code clientv0.MessageCode) string {
+	switch code { //nolint:exhaustive // the others have no command
+	case clientv0.MessageCodePolicyFileInvalid, clientv0.MessageCodePolicyStoredInvalid:
+		return "To see why: headscale policy reload"
+	case clientv0.MessageCodePolicyUserAmbiguous:
+		return "To see them: headscale policy get | headscale policy set - --dry-run"
+	case clientv0.MessageCodePolicyNotStored:
+		return "To put the stored policy in force: headscale policy reload"
+	}
+
+	// A check of one node is a code that nodes list has in problems.
+	if strings.HasPrefix(string(code), "node_") {
+		return "To see them: headscale nodes list --filter problems=" + table.Visible(string(code), "")
+	}
+
+	return ""
+}
 
 type debugCreateNodeIn struct {
 	Hostname command.Opt[string]         `flag:"name"  help:"The hostname of the made-up node; required"`

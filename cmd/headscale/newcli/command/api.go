@@ -368,6 +368,36 @@ func (a *API) CreateDebugNode(ctx context.Context, id AuthID, hostname string, r
 	return err
 }
 
+// GetPolicy is GET /policy.
+func (a *API) GetPolicy(ctx context.Context) (clientv0.Policy, error) {
+	return call[clientv0.Policy](a, func(c *clientv0.Client) (*http.Response, error) { return c.GetPolicy(ctx) })
+}
+
+// SetPolicy is PUT /policy with the policy file as the body, as it is; with
+// dryRun only its checks. It sends no If-Match: the person holds the file,
+// and the last writer wins.
+func (a *API) SetPolicy(ctx context.Context, pol []byte, dryRun bool) (clientv0.Policy, error) {
+	var dry *bool
+	if dryRun {
+		dry = &dryRun
+	}
+
+	return call[clientv0.Policy](a, func(c *clientv0.Client) (*http.Response, error) {
+		return c.SetPolicyWithBody(ctx, &clientv0.SetPolicyParams{DryRun: dry}, "application/hujson", bytes.NewReader(pol))
+	})
+}
+
+// ReloadPolicy is POST /policy/reload. A policy it refuses leaves the one
+// in force, and its sentence says so.
+func (a *API) ReloadPolicy(ctx context.Context) (clientv0.Policy, error) {
+	p, err := call[clientv0.Policy](a, func(c *clientv0.Client) (*http.Response, error) { return c.ReloadPolicy(ctx) })
+	if pe, ok := errors.AsType[*ProblemError](err); ok {
+		pe.kept = true
+	}
+
+	return p, err
+}
+
 // call makes one request and reads its answer: a 2xx body as T, kept for
 // -o json; no body (a 204) as the zero T; any other status as a problem.
 func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, error) {
@@ -378,7 +408,7 @@ func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, 
 		return out, err
 	}
 
-	err = json.Unmarshal(body, &out)
+	err = clientv0.DecodeResponse(body, &out)
 	if err != nil {
 		return out, a.unreadable(err)
 	}
@@ -455,7 +485,7 @@ func pages[Row any](a *API, items string, get func(c *clientv0.Client, p page) (
 		for _, raw := range raws {
 			var r Row
 
-			err = json.Unmarshal(raw, &r)
+			err = clientv0.DecodeResponse(raw, &r)
 			if err != nil {
 				return nil, a.unreadable(err)
 			}

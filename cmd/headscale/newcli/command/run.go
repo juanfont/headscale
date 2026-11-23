@@ -23,12 +23,18 @@ import (
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog"
 )
 
 // Run runs one command line, argv without the program name, and returns
 // the exit code. The hidden completion entry point is answered before
 // anything else, so Tab reads no config and calls no server.
 func Run(t *Tree, argv []string, env Env) int {
+	// The server's packages log through zerolog's global logger, which a
+	// command does not own: what it says goes past the edge, in the
+	// server's words. The command that is the server sets its own log.
+	zerolog.SetGlobalLevel(zerolog.Disabled)
+
 	if env.Now == nil {
 		env.Now = time.Now
 	}
@@ -168,6 +174,8 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer, whole *[]wholeWord) er
 		askWidth:   env.StderrWidth,
 		colour:     env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
 		answers:    bufio.NewReader(stdin),
+		stdinFile:  fromStdin(line),
+		local:      &API{},
 		entities:   t.entities,
 		line:       line,
 		json:       output.Output != "" || own.Output != "",
@@ -384,6 +392,12 @@ var errNotAnswer = errors.New("this command returned an object that the server d
 // on a line that talks to no server, the CLI's own object encoded.
 func jsonOf(c Ctx, v any) (json.RawMessage, error) {
 	if c.API == nil {
+		if c.local != nil {
+			if raw, ok := c.local.answerOf(v); ok {
+				return raw, nil
+			}
+		}
+
 		return json.Marshal(v)
 	}
 
@@ -420,6 +434,35 @@ func printOne[Out any](c Ctx, out Out, cols table.Columns[Out], blocks table.Blo
 	}
 
 	return table.Sheet(c.stdout, out, cols, blocks, c.Now())
+}
+
+// printVerbatim prints text, a text of the server's answer out, with
+// writeVerbatim; -o json prints out.
+func printVerbatim[Out any](c Ctx, out Out, text string) error {
+	raw, err := jsonOf(c, out)
+
+	switch {
+	case err != nil:
+		return err
+	case c.json:
+		return writeJSON(c.raw, raw)
+	}
+
+	return writeVerbatim(c, text)
+}
+
+// writeVerbatim writes text, which a file must hold as it is: into a pipe
+// or a file the bytes, past the rule at the edge; on a terminal as every
+// text of the CLI, its controls visible and a credential as its kind, since
+// a terminal acts on what a text holds and a person reads it.
+func writeVerbatim(c Ctx, text string) error {
+	if c.screen {
+		return writeText(c.stdout, text)
+	}
+
+	_, err := io.WriteString(c.raw, text)
+
+	return err
 }
 
 // printList prints the rows of a ListSpec: the array of their bodies as
@@ -471,7 +514,10 @@ func (c Ctx) confirm(p Prompt, before string) (bool, error) {
 		action += " " + warning
 	}
 
-	if !c.terminal {
+	switch {
+	case c.stdinFile:
+		return false, fmt.Errorf("confirmation needed, but stdin is the file given as -, so it cannot answer.\n%s", action) //nolint:err113 // a sentence of the CLI
+	case !c.terminal:
 		return false, fmt.Errorf("confirmation needed, but there is no terminal.\n%s", action) //nolint:err113 // a sentence of the CLI
 	}
 

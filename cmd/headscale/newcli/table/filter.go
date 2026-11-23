@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/big"
 	"reflect"
 	"regexp"
 	"slices"
@@ -188,11 +190,12 @@ type Filter[R any] struct {
 	op   byte
 	text string
 
-	num  float64
-	yes  bool
-	dur  time.Duration
-	at   time.Time
-	span bool // the time is a duration from now, not a point in time
+	num     float64
+	precise *big.Float
+	yes     bool
+	dur     time.Duration
+	at      time.Time
+	span    bool // the time is a duration from now, not a point in time
 
 	// user is the ID of the user that owner=<user> names, once resolved.
 	user string
@@ -241,11 +244,11 @@ func (cs Columns[R]) ParseFilter(text string) (Filter[R], error) {
 		return f, mistake("the filter %q has no value.", text)
 	}
 
-	return f, f.read()
+	return f, f.read(t)
 }
 
 // read checks the value of f for its kind.
-func (f *Filter[R]) read() error {
+func (f *Filter[R]) read(t reflect.Type) error {
 	name := f.col.Name
 
 	switch f.kind { //nolint:exhaustive // text, list and owner take any value
@@ -256,6 +259,27 @@ func (f *Filter[R]) read() error {
 		}
 
 		f.num = n
+
+		if t == nil || t.Kind() < reflect.Int || t.Kind() > reflect.Uintptr {
+			break
+		}
+
+		if n == math.Trunc(n) && n >= math.MinInt64 && n <= math.MaxUint64 {
+			// Every integer strictly inside this range has a unique binary64 value.
+			if n > -(1<<53) && n < 1<<53 && f.text == strconv.FormatInt(int64(n), 10) {
+				break
+			}
+
+			text := f.text
+			if n == 0 {
+				// A nonzero significand keeps its sign even beyond big.Float's exponent range.
+				if i := strings.LastIndexAny(text, "eEpP"); i >= 0 {
+					text = text[:i]
+				}
+			}
+
+			f.precise, _, _ = big.ParseFloat(text, 0, uint(64+4*len(text)), big.ToNearestEven)
+		}
 	case ID:
 		if f.op == '=' {
 			return nil
@@ -341,9 +365,13 @@ func (f Filter[R]) Match(row R, now time.Time) (bool, error) {
 			return false, mistake("column %q holds IDs that are not numbers. It works with = only.", f.col.Name)
 		}
 
+		if n == f.num {
+			return compare(float64(compareTiedNumbers(v.String(), f.text)), 0, f.op), nil
+		}
+
 		return compare(n, f.num, f.op), nil
 	case Number:
-		return compare(number(v), f.num, f.op), nil
+		return f.matchNumber(v), nil
 	case Bool:
 		return v.Bool() == f.yes, nil
 	case Version:
@@ -357,6 +385,22 @@ func (f Filter[R]) Match(row R, now time.Time) (bool, error) {
 	}
 
 	return f.textMatch(v.String()), nil
+}
+
+func (f Filter[R]) matchNumber(v reflect.Value) bool {
+	n := number(v)
+	if n != f.num || f.precise == nil || (!v.CanInt() && !v.CanUint()) {
+		return compare(n, f.num, f.op)
+	}
+
+	var actual big.Float
+	if v.CanInt() {
+		actual.SetInt64(v.Int())
+	} else {
+		actual.SetUint64(v.Uint())
+	}
+
+	return compare(float64(actual.Cmp(f.precise)), 0, f.op)
 }
 
 func (f Filter[R]) textMatch(s string) bool {
@@ -385,17 +429,21 @@ func (f Filter[R]) matchTime(v reflect.Value, ok bool, now time.Time) bool {
 		return false
 	}
 
-	if !f.span {
-		return compare(float64(t.Compare(f.at)), 0, f.op)
+	value, cutoff := t, f.at
+	if f.span {
+		if f.col.Ahead {
+			cutoff = now.Add(f.dur)
+		} else {
+			value, cutoff = now.Add(-f.dur), t
+		}
 	}
 
-	// Sub saturates far away; negating a saturated value would overflow.
-	d := now.Sub(t)
-	if f.col.Ahead {
-		d = t.Sub(now)
+	if f.op == '<' {
+		// Relative distance on the other side of now is zero.
+		return (!f.span || f.dur > 0) && value.Before(cutoff)
 	}
 
-	return compare(float64(max(d, 0)), float64(f.dur), f.op)
+	return value.After(cutoff)
 }
 
 // matchOwner: tag:x finds the rows that have the tag, a user the rows it
@@ -439,7 +487,11 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 	kind := c.kind(t)
 
 	numeric := kind == Number || kind == ID && !slices.ContainsFunc(rows, func(r R) bool {
-		v, _ := field(reflect.ValueOf(r), c.Field)
+		v, ok := field(reflect.ValueOf(r), c.Field)
+		if !ok {
+			return false
+		}
+
 		_, err := strconv.ParseFloat(v.String(), 64)
 
 		return err != nil
@@ -478,9 +530,20 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 			x, _ := strconv.ParseFloat(va.String(), 64)
 			y, _ := strconv.ParseFloat(vb.String(), 64)
 
+			if x == y {
+				return compareTiedNumbers(va.String(), vb.String())
+			}
+
 			return cmp.Compare(x, y)
 		case numeric:
-			return cmp.Compare(number(va), number(vb))
+			switch {
+			case va.CanInt():
+				return cmp.Compare(va.Int(), vb.Int())
+			case va.CanUint():
+				return cmp.Compare(va.Uint(), vb.Uint())
+			default:
+				return cmp.Compare(number(va), number(vb))
+			}
 		case kind == Bool:
 			return cmp.Compare(btoi(va.Bool()), btoi(vb.Bool()))
 		case kind == Time:
@@ -510,6 +573,24 @@ func (cs Columns[R]) Sort(rows []R, key string, now time.Time) {
 
 		return by(a, b)
 	})
+}
+
+// Distinct numeric values can round to the same float64. Four bits per input
+// digit also keep fractional and hexadecimal filter thresholds distinguishable.
+func compareTiedNumbers(a, b string) int {
+	if a == b {
+		return 0
+	}
+
+	precision := uint(64 + 4*max(len(a), len(b)))
+	x, _, errX := big.ParseFloat(a, 0, precision, big.ToNearestEven)
+	y, _, errY := big.ParseFloat(b, 0, precision, big.ToNearestEven)
+
+	if errX != nil || errY != nil {
+		return 0
+	}
+
+	return x.Cmp(y)
 }
 
 func btoi(b bool) int {

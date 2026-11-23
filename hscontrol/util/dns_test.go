@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"net/netip"
 	"testing"
 
@@ -175,4 +176,18 @@ func TestMagicDNSRootDomainsIPv6SingleMultiple(t *testing.T) {
 	assert.True(t, yieldsRoot("1.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."))
 	assert.True(t, yieldsRoot("2.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."))
 	assert.True(t, yieldsRoot("3.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."))
+}
+
+func TestUsernameStartsWithHebrewLetter(t *testing.T) {
+	err := ValidateUsername("אב")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUsernameMinimumRunes(t *testing.T) {
+	err := ValidateUsername("Å")
+	if !errors.Is(err, ErrUsernameTooShort) {
+		t.Fatalf("one letter: got %v, want %v", err, ErrUsernameTooShort)
+	}
 }

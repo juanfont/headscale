@@ -99,6 +99,20 @@ func TestParseFilter(t *testing.T) {
 	}
 }
 
+func TestRelativeDurationBoundary(t *testing.T) {
+	t.Parallel()
+
+	for _, limit := range []time.Duration{105 * 24 * time.Hour, 1<<63 - 1} {
+		f, err := listCols.ParseFilter("last-seen>" + limit.String())
+		require.NoError(t, err)
+
+		seen := now.Add(-limit).Add(-time.Nanosecond)
+		got, err := f.Match(row{Seen: seen}, now)
+		require.NoError(t, err)
+		require.True(t, got, "one nanosecond beyond %s", limit)
+	}
+}
+
 // TestMatch holds each rule of the filter grammar, kind by kind.
 func TestMatch(t *testing.T) {
 	t.Parallel()
@@ -334,4 +348,121 @@ func TestMatchFold(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, tt.hf, got, tt.filter)
 	}
+}
+
+func TestAdjacentLargeIDs(t *testing.T) {
+	const lower, upper = "9007199254740992", "9007199254740993"
+
+	t.Run("ascending", func(t *testing.T) {
+		rs := []row{{ID: upper}, {ID: lower}}
+		listCols.Sort(rs, "id", now)
+		require.Equal(t, []string{lower, upper}, ids(rs))
+	})
+
+	t.Run("descending", func(t *testing.T) {
+		rs := []row{{ID: lower}, {ID: upper}}
+		listCols.Sort(rs, "-id", now)
+		require.Equal(t, []string{upper, lower}, ids(rs))
+	})
+
+	for condition, id := range map[string]string{"id>" + lower: upper, "id<" + upper: lower} {
+		t.Run(condition, func(t *testing.T) {
+			f, err := listCols.ParseFilter(condition)
+			require.NoError(t, err)
+			match, err := f.Match(row{ID: id}, now)
+			require.NoError(t, err)
+			require.True(t, match)
+		})
+	}
+}
+
+func TestSortMissingID(t *testing.T) {
+	t.Parallel()
+
+	type item struct {
+		ID *string `json:"id"`
+	}
+
+	cols := Columns[item]{{Name: "id", Field: "id"}}
+	low, high, missing := item{new("2")}, item{new("10")}, item{}
+
+	rs := []item{high, missing, low}
+	cols.Sort(rs, "id", now)
+	require.Equal(t, []item{low, high, missing}, rs)
+
+	cols.Sort(rs, "-id", now)
+	require.Equal(t, []item{high, low, missing}, rs)
+}
+
+func TestIntegerColumnPrecision(t *testing.T) {
+	type item struct {
+		Count int64 `json:"count"`
+	}
+
+	cols := Columns[item]{{Name: "count", Field: "count"}}
+	rs := []item{{9007199254740993}, {9007199254740992}}
+	cols.Sort(rs, "count", time.Time{})
+	require.Equal(t, int64(9007199254740992), rs[0].Count)
+}
+
+func TestIntegerFilterNearOne(t *testing.T) {
+	type item struct {
+		Count int64 `json:"count"`
+	}
+
+	cols := Columns[item]{{Name: "count", Field: "count"}}
+	filter, err := cols.ParseFilter("count>0.99999999999999999")
+	require.NoError(t, err)
+	match, err := filter.Match(item{1}, time.Time{})
+	require.NoError(t, err)
+	require.True(t, match)
+}
+
+func TestIntegerFilterTinyNonzero(t *testing.T) {
+	type item struct {
+		Count int64 `json:"count"`
+	}
+
+	cols := Columns[item]{{Name: "count", Field: "count"}}
+	filter, err := cols.ParseFilter("count<1e-2147483650")
+	require.NoError(t, err)
+	match, err := filter.Match(item{}, time.Time{})
+	require.NoError(t, err)
+	require.True(t, match)
+}
+
+func BenchmarkNumericThreshold(b *testing.B) {
+	type row struct {
+		Count int64   `json:"count"`
+		Rate  float64 `json:"rate"`
+	}
+
+	cols := Columns[row]{{Name: "count", Field: "count"}, {Name: "rate", Field: "rate"}}
+
+	b.Run("integer-match", func(b *testing.B) {
+		filter, err := cols.ParseFilter("count<1.00000000000000001")
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.ReportAllocs()
+
+		for b.Loop() {
+			keep, err := filter.Match(row{Count: 1}, time.Time{})
+			if err != nil || !keep {
+				b.Fatalf("one below threshold: keep=%t, err=%v", keep, err)
+			}
+		}
+	})
+
+	b.Run("float-parse", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			_, err := cols.ParseFilter("rate<1.00000000000000001")
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }

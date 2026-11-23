@@ -1,8 +1,13 @@
 package db
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
+	"errors"
+	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1279,5 +1284,518 @@ func TestCreatedByUserMigration(t *testing.T) {
 			require.NoError(t, hsdb.DB.First(&cred, key.ID).Error)
 			assert.Nil(t, cred.CreatedByUserID, "the user is forgotten")
 		})
+	}
+}
+
+// asIsRelease is the release a test of OpenAsIs claims to be, and the
+// stored version of its databases: a patch apart, so a write of the
+// version would show.
+const (
+	asIsRelease = "v0.30.0"
+	asIsStored  = "v0.30.1"
+)
+
+// claimRelease makes the build a release for the test.
+func claimRelease(t *testing.T) {
+	t.Helper()
+
+	release := types.GetVersionInfo
+	types.GetVersionInfo = func() *types.VersionInfo { return &types.VersionInfo{Version: asIsRelease} }
+
+	t.Cleanup(func() { types.GetVersionInfo = release })
+}
+
+// stoppedDB is the database of a server that stopped, in a directory of
+// its own: bob with a node, the policy "{}", the version asIsStored.
+func stoppedDB(t *testing.T, wal bool) *types.Config {
+	t.Helper()
+
+	cfg := sqliteTestConfig(filepath.Join(t.TempDir(), "headscale.db"))
+	cfg.Database.Sqlite.WriteAheadLog = wal
+
+	d, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+	d.CreateRegisteredNodeForTest(d.CreateUserForTest("bob"), "laptop")
+	_, err = d.SetPolicy("{}")
+	require.NoError(t, err)
+	require.NoError(t, d.DB.Exec("UPDATE database_versions SET version = ?", asIsStored).Error)
+	require.NoError(t, d.Close())
+
+	return cfg
+}
+
+// crashed copies the files of the database cfg names into a directory of
+// its own while a write is in them, as a server killed then leaves them,
+// and returns the config of the copy. With the write-ahead log the policy
+// "// newest" is committed and only in the log; without it the policy
+// "// uncommitted" is in the file, the old one in a hot journal.
+func crashed(t *testing.T, cfg *types.Config) *types.Config {
+	t.Helper()
+
+	d, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	sqlDB, err := d.DB.DB()
+	require.NoError(t, err)
+
+	conn, err := sqlDB.Conn(t.Context())
+	require.NoError(t, err)
+
+	src := cfg.SQLitePath()
+	dst := filepath.Join(t.TempDir(), "headscale.db")
+	copied := func(suffix string) {
+		t.Helper()
+
+		b, err := os.ReadFile(src + suffix)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(dst+suffix, b, 0o600)) //nolint:gosec // a directory of the test
+	}
+
+	if cfg.Database.Sqlite.WriteAheadLog {
+		_, err = conn.ExecContext(t.Context(), "PRAGMA wal_autocheckpoint = 0")
+		require.NoError(t, err)
+		_, err = conn.ExecContext(t.Context(), "UPDATE policies SET data = '// newest'")
+		require.NoError(t, err)
+
+		copied("")
+		copied("-wal")
+	} else {
+		// A small cache spills the pages of a large write into the file
+		// before the commit, with the old pages in the journal.
+		_, err = conn.ExecContext(t.Context(), "PRAGMA cache_size = 10")
+		require.NoError(t, err)
+		_, err = conn.ExecContext(t.Context(), "BEGIN")
+		require.NoError(t, err)
+		_, err = conn.ExecContext(t.Context(), "UPDATE policies SET data = '// uncommitted' || ?", strings.Repeat(" ", 4<<20))
+		require.NoError(t, err)
+
+		copied("")
+		copied("-journal")
+
+		_, err = conn.ExecContext(t.Context(), "ROLLBACK")
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, conn.Close())
+	require.NoError(t, d.Close())
+
+	c := *cfg
+	c.Database.Sqlite.Path = dst
+
+	return &c
+}
+
+// policyIn is the policy that a server finds in the database after its own
+// recovery: NewHeadscaleDatabase on a copy of the files.
+func policyIn(t *testing.T, cfg *types.Config) string {
+	t.Helper()
+
+	c := crashedCopy(t, cfg)
+
+	d, err := NewHeadscaleDatabase(c)
+	require.NoError(t, err)
+
+	defer d.Close()
+
+	p, err := d.GetPolicy()
+	require.NoError(t, err)
+
+	return p.Data
+}
+
+// crashedCopy copies the database files of cfg as they are.
+func crashedCopy(t *testing.T, cfg *types.Config) *types.Config {
+	t.Helper()
+
+	dst := filepath.Join(t.TempDir(), "headscale.db")
+
+	for _, suffix := range []string{"", "-wal", "-journal"} {
+		b, err := os.ReadFile(cfg.SQLitePath() + suffix)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(dst+suffix, b, 0o600)) //nolint:gosec // a directory of the test
+	}
+
+	c := *cfg
+	c.Database.Sqlite.Path = dst
+
+	return &c
+}
+
+// TestOpenAsIs: a database opened as it is keeps the bytes of its file on
+// a read, on a read-only file too, and a read shows what a server finds
+// after its own recovery or refuses; a write stores the policy row and
+// nothing else, and is refused while another connection has the database
+// open; a missing file is not created, and a database that is not
+// Headscale's, of another schema or of another minor version is refused.
+// The build claims a release, which NewHeadscaleDatabase would write.
+func TestOpenAsIs(t *testing.T) {
+	claimRelease(t)
+
+	read := func(t *testing.T, cfg *types.Config, want string) {
+		t.Helper()
+
+		before, err := os.ReadFile(cfg.SQLitePath())
+		require.NoError(t, err)
+
+		d, err := OpenAsIs(cfg, true)
+		require.NoError(t, err)
+
+		p, err := d.GetPolicy()
+		require.NoError(t, err)
+		require.Equal(t, want, p.Data)
+
+		_, err = d.ListUsers(nil)
+		require.NoError(t, err)
+		_, err = d.ListNodes()
+		require.NoError(t, err)
+
+		_, err = d.SetPolicy("// new\n{}")
+		require.Error(t, err, "a read-only open wrote")
+		require.NoError(t, d.Close())
+
+		after, err := os.ReadFile(cfg.SQLitePath())
+		require.NoError(t, err)
+		require.True(t, bytes.Equal(before, after), "a read changed the database file")
+	}
+
+	for _, wal := range []bool{true, false} {
+		t.Run(map[bool]string{true: "write-ahead log", false: "rollback journal"}[wal], func(t *testing.T) {
+			t.Run("a read", func(t *testing.T) { read(t, stoppedDB(t, wal), "{}") })
+
+			t.Run("a read of a read-only file", func(t *testing.T) {
+				cfg := stoppedDB(t, wal)
+				require.NoError(t, os.Chmod(cfg.SQLitePath(), 0o444))
+
+				read(t, cfg, "{}")
+			})
+
+			t.Run("a read after a crash", func(t *testing.T) {
+				cfg := crashed(t, stoppedDB(t, wal))
+
+				if wal {
+					require.Equal(t, "// newest", policyIn(t, cfg), "the server's recovery")
+					read(t, cfg, "// newest")
+
+					return
+				}
+
+				require.Equal(t, "{}", policyIn(t, cfg), "the server's recovery")
+
+				before, err := os.ReadFile(cfg.SQLitePath())
+				require.NoError(t, err)
+
+				_, err = OpenAsIs(cfg, true)
+				require.ErrorIs(t, err, ErrNeedsRecovery)
+
+				after, err := os.ReadFile(cfg.SQLitePath())
+				require.NoError(t, err)
+				require.True(t, bytes.Equal(before, after), "a read changed the database file")
+				require.FileExists(t, cfg.SQLitePath()+"-journal")
+			})
+
+			t.Run("a write stores the policy and nothing else", func(t *testing.T) {
+				cfg := stoppedDB(t, wal)
+
+				d, err := OpenAsIs(cfg, false)
+				require.NoError(t, err)
+
+				// A large policy replaced leaves free pages, which a VACUUM
+				// would take back: the file is the server's to compact.
+				_, err = d.SetPolicy(strings.Repeat(" ", 1<<20) + "{}")
+				require.NoError(t, err)
+				_, err = d.SetPolicy("// new\n{}")
+				require.NoError(t, err)
+				require.NoError(t, d.Close())
+
+				entries, err := os.ReadDir(filepath.Dir(cfg.SQLitePath()))
+				require.NoError(t, err)
+				require.Len(t, entries, 1, "a write left files beside the database")
+
+				d, err = OpenAsIs(cfg, true)
+				require.NoError(t, err)
+
+				defer d.Close()
+
+				p, err := d.GetPolicy()
+				require.NoError(t, err)
+				require.Equal(t, "// new\n{}", p.Data)
+
+				var free int
+
+				require.NoError(t, d.DB.Raw("PRAGMA freelist_count").Scan(&free).Error)
+				require.Positive(t, free, "the database was compacted")
+
+				var version string
+
+				require.NoError(t, d.DB.Raw("SELECT version FROM database_versions").Scan(&version).Error)
+				require.Equal(t, asIsStored, version, "the version was written")
+			})
+		})
+	}
+
+	t.Run("a read beside a write-ahead log in a directory it may not write", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root writes every directory")
+		}
+
+		cfg := crashed(t, stoppedDB(t, true))
+		dir := filepath.Dir(cfg.SQLitePath())
+		require.NoError(t, os.Chmod(dir, 0o555))
+		t.Cleanup(func() { require.NoError(t, os.Chmod(dir, 0o755)) })
+
+		_, err := OpenAsIs(cfg, true)
+		require.ErrorIs(t, err, ErrNeedsRecovery)
+	})
+
+	t.Run("a write while another process has the database open", func(t *testing.T) {
+		cfg := stoppedDB(t, true)
+		release := holdOpen(t, cfg.SQLitePath())
+
+		_, err := OpenAsIs(cfg, false)
+		require.ErrorIs(t, err, ErrInUse)
+
+		d, err := OpenAsIs(cfg, true)
+		require.NoError(t, err)
+		require.True(t, d.OthersOpen(), "a read says it")
+		require.NoError(t, d.Close())
+
+		// The refused open left the server's log where it was.
+		require.Equal(t, "{}", release(), "the other process reads on")
+
+		d, err = OpenAsIs(cfg, false)
+		require.NoError(t, err)
+		require.False(t, d.OthersOpen())
+
+		_, err = d.SetPolicy("// new\n{}")
+		require.NoError(t, err)
+		require.NoError(t, d.Close())
+	})
+
+	t.Run("a database that is not there", func(t *testing.T) {
+		dir := t.TempDir()
+		missing := filepath.Join(dir, "nope", "sub", "db.sqlite")
+
+		_, err := OpenAsIs(sqliteTestConfig(missing), true)
+		require.ErrorIs(t, err, ErrDatabaseMissing)
+
+		_, err = OpenAsIs(sqliteTestConfig(missing), false)
+		require.ErrorIs(t, err, ErrDatabaseMissing)
+		require.NoDirExists(t, filepath.Join(dir, "nope"))
+	})
+
+	t.Run("an older schema", func(t *testing.T) {
+		old := filepath.Join(t.TempDir(), "old.db")
+		require.NoError(t, createSQLiteFromSQLFile("testdata/sqlite/headscale_0.29.3_dump.sql", old))
+
+		before, err := os.ReadFile(old)
+		require.NoError(t, err)
+
+		_, err = OpenAsIs(sqliteTestConfig(old), false)
+		require.ErrorIs(t, err, ErrSchemaOlder)
+
+		after, err := os.ReadFile(old)
+		require.NoError(t, err)
+		require.Equal(t, before, after)
+	})
+
+	t.Run("not a Headscale database", func(t *testing.T) {
+		dir := t.TempDir()
+
+		empty := filepath.Join(dir, "empty.db")
+		require.NoError(t, os.WriteFile(empty, nil, 0o600))
+
+		_, err := OpenAsIs(sqliteTestConfig(empty), true)
+		require.ErrorIs(t, err, ErrNotHeadscale)
+
+		other := filepath.Join(dir, "other.db")
+		raw, err := sql.Open("sqlite", other)
+		require.NoError(t, err)
+		_, err = raw.ExecContext(t.Context(), "CREATE TABLE notes (body TEXT)")
+		require.NoError(t, err)
+		require.NoError(t, raw.Close())
+
+		_, err = OpenAsIs(sqliteTestConfig(other), true)
+		require.ErrorIs(t, err, ErrNotHeadscale)
+	})
+
+	for _, id := range []string{"999912312359-from-the-future", "202601010000-from-a-branch"} {
+		t.Run("a migration this build does not know: "+id, func(t *testing.T) {
+			cfg := stoppedDB(t, true)
+
+			d, err := OpenAsIs(cfg, false)
+			require.NoError(t, err)
+			require.NoError(t, d.DB.Exec("INSERT INTO migrations (id) VALUES (?)", id).Error)
+			require.NoError(t, d.Close())
+
+			_, err = OpenAsIs(cfg, true)
+			require.ErrorIs(t, err, ErrSchemaUnknown)
+			require.ErrorContains(t, err, id)
+		})
+	}
+
+	for stored, refused := range map[string]bool{"v0.29.5": true, "v0.31.0": true, "v1.30.0": true, "v0.30.9": false, "dev": false, "": false} {
+		t.Run("stored version "+stored, func(t *testing.T) {
+			cfg := stoppedDB(t, true)
+
+			d, err := OpenAsIs(cfg, false)
+			require.NoError(t, err)
+			require.NoError(t, d.DB.Exec("UPDATE database_versions SET version = ?", stored).Error)
+			require.NoError(t, d.Close())
+
+			_, err = OpenAsIs(cfg, true)
+			if !refused {
+				require.NoError(t, err)
+
+				return
+			}
+
+			var v *VersionError
+
+			require.ErrorAs(t, err, &v)
+			require.Equal(t, &VersionError{Stored: stored, Current: asIsRelease}, v)
+		})
+	}
+}
+
+// TestPostgresOpenAsIs: on PostgreSQL a read-only open cannot write, a
+// write writes no version and counts the other sessions of the database,
+// and a schema of another build is refused.
+func TestPostgresOpenAsIs(t *testing.T) {
+	claimRelease(t)
+
+	cfg := postgresTestConfig(newPostgresDBForTest(t))
+
+	hsdb, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+	_, err = hsdb.SetPolicy("{}")
+	require.NoError(t, err)
+	require.NoError(t, hsdb.DB.Exec("UPDATE database_versions SET version = ?", asIsStored).Error)
+	require.NoError(t, hsdb.Close())
+
+	d, err := OpenAsIs(cfg, true)
+	require.NoError(t, err)
+
+	p, err := d.GetPolicy()
+	require.NoError(t, err)
+	require.Equal(t, "{}", p.Data)
+
+	_, err = d.SetPolicy("// new\n{}")
+	require.ErrorContains(t, err, "read-only transaction")
+	require.NoError(t, d.Close())
+
+	server, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	// A server holds its connections; the test's config keeps none idle.
+	serverDB, err := server.DB.DB()
+	require.NoError(t, err)
+	conn, err := serverDB.Conn(t.Context())
+	require.NoError(t, err)
+
+	d, err = OpenAsIs(cfg, false)
+	require.NoError(t, err)
+
+	n, err := d.OtherSessions()
+	require.NoError(t, err)
+	require.Positive(t, n, "the server's session")
+	require.NoError(t, conn.Close())
+	require.NoError(t, server.Close())
+
+	// A closed session leaves pg_stat_activity once its backend has ended.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		n, err := d.OtherSessions()
+		assert.NoError(c, err)
+		assert.Zero(c, n)
+	}, 10*time.Second, 50*time.Millisecond)
+
+	// The server's open wrote its own version; the write writes none.
+	require.NoError(t, d.DB.Exec("UPDATE database_versions SET version = ?", asIsStored).Error)
+
+	_, err = d.SetPolicy("// new\n{}")
+	require.NoError(t, err)
+
+	var version string
+
+	require.NoError(t, d.DB.Raw("SELECT version FROM database_versions").Scan(&version).Error)
+	require.Equal(t, asIsStored, version, "the version was written")
+
+	require.NoError(t, d.DB.Exec("INSERT INTO migrations (id) VALUES ('999912312359-from-the-future')").Error)
+	require.NoError(t, d.Close())
+
+	_, err = OpenAsIs(cfg, true)
+	require.ErrorIs(t, err, ErrSchemaUnknown)
+
+	missing := *cfg
+	missing.Database.Postgres.Name = "nope"
+
+	_, err = OpenAsIs(&missing, true)
+	require.Error(t, err)
+}
+
+// holdDB names the database that a run of the test binary holds open, as
+// a server does.
+const holdDB = "HEADSCALE_TEST_HOLD_DB"
+
+// hold opens the database at path as a server does, says "ready", and
+// keeps it open until stdin ends; then it prints the policy it reads.
+func hold(path string) int {
+	cfg := sqliteTestConfig(path)
+	cfg.Database.Sqlite.WriteAheadLog = true
+
+	d, err := NewHeadscaleDatabase(cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	_, _ = os.Stdout.WriteString("ready\n")
+	_, _ = io.Copy(io.Discard, os.Stdin)
+
+	p, err := d.GetPolicy()
+	if err != nil {
+		panic(err)
+	}
+
+	_, _ = os.Stdout.WriteString(p.Data)
+
+	if d.Close() != nil {
+		return 1
+	}
+
+	return 0
+}
+
+// holdOpen runs hold on path in a process of its own until the returned
+// release, which gives back what the process read last.
+func holdOpen(t *testing.T, path string) func() string {
+	t.Helper()
+
+	cmd := exec.CommandContext(t.Context(), os.Args[0]) //nolint:gosec // the test binary itself
+
+	cmd.Env = append(os.Environ(), holdDB+"="+path)
+
+	stdin, err := cmd.StdinPipe()
+	require.NoError(t, err)
+
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+
+	out := bufio.NewReader(stdout)
+	line, err := out.ReadString('\n')
+	require.NoError(t, err)
+	require.Equal(t, "ready\n", line)
+
+	return func() string {
+		require.NoError(t, stdin.Close())
+
+		rest, err := io.ReadAll(out)
+		require.NoError(t, err)
+		require.NoError(t, cmd.Wait())
+
+		return string(rest)
 	}
 }

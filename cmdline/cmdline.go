@@ -203,6 +203,7 @@ func (t *Tree) Root() *Info { return t.root.info }
 // reached.
 func (b *builder) build(n Node, above []string, scope []*field) *node {
 	d := n.decl()
+	d.aliases = slices.Clone(d.aliases)
 	names := append(slices.Clip(above), d.name)
 	at := strings.Join(names, " ")
 	nd := &node{

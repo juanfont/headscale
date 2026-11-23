@@ -16,6 +16,7 @@ var commands = []command.Node{
 	usersGroup,
 	authGroup,
 	apiGroup,
+	policyGroup,
 	debugGroup,
 }
 

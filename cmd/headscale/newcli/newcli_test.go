@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"go/parser"
@@ -22,10 +23,322 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/cmd/headscale/newcli/command"
+	"github.com/juanfont/headscale/cmdline/argtest"
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 )
+
+var errModelMismatch = errors.New("CLI model mismatch")
+
+func TestRapidFilterCatalogue(t *testing.T) {
+	tree := Tree()
+	env := []string{"HOME=" + t.TempDir()}
+	run := func(argv []string) (string, error) {
+		var out, stderr bytes.Buffer
+
+		rc := command.Run(tree, argv, command.Env{Stdout: &out, Stderr: &stderr, Environ: env})
+		if rc != 0 || stderr.Len() != 0 {
+			return "", fmt.Errorf("%w: %q: status=%d stderr=%q", errModelMismatch, argv, rc, stderr.String())
+		}
+
+		return out.String(), nil
+	}
+
+	type list struct{ words, columns, sealed []string }
+
+	resources := []string{"users list", "nodes list", "nodes routes list", "nodes tags list"}
+
+	lists := make([]list, 0, len(resources))
+	for _, resource := range resources {
+		words := strings.Fields(resource)
+
+		raw, err := run(slices.Concat(words, []string{"--list-columns", "-o", "json"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var info []struct{ Name, Kind string }
+
+		err = json.Unmarshal([]byte(raw), &info)
+		if err != nil || len(info) == 0 {
+			t.Fatalf("%s public column list: %v", resource, err)
+		}
+
+		cols := make([]string, 0, len(info))
+
+		var seals []string
+
+		for _, c := range info {
+			cols = append(cols, c.Name)
+			switch c.Kind {
+			case "text", "number", "id":
+				seal := c.Name + "=1"
+
+				_, err = run(slices.Concat(words, []string{"--list-columns", "--filter", seal}))
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				seals = append(seals, seal)
+			}
+		}
+
+		if len(seals) == 0 {
+			t.Fatalf("%s: no validated filter for completion", resource)
+		}
+
+		lists = append(lists, list{words, cols, seals})
+	}
+
+	rapid.Check(t, func(rt *rapid.T) {
+		ls := rapid.SampledFrom(lists).Draw(rt, "list")
+		col := rapid.SampledFrom(ls.columns).Draw(rt, "column")
+
+		prefix := col[:rapid.IntRange(0, len(col)).Draw(rt, "prefix length")]
+		if rapid.Bool().Draw(rt, "unmatched prefix") {
+			prefix = "zz" + rapid.StringOfN(rapid.RuneFrom([]rune("abcxyz0-αé")), 0, 10, 32).Draw(rt, "unknown suffix")
+		}
+
+		sealed := rapid.SliceOfN(rapid.SampledFrom(ls.sealed), 0, 2).Draw(rt, "sealed filters")
+
+		prior := ""
+		if len(sealed) > 0 {
+			prior = strings.Join(sealed, ",") + ","
+		}
+
+		cursor := prior + prefix
+
+		path := slices.Clone(ls.words)
+		if rapid.Bool().Draw(rt, "list alias") {
+			path[len(path)-1] = "ls"
+		}
+
+		protocol := rapid.SampledFrom([]string{"__complete", "__completeNoDesc"}).Draw(rt, "protocol")
+		argv := slices.Concat([]string{protocol}, path)
+		argv = append(argv, argtest.Option(rt, "--filter", cursor)...)
+
+		output, err := run(argv)
+		if err != nil {
+			rt.Fatal(err)
+		}
+
+		lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+		directive := lines[len(lines)-1]
+		bits, err := strconv.Atoi(strings.TrimPrefix(directive, ":"))
+		candidates := lines[:len(lines)-1]
+		// A suppressed list must also disable shell filename fallback.
+		if err != nil || !strings.HasPrefix(directive, ":") || bits&4 == 0 || bits&1 != 0 || len(candidates) > 0 && bits&2 == 0 {
+			rt.Fatalf("%q: unexpected directive %s", argv, directive)
+		}
+
+		var want []string
+
+		for _, name := range ls.columns {
+			if strings.HasPrefix(name, prefix) {
+				want = append(want, prior+name)
+			}
+		}
+
+		slices.Sort(want)
+		slices.Sort(candidates)
+
+		if !slices.Equal(want, candidates) {
+			rt.Fatalf("%q: candidates=%q want public columns=%q", argv, candidates, want)
+		}
+	})
+}
+
+func TestInvalidFilterNoFiles(t *testing.T) {
+	tree := Tree()
+
+	for _, resource := range []string{"nodes", "users"} {
+		for _, cursor := range []string{",na", "0,na", ",zzunknown", "0,zzunknown"} {
+			var out, stderr bytes.Buffer
+
+			argv := []string{"__complete", resource, "list", "--filter=" + cursor}
+			code := command.Run(tree, argv, command.Env{Stdout: &out, Stderr: &stderr})
+			lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+			directive := lines[len(lines)-1]
+
+			bits, err := strconv.Atoi(strings.TrimPrefix(directive, ":"))
+			if code != 0 || stderr.Len() != 0 || err != nil || !strings.HasPrefix(directive, ":") || bits&4 == 0 || bits&1 != 0 {
+				t.Errorf("%q: status=%d reply=%q stderr=%q; filter completion must disable file fallback", argv, code, out.String(), stderr.String())
+			}
+		}
+	}
+}
+
+type helpLeaf struct {
+	words, aliases []string
+	help           string
+	config, output bool
+}
+
+type helpReply struct {
+	code, answers  int
+	stdout, stderr string
+}
+
+func helpCatalogue(t *testing.T) ([]helpLeaf, func([]string) helpReply) {
+	t.Helper()
+
+	tree := Tree()
+	env := []string{"HOME=" + t.TempDir()}
+	run := func(argv []string) helpReply {
+		var (
+			out, diagnostic bytes.Buffer
+			reply           helpReply
+		)
+
+		reply.code = command.Run(tree, argv, command.Env{Stdout: &out, Stderr: &diagnostic, Environ: env, Answered: func(*http.Request, []byte) { reply.answers++ }})
+		reply.stdout, reply.stderr = out.String(), diagnostic.String()
+
+		return reply
+	}
+
+	commands := tree.Commands()
+
+	leaves := make([]helpLeaf, 0, len(commands))
+	for _, cmd := range commands {
+		words := strings.Fields(cmd.Path)
+		reply := run(append(slices.Clone(words), "--help"))
+
+		_, flags, found := strings.Cut(reply.stdout, "\nFlags:\n")
+		if reply.code != 0 || reply.stderr != "" || !found || !strings.Contains(flags, "--help ") {
+			t.Fatalf("%s help: code=%d stderr=%q flags found=%t", cmd.Path, reply.code, reply.stderr, found)
+		}
+
+		leaves = append(leaves, helpLeaf{words, cmd.Aliases, reply.stdout, strings.Contains(flags, "--config "), strings.Contains(flags, "--output ")})
+	}
+
+	return leaves, run
+}
+
+func (l helpLeaf) check(r helpReply, chunks [][]string) error {
+	if r.answers != 0 {
+		return fmt.Errorf("%w: help received %d API answers", errModelMismatch, r.answers)
+	}
+
+	for _, chunk := range chunks {
+		spelling, _, _ := strings.Cut(chunk[0], "=")
+
+		var wrong string
+
+		switch {
+		case !l.config && (spelling == "-c" || spelling == "--config"):
+			wrong = "--config"
+		case !l.output && (spelling == "-o" || spelling == "--output"):
+			wrong = "--output"
+		default:
+			continue
+		}
+
+		if r.code != 1 || r.stdout != "" || !strings.HasPrefix(r.stderr, "Error: "+wrong+" does not apply to ") {
+			return fmt.Errorf("%w: unsupported option: exit=%d stdout=%q stderr=%q", errModelMismatch, r.code, r.stdout, r.stderr)
+		}
+
+		return nil
+	}
+
+	if r.code != 0 || r.stderr != "" || r.stdout != l.help {
+		return fmt.Errorf("%w: exit=%d stderr=%q canonical help matches=%t", errModelMismatch, r.code, r.stderr, r.stdout == l.help)
+	}
+
+	return nil
+}
+
+// Public help declares which global flags can reach each leaf.
+func TestRapidLeafOptionPlacement(t *testing.T) {
+	leaves, run := helpCatalogue(t)
+	hit := map[string]bool{}
+
+	var accepted, unsupported, withAlias, interleaved int
+
+	rapid.Check(t, func(rt *rapid.T) {
+		leaf := leaves[rapid.IntRange(0, len(leaves)-1).Draw(rt, "command index")]
+
+		path := slices.Clone(leaf.words)
+		if len(leaf.aliases) > 0 && rapid.Bool().Draw(rt, "alias") {
+			path[len(path)-1] = rapid.SampledFrom(leaf.aliases).Draw(rt, "leaf alias")
+			withAlias++
+		}
+
+		options := [][]string{{rapid.SampledFrom([]string{"-h", "--help"}).Draw(rt, "help spelling")}}
+		config := rapid.Bool().Draw(rt, "config")
+
+		output := rapid.Bool().Draw(rt, "output")
+		if config {
+			flag := rapid.SampledFrom([]string{"-c", "--config"}).Draw(rt, "config spelling")
+			value := rapid.SampledFrom([]string{"unused.yaml", "with space.yaml", "--help", "--output", ""}).Draw(rt, "config value")
+			options = append(options, argtest.Option(rt, flag, value))
+		}
+
+		if output {
+			flag := rapid.SampledFrom([]string{"-o", "--output"}).Draw(rt, "output spelling")
+			options = append(options, argtest.Option(rt, flag, "json"))
+		}
+
+		chunks := argtest.InterleaveChunks(rt, path, options...)
+
+		argv := slices.Concat(chunks...)
+		if len(options) > 1 && slices.Index(argv, path[len(path)-1]) > len(path)-1 {
+			interleaved++
+		}
+
+		err := leaf.check(run(argv), chunks)
+		if err != nil {
+			rt.Fatalf("argv=%q: %v", argv, err)
+		}
+
+		hit[strings.Join(leaf.words, " ")] = true
+		if config && !leaf.config || output && !leaf.output {
+			unsupported++
+		} else {
+			accepted++
+		}
+	})
+	t.Logf("model classes accepted-placements=%d refused-placements=%d leaf-aliases=%d help-or-option-before-leaf=%d", accepted, unsupported, withAlias, interleaved)
+	t.Logf("reached %d of %d canonical leaves", len(hit), len(leaves))
+}
+
+func TestAllLeafGlobalOptionPositions(t *testing.T) {
+	leaves, run := helpCatalogue(t)
+
+	var forms, refusals int
+
+	for _, leaf := range leaves {
+		for _, last := range append([]string{leaf.words[len(leaf.words)-1]}, leaf.aliases...) {
+			path := slices.Clone(leaf.words)
+			path[len(path)-1] = last
+
+			for _, option := range []struct {
+				spell, value string
+				config       bool
+			}{{"-c", "unused.yaml", true}, {"--config", "unused.yaml", true}, {"-o", "json", false}, {"--output", "json", false}} {
+				for _, words := range [][]string{{option.spell, option.value}, {option.spell + "=" + option.value}} {
+					for _, help := range []string{"-h", "--help"} {
+						for argv := range argtest.Placements(path, []string{help}, words) {
+							err := leaf.check(run(argv), [][]string{words})
+							if err != nil {
+								t.Fatalf("argv=%q: %v", argv, err)
+							}
+
+							forms++
+
+							if option.config && !leaf.config || !option.config && !leaf.output {
+								refusals++
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	t.Logf("all %d two-option positions/spellings, %d refused, %d canonical leaves", forms, refusals, len(leaves))
+}
 
 // cliCase is one run of the CLI: a row of the table of a command group.
 // Every case runs on a server of its own, so a case that writes changes
@@ -96,6 +409,9 @@ type fixture struct {
 	env []string
 	// vars fill the {name} places in a case.
 	vars map[string]string
+
+	started, finished time.Time
+
 	// releases are the release tags that `version` sees; no case reaches
 	// GitHub.
 	releases []string
@@ -262,40 +578,49 @@ func runCases(t *testing.T, setup func(testing.TB, *fixture), cases []cliCase) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			require.False(t, tc.stdout != "" && tc.want != nil, "a case sets stdout or want, not both")
-
-			f := newFixture(t, tc.clients, tc.server...)
-			if setup != nil {
-				setup(t, f)
-			}
-
-			if tc.setup != nil {
-				tc.setup(t, f)
-			}
-
-			r := f.run(t, tc)
-			ran.add(tc, f)
-
-			want := f.expand(tc.stdout)
-			if tc.want != nil {
-				want = tc.want(t, f, r)
-			}
-
-			if diff := cmp.Diff(want, r.stdout); diff != "" {
-				t.Errorf("stdout (-want +got):\n%s", diff)
-			}
-
-			if diff := cmp.Diff(f.expand(tc.stderr), r.stderr); diff != "" {
-				t.Errorf("stderr (-want +got):\n%s", diff)
-			}
-
-			require.Equal(t, tc.code, r.code, "exit code")
-
-			if tc.check != nil {
-				tc.check(t, f, r)
-			}
+			runCase(t, setup, tc)
 		})
+	}
+}
+
+// runCase runs one case of runCases; a test that sets the working
+// directory runs its cases with it, one after the other.
+func runCase(t *testing.T, setup func(testing.TB, *fixture), tc cliCase) {
+	t.Helper()
+
+	require.False(t, tc.stdout != "" && tc.want != nil, "a case sets stdout or want, not both")
+
+	f := newFixture(t, tc.clients, tc.server...)
+	if setup != nil {
+		setup(t, f)
+	}
+
+	if tc.setup != nil {
+		tc.setup(t, f)
+	}
+
+	f.started = time.Now()
+	r := f.run(t, tc)
+	f.finished = time.Now()
+	ran.add(tc, f)
+
+	want := f.expand(tc.stdout)
+	if tc.want != nil {
+		want = tc.want(t, f, r)
+	}
+
+	if diff := cmp.Diff(want, r.stdout); diff != "" {
+		t.Errorf("stdout (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff(f.expand(tc.stderr), r.stderr); diff != "" {
+		t.Errorf("stderr (-want +got):\n%s", diff)
+	}
+
+	require.Equal(t, tc.code, r.code, "exit code")
+
+	if tc.check != nil {
+		tc.check(t, f, r)
 	}
 }
 
@@ -453,6 +778,14 @@ func (r *ranCases) add(tc cliCase, f *fixture) {
 // or an alias that no case ran fails the run. It walks only a whole run,
 // since -run leaves cases out.
 func TestMain(m *testing.M) {
+	if line, ok := os.LookupEnv(childLine); ok {
+		os.Exit(child(line))
+	}
+
+	if _, ok := os.LookupEnv(holdDB); ok {
+		os.Exit(hold())
+	}
+
 	code := m.Run()
 
 	if code == 0 && flag.Lookup("test.run").Value.String() == "" && flag.Lookup("test.skip").Value.String() == "" {
@@ -498,9 +831,15 @@ func untested(tree *command.Tree, cases []ranCase) []string {
 }
 
 // exampleWords are the names of the variables an example sets before
-// `headscale`, and its words after it, up to a pipe.
+// `headscale`, and its words after it, up to a pipe or a redirect. A
+// command a pipe feeds is the example; a case gives what it reads as stdin.
 func exampleWords(e string) ([]string, []string) {
+	if _, fed, ok := strings.Cut(e, "| headscale "); ok {
+		e = "headscale " + fed
+	}
+
 	e, _, _ = strings.Cut(e, " |")
+	e, _, _ = strings.Cut(e, " >")
 
 	var env []string
 
@@ -526,7 +865,7 @@ func TestUntested(t *testing.T) {
 
 	extra := command.New(command.Spec[command.NoInput, command.NoOutput]{
 		Name: "extra", Short: "Do nothing", Long: "Do nothing.", Local: true,
-		Example: []string{"headscale extra", "HEADSCALE_CLI_ADDRESS=hs.example.com headscale extra | cat"},
+		Example: []string{"headscale extra", "HEADSCALE_CLI_ADDRESS=hs.example.com headscale extra | cat", "make | headscale extra > out"},
 		Run:     func(command.Ctx, command.NoInput) (command.NoOutput, error) { return command.NoOutput{}, nil },
 	})
 
@@ -543,10 +882,15 @@ func TestUntested(t *testing.T) {
 			cases: []ranCase{ok("extra"), ok("extra", "HEADSCALE_CLI_ADDRESS")},
 		},
 		{
+			name:  "a pipe into the command and a redirect of it",
+			cases: []ranCase{ok("extra", "HEADSCALE_CLI_ADDRESS")},
+		},
+		{
 			name: "a command with no case",
 			want: []string{
 				`example "headscale extra" has no case that passes`,
 				`example "HEADSCALE_CLI_ADDRESS=hs.example.com headscale extra | cat" has no case that passes`,
+				`example "make | headscale extra > out" has no case that passes`,
 			},
 		},
 		{
@@ -555,6 +899,7 @@ func TestUntested(t *testing.T) {
 			want: []string{
 				`example "headscale extra" has no case that passes`,
 				`example "HEADSCALE_CLI_ADDRESS=hs.example.com headscale extra | cat" has no case that passes`,
+				`example "make | headscale extra > out" has no case that passes`,
 			},
 		},
 		{
@@ -630,6 +975,14 @@ func TestImports(t *testing.T) {
 			if why, ok := banned[imp.Path.Value]; ok {
 				t.Errorf("%s imports %s: %s", name, imp.Path.Value, why)
 			}
+
+			// The database bypass is the one way past the server, and only
+			// the policy commands take it.
+			server := strings.HasPrefix(imp.Path.Value, `"github.com/juanfont/headscale/hscontrol/`) &&
+				!slices.Contains([]string{`"github.com/juanfont/headscale/hscontrol/config"`, `"github.com/juanfont/headscale/hscontrol/types"`}, imp.Path.Value)
+			if server && (name != "policy.go" || imp.Path.Value != `"github.com/juanfont/headscale/hscontrol/offline"`) {
+				t.Errorf("%s imports %s: a command reaches the server through command.API; only policy.go opens a stopped server's database, through offline", name, imp.Path.Value)
+			}
 		}
 
 		src, err := os.ReadFile(name)
@@ -695,6 +1048,9 @@ Server commands (talk to a running headscale):
   api oauth-clients get <client>   Show one OAuth client
   api oauth-clients create <scopes>   Create an OAuth client
   api oauth-clients delete <client>   Revoke an OAuth client (alias: rm)
+  policy get   Print the policy
+  policy set <file>   Replace the policy
+  policy reload   Read the policy again from where it is kept
 
 Debug:
 

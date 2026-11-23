@@ -12,12 +12,19 @@ package command
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
 	"github.com/juanfont/headscale/cmdline"
@@ -100,6 +107,13 @@ type Spec[In, Out any] struct {
 	// at any depth, needs Secret, and no other may have it; the command
 	// needs list and delete beside it, which a lost secret names.
 	Secret func(out Out) string
+	// Verbatim is a text of the result that the server keeps, such as the
+	// policy, printed to stdout byte for byte: not trimmed, not made
+	// visible, past the rule that shows a credential as its kind, so a file
+	// it is written to holds what the server holds. -o json prints the
+	// result. It takes neither Columns nor Done, and a test lists each
+	// command that has it, with why.
+	Verbatim func(out Out) string
 }
 
 // ListSpec is a command that gives back rows, printed as a table.
@@ -200,8 +214,12 @@ type Ctx struct {
 	// askWidth is the width of stderr's terminal, which a question is
 	// written to; 0 when unknown.
 	askWidth int
-	// answers reads the replies to prompts from stdin.
-	answers *bufio.Reader
+	// answers reads the replies to prompts from stdin; stdinFile is a line
+	// that gives - for a Path, so stdin is that file and answers nothing.
+	answers   *bufio.Reader
+	stdinFile bool
+	// local keeps the JSON of a result that a Local command made: Answer.
+	local *API
 	// entities are the tree's types of target: the retry of a write the
 	// server refused because the target changed reads one again by its ID.
 	entities map[reflect.Type]entity
@@ -220,6 +238,117 @@ func (c Ctx) Note(line string) {
 	if !c.json {
 		_, _ = io.WriteString(c.stderr, line+"\n")
 	}
+}
+
+// Answer makes as the JSON that -o json prints for v, a result that a
+// Local command makes as the server would answer it: a type of the client
+// writes its keys in another order than the server.
+func (c Ctx) Answer(v, as any) {
+	b, err := json.Marshal(as)
+	if err == nil && c.local != nil {
+		c.local.keep(v, b)
+	}
+}
+
+// Stdin is what the command reads, such as a file given as -.
+func (c Ctx) Stdin() io.Reader {
+	if c.stdin == nil {
+		return strings.NewReader("")
+	}
+
+	return c.stdin
+}
+
+// maxRead is the most ReadFile reads: more than any file a command takes,
+// and an end for a device that never ends, such as /dev/zero.
+const maxRead = 16 << 20
+
+// ReadFile is the file p, or stdin for -, whole, at most 16 MiB, and
+// UTF-8 text: every file a command takes is a text, and the server reads
+// no other. Its error is a sentence that names the file as typed, and
+// stdin as (stdin). Stdin on a terminal says on stderr how to end it.
+func (c Ctx) ReadFile(p Path) ([]byte, error) {
+	name := table.Visible(string(p), "")
+	if p == "-" {
+		name = "(stdin)"
+	}
+
+	if p == "-" && c.terminal {
+		_, _ = io.WriteString(c.stderr, "Reading from stdin: end with Ctrl-D at the start of a line.\n")
+	}
+
+	r := c.Stdin()
+
+	if p != "-" {
+		f, err := os.Open(string(p))
+
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return nil, fmt.Errorf("the file %s does not exist.", name) //nolint:err113,staticcheck // a sentence of the CLI
+		case err != nil:
+			return nil, fmt.Errorf("the file %s cannot be read: %s.", name, causeOf(err)) //nolint:err113,staticcheck // a sentence of the CLI
+		}
+
+		defer f.Close()
+
+		st, err := f.Stat()
+		if err == nil && st.IsDir() {
+			return nil, fmt.Errorf("%s is a directory, not a file.", name) //nolint:err113,staticcheck // a sentence of the CLI
+		}
+
+		r = f
+	}
+
+	b, err := io.ReadAll(io.LimitReader(r, maxRead+1))
+
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("the file %s cannot be read: %s.", name, causeOf(err)) //nolint:err113,staticcheck // a sentence of the CLI
+	case len(b) > maxRead:
+		return nil, fmt.Errorf("%s is larger than 16 MiB, more than a command reads.", name) //nolint:err113,staticcheck // a sentence of the CLI
+	case !utf8.Valid(b):
+		return nil, fmt.Errorf("%s is not UTF-8 text: line %d holds a byte that is not.", name, notUTF8(b)) //nolint:err113,staticcheck // a sentence of the CLI
+	}
+
+	return b, nil
+}
+
+// notUTF8 is the line of the first byte of b that is not UTF-8, from 1.
+func notUTF8(b []byte) int {
+	i := 0
+	for i < len(b) {
+		r, n := utf8.DecodeRune(b[i:])
+		if r == utf8.RuneError && n == 1 {
+			break
+		}
+
+		i += n
+	}
+
+	return 1 + bytes.Count(b[:i], []byte("\n"))
+}
+
+// fromStdin reports whether line gives - for an argument or a flag that is
+// a Path: stdin is then that file.
+func fromStdin(line *cmdline.Line) bool {
+	path := reflect.TypeFor[Path]()
+
+	for i, a := range line.Command.Args {
+		if i < len(line.Args) && a.Type == path && !a.List && line.Args[i] == "-" {
+			return true
+		}
+	}
+
+	// --config is the builder's, and never reads stdin.
+	for _, g := range line.Flags {
+		for _, f := range line.Command.Flags {
+			if f.Name == g.Name && f.Name != "config" && f.Type == path && g.Value == "-" {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // Now is the time the command runs at.

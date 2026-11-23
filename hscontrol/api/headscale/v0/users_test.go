@@ -438,6 +438,21 @@ func locations(p Problem) []string {
 	return out
 }
 
+func TestUserValidationReportsEachField(t *testing.T) {
+	b, api, auth := usersAPI(t)
+	user := b.State.CreateUserForTest("alice")
+	path := Prefix + "/users/" + strconv.FormatUint(uint64(user.ID), 10)
+
+	body := map[string]any{"name": "", "displayName": strings.Repeat("é", 129)}
+	for _, res := range []*httptest.ResponseRecorder{
+		api.Post(Prefix+"/users", auth, body),
+		api.Patch(path, auth, body),
+	} {
+		p := decodeProblem(t, res, CodeInvalidField)
+		require.ElementsMatch(t, []string{"body.name", "body.displayName"}, locations(p))
+	}
+}
+
 func TestUpdateUser(t *testing.T) {
 	b, api, auth := usersAPI(t)
 
@@ -922,4 +937,47 @@ func TestDeleteUser(t *testing.T) {
 			require.Equal(t, "query.withNodes", p.Errors[0].Location, v)
 		}
 	})
+}
+
+func TestUserFieldErrorsSurviveOtherTypes(t *testing.T) {
+	_, api, auth := usersAPI(t)
+	for _, tc := range []struct {
+		name, body string
+		locations  []string
+	}{
+		{"null document", "null", []string{"body"}},
+		{"invalid sibling after type", `{"displayName":4,"name":"valid","email":"bad"}`, []string{"body.displayName", "body.email"}},
+		{"invalid sibling before type", `{"name":"valid","email":"bad","displayName":4}`, []string{"body.displayName", "body.email"}},
+		{"valid sibling", `{"displayName":4,"name":"valid"}`, []string{"body.displayName"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, r := range []*httptest.ResponseRecorder{
+				api.Post(Prefix+"/users", auth, "Content-Type: application/json", strings.NewReader(tc.body)),
+				api.Patch(Prefix+"/users/1", auth, "Content-Type: application/merge-patch+json", strings.NewReader(tc.body)),
+			} {
+				p := decodeProblem(t, r, CodeInvalidField)
+				require.ElementsMatch(t, tc.locations, locations(p), tc.body)
+			}
+		})
+	}
+}
+
+func TestNullUsernameRepair(t *testing.T) {
+	_, api, auth := usersAPI(t)
+	path := Prefix + "/users/1"
+	res := api.Patch(path, auth, "Content-Type: application/merge-patch+json", strings.NewReader(`{"name":null}`))
+	p := decodeProblem(t, res, CodeInvalidField)
+	require.Equal(t, []FieldError{{Location: "body.name", Message: "cannot be null; send a valid username"}}, p.Errors)
+}
+
+func TestUserFieldErrorCount(t *testing.T) {
+	_, api, auth := usersAPI(t)
+
+	body := map[string]any{"name": "charlie"}
+	for i := range maxFieldErrors/2 + 1 {
+		body["other"+strconv.Itoa(i)] = i
+	}
+
+	p := decodeProblem(t, api.Post(Prefix+"/users", auth, body), CodeInvalidField)
+	require.Len(t, p.Errors, len(body)-1)
 }

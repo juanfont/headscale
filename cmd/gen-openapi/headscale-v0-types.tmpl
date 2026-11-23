@@ -1,0 +1,51 @@
+{{range .Types}}
+{{ .DocComment }}
+type {{.TypeName}} {{if .IsAlias }}={{end}} {{.Schema.TypeDecl}}
+{{end}}
+
+// DecodeResponse preserves case-sensitive wire names, including inside nullable values.
+func DecodeResponse(raw []byte, out any) error {
+	return jsonv2.Unmarshal(raw, out, responseOptions)
+}
+
+var responseOptions = jsonv2.JoinOptions(
+	jsonv1.DefaultOptionsV1(),
+	jsonv2.MatchCaseInsensitiveNames(false),
+	jsonv2.WithUnmarshalers(jsonv2.JoinUnmarshalers(
+		{{- range .Types}}{{template "response-children" .Schema}}{{end}}
+	)),
+)
+
+func nullableResponse[T any]() *jsonv2.Unmarshalers {
+	return jsonv2.UnmarshalFromFunc(func(d *jsontext.Decoder, n *nullable.Nullable[T]) error {
+		if kind := d.PeekKind(); kind != '{' && kind != '[' {
+			return errors.ErrUnsupported
+		}
+		var value T
+		if err := jsonv2.UnmarshalDecode(d, &value); err != nil {
+			return err
+		}
+		n.Set(value)
+		return nil
+	})
+}
+
+{{- define "response-children"}}
+{{- range .Properties}}
+{{- if .Nullable}}{{template "response-composite" .Schema}}{{end}}
+{{- template "response-children" .Schema}}
+{{- end}}
+{{- with .ArrayType}}
+{{- if and .OAPISchema (.OAPISchema.Type.Includes "null")}}{{template "response-composite" .}}{{end}}
+{{- template "response-children" .}}
+{{- end}}
+{{- with .AdditionalPropertiesType}}
+{{- if and .OAPISchema (.OAPISchema.Type.Includes "null")}}{{template "response-composite" .}}{{end}}
+{{- template "response-children" .}}
+{{- end}}
+{{- end}}
+
+{{- define "response-composite"}}
+{{- if or (not .OAPISchema) (.OAPISchema.Type.Permits "object") (.OAPISchema.Type.Permits "array")}}
+		nullableResponse[{{.TypeDecl}}](),
+{{- end}}{{- end}}

@@ -12,12 +12,150 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
+	"github.com/juanfont/headscale/cmdline/argtest"
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
+
+type queryNode struct{ ID, Name, Hostname, OS string }
+
+func (n queryNode) value(column string) string {
+	switch column {
+	case "name":
+		return n.Name
+	case "hostname":
+		return n.Hostname
+	case "os":
+		return n.OS
+	default:
+		panic("unknown model column " + column)
+	}
+}
+
+func TestRapidNodeQuery(t *testing.T) {
+	f := newFixture(t, false)
+	fleet(t, f)
+	control := f.run(t, cliCase{args: "nodes list -o json", pageSize: 10})
+
+	var page struct{ Nodes []queryNode }
+	if control.code != 0 || len(control.answers[nodesPath]) != 1 || json.Unmarshal(control.answers[nodesPath][0], &page) != nil || len(page.Nodes) != 5 {
+		t.Fatalf("fleet control: exit=%d pages=%d stderr=%q", control.code, len(control.answers[nodesPath]), control.stderr)
+	}
+
+	columns := rapid.SampledFrom([]string{"name", "hostname", "os"})
+
+	var none, single, multiple, tied, crossedPages int
+
+	rapid.Check(t, func(rt *rapid.T) {
+		want := slices.Clone(page.Nodes)
+
+		count := rapid.IntRange(0, 2).Draw(rt, "predicates")
+
+		filters := make([]string, 0, count)
+		for range count {
+			column := columns.Draw(rt, "filter column")
+			row := rapid.SampledFrom(page.Nodes).Draw(rt, "reference row")
+			value := row.value(column)
+
+			op := rapid.SampledFrom([]string{"=", ":"}).Draw(rt, "operator")
+			if op == ":" {
+				value = value[:rapid.IntRange(1, len(value)).Draw(rt, "prefix length")]
+			}
+
+			if rapid.Bool().Draw(rt, "absent value") {
+				value += "-absent"
+			}
+
+			filters = append(filters, column+op+value)
+			want = slices.DeleteFunc(want, func(n queryNode) bool {
+				text := n.value(column)
+				if op == ":" {
+					return !strings.Contains(text, value)
+				}
+
+				return text != value
+			})
+		}
+
+		if len(filters) == 2 && rapid.Bool().Draw(rt, "combine filters") {
+			filters = []string{strings.Join(filters, ",")}
+		}
+
+		order := columns.Draw(rt, "sort column")
+		reverse := rapid.Bool().Draw(rt, "descending")
+
+		slices.SortStableFunc(want, func(a, b queryNode) int {
+			if reverse {
+				a, b = b, a
+			}
+
+			return strings.Compare(a.value(order), b.value(order))
+		})
+
+		key := order
+		if reverse {
+			key = "-" + key
+		}
+
+		leaf := rapid.SampledFrom([]string{"list", "ls"}).Draw(rt, "leaf")
+
+		options := make([][]string, 0, 2+len(filters))
+
+		options = append(options, []string{"-o", "json"}, argtest.Option(rt, "--sort", key))
+		for _, filter := range filters {
+			options = append(options, argtest.Option(rt, "--filter", filter))
+		}
+
+		args := append([]string{"nodes", leaf}, argtest.Interleave(rt, nil, options...)...)
+		size := rapid.IntRange(1, len(page.Nodes)+1).Draw(rt, "page size")
+		r := f.run(t, cliCase{args: strings.Join(args, " "), pageSize: size})
+
+		var got []queryNode
+		if r.code != 0 || r.stderr != "" || json.Unmarshal([]byte(r.stdout), &got) != nil || got == nil || !slices.Equal(got, want) {
+			rt.Fatalf("argv=%q pageSize=%d exit=%d stderr=%q rows=%v want=%v", args, size, r.code, r.stderr, got, want)
+		}
+
+		wire := make([]queryNode, 0, len(page.Nodes))
+
+		for i, body := range r.answers[nodesPath] {
+			var result struct{ Nodes []queryNode }
+			if json.Unmarshal(body, &result) != nil || len(result.Nodes) == 0 || len(result.Nodes) > size {
+				rt.Fatalf("page %d: invalid rows for size %d", i, size)
+			}
+
+			wire = append(wire, result.Nodes...)
+		}
+
+		if !slices.Equal(wire, page.Nodes) {
+			rt.Fatalf("argv=%q API walk=%v want=%v", args, wire, page.Nodes)
+		}
+
+		switch len(want) {
+		case 0:
+			none++
+		case 1:
+			single++
+		default:
+			multiple++
+		}
+
+		for i := 1; i < len(want); i++ {
+			if want[i-1].value(order) == want[i].value(order) {
+				tied++
+				break
+			}
+		}
+
+		if len(r.answers[nodesPath]) > 1 {
+			crossedPages++
+		}
+	})
+	t.Logf("model classes empty-queries=%d single-row=%d multiple-rows=%d tied-sort=%d paginated=%d", none, single, multiple, tied, crossedPages)
+}
 
 const nodesPolicy = `{
 	"tagOwners": {"tag:ci": [], "tag:build": [], "tag:infra": [], "tag:server": [], "tag:test": [], "tag:example": []},
@@ -145,7 +283,7 @@ func fleet(tb testing.TB, f *fixture) {
 		}
 	}
 
-	for name, t := range map[string]time.Time{"now": f.now, "in89d": f.now.Add(89 * day), "ago120d": f.now.Add(-120 * day), "ago60d": f.now.Add(-60 * day), "ago40d": f.now.Add(-40 * day)} {
+	for name, t := range map[string]time.Time{"in89d": f.now.Add(89 * day), "ago120d": f.now.Add(-120 * day), "ago60d": f.now.Add(-60 * day), "ago40d": f.now.Add(-40 * day)} {
 		f.vars[name] = t.UTC().Format("2006-01-02 15:04 UTC")
 	}
 }
@@ -185,7 +323,7 @@ Owner:              User 3 (alice)
 IP:                 100.64.0.12, fd7a:115c:a1e0::c
 Version:            1.82.0
 Online:             yes
-Last seen:          now ({now})
+Last seen:          {online-last-seen}
 Expiry:             in 89d ({in89d})
 Hostname:           ubuntu-vm
 OS:                 linux
@@ -206,6 +344,30 @@ Problems:           -
 Attributes:
   ip:publicAddress   203.0.113.7
 `
+
+func wantMynodeSheet(tb testing.TB, f *fixture, r result) string {
+	tb.Helper()
+
+	// An online node gets its timestamp from the API response clock.
+	rows := nodes.kept(tb, r, onlyID("12"))
+	require.Len(tb, rows, 1)
+
+	var node struct {
+		LastSeen time.Time `json:"lastSeen"`
+	}
+	require.NoError(tb, json.Unmarshal(rows[0], &node))
+	require.WithinRange(tb, node.LastSeen, f.started.Truncate(time.Microsecond), f.finished)
+
+	relative := "now"
+	if elapsed := node.LastSeen.Sub(f.now); elapsed >= time.Minute {
+		// The test client can be more than a minute behind the responding server.
+		relative = fmt.Sprintf("in %dm", elapsed.Round(time.Minute)/time.Minute)
+	}
+
+	f.vars["online-last-seen"] = relative + " (" + node.LastSeen.UTC().Format("2006-01-02 15:04 UTC") + ")"
+
+	return f.expand(mynodeSheet)
+}
 
 func onlyID(ids ...string) func(map[string]any) bool {
 	return func(row map[string]any) bool {
@@ -314,10 +476,10 @@ func TestNodesList(t *testing.T) {
 }
 
 var nodesGetCases = []cliCase{
-	{name: "by name, a sheet with the attributes", args: "nodes get mynode", stdout: mynodeSheet},
+	{name: "by name, a sheet with the attributes", args: "nodes get mynode", want: wantMynodeSheet},
 	{name: "by ID as JSON", args: "nodes get 12 -o json", want: nodes.row(onlyID("12"))},
-	{name: "by tailnet IP", args: "nodes get 100.64.0.12", stdout: mynodeSheet},
-	{name: "an IP is compared as an address", args: "nodes get fd7a:115c:a1e0:0:0::c", stdout: mynodeSheet},
+	{name: "by tailnet IP", args: "nodes get 100.64.0.12", want: wantMynodeSheet},
+	{name: "an IP is compared as an address", args: "nodes get fd7a:115c:a1e0:0:0::c", want: wantMynodeSheet},
 	{name: "by hostname", args: "nodes get ubuntu-vm -o json", want: nodes.row(onlyID("12"))},
 	{
 		name: "a word that names two nodes", args: "nodes get web",
@@ -370,7 +532,13 @@ Problems:           node_expiry_invalid
 func TestNodesGet(t *testing.T) {
 	t.Parallel()
 
-	runCases(t, fleet, nodesGetCases)
+	runCases(t, func(tb testing.TB, f *fixture) {
+		tb.Helper()
+
+		// Cross a minute before the API timestamps the online node.
+		f.now = f.now.Truncate(time.Minute).Add(-time.Nanosecond)
+		fleet(tb, f)
+	}, nodesGetCases)
 }
 
 // nodeOf reads a node back from the server.

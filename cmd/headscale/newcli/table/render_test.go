@@ -113,6 +113,22 @@ func TestScreen(t *testing.T) {
 	}())
 }
 
+func TestHangulCell(t *testing.T) {
+	t.Parallel()
+
+	const decomposed = "\u1100\u1161"
+	require.Equal(t, width("가"), width(decomposed))
+	require.Equal(t, decomposed+"…", fit(decomposed+"ab", 3))
+}
+
+func TestEmojiPresentation(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, 1, width("🖥"))
+	require.Equal(t, 2, width("🖥️"))
+	require.Equal(t, "🖥x", fit("🖥x", 2))
+	require.Equal(t, "…", fit("🖥️x", 2))
+}
+
 func TestFit(t *testing.T) {
 	t.Parallel()
 

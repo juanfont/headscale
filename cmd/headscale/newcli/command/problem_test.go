@@ -1,7 +1,9 @@
 package command
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"testing"
 
@@ -195,6 +197,60 @@ func TestProblemSentence(t *testing.T) {
 			"User 5 (carol@example.com) is managed by OIDC and cannot be edited here.",
 		},
 		{"too large", clientv0.Problem{Code: clientv0.ProblemCodeTooLarge}, "the file is too large for the server."},
+		{
+			"a policy refused, each problem at its line, a control made visible",
+			policyRefused([]any{
+				map[string]any{"message": `unknown tag "tag:serverr"`, "line": 14, "column": 30},
+				map[string]any{"message": "no place\nError: fake", "line": nil, "column": nil},
+			}, 2, []any{
+				map[string]any{"kind": "acl", "index": 2, "src": "alice@", "dst": "10.0.0.1:22", "user": nil, "want": "accept", "got": "deny", "line": 30, "column": 5},
+				map[string]any{"kind": "ssh", "index": 0, "src": "bob@", "dst": "bob@", "user": "root", "want": "deny", "got": "check", "line": nil, "column": nil},
+			}, 2),
+			"the policy is not valid.\n" +
+				"  line 14, column 30: unknown tag \"tag:serverr\"\n" +
+				"  line 30, column 5: test alice@ -> 10.0.0.1:22: expected accept, got deny\n" +
+				"  no place\\x0aError: fake\n" +
+				"  sshTests[0]: bob@ -> bob@ as root: expected deny, got check",
+		},
+		{
+			"a policy refused, in the order of the file, a line with no column, and tests that did not run",
+			func() clientv0.Problem {
+				p := policyRefused([]any{
+					map[string]any{"message": "c", "line": 3, "column": 9},
+					map[string]any{"message": "a", "line": 1, "column": 57},
+					map[string]any{"message": "b", "line": 3, "column": 2},
+					map[string]any{"message": "only a line", "line": 2, "column": nil},
+				}, 4, []any{
+					map[string]any{"kind": "ssh", "index": 1, "src": "alice@", "dst": "alice@", "user": "root", "want": "accept", "got": "deny", "line": 2, "column": 5},
+				}, 1)
+				p.Details["testsNotRun"] = 3
+
+				return p
+			}(),
+			"the policy is not valid.\n" +
+				"  line 1, column 57: a\n" +
+				"  line 2: only a line\n" +
+				"  line 2, column 5: SSH test alice@ -> alice@ as root: expected accept, got deny\n" +
+				"  line 3, column 2: b\n" +
+				"  line 3, column 9: c\n" +
+				"  3 tests did not run, because of the problems above.",
+		},
+		{
+			"a policy refused with lists the server cut",
+			policyRefused([]any{map[string]any{"message": `unknown tag "tag:a"`, "line": 1, "column": 2}}, 150,
+				[]any{map[string]any{"kind": "acl", "index": 0, "src": "a@", "dst": "b@:1", "want": "deny", "got": "accept", "line": 3, "column": 1}}, 101),
+			"the policy is not valid.\n" +
+				"  line 1, column 2: unknown tag \"tag:a\"\n" +
+				"  line 3, column 1: test a@ -> b@:1: expected deny, got accept\n" +
+				"  150 problems in all; the first 1 are shown.\n" +
+				"  101 failed tests in all; the first 1 are shown.",
+		},
+		{"a policy file", clientv0.Problem{Code: clientv0.ProblemCodePolicyReadOnly, Details: map[string]any{"path": "/etc/headscale/policy.hujson"}}, "the policy is read from /etc/headscale/policy.hujson. Edit that file."},
+		{
+			"a policy file that is not set",
+			clientv0.Problem{Code: clientv0.ProblemCodePolicyReadOnly, Details: map[string]any{"path": ""}},
+			"no policy file is set (policy.path), and the policy cannot be written while policy.mode is file.",
+		},
 		{"internal names the request", clientv0.Problem{Code: clientv0.ProblemCodeInternal, RequestId: "Zx81kq3f9a0c"}, "the server had an internal error. Its log has the request Zx81kq3f9a0c."},
 		{"a code this build does not know", clientv0.Problem{Code: "user_has_nodes", Title: "The user still owns nodes"}, "The user still owns nodes (user_has_nodes)."},
 	} {
@@ -208,6 +264,16 @@ func TestProblemSentence(t *testing.T) {
 	require.EqualError(t, node, "the tag list is empty. A tagged node needs at least one tag.", "tags required of a node")
 
 	require.EqualError(t, problemOf(502, []byte("<html>")), "the server answered 502 Bad Gateway")
+
+	reload := &ProblemError{Problem: policyRefused([]any{map[string]any{"message": "x", "line": 1, "column": 1}}, 1, []any{}, 0), kept: true}
+	require.EqualError(t, reload, "the policy is not valid. The old policy is still in use.\n  line 1, column 1: x", "a reload refused")
+}
+
+// policyRefused is policy_invalid with its details as the server sends them.
+func policyRefused(errs []any, errCount int, tests []any, testCount int) clientv0.Problem {
+	return clientv0.Problem{Code: clientv0.ProblemCodePolicyInvalid, Details: map[string]any{
+		"policyErrors": errs, "policyErrorCount": errCount, "failedTests": tests, "failedTestCount": testCount,
+	}}
 }
 
 // TestFlagsOf: an invalid_field entry names the flag or the argument that
@@ -310,4 +376,25 @@ func hasNodesOf(name string, nodes []any) clientv0.Problem {
 		Object:  nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "user", Id: "3", Name: name}),
 		Details: map[string]any{"nodes": list},
 	}
+}
+
+func TestProblemFieldNames(t *testing.T) {
+	t.Parallel()
+
+	const raw = `{"code":"new_issue","coDe":"extra_code","title":"Known","titLe":"Extra","object":{"name":"alpha","naMe":"beta"}}`
+
+	err := problemOf(http.StatusUnprocessableEntity, []byte(raw))
+	problem, ok := errors.AsType[*ProblemError](err)
+	require.True(t, ok)
+
+	obj, err := problem.Problem.Object.Get()
+	require.NoError(t, err)
+	require.Equal(t, []string{"new_issue", "Known", "alpha"}, []string{string(problem.Problem.Code), problem.Problem.Title, obj.Name})
+}
+
+func TestPolicyProblemFieldNames(t *testing.T) {
+	t.Parallel()
+
+	const raw = `{"code":"policy_invalid","details":{"policyErrors":[{"message":"alpha","messAge":"beta"}],"policyerrors":[{"message":"extra"}]}}`
+	require.EqualError(t, problemOf(http.StatusUnprocessableEntity, []byte(raw)), "the policy is not valid.\n  alpha")
 }

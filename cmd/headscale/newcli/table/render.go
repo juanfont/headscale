@@ -6,7 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
+
+	"github.com/clipperhouse/displaywidth"
 )
 
 // Screen is a terminal that a table is shown on. Its width is in cells; 0
@@ -262,26 +263,7 @@ func narrow(widths, floors, tiers []int, total int) {
 }
 
 // fit is text cut to n cells, ending in "…" when cut.
-func fit(text string, n int) string {
-	if width(text) <= n {
-		return text
-	}
-
-	var b strings.Builder
-
-	used := 0
-	for _, r := range text {
-		if used+width(string(r)) > n-1 {
-			break
-		}
-
-		b.WriteRune(r)
-
-		used += width(string(r))
-	}
-
-	return b.String() + "…"
-}
+func fit(text string, n int) string { return (displaywidth.Options{}).TruncateString(text, n, "…") }
 
 // FitList is as many entries as fit in n cells, then "… (+K)" for the K
 // left out.
@@ -342,26 +324,8 @@ func aligned(w io.Writer, lines [][]string) error {
 	return err
 }
 
-// width is the cells s takes on a terminal: two for the wide characters of
-// East Asian scripts and for emoji, none for a mark that joins the one
-// before it. The ranges are those of wcwidth that a table of names meets.
-func width(s string) int {
-	n := 0
-
-	for _, r := range s {
-		switch {
-		case unicode.In(r, unicode.Mn, unicode.Me) || r == 0x200d || r >= 0xfe00 && r <= 0xfe0f:
-		case r >= 0x1100 && r <= 0x115f, r >= 0x2e80 && r <= 0xa4cf && r != 0x303f, r >= 0xac00 && r <= 0xd7a3,
-			r >= 0xf900 && r <= 0xfaff, r >= 0xfe30 && r <= 0xfe4f, r >= 0xff00 && r <= 0xff60, r >= 0xffe0 && r <= 0xffe6,
-			r >= 0x1f300 && r <= 0x1f6ff, r >= 0x1f900 && r <= 0x1faff, r >= 0x20000 && r <= 0x3fffd:
-			n += 2
-		default:
-			n++
-		}
-	}
-
-	return n
-}
+// width counts display cells using the same grapheme boundaries as fit.
+func width(s string) int { return (displaywidth.Options{}).String(s) }
 
 // onScreen is the cell of row as a terminal shows it. A list that is not
 // stacked, and the tags of an owner, give way by whole entries.

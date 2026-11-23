@@ -215,3 +215,43 @@ func createFilePolicyApp(t *testing.T) *Headscale {
 
 	return app
 }
+
+// TestAPIV1PolicySetNull: /api/v1 keeps taking the text null, which installs
+// no policy, as the legacy API did; API v0 refuses it.
+// TestAPIV1PolicySetNUL pins what /api/v1 answers for a text with a NUL
+// byte: on SQLite it stores it, as always. PostgreSQL cannot store it, so
+// there the write fails and the policy before stays (state's
+// TestPolicyNULByte).
+func TestAPIV1PolicySetNUL(t *testing.T) {
+	text := "{}\n// \x00\n"
+
+	body, err := json.Marshal(map[string]string{"policy": text})
+	require.NoError(t, err)
+
+	h := newAPIV1Harness(t)
+
+	res := h.callHuma(http.MethodPut, "/api/v1/policy", body)
+	require.Equal(t, http.StatusOK, res.status, string(res.body))
+
+	var got struct {
+		Policy string `json:"policy"`
+	}
+	require.NoError(t, json.Unmarshal(res.body, &got))
+	assert.Equal(t, text, got.Policy)
+}
+
+func TestAPIV1PolicySetNull(t *testing.T) {
+	body, err := json.Marshal(map[string]string{"policy": "null"})
+	require.NoError(t, err)
+
+	h := newAPIV1Harness(t)
+
+	res := h.callHuma(http.MethodPut, "/api/v1/policy", body)
+	require.Equal(t, http.StatusOK, res.status, string(res.body))
+
+	var got struct {
+		Policy string `json:"policy"`
+	}
+	require.NoError(t, json.Unmarshal(res.body, &got))
+	assert.Equal(t, "null", got.Policy)
+}

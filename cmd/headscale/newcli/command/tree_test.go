@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,45 @@ func TestBuildChecks(t *testing.T) {
 				return s
 			}())},
 			"get: both Columns and Done; Done is printed in place of the sheet",
+		},
+		{
+			"Verbatim with Columns",
+			[]Node{New(func() Spec[NoInput, item] { s := spec(); s.Verbatim = func(o item) string { return o.Name }; return s }())},
+			"get: " + errVerbatim.Error(),
+		},
+		{
+			"Verbatim with Done",
+			[]Node{New(func() Spec[NoInput, item] {
+				s := spec()
+				s.Columns, s.Done = nil, func(NoInput, item, time.Time) string { return "done" }
+				s.Verbatim = func(o item) string { return o.Name }
+
+				return s
+			}())},
+			"get: " + errVerbatim.Error(),
+		},
+		{
+			"Verbatim with Secret",
+			[]Node{New(func() Spec[NoInput, item] {
+				s := spec()
+				s.Columns = nil
+				s.Verbatim = func(o item) string { return o.Name }
+				s.Secret = func(o item) string { return o.Name }
+
+				return s
+			}())},
+			// The checks of Secret say their own besides.
+			"get: " + errVerbatim.Error() + "\n" +
+				"a result that holds a secret, a field key or secret at any depth, is printed by Secret, and only such a result has Secret\n" +
+				"get: a Secret needs list and delete beside it, which the sentence of a lost secret names",
+		},
+		{
+			"Verbatim of no result",
+			[]Node{New(Spec[NoInput, NoOutput]{
+				Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, NoOutput],
+				Verbatim: func(NoOutput) string { return "" },
+			})},
+			"get: " + errVerbatim.Error(),
 		},
 		{
 			"a list with no default column",
@@ -291,4 +331,56 @@ func TestSaid(t *testing.T) {
 	stdout.Reset()
 	require.Equal(t, 1, Run(tree, []string{"answer", "-o", "json"}, Env{Stdout: &stdout, Stderr: &stderr}))
 	require.Empty(t, stdout.String())
+}
+
+func TestCommandDescriptionsAreIndependent(t *testing.T) {
+	t.Parallel()
+
+	s := spec()
+	s.Aliases = []string{"ls"}
+	tree, err := Build("prog", "Items", New(s))
+	require.NoError(t, err)
+
+	s.Aliases[0] = "other"
+	s.Example[0] = "changed input"
+	first := tree.Commands()
+	require.Equal(t, []string{"ls"}, first[0].Aliases)
+	require.Equal(t, []string{"prog items get"}, first[0].Example)
+	first[0].Aliases[0] = "again"
+	first[0].Example[0] = "changed result"
+	second := tree.Commands()
+	require.Equal(t, []string{"ls"}, second[0].Aliases)
+	require.Equal(t, []string{"prog items get"}, second[0].Example)
+	require.Equal(t, "get", tree.Reached([]string{"ls"}))
+}
+
+func TestReuseGroupChildren(t *testing.T) {
+	s := spec()
+	s.Name = "list"
+	children := []Node{New(s)}
+	tree, err := Build("prog", "Items", Group{Name: "items", Short: "Items", Commands: children})
+	require.NoError(t, err)
+
+	s.Name = "lost"
+	children[0] = New(s)
+
+	var out, stderr bytes.Buffer
+	require.Equal(t, 1, Run(tree, []string{"items", "lst"}, Env{Stdout: &out, Stderr: &stderr}))
+	require.Contains(t, stderr.String(), `Did you mean "items list"?`)
+}
+
+func TestReuseListColumns(t *testing.T) {
+	cols := slices.Clone(itemColumns)
+	list := NewList(ListSpec[NoInput, item]{
+		Name: "list", Short: "List items", Long: "List items.", Example: []string{"prog list"}, NoRows: "No items.", Local: true, Columns: cols,
+		Run: func(Ctx, NoInput) ([]item, error) { return []item{{ID: "1", Name: "2"}, {ID: "2", Name: "1"}}, nil },
+	})
+	tree, err := Build("prog", "Items", list)
+	require.NoError(t, err)
+
+	cols[1].Field = "id"
+
+	var out, diag bytes.Buffer
+	require.Equal(t, 0, Run(tree, []string{"list", "--filter=name=1", "--columns=id"}, Env{Stdout: &out, Stderr: &diag}), diag.String())
+	require.Equal(t, "ID\n2\n", out.String())
 }

@@ -1,10 +1,12 @@
 package v2
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"maps"
 	"net/netip"
 	"slices"
@@ -20,6 +22,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
+	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -33,6 +36,46 @@ var ErrInvalidTagOwner = errors.New("tag owner is not an Alias")
 
 // ErrPolicyEmpty is returned by [PolicyManager.SetPolicy] for a zero-length policy.
 var ErrPolicyEmpty = errors.New(`policy is empty, use "{}" to allow all`)
+
+// ErrPolicyNotObject is a policy text whose value is not an object, such as
+// null, a list or a string.
+var ErrPolicyNotObject = errors.New("the policy must be an object, such as {}")
+
+// ErrPolicyNUL is a policy text with a NUL byte, which PostgreSQL cannot
+// store, even in a comment.
+var ErrPolicyNUL = errors.New("the text has a NUL byte, which a policy cannot hold; remove it")
+
+// CheckPolicyText is what the text b is as a policy, the one answer that
+// start-up, a reload, the watch of the file and a write of API v0 give for
+// the same bytes: [ErrPolicyNUL], placed, for a text with a NUL byte,
+// [ErrPolicyEmpty] for a text that is empty or only white space,
+// [ErrPolicyNotObject], placed, for a value that is not an object, nil
+// otherwise. A text that does not parse is nil here; the parse says why. The
+// older APIs keep taking null, which installs no policy.
+func CheckPolicyText(b []byte) error {
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		line, col := lineColumn(b, i)
+
+		return &placedError{err: ErrPolicyNUL, message: ErrPolicyNUL.Error(), line: line, column: col}
+	}
+
+	ast, err := hujson.Parse(bytes.Clone(b))
+	if err != nil {
+		if len(bytes.TrimSpace(b)) == 0 {
+			return ErrPolicyEmpty
+		}
+
+		return nil
+	}
+
+	if ast.Value.Kind() == '{' {
+		return nil
+	}
+
+	line, col := lineColumn(b, ast.StartOffset)
+
+	return &placedError{err: ErrPolicyNotObject, message: ErrPolicyNotObject.Error(), line: line, column: col}
+}
 
 type PolicyManager struct {
 	// RWMutex, not Mutex, so concurrent map generation does not serialise on
@@ -136,38 +179,40 @@ type filterAndPolicy struct {
 // Missing-user tokens stay tolerant. Empty users → no-op for
 // syntax-only checks.
 func validateUserReferences(pol *Policy, users types.Users) error {
-	if pol == nil || len(users) == 0 {
-		return nil
-	}
-
 	var errs []error
 
-	check := func(u *Username) {
-		if u == nil {
+	for u, matches := range ambiguousUsers(pol, users) {
+		_, err := u.resolveUser(users)
+		errs = append(errs, &ambiguousUserError{err: err, token: string(*u), users: matches})
+	}
+
+	return multierr.New(errs...)
+}
+
+// ambiguousUsers yields every place pol names a user that more than one of
+// users matches, with those users.
+func ambiguousUsers(pol *Policy, users types.Users) iter.Seq2[*Username, types.Users] {
+	return func(yield func(*Username, types.Users) bool) {
+		if pol == nil || len(users) == 0 {
 			return
 		}
 
-		_, err := u.resolveUser(users)
-		if err != nil && errors.Is(err, ErrMultipleUsersFound) {
-			errs = append(errs, err)
-		}
-	}
+		pol.walkUsernames(func(u *Username) bool {
+			matches := u.matches(users)
 
-	checkAlias := func(a Alias) {
-		if u, ok := a.(*Username); ok {
-			check(u)
-		}
+			return len(matches) < 2 || yield(u, matches)
+		})
 	}
+}
 
-	checkOwner := func(o Owner) {
-		if u, ok := o.(*Username); ok {
-			check(u)
-		}
-	}
+// walkUsernames calls fn with every user token in pol that names users,
+// until fn returns false.
+func (pol *Policy) walkUsernames(fn func(*Username) bool) {
+	ok := true
 
-	checkAutoApprover := func(aa AutoApprover) {
-		if u, ok := aa.(*Username); ok {
-			check(u)
+	check := func(v any) {
+		if u, isUser := v.(*Username); ok && isUser && u != nil {
+			ok = fn(u)
 		}
 	}
 
@@ -179,57 +224,76 @@ func validateUserReferences(pol *Policy, users types.Users) error {
 
 	for _, owners := range pol.TagOwners {
 		for _, o := range owners {
-			checkOwner(o)
+			check(o)
 		}
 	}
 
 	for _, approvers := range pol.AutoApprovers.Routes {
 		for _, aa := range approvers {
-			checkAutoApprover(aa)
+			check(aa)
 		}
 	}
 
 	for _, aa := range pol.AutoApprovers.ExitNode {
-		checkAutoApprover(aa)
+		check(aa)
 	}
 
 	for _, acl := range pol.ACLs {
 		for _, src := range acl.Sources {
-			checkAlias(src)
+			check(src)
 		}
 
 		for _, dst := range acl.Destinations {
-			checkAlias(dst.Alias)
+			check(dst.Alias)
 		}
 	}
 
 	for _, grant := range pol.Grants {
 		for _, src := range grant.Sources {
-			checkAlias(src)
+			check(src)
 		}
 
 		for _, dst := range grant.Destinations {
-			checkAlias(dst)
+			check(dst)
 		}
 	}
 
 	for _, attr := range pol.NodeAttrs {
 		for _, target := range attr.Targets {
-			checkAlias(target)
+			check(target)
 		}
 	}
 
 	for _, ssh := range pol.SSHs {
 		for _, src := range ssh.Sources {
-			checkAlias(src)
+			check(src)
 		}
 
 		for _, dst := range ssh.Destinations {
-			checkAlias(dst)
+			check(dst)
 		}
 	}
+}
 
-	return multierr.New(errs...)
+// AmbiguousUsers is every user token of the policy in force that more than
+// one user matches, sorted. Such a token matches nobody.
+func (pm *PolicyManager) AmbiguousUsers() []string {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	var tokens []string
+
+	for u := range ambiguousUsers(pm.pol, pm.users) {
+		tokens = append(tokens, string(*u))
+	}
+
+	slices.Sort(tokens)
+
+	return slices.Compact(tokens)
 }
 
 // NewPolicyManager creates a new [PolicyManager] from a policy file and a list of users and nodes.
@@ -708,7 +772,7 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 
 	pol, err := unmarshalPolicy(polB)
 	if err != nil {
-		return false, fmt.Errorf("parsing policy: %w", err)
+		return false, &contextError{context: "parsing policy", err: err, beforeTests: true}
 	}
 
 	pm.mu.RLock()
@@ -717,7 +781,7 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 
 	err = validateUserReferences(pol, users)
 	if err != nil {
-		return false, fmt.Errorf("validating policy user references: %w", err)
+		return false, &contextError{context: "validating policy user references", err: err, beforeTests: true}
 	}
 
 	// SetPolicy is the user-write boundary. Tests evaluate against a
@@ -770,6 +834,98 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	// Reloading the same bytes leaves changed false, so each policy warns once.
 	if changed {
 		warnMalformedNextDNSAttrs(pol)
+	}
+
+	return changed, nil
+}
+
+// PreparedPolicy is a policy that passed every check of a write, its tests
+// included, ready for [PolicyManager.InstallPolicy]. A nil policy inside is
+// "no policy", which only [PolicyManager.InstallPolicy] hands out.
+type PreparedPolicy struct {
+	pol *Policy
+}
+
+// PreparePolicy runs every check of a policy write of b against users and
+// nodes on a throwaway manager, tests included, and keeps the parsed policy
+// so that an install need not run them again.
+func PreparePolicy(b []byte, users types.Users, nodes views.Slice[types.NodeView]) (*PreparedPolicy, error) {
+	pm, err := NewPolicyManager(nil, users, nodes)
+	if err != nil {
+		return nil, fmt.Errorf("creating policy manager: %w", err)
+	}
+
+	_, err = pm.SetPolicy(b)
+	if err != nil {
+		return nil, err
+	}
+
+	// SSH rules compile per node, so without nodes this cannot catch every
+	// case. The base URL only fills check-action URLs, which nothing reads.
+	if nodes.Len() > 0 {
+		_, err = pm.SSHPolicy("", nodes.At(0))
+		if err != nil {
+			return nil, fmt.Errorf("verifying SSH rules: %w", err)
+		}
+	}
+
+	return &PreparedPolicy{pol: pm.pol}, nil
+}
+
+// PolicyInForce is the policy in force, for [PolicyManager.RestorePolicy];
+// nil inside is no policy.
+func (pm *PolicyManager) PolicyInForce() *PreparedPolicy {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	return &PreparedPolicy{pol: pm.pol}
+}
+
+// InstallPolicy puts p in force. Its tests ran in [PreparePolicy]; only the
+// check that depends on the users of this moment runs again, so the time
+// the lock is held does not depend on how many tests p has.
+func (pm *PolicyManager) InstallPolicy(p *PreparedPolicy) (bool, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	err := validateUserReferences(p.pol, pm.users)
+	if err != nil {
+		return false, &contextError{context: "validating policy user references", err: err}
+	}
+
+	changed, err := pm.swapLocked(p.pol)
+	if err != nil {
+		return false, err
+	}
+
+	if changed {
+		warnMalformedNextDNSAttrs(p.pol)
+	}
+
+	return changed, nil
+}
+
+// RestorePolicy puts back what [PolicyManager.PolicyInForce] returned,
+// checking nothing: it was in force, and the users may have changed under
+// it since. It recompiles it as every user and node change does, so it
+// fails only where those would fail for it too.
+func (pm *PolicyManager) RestorePolicy(p *PreparedPolicy) (bool, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	return pm.swapLocked(p.pol)
+}
+
+// swapLocked compiles pol in place of pm.pol; on failure pm stays as it was.
+func (pm *PolicyManager) swapLocked(pol *Policy) (bool, error) {
+	prev := pm.pol
+	pm.pol = pol
+
+	changed, err := pm.updateLocked()
+	if err != nil {
+		pm.pol = prev
+
+		return false, err
 	}
 
 	return changed, nil

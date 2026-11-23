@@ -114,7 +114,7 @@ func registerPolicy(api huma.API, b Backend) {
 			)
 		}
 
-		updated, cs, err := b.State.UpdatePolicy([]byte(in.Body.Policy))
+		updated, cs, err := b.State.UpdatePolicy([]byte(in.Body.Policy)) //nolint:contextcheck // the policy store has a deadline of its own, under the policy lock
 		b.Change(cs...)
 
 		if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -34,14 +35,20 @@ type leaf struct {
 	name, short, long          string
 	example, aliases, oldNames []string
 
+	// local is a command that needs no server as it is typed with no
+	// flag, as the root help lists it: a command that talks to the server
+	// unless a flag says otherwise, such as policy get with the database
+	// bypass, is a server command there.
 	local, output, config bool
 	// own is a result that is the CLI's own object, not one of the API.
 	own bool
 	// list is a list: it takes the list flags. info is its columns, and
 	// checkList checks the values of the list flags against them.
-	list      bool
-	info      []table.ColumnInfo
-	checkList func(line *cmdline.Line, command string) (int, error)
+	list         bool
+	info         []table.ColumnInfo
+	checkColumns func(string) error
+	checkFilters func(string) error
+	checkList    func(line *cmdline.Line, command string) (int, error)
 	// noRows is what a list with no rows says on a terminal; filter is an
 	// example of --filter for its help; only is the filter that --all
 	// removes, "" for a list that hides nothing.
@@ -58,6 +65,8 @@ type leaf struct {
 	secret bool
 	// noJSON is a test tool with no --output: Spec.NoJSON.
 	noJSON bool
+	// verbatim prints a text of the server byte for byte: Spec.Verbatim.
+	verbatim bool
 	// end is the delete of a credential, made by NewEnd.
 	end bool
 	// hint follows a wrong argument count or an empty list argument;
@@ -125,6 +134,7 @@ var (
 	errNoSay         = errors.New("is cut to the width of the terminal, and Long does not say so")
 	errSaid          = errors.New("a result Said needs Done, which prints it, and no Columns")
 	errNoJSON        = errors.New("NoJSON is a test tool that prints one sentence: it needs Done and no Columns")
+	errVerbatim      = errors.New("a Verbatim text is printed as it is, so the spec needs a result, and neither Columns, Done nor Secret")
 )
 
 // specError is a spec that is wrong, named by its path.
@@ -150,8 +160,24 @@ func (format) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Direct
 	return cmdline.Words(prefix, "json"), cmdline.NoFiles
 }
 
+func cloneColumns[R any](cols table.Columns[R]) table.Columns[R] {
+	cols = slices.Clone(cols)
+	for i := range cols {
+		fold := maps.Clone(cols[i].Fold)
+		for key, values := range fold {
+			fold[key] = slices.Clone(values)
+		}
+
+		cols[i].Fold = fold
+	}
+
+	return cols
+}
+
 // New makes the command of a spec.
 func New[In, Out any](s Spec[In, Out]) Node {
+	s.Columns = cloneColumns(s.Columns)
+	s.Blocks = slices.Clone(s.Blocks)
 	noOut := isNoOutput[Out]()
 
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
@@ -166,6 +192,7 @@ func New[In, Out any](s Spec[In, Out]) Node {
 	l.changed = s.Changed != ""
 	l.secret = s.Secret != nil
 	l.noJSON = s.NoJSON
+	l.verbatim = s.Verbatim != nil
 	l.hint = s.Hint
 	l.emptyList = s.EmptyList
 	l.target, _ = targetType(reflect.TypeFor[In]())
@@ -198,6 +225,8 @@ func New[In, Out any](s Spec[In, Out]) Node {
 				return flagsOf[In](c.about(err, in))
 			case s.Secret != nil:
 				return printSecret(c, out, s.Secret(out), func() string { return s.Done(in, out, c.Now()) })
+			case s.Verbatim != nil && !notRead:
+				return printVerbatim(c, out, s.Verbatim(out))
 			}
 
 			done := func() string {
@@ -272,6 +301,10 @@ func checkSpec[In, Out any](s Spec[In, Out]) error {
 	}
 
 	switch {
+	case s.Verbatim != nil:
+		if noOut || s.Columns != nil || s.Done != nil || s.Secret != nil {
+			errs = append(errs, errVerbatim)
+		}
 	case !noOut && s.Columns == nil && s.Done == nil:
 		errs = append(errs, errNoShow)
 	case s.Columns != nil && s.Done != nil:
@@ -293,6 +326,7 @@ func checkSpec[In, Out any](s Spec[In, Out]) error {
 
 // NewList makes the command of a list spec.
 func NewList[In, Row any](s ListSpec[In, Row]) Node {
+	s.Columns = cloneColumns(s.Columns)
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
 	l.output = true
 	l.list = true
@@ -300,6 +334,8 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 	l.noRows = s.NoRows
 	l.only = s.Only
 	l.filter = filterExample(s.Example)
+	l.checkColumns = func(value string) error { return columnsCheck(s.Columns, value) }
+	l.checkFilters = func(value string) error { return checkFilters(s.Columns, value) }
 	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
 	rule, whole, ruleErr := inputRule[In]()
 	l.valid = rule
@@ -370,9 +406,11 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 }
 
 func common[In any](name, short, long string, example, aliases, oldNames []string, local bool, needs func(In) bool, readsConfig bool) *leaf {
+	var zero In
+
 	return &leaf{
-		name: name, short: short, long: long, example: example, aliases: aliases, oldNames: oldNames,
-		local:  local,
+		name: name, short: short, long: long, example: slices.Clone(example), aliases: aliases, oldNames: oldNames,
+		local:  local && (needs == nil || !needs(zero)),
 		config: !local || needs != nil || readsConfig,
 		server: func(line *cmdline.Line) bool {
 			if !local {
@@ -502,6 +540,7 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 				bad("no Short")
 			}
 
+			n.Commands = slices.Clone(n.Commands)
 			t.groups[at] = n
 
 			g := cmdline.Group{Name: n.Name, Help: n.Short, Flags: []any{helpFlags{}}}
@@ -672,6 +711,9 @@ type Command struct {
 	// NoJSON is a test tool that takes no --output: a test lists each, with
 	// why.
 	NoJSON bool
+	// Verbatim prints a text of the server byte for byte, past the rule
+	// that masks a credential: a test lists each, with why.
+	Verbatim bool
 	// Whole are the arguments and flags that take a secret typed whole, such
 	// as <auth-id>: the tests that it leaves in one request and comes back
 	// in nothing run on each.
@@ -686,7 +728,7 @@ func (t *Tree) Commands() []Command {
 
 	walk = func(c *cmdline.Info) {
 		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && len(c.Commands) == 0 {
-			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret, NoJSON: l.noJSON, Whole: wholeArgs(c)})
+			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: slices.Clone(l.example), Aliases: slices.Clone(c.Aliases), Secret: l.secret, NoJSON: l.noJSON, Verbatim: l.verbatim, Whole: wholeArgs(c)})
 		}
 
 		for _, s := range c.Commands {

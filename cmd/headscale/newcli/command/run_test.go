@@ -3,6 +3,7 @@ package command
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/oapi-codegen/nullable"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1183,6 +1185,23 @@ func TestAbout(t *testing.T) {
 	}
 }
 
+// TestRunTurnsTheServerLogOff: a command writes what it says and no line
+// of the server's log, whatever log the process had set up.
+func TestRunTurnsTheServerLogOff(t *testing.T) {
+	level := zerolog.GlobalLevel()
+
+	t.Cleanup(func() { zerolog.SetGlobalLevel(level) })
+
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+
+	tree, err := Build("prog", "A program", New(Spec[NoInput, NoOutput]{
+		Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, NoOutput],
+	}))
+	require.NoError(t, err)
+	require.Equal(t, 0, Run(tree, []string{"get"}, Env{Stdout: io.Discard, Stderr: io.Discard}))
+	require.Equal(t, zerolog.Disabled, zerolog.GlobalLevel())
+}
+
 // TestValid: Valid refuses a line before any call or lookup, with its own
 // sentence; a line it takes runs.
 func TestValid(t *testing.T) {
@@ -1210,4 +1229,68 @@ func TestValid(t *testing.T) {
 
 	require.Equal(t, 0, Run(tree, []string{"get", "a"}, Env{Stdout: io.Discard, Stderr: io.Discard}))
 	require.True(t, ran)
+}
+
+// TestVerbatim: a text the server keeps is printed byte for byte into a
+// pipe: no line end added or cut, no control made visible, no credential
+// masked. On a terminal it is a text of the CLI: controls visible, a
+// credential as its kind, one line end. -o json prints the object, and the
+// list of commands names the command.
+func TestVerbatim(t *testing.T) {
+	t.Parallel()
+
+	const text = "// hskey-api-abcdefghijkl-s3cret\r\n{\t\"a\": \"\x1b[2J\"}" //nolint:gosec // a made-up key
+
+	tree, err := Build("prog", "A program", New(Spec[NoInput, item]{
+		Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true,
+		Run:      func(Ctx, NoInput) (item, error) { return item{ID: "1", Name: text}, nil },
+		Verbatim: func(out item) string { return out.Name },
+	}))
+	require.NoError(t, err)
+
+	for screen, want := range map[bool]string{false: text, true: "// hskey-api-***\\x0d\n{\t\"a\": \"\\x1b[2J\"}\n"} {
+		var stdout, stderr bytes.Buffer
+
+		require.Equal(t, 0, Run(tree, []string{"get"}, Env{Stdout: &stdout, Stderr: &stderr, StdoutTerminal: screen}))
+		require.Equal(t, want, stdout.String(), "a terminal: %t", screen)
+		require.Empty(t, stderr.String())
+	}
+
+	var stdout bytes.Buffer
+
+	require.Equal(t, 0, Run(tree, []string{"get", "-o", "json"}, Env{Stdout: &stdout, Stderr: io.Discard}))
+
+	var got item
+
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	require.Equal(t, item{ID: "1", Name: text}, got)
+
+	require.Equal(t, []Command{{Path: "get", Example: []string{"prog get"}, Verbatim: true}}, tree.Commands())
+}
+
+// TestAnswer: a Local command that makes what the server would answer
+// gives -o json in the server's order of keys, not the client's.
+func TestAnswer(t *testing.T) {
+	t.Parallel()
+
+	tree, err := Build("prog", "A program", New(Spec[NoInput, item]{
+		Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true,
+		Run: func(c Ctx, _ NoInput) (item, error) {
+			out := item{ID: "1", Name: "a"}
+			c.Answer(out, struct {
+				Name string `json:"name"`
+				ID   string `json:"id"`
+			}{out.Name, out.ID})
+
+			return out, nil
+		},
+		Done: func(NoInput, item, time.Time) string { return "done" },
+	}))
+	require.NoError(t, err)
+
+	var stdout bytes.Buffer
+
+	require.Equal(t, 0, Run(tree, []string{"get", "-o", "json"}, Env{Stdout: &stdout, Stderr: io.Discard}))
+	require.JSONEq(t, `{"name": "a", "id": "1"}`, stdout.String())
+	require.Less(t, strings.Index(stdout.String(), "name"), strings.Index(stdout.String(), "id"), "the order of keys: %s", stdout.String())
 }

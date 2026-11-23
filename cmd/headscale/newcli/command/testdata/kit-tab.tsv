@@ -1,6 +1,6 @@
-# headscale: 76 rows: fails 2 pass 62 stretch 2 waits 10
+# headscale: 76 rows: fails 2 pass 64 stretch 2 waits 8
 # model: 76 rows: fails 2 pass 74
-headscale	C01	waits	serve, check, policy
+headscale	C01	waits	serve, check
 headscale	C02	pass
 headscale	C03	pass
 headscale	C04	pass
@@ -15,7 +15,7 @@ headscale	C12	pass
 headscale	C13	pass
 headscale	C14	pass
 headscale	C15	pass
-headscale	C16	waits	policy set
+headscale	C16	pass
 headscale	C17	waits	check config
 headscale	C18	pass
 headscale	C19	pass
@@ -33,7 +33,7 @@ headscale	N10	pass
 headscale	N11	pass
 headscale	N12	waits	check config
 headscale	N13	waits	check config
-headscale	N14	waits	policy set
+headscale	N14	pass
 headscale	N15	waits	check config
 headscale	N16	pass
 headscale	N17	waits	serve

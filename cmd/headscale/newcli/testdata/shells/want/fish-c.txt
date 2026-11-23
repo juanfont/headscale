@@ -4,6 +4,7 @@ LINE: headscale |
   completion	Print the completion script of a shell
   debug	A health check and test tools
   nodes	Manage nodes
+  policy	Read, check and replace the policy
   users	Manage users
   version	Print the version
 LINE: headscale ve|
@@ -72,6 +73,7 @@ LINE: headscale -c -o |
   completion	Print the completion script of a shell
   debug	A health check and test tools
   nodes	Manage nodes
+  policy	Read, check and replace the policy
   users	Manage users
   version	Print the version
 LINE: headscale -c x ve|
@@ -82,6 +84,7 @@ LINE: headscale nodez |
   completion	Print the completion script of a shell
   debug	A health check and test tools
   nodes	Manage nodes
+  policy	Read, check and replace the policy
   users	Manage users
   version	Print the version
 LINE: headscale versoin --|
@@ -136,6 +139,7 @@ LINE: headscale --version |
   completion	Print the completion script of a shell
   debug	A health check and test tools
   nodes	Manage nodes
+  policy	Read, check and replace the policy
   users	Manage users
   version	Print the version
 LINE: headscale no|
@@ -223,6 +227,9 @@ LINE: headscale nodes list --sort -la|
 LINE: headscale nodes list --filter=ow|
   --filter=owner
   --filter=owner.
+LINE: headscale policy set |
+  config.yaml
+  policy.hujson
 LINE: headscale nodes list |
   (none)
 LINE: headscale nodes delete |
@@ -269,6 +276,9 @@ LINE: headscale nodes list -c|
   -c	Config file
 LINE: headscale nodes list --bogus --l|
   --list-columns	List the columns, the API field behind each, and exit
+LINE: headscale policy set --bogus |
+  config.yaml
+  policy.hujson
 LINE: headscale nodes list --sort id --s|
   (none)
 LINE: headscale nodes list --filter id --f|

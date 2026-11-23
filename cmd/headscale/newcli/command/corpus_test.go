@@ -761,7 +761,7 @@ func TestTestTreesUseTheBuilder(t *testing.T) {
 		return out
 	}
 
-	known := []string{"Name", "Short", "Long", "Example", "Aliases", "OldNames", "Local", "NeedsServer", "ReadsConfig", "NoJSON", "NeedsChange", "Columns", "Blocks", "Confirm", "Changed", "Hint", "EmptyList", "Valid", "NoRows", "Only", "Run", "Done", "Secret"}
+	known := []string{"Name", "Short", "Long", "Example", "Aliases", "OldNames", "Local", "NeedsServer", "ReadsConfig", "NoJSON", "NeedsChange", "Columns", "Blocks", "Confirm", "Changed", "Hint", "EmptyList", "Valid", "NoRows", "Only", "Run", "Done", "Secret", "Verbatim"}
 	for _, typ := range []reflect.Type{reflect.TypeFor[Spec[NoInput, NoOutput]](), reflect.TypeFor[ListSpec[NoInput, item]]()} {
 		require.Subset(t, known, fields(typ),
 			"%s has a new field: if the test trees need it, give it to them; then add it here", typ.Name())
