@@ -3,6 +3,7 @@ package cmdline
 import (
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/juanfont/headscale/cmdline/reader"
@@ -69,6 +70,8 @@ func (f *field) completer(nodes map[*reader.Command]*node) reader.Completer {
 		}
 
 		words, dir := c.Complete(l, cur[i+1:])
+		words = slices.Clone(words)
+
 		for j := range words {
 			words[j] = cur[:i+1] + words[j]
 		}

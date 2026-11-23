@@ -909,6 +909,38 @@ func TestNew(t *testing.T) {
 	}
 }
 
+type commandAliases struct{ color }
+
+func (commandAliases) Complete(line *Line, _ string) ([]string, Directive) {
+	return line.Command.Aliases, NoFiles
+}
+
+func TestListCompletionPreservesWords(t *testing.T) {
+	type in struct {
+		Colors []commandAliases `flag:"colors"`
+	}
+
+	tree, err := New(
+		Command[in]{
+			Name:    "app",
+			Aliases: []string{"red", "blue"},
+			Run:     func(context.Context, in) error { return nil },
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := tree.Complete([]string{"--colors"}, "red,")
+	if !slices.Equal(got, []string{"red,red", "red,blue"}) {
+		t.Fatalf("completion = %q", got)
+	}
+
+	if words := tree.Root().Aliases; !slices.Equal(words, []string{"red", "blue"}) {
+		t.Fatalf("declared aliases after completion = %q", words)
+	}
+}
+
 // TestTab: what the types offer (rules T14, T19–T22); the line is split on
 // spaces and the last word is under the cursor.
 func TestTab(t *testing.T) {
