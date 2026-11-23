@@ -1232,3 +1232,24 @@ func TestRunAfterArgvReuse(t *testing.T) {
 		})
 	}
 }
+
+func TestReuseDeclaredAlias(t *testing.T) {
+	t.Parallel()
+
+	aliases := []string{"ls"}
+	cmd := func(name string, aliases []string) Node {
+		return Command[struct{}]{Name: name, Aliases: aliases, Run: func(context.Context, struct{}) error { return nil }}
+	}
+
+	tree, err := New(Group{Name: "tool", Commands: []Node{cmd("list", aliases), cmd("count", nil)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	aliases[0] = "count"
+
+	line, err := tree.Parse([]string{"count"})
+	if err != nil || line.Command.Name != "count" {
+		t.Fatalf("count selected %q: %v", line.Command.Name, err)
+	}
+}
