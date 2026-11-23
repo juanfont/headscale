@@ -5,6 +5,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/table"
 	"github.com/juanfont/headscale/cmdline"
@@ -41,19 +42,29 @@ func (w *filterWord) UnmarshalText(b []byte) error { *w = filterWord(b); return 
 // --sort, and with no space after it for --filter, whose operator follows.
 const (
 	columnsMark = "\x00s"
+	sortMark    = "\x00o"
 	filterMark  = "\x00f"
 )
 
+// The shell protocol cannot carry a literal tab or line break in a column name.
+func markedColumn(mark, prefix string, dir cmdline.Directive) ([]string, cmdline.Directive) {
+	if strings.ContainsAny(prefix, "\t\r\n") {
+		return nil, dir
+	}
+
+	return []string{mark + prefix}, dir
+}
+
 func (columnWord) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Directive) {
-	return []string{columnsMark + prefix}, cmdline.NoFiles
+	return markedColumn(columnsMark, prefix, cmdline.NoFiles)
 }
 
 func (sortWord) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Directive) {
-	return []string{columnsMark + prefix}, cmdline.NoFiles
+	return markedColumn(sortMark, prefix, cmdline.NoFiles)
 }
 
 func (filterWord) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Directive) {
-	return []string{filterMark + prefix}, cmdline.NoFiles | cmdline.NoSpace
+	return markedColumn(filterMark, prefix, cmdline.NoFiles|cmdline.NoSpace)
 }
 
 // columnNames turns each mark in the Tab answer of a line into the column
@@ -82,12 +93,23 @@ func (t *Tree) columnNames(argv []string, answer string) string {
 			continue
 		}
 
-		if sealed, ok := strings.CutSuffix(before, ","); ok && mark[0] == filterMark[1] && l != nil && l.checkFilters(sealed) != nil {
-			continue
+		if sealed, ok := strings.CutSuffix(before, ","); ok && l != nil {
+			if mark[0] == filterMark[1] && l.checkFilters(sealed) != nil || mark[0] == columnsMark[1] && l.checkColumns(sealed) != nil {
+				continue
+			}
 		}
 
 		prefix, sign := strings.TrimSuffix(mark[1:], "\n"), ""
-		if mark[0] == columnsMark[1] && prefix != "" && (prefix[0] == '+' || prefix[0] == '-') {
+		if mark[0] != sortMark[1] {
+			trimmed := strings.TrimLeftFunc(prefix, unicode.IsSpace)
+			before += prefix[:len(prefix)-len(trimmed)]
+			prefix = trimmed
+		}
+
+		columnSign := mark[0] == columnsMark[1] && strings.HasPrefix(prefix, "+")
+
+		reverse := mark[0] != filterMark[1] && strings.HasPrefix(prefix, "-")
+		if columnSign || reverse {
 			sign, prefix = prefix[:1], prefix[1:]
 		}
 

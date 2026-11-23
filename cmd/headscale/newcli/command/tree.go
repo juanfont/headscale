@@ -45,6 +45,7 @@ type leaf struct {
 	// checkList checks the values of the list flags against them.
 	list         bool
 	info         []table.ColumnInfo
+	checkColumns func(string) error
 	checkFilters func(string) error
 	checkList    func(line *cmdline.Line, command string) (int, error)
 	// noRows is what a list with no rows says on a terminal; filter is an
@@ -315,6 +316,7 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node {
 	l.noRows = s.NoRows
 	l.only = s.Only
 	l.filter = filterExample(s.Example)
+	l.checkColumns = func(value string) error { return columnsCheck(s.Columns, value) }
 	l.checkFilters = func(value string) error { return checkFilters(s.Columns, value) }
 	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
 	rule, whole, ruleErr := inputRule[In]()

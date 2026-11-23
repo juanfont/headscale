@@ -298,6 +298,75 @@ func TestColumnsOfTheList(t *testing.T) {
 	}
 }
 
+func TestListCursorSeparators(t *testing.T) {
+	t.Parallel()
+
+	tree := testTree(t)
+
+	for _, protocol := range []string{"__complete", "__completeNoDesc"} {
+		for _, tc := range []struct{ flag, word string }{
+			{"--columns", "id,\t-na"},
+			{"--columns", "typo\t,-na"},
+			{"--filter", "id=1,\nna"},
+			{"--filter", "id=1\r,na"},
+			{"--sort", "\tna"},
+		} {
+			var out bytes.Buffer
+
+			argv := []string{protocol, "items", "list", tc.flag, tc.word}
+			require.Equal(t, 0, Run(tree, argv, Env{Stdout: &out}))
+			require.Contains(t, []string{":4\n", ":6\n"}, out.String(), argv)
+		}
+	}
+}
+
+func TestSealedColumnCompletion(t *testing.T) {
+	t.Parallel()
+
+	for _, cursor := range []string{"typo,na", "id,id,na", "++id,na"} {
+		var out bytes.Buffer
+
+		argv := []string{"__complete", "items", "list", "--columns", cursor}
+		require.Equal(t, 0, Run(testTree(t), argv, Env{Stdout: &out}))
+		require.Contains(t, []string{":4\n", ":6\n"}, out.String(), cursor)
+	}
+
+	var out bytes.Buffer
+
+	argv := []string{"__complete", "items", "list", "--columns=id,-na"}
+	require.Equal(t, 0, Run(testTree(t), argv, Env{Stdout: &out}))
+	require.Equal(t, "id,-name\n:6\n", out.String())
+}
+
+func TestColumnCursorSpace(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ flag, word, want string }{
+		{"--columns", "id, na", "id, name"},
+		{"--columns", "id, -na", "id, -name"},
+		{"--columns", " na", " name"},
+		{"--filter", "id=1, na", "id=1, name"},
+	} {
+		var stdout bytes.Buffer
+
+		args := []string{"__complete", "items", "list", tc.flag, tc.word}
+		require.Equal(t, 0, Run(testTree(t), args, Env{Stdout: &stdout}))
+		require.Equal(t, tc.want, strings.SplitN(stdout.String(), "\n", 2)[0])
+	}
+}
+
+func TestSortDirectionCompletion(t *testing.T) {
+	t.Parallel()
+
+	for value, reply := range map[string]string{"+na": ":4\n", "-na": "-name\n:4\n"} {
+		var out bytes.Buffer
+
+		argv := []string{"__complete", "items", "list", "--sort", value}
+		require.Equal(t, 0, Run(testTree(t), argv, Env{Stdout: &out}))
+		require.Equal(t, reply, out.String())
+	}
+}
+
 func TestListItemSpaces(t *testing.T) {
 	for _, tc := range []struct{ flag, compact, spaced string }{
 		{"--columns", "name,id", "name, id"},
