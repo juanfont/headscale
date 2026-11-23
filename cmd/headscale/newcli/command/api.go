@@ -408,7 +408,7 @@ func call[T any](a *API, do func(*clientv0.Client) (*http.Response, error)) (T, 
 		return out, err
 	}
 
-	err = json.Unmarshal(body, &out)
+	err = clientv0.DecodeResponse(body, &out)
 	if err != nil {
 		return out, a.unreadable(err)
 	}
@@ -485,7 +485,7 @@ func pages[Row any](a *API, items string, get func(c *clientv0.Client, p page) (
 		for _, raw := range raws {
 			var r Row
 
-			err = json.Unmarshal(raw, &r)
+			err = clientv0.DecodeResponse(raw, &r)
 			if err != nil {
 				return nil, a.unreadable(err)
 			}

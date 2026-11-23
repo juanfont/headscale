@@ -46,7 +46,7 @@ type ProblemError struct {
 func problemOf(status int, body []byte) error {
 	var p clientv0.Problem
 
-	err := json.Unmarshal(body, &p)
+	err := clientv0.DecodeResponse(body, &p)
 	if err != nil || p.Code == "" {
 		return fmt.Errorf("the server answered %d %s", status, http.StatusText(status)) //nolint:err113 // a status, not a condition to test
 	}
@@ -176,7 +176,7 @@ func policyInvalid(details map[string]any, kept bool) string {
 	var d clientv0.PolicyInvalidDetails
 
 	b, _ := json.Marshal(details) //nolint:errchkjson // a map that came from JSON
-	_ = json.Unmarshal(b, &d)
+	_ = clientv0.DecodeResponse(b, &d)
 
 	type entry struct {
 		line, column int64

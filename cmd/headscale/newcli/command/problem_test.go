@@ -1,7 +1,9 @@
 package command
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"testing"
 
@@ -374,4 +376,25 @@ func hasNodesOf(name string, nodes []any) clientv0.Problem {
 		Object:  nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "user", Id: "3", Name: name}),
 		Details: map[string]any{"nodes": list},
 	}
+}
+
+func TestProblemFieldNames(t *testing.T) {
+	t.Parallel()
+
+	const raw = `{"code":"new_issue","coDe":"extra_code","title":"Known","titLe":"Extra","object":{"name":"alpha","naMe":"beta"}}`
+
+	err := problemOf(http.StatusUnprocessableEntity, []byte(raw))
+	problem, ok := errors.AsType[*ProblemError](err)
+	require.True(t, ok)
+
+	obj, err := problem.Problem.Object.Get()
+	require.NoError(t, err)
+	require.Equal(t, []string{"new_issue", "Known", "alpha"}, []string{string(problem.Problem.Code), problem.Problem.Title, obj.Name})
+}
+
+func TestPolicyProblemFieldNames(t *testing.T) {
+	t.Parallel()
+
+	const raw = `{"code":"policy_invalid","details":{"policyErrors":[{"message":"alpha","messAge":"beta"}],"policyerrors":[{"message":"extra"}]}}`
+	require.EqualError(t, problemOf(http.StatusUnprocessableEntity, []byte(raw)), "the policy is not valid.\n  alpha")
 }

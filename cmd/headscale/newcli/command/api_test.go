@@ -917,3 +917,34 @@ func TestGuardOf(t *testing.T) {
 	}{User: clientv0.User{Id: "3"}}))
 	require.Nil(t, guardOf(NoInput{}), "no target, no guard")
 }
+
+func TestNodeAnswerFieldNames(t *testing.T) {
+	t.Parallel()
+
+	const row = `{"hostname":"alpha","hostName":"beta","createdBy":{"loginName":"alice","logInName":"bob"}}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/headscale/v0/nodes" {
+			_, _ = io.WriteString(w, `{"nodes":[`+row+`]}`)
+			return
+		}
+
+		_, _ = io.WriteString(w, row)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := clientv0.NewClient(server.URL)
+	require.NoError(t, err)
+
+	api := &API{c: client, pageSize: 1}
+	list, err := api.ListNodes(t.Context())
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	node, err := api.GetNode(t.Context(), "1")
+	require.NoError(t, err)
+
+	for _, got := range []clientv0.Node{list[0], node} {
+		require.Equal(t, "alpha", got.Hostname)
+		require.Equal(t, "alice", got.CreatedBy.GetOrEmpty().LoginName)
+	}
+}
