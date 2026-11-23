@@ -1,9 +1,11 @@
 package state
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/netip"
@@ -26,6 +28,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -119,7 +123,7 @@ func TestLoadedDuplicateNamesAreResolvedInMemory(t *testing.T) {
 
 	ids := make([]types.NodeID, 0, len(stored))
 	for _, name := range stored {
-		node := database.CreateNodeForTest(user)
+		node := database.CreateRegisteredNodeForTest(user)
 		require.NoError(t, database.DB.Model(&types.Node{}).Where("id = ?", node.ID).
 			Update("given_name", name).Error)
 		ids = append(ids, node.ID)
@@ -930,7 +934,7 @@ func TestConcurrentDeleteNodesShareNodeStoreBatch(t *testing.T) {
 	require.NoError(t, err)
 
 	user := database.CreateUserForTest("delete-batch-user")
-	nodes := database.CreateNodesForTest(user, 2, "delete-batch-node")
+	nodes := database.CreateRegisteredNodesForTest(user, 2, "delete-batch-node")
 
 	require.NoError(t, database.Close())
 
@@ -2338,6 +2342,110 @@ func TestNewStateDiscardsOversizedHostinfo(t *testing.T) {
 	require.True(t, ok)
 	assert.False(t, nv.Hostinfo().Valid(),
 		"oversized Hostinfo is dropped until the node reports again")
+}
+
+// TestNewStateChecksNodeAddresses pins which stored addresses refuse a start.
+func TestNewStateChecksNodeAddresses(t *testing.T) {
+	const (
+		v4a, v4b = "100.64.0.1", "100.64.0.2"
+		v6a, v6b = "fd7a:115c:a1e0::1", "fd7a:115c:a1e0::2"
+		outside  = "outside the Tailscale ranges"
+	)
+
+	for _, tt := range []struct {
+		name string
+		// ipv4 and ipv6 of nodes alpha and beta; nil stores NULL.
+		addrs    [2][2]any
+		wantErr  []string
+		wantWarn bool
+	}{
+		{
+			name:    "shared IPv4",
+			addrs:   [2][2]any{{v4a, v6a}, {v4a, v6b}},
+			wantErr: []string{v4a, `"alpha"`, `"beta"`},
+		},
+		{
+			name:    "shared IPv6",
+			addrs:   [2][2]any{{v4a, v6a}, {v4b, v6a}},
+			wantErr: []string{v6a, `"alpha"`, `"beta"`},
+		},
+		{
+			name:    "no address",
+			addrs:   [2][2]any{{v4a, v6a}, {nil, nil}},
+			wantErr: []string{"no tailnet address", `"beta"`},
+		},
+		{
+			name:  "one family each",
+			addrs: [2][2]any{{v4a, nil}, {nil, v6b}},
+		},
+		{
+			name:     "outside the Tailscale ranges",
+			addrs:    [2][2]any{{v4a, v6a}, {"10.0.0.2", "2001:db8::2"}},
+			wantWarn: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dbPath := t.TempDir() + "/headscale.db"
+			cfg := persistTestConfig(dbPath)
+			database, err := db.NewHeadscaleDatabase(cfg)
+			require.NoError(t, err)
+
+			user := database.CreateUserForTest("address-user")
+
+			var beta types.NodeID
+
+			for i, hostname := range []string{"alpha", "beta"} {
+				node := database.CreateRegisteredNodeForTest(user, hostname)
+				beta = node.ID
+				require.NoError(t, database.DB.Exec("UPDATE nodes SET ipv4 = ?, ipv6 = ? WHERE id = ?",
+					tt.addrs[i][0], tt.addrs[i][1], node.ID).Error)
+			}
+
+			require.NoError(t, database.Close())
+
+			var logs bytes.Buffer
+
+			prevLogger, prevLevel := log.Logger, zerolog.GlobalLevel()
+			log.Logger = zerolog.New(&logs)
+
+			zerolog.SetGlobalLevel(zerolog.WarnLevel)
+			t.Cleanup(func() {
+				log.Logger = prevLogger
+
+				zerolog.SetGlobalLevel(prevLevel)
+			})
+
+			s, err := NewState(cfg)
+
+			for _, want := range tt.wantErr {
+				require.ErrorContains(t, err, want)
+			}
+
+			if tt.wantErr != nil {
+				return
+			}
+
+			require.NoError(t, err)
+			require.NoError(t, s.Close())
+
+			var warned []string
+
+			for line := range strings.Lines(logs.String()) {
+				if strings.Contains(line, outside) {
+					warned = append(warned, line)
+				}
+			}
+
+			if !tt.wantWarn {
+				assert.Empty(t, warned)
+
+				return
+			}
+
+			require.Len(t, warned, 1, "one warning per node")
+			assert.Contains(t, warned[0], fmt.Sprintf(`"node.id":%d`, beta))
+		})
+	}
 }
 
 // TestBootKeepsHostinfoTheMapPathStored pins that the startup check keeps

@@ -275,6 +275,7 @@ maps each one to its replacement.
 - `app` grants never offer exit routes. Exit nodes list the sources of an `app` grant to an internet address, as on Tailscale SaaS. [#3656](https://github.com/juanfont/headscale/pull/3656)
 - HA and `via` groups choose the healthy, online router with the oldest control session. Reconnecting routers become standby. Routers that keep their session can regain routes. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Startup adds suffixes to duplicate names. The lowest node ID keeps its name. These changes stay in memory. Check MagicDNS names. Registrations and renames avoid extra DNS record names. Collision names fit 63 bytes. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- Startup refuses a node that has no address, or whose address another node also holds. Peers got an ambiguous address. Give each node an unused address from the configured prefixes in the nodes table. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - Peers see a disconnected node as offline after 15 seconds, not 10. HA failover starts 5 seconds later. [#3649](https://github.com/juanfont/headscale/pull/3649)
 
 #### OIDC
