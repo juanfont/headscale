@@ -969,3 +969,15 @@ func TestNullUsernameRepair(t *testing.T) {
 	p := decodeProblem(t, res, CodeInvalidField)
 	require.Equal(t, []FieldError{{Location: "body.name", Message: "cannot be null; send a valid username"}}, p.Errors)
 }
+
+func TestUserFieldErrorCount(t *testing.T) {
+	_, api, auth := usersAPI(t)
+
+	body := map[string]any{"name": "charlie"}
+	for i := range maxFieldErrors/2 + 1 {
+		body["other"+strconv.Itoa(i)] = i
+	}
+
+	p := decodeProblem(t, api.Post(Prefix+"/users", auth, body), CodeInvalidField)
+	require.Len(t, p.Errors, len(body)-1)
+}

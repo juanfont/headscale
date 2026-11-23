@@ -446,42 +446,57 @@ func fromHumaError(em *huma.ErrorModel) *Problem {
 		return p
 	}
 
-	listed := em.Errors[:min(len(em.Errors), maxFieldErrors)]
-	for _, d := range listed {
-		// huma keeps a nil detail for a nil error. Value is dropped: for an
-		// unknown field it holds the whole body.
+	// Only resolver details can repeat a schema diagnostic at the same location.
+	tracked := map[string]bool{}
+
+	for _, d := range em.Errors {
+		if d != nil {
+			if f, ok := d.Value.(FieldError); ok {
+				tracked[f.Location] = false
+			}
+		}
+	}
+
+	count := 0
+
+	for _, d := range em.Errors {
 		if d == nil {
 			continue
 		}
 
-		// A resolver supplies our own field error. A schema or null failure at
-		// the same location already tells the caller which field to correct.
-		if f, ok := d.Value.(FieldError); ok {
-			if !slices.ContainsFunc(p.Errors, func(prev FieldError) bool { return prev.Location == f.Location }) {
-				p.Errors = append(p.Errors, f)
+		if count >= maxFieldErrors && len(tracked) == 0 {
+			count++
+			continue
+		}
+
+		f, resolver := d.Value.(FieldError)
+		if resolver {
+			if tracked[f.Location] {
+				continue
+			}
+		} else if at, ok := strings.CutPrefix(d.Message, unknownMember); ok && d.Location == "body" {
+			f = FieldError{Location: fieldLocation(at), Message: "unexpected property"}
+		} else {
+			loc := d.Location
+			if name, ok := requiredProperty(d.Message); ok {
+				loc += "." + name
 			}
 
-			continue
+			f = FieldError{Location: fieldLocation(loc), Message: humaMessage(d.Message)}
 		}
 
-		// The strict decode of bodyFormat names the member in its message.
-		if at, ok := strings.CutPrefix(d.Message, unknownMember); ok && d.Location == "body" {
-			p.Errors = append(p.Errors, FieldError{Location: fieldLocation(at), Message: "unexpected property"})
-
-			continue
+		if _, ok := tracked[f.Location]; ok {
+			tracked[f.Location] = true
 		}
 
-		// A missing property is located where it is missing, so a client
-		// marks the field without reading the message.
-		loc := d.Location
-		if name, ok := requiredProperty(d.Message); ok {
-			loc += "." + name
+		if count < maxFieldErrors {
+			p.Errors = append(p.Errors, f)
 		}
 
-		p.Errors = append(p.Errors, FieldError{Location: fieldLocation(loc), Message: humaMessage(d.Message)})
+		count++
 	}
 
-	if more := len(em.Errors) - len(listed); more > 0 {
+	if more := count - maxFieldErrors; more > 0 {
 		p.Errors = append(p.Errors, FieldError{Message: "and " + strconv.Itoa(more) + " more"})
 	}
 
