@@ -1205,3 +1205,30 @@ func TestRun(t *testing.T) {
 		t.Errorf("G7: a Line made by hand: %v", err)
 	}
 }
+
+func TestRunAfterArgvReuse(t *testing.T) {
+	for _, tt := range []struct {
+		line string
+		at   int
+		word string
+	}{
+		{"peers set nobody ::/0", 2, "nobody"},
+		{"peers set --owner=nobody 7 ::/0", 2, "--owner"},
+	} {
+		t.Run(tt.word, func(t *testing.T) {
+			words := argv(tt.line)
+
+			line, err := testTree().Parse(words)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			words[tt.at] = "reused"
+
+			e, ok := errors.AsType[*UsageError](line.Run(t.Context()))
+			if !ok || e.Kind != Unresolved || e.At != tt.at || e.Word != tt.word || e.Value != "nobody" {
+				t.Fatalf("late error after argv reuse = %#v, want word %q at %d", e, tt.word, tt.at)
+			}
+		})
+	}
+}

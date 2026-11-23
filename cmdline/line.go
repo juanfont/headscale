@@ -19,7 +19,6 @@ type Line struct {
 	ArgAt   []int    // the index in argv of each argument
 
 	node    *node
-	argv    []string
 	parts   map[reflect.Type]reflect.Value
 	pending []pending
 	err     *UsageError
@@ -39,6 +38,7 @@ type Given struct {
 type pending struct {
 	f     *field
 	text  string
+	word  string
 	items []string
 	at    int
 }
@@ -113,7 +113,6 @@ func (t *Tree) Parse(argv []string) (*Line, error) {
 	m, err := reader.Parse(t.root.low, argv)
 	l := t.line(m)
 	n := l.node
-	l.argv = argv
 
 	found := func(e *UsageError) {
 		if e.Path = n.info.Path; l.err == nil || e.At < l.err.At {
@@ -147,7 +146,7 @@ func (t *Tree) Parse(argv []string) (*Line, error) {
 
 		seen[g.Name] = true
 
-		err := l.put(f, g.Value, g.At)
+		err := l.put(f, g.Value, word, g.At)
 		if err != nil {
 			found(&UsageError{Kind: BadValue, At: g.At, Word: word, Flag: f.name, Value: g.Value, Err: err})
 		}
@@ -158,7 +157,7 @@ func (t *Tree) Parse(argv []string) (*Line, error) {
 			break
 		}
 
-		err := l.put(n.args[i], a, l.ArgAt[i])
+		err := l.put(n.args[i], a, a, l.ArgAt[i])
 		if err != nil {
 			found(&UsageError{Kind: BadValue, At: l.ArgAt[i], Word: a, Arg: n.args[i].name, Value: a, Err: err})
 		}
@@ -175,7 +174,7 @@ func (t *Tree) Parse(argv []string) (*Line, error) {
 
 	for name, f := range n.flags {
 		if f.def != nil && !seen[name] {
-			_ = l.put(f, *f.def, -1) // New read it once already
+			_ = l.put(f, *f.def, "", -1) // New read it once already
 		}
 	}
 
@@ -203,10 +202,10 @@ func (t *Tree) line(m *reader.Match) *Line {
 }
 
 // put reads one occurrence of f, or keeps it for the LateReader.
-func (l *Line) put(f *field, text string, at int) error {
+func (l *Line) put(f *field, text, word string, at int) error {
 	if f.late != nil {
 		items, err := f.split(text)
-		l.pending = append(l.pending, pending{f, text, items, at})
+		l.pending = append(l.pending, pending{f: f, text: text, word: word, items: items, at: at})
 
 		return err
 	}
@@ -264,9 +263,8 @@ func (l *Line) Run(ctx context.Context) error {
 		for i, it := range p.items {
 			v, err := p.f.late(ctx, it)
 			if err != nil {
-				e := &UsageError{Kind: Unresolved, Path: l.Command.Path, At: p.at, Word: l.argv[p.at], Arg: p.f.name, Value: p.text, Err: err}
+				e := &UsageError{Kind: Unresolved, Path: l.Command.Path, At: p.at, Word: p.word, Arg: p.f.name, Value: p.text, Err: err}
 				if l.node.flags[p.f.name] == p.f {
-					e.Word, _, _ = strings.Cut(e.Word, "=")
 					e.Flag, e.Arg = p.f.name, ""
 				}
 
