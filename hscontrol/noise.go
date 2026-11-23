@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/metrics"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/dns"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
@@ -696,7 +697,7 @@ func (ns *noiseServer) sshActionFollowUp(
 		)
 	}
 
-	auth, ok := ns.headscale.state.GetAuthCacheEntry(authID)
+	auth, ok := ns.headscale.state.GetAuthCacheEntryForFollowup(authID)
 	if !ok {
 		return sessionGone("SSH check auth session missing; re-delegating")
 	}
@@ -731,11 +732,6 @@ func (ns *noiseServer) sshActionFollowUp(
 
 	superseded := auth.Park()
 
-	var (
-		verdict   types.AuthVerdict
-		verdictOK bool
-	)
-
 	select {
 	case <-ctx.Done():
 		// The client disconnected (or its request timed out) before the
@@ -752,15 +748,15 @@ func (ns *noiseServer) sshActionFollowUp(
 		// The newer request collects the verdict; this one re-delegates, as
 		// it would on a consumed verdict, without waiting for it.
 		return sessionGone("SSH check follow-up superseded; re-delegating")
-	case verdict, verdictOK = <-auth.WaitForAuth():
+	case <-auth.WaitForAuth():
 	}
 
-	ns.headscale.state.DeleteAuthCacheEntry(authID)
-
-	// FinishAuth buffers one verdict, then closes the channel. A closed
-	// receive yields the zero verdict, which Accept() reports as success,
-	// so a replayed follow-up would be approved even after a Reject.
-	if !verdictOK {
+	// A check vouches for one connection: only the follow-up that retires the
+	// session acts on its verdict, so a replay re-decides. Expiry retires the
+	// session itself and is refused to whoever waited.
+	verdict := auth.Verdict()
+	if !ns.headscale.state.DeleteAuthCacheEntry(authID) &&
+		!errors.Is(verdict.Err, state.ErrRegistrationExpired) {
 		return sessionGone("SSH check verdict already consumed; re-delegating")
 	}
 

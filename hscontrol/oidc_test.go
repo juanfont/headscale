@@ -962,13 +962,13 @@ func TestOIDCPendingCallbackPreservesSSHVerdict(t *testing.T) {
 	require.Equal(t, http.StatusOK, confirmed.StatusCode)
 	assert.Contains(t, string(confirmedBody), "You may return to your terminal.")
 
-	cached, ok := b.app.state.GetAuthCacheEntry(authID)
+	cached, ok := b.app.state.GetAuthCacheEntryForFollowup(authID)
 	require.True(t, ok, "completing OIDC must preserve the SSH verdict for its polling client")
 	assert.Same(t, authReq, cached)
 
 	select {
-	case verdict := <-cached.WaitForAuth():
-		assert.True(t, verdict.Accept())
+	case <-cached.WaitForAuth():
+		assert.True(t, cached.Verdict().Accept())
 	default:
 		t.Fatal("successful SSH authentication must make its verdict available")
 	}
@@ -1720,8 +1720,8 @@ func TestSSHCheckNeedsConfirmation(t *testing.T) {
 			require.Contains(t, string(confirmedBody), "SSH session authorized")
 
 			select {
-			case verdict := <-auth.WaitForAuth():
-				require.True(t, verdict.Accept())
+			case <-auth.WaitForAuth():
+				require.True(t, auth.Verdict().Accept())
 			default:
 				t.Fatal("confirmation must approve the SSH check")
 			}
