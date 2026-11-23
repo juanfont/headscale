@@ -390,17 +390,21 @@ func (f Filter[R]) matchTime(v reflect.Value, ok bool, now time.Time) bool {
 		return false
 	}
 
-	if !f.span {
-		return compare(float64(t.Compare(f.at)), 0, f.op)
+	value, cutoff := t, f.at
+	if f.span {
+		if f.col.Ahead {
+			cutoff = now.Add(f.dur)
+		} else {
+			value, cutoff = now.Add(-f.dur), t
+		}
 	}
 
-	// Sub saturates far away; negating a saturated value would overflow.
-	d := now.Sub(t)
-	if f.col.Ahead {
-		d = t.Sub(now)
+	if f.op == '<' {
+		// Relative distance on the other side of now is zero.
+		return (!f.span || f.dur > 0) && value.Before(cutoff)
 	}
 
-	return compare(float64(max(d, 0)), float64(f.dur), f.op)
+	return value.After(cutoff)
 }
 
 // matchOwner: tag:x finds the rows that have the tag, a user the rows it

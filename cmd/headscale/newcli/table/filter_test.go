@@ -99,6 +99,20 @@ func TestParseFilter(t *testing.T) {
 	}
 }
 
+func TestRelativeDurationBoundary(t *testing.T) {
+	t.Parallel()
+
+	for _, limit := range []time.Duration{105 * 24 * time.Hour, 1<<63 - 1} {
+		f, err := listCols.ParseFilter("last-seen>" + limit.String())
+		require.NoError(t, err)
+
+		seen := now.Add(-limit).Add(-time.Nanosecond)
+		got, err := f.Match(row{Seen: seen}, now)
+		require.NoError(t, err)
+		require.True(t, got, "one nanosecond beyond %s", limit)
+	}
+}
+
 // TestMatch holds each rule of the filter grammar, kind by kind.
 func TestMatch(t *testing.T) {
 	t.Parallel()
