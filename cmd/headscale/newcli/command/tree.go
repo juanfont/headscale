@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -159,8 +160,24 @@ func (format) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Direct
 	return cmdline.Words(prefix, "json"), cmdline.NoFiles
 }
 
+func cloneColumns[R any](cols table.Columns[R]) table.Columns[R] {
+	cols = slices.Clone(cols)
+	for i := range cols {
+		fold := maps.Clone(cols[i].Fold)
+		for key, values := range fold {
+			fold[key] = slices.Clone(values)
+		}
+
+		cols[i].Fold = fold
+	}
+
+	return cols
+}
+
 // New makes the command of a spec.
 func New[In, Out any](s Spec[In, Out]) Node {
+	s.Columns = cloneColumns(s.Columns)
+	s.Blocks = slices.Clone(s.Blocks)
 	noOut := isNoOutput[Out]()
 
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
@@ -309,6 +326,7 @@ func checkSpec[In, Out any](s Spec[In, Out]) error {
 
 // NewList makes the command of a list spec.
 func NewList[In, Row any](s ListSpec[In, Row]) Node {
+	s.Columns = cloneColumns(s.Columns)
 	l := common(s.Name, s.Short, s.Long, s.Example, s.Aliases, s.OldNames, s.Local, s.NeedsServer, s.ReadsConfig)
 	l.output = true
 	l.list = true
@@ -391,7 +409,7 @@ func common[In any](name, short, long string, example, aliases, oldNames []strin
 	var zero In
 
 	return &leaf{
-		name: name, short: short, long: long, example: example, aliases: aliases, oldNames: oldNames,
+		name: name, short: short, long: long, example: slices.Clone(example), aliases: aliases, oldNames: oldNames,
 		local:  local && (needs == nil || !needs(zero)),
 		config: !local || needs != nil || readsConfig,
 		server: func(line *cmdline.Line) bool {
@@ -522,6 +540,7 @@ func build(name, short string, aliases []string, ents []entity, nodes ...Node) (
 				bad("no Short")
 			}
 
+			n.Commands = slices.Clone(n.Commands)
 			t.groups[at] = n
 
 			g := cmdline.Group{Name: n.Name, Help: n.Short, Flags: []any{helpFlags{}}}
@@ -709,7 +728,7 @@ func (t *Tree) Commands() []Command {
 
 	walk = func(c *cmdline.Info) {
 		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && len(c.Commands) == 0 {
-			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: l.example, Aliases: l.aliases, Secret: l.secret, NoJSON: l.noJSON, Verbatim: l.verbatim, Whole: wholeArgs(c)})
+			out = append(out, Command{Path: strings.Join(c.Path, " "), Example: slices.Clone(l.example), Aliases: slices.Clone(c.Aliases), Secret: l.secret, NoJSON: l.noJSON, Verbatim: l.verbatim, Whole: wholeArgs(c)})
 		}
 
 		for _, s := range c.Commands {
