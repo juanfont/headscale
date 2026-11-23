@@ -82,6 +82,9 @@ func TestParse(t *testing.T) {
 		{"P01", "<nil>", `[] {} []`},
 		{"P02", "nodes|delete|-", `[nodes delete] {} ["-"]`},
 		{"P03", "nodes|delete|", `[nodes delete] {} [""]`},
+		{"trailing space", "nodes|delete|A ", `[nodes delete] {} ["A "]`},
+		{"sole space", "nodes|delete| ", `[nodes delete] {} [" "]`},
+		{"padded alias", "nodes|ls ", `ERR 1 [nodes] "ls " @1`},
 		{"P04", "-", `ERR 1 [] "-" @0`},
 		{"P05", "", `ERR 1 [] "" @0`},
 		{"P06", "nodes|delete|-5", `ERR 2 [nodes delete] "-5" @2`},
@@ -142,6 +145,7 @@ func TestParse(t *testing.T) {
 		{"P57", "prog|nodes", `ERR 1 [] "prog" @0`},
 		{"P58", "nodes|list|--bogus|-h", `ERR 2 [nodes list] "--bogus" @2`},
 		{"P59", "nodes|list|-h|--bogus", `ERR 2 [nodes list] "--bogus" @3`},
+		{"first inapplicable flag", "-c|first|--config=second|nodes|delete", `ERR 2 [nodes delete] "-c" @0`},
 	} {
 		argv := strings.Split(tc.argv, "|")
 		if tc.argv == "<nil>" {
