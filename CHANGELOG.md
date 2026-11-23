@@ -280,6 +280,7 @@ maps each one to its replacement.
 - Logins replace stored email. Missing, malformed, or unverified email clears it. `oidc.email_verified_required: false` permits unverified email. Review email-based policies. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Headscale rejects subjects changed by identifier cleanup. Avoid repeated or trailing slashes and surrounding whitespace. Use stable subjects. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Approve OIDC SSH checks on the confirmation page. The provider callback no longer approves them. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- User names are checked by character, not byte. Newly accepted: an otherwise valid name whose first letter is one of the 31 Hebrew letters U+05D0-U+05F2, which were refused as initials before. An OIDC user whose `preferred_username` is such a name gets it as its stored name at the next login; the login name clients show changes from its provider identifier to that name only if it has no usable email, and otherwise stays the email. Newly refused: a one-character name outside ASCII (`李`) and a name that starts with a non-ASCII digit (`٠x`); renaming to one returns 400 and a new OIDC user with one gets no stored name. A user that already has such a name keeps it. A policy reference by name can newly match a user, stop matching when the user takes a new valid name, or match nobody if a local user has the same name; references by email or provider identifier are unaffected.
 
 #### Control protocol
 

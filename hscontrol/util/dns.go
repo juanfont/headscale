@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"go4.org/netipx"
 	"tailscale.com/util/dnsname"
@@ -39,13 +40,12 @@ var (
 // It cannot contain more than one '@'.
 // It cannot contain invalid characters.
 func ValidateUsername(username string) error {
-	// Ensure the username meets the minimum length requirement
-	if len(username) < 2 {
+	first, width := utf8.DecodeRuneInString(username)
+	if width == len(username) {
 		return ErrUsernameTooShort
 	}
 
-	// Ensure the username starts with a letter
-	if !unicode.IsLetter(rune(username[0])) {
+	if !unicode.IsLetter(first) {
 		return ErrUsernameMustStartLetter
 	}
 
