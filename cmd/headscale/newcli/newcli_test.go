@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"go/parser"
@@ -22,10 +23,322 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/cmd/headscale/newcli/command"
+	"github.com/juanfont/headscale/cmdline/argtest"
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 )
+
+var errModelMismatch = errors.New("CLI model mismatch")
+
+func TestRapidFilterCatalogue(t *testing.T) {
+	tree := Tree()
+	env := []string{"HOME=" + t.TempDir()}
+	run := func(argv []string) (string, error) {
+		var out, stderr bytes.Buffer
+
+		rc := command.Run(tree, argv, command.Env{Stdout: &out, Stderr: &stderr, Environ: env})
+		if rc != 0 || stderr.Len() != 0 {
+			return "", fmt.Errorf("%w: %q: status=%d stderr=%q", errModelMismatch, argv, rc, stderr.String())
+		}
+
+		return out.String(), nil
+	}
+
+	type list struct{ words, columns, sealed []string }
+
+	resources := []string{"users list", "nodes list", "nodes routes list", "nodes tags list"}
+
+	lists := make([]list, 0, len(resources))
+	for _, resource := range resources {
+		words := strings.Fields(resource)
+
+		raw, err := run(slices.Concat(words, []string{"--list-columns", "-o", "json"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var info []struct{ Name, Kind string }
+
+		err = json.Unmarshal([]byte(raw), &info)
+		if err != nil || len(info) == 0 {
+			t.Fatalf("%s public column list: %v", resource, err)
+		}
+
+		cols := make([]string, 0, len(info))
+
+		var seals []string
+
+		for _, c := range info {
+			cols = append(cols, c.Name)
+			switch c.Kind {
+			case "text", "number", "id":
+				seal := c.Name + "=1"
+
+				_, err = run(slices.Concat(words, []string{"--list-columns", "--filter", seal}))
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				seals = append(seals, seal)
+			}
+		}
+
+		if len(seals) == 0 {
+			t.Fatalf("%s: no validated filter for completion", resource)
+		}
+
+		lists = append(lists, list{words, cols, seals})
+	}
+
+	rapid.Check(t, func(rt *rapid.T) {
+		ls := rapid.SampledFrom(lists).Draw(rt, "list")
+		col := rapid.SampledFrom(ls.columns).Draw(rt, "column")
+
+		prefix := col[:rapid.IntRange(0, len(col)).Draw(rt, "prefix length")]
+		if rapid.Bool().Draw(rt, "unmatched prefix") {
+			prefix = "zz" + rapid.StringOfN(rapid.RuneFrom([]rune("abcxyz0-αé")), 0, 10, 32).Draw(rt, "unknown suffix")
+		}
+
+		sealed := rapid.SliceOfN(rapid.SampledFrom(ls.sealed), 0, 2).Draw(rt, "sealed filters")
+
+		prior := ""
+		if len(sealed) > 0 {
+			prior = strings.Join(sealed, ",") + ","
+		}
+
+		cursor := prior + prefix
+
+		path := slices.Clone(ls.words)
+		if rapid.Bool().Draw(rt, "list alias") {
+			path[len(path)-1] = "ls"
+		}
+
+		protocol := rapid.SampledFrom([]string{"__complete", "__completeNoDesc"}).Draw(rt, "protocol")
+		argv := slices.Concat([]string{protocol}, path)
+		argv = append(argv, argtest.Option(rt, "--filter", cursor)...)
+
+		output, err := run(argv)
+		if err != nil {
+			rt.Fatal(err)
+		}
+
+		lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+		directive := lines[len(lines)-1]
+		bits, err := strconv.Atoi(strings.TrimPrefix(directive, ":"))
+		candidates := lines[:len(lines)-1]
+		// A suppressed list must also disable shell filename fallback.
+		if err != nil || !strings.HasPrefix(directive, ":") || bits&4 == 0 || bits&1 != 0 || len(candidates) > 0 && bits&2 == 0 {
+			rt.Fatalf("%q: unexpected directive %s", argv, directive)
+		}
+
+		var want []string
+
+		for _, name := range ls.columns {
+			if strings.HasPrefix(name, prefix) {
+				want = append(want, prior+name)
+			}
+		}
+
+		slices.Sort(want)
+		slices.Sort(candidates)
+
+		if !slices.Equal(want, candidates) {
+			rt.Fatalf("%q: candidates=%q want public columns=%q", argv, candidates, want)
+		}
+	})
+}
+
+func TestInvalidFilterNoFiles(t *testing.T) {
+	tree := Tree()
+
+	for _, resource := range []string{"nodes", "users"} {
+		for _, cursor := range []string{",na", "0,na", ",zzunknown", "0,zzunknown"} {
+			var out, stderr bytes.Buffer
+
+			argv := []string{"__complete", resource, "list", "--filter=" + cursor}
+			code := command.Run(tree, argv, command.Env{Stdout: &out, Stderr: &stderr})
+			lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+			directive := lines[len(lines)-1]
+
+			bits, err := strconv.Atoi(strings.TrimPrefix(directive, ":"))
+			if code != 0 || stderr.Len() != 0 || err != nil || !strings.HasPrefix(directive, ":") || bits&4 == 0 || bits&1 != 0 {
+				t.Errorf("%q: status=%d reply=%q stderr=%q; filter completion must disable file fallback", argv, code, out.String(), stderr.String())
+			}
+		}
+	}
+}
+
+type helpLeaf struct {
+	words, aliases []string
+	help           string
+	config, output bool
+}
+
+type helpReply struct {
+	code, answers  int
+	stdout, stderr string
+}
+
+func helpCatalogue(t *testing.T) ([]helpLeaf, func([]string) helpReply) {
+	t.Helper()
+
+	tree := Tree()
+	env := []string{"HOME=" + t.TempDir()}
+	run := func(argv []string) helpReply {
+		var (
+			out, diagnostic bytes.Buffer
+			reply           helpReply
+		)
+
+		reply.code = command.Run(tree, argv, command.Env{Stdout: &out, Stderr: &diagnostic, Environ: env, Answered: func(*http.Request, []byte) { reply.answers++ }})
+		reply.stdout, reply.stderr = out.String(), diagnostic.String()
+
+		return reply
+	}
+
+	commands := tree.Commands()
+
+	leaves := make([]helpLeaf, 0, len(commands))
+	for _, cmd := range commands {
+		words := strings.Fields(cmd.Path)
+		reply := run(append(slices.Clone(words), "--help"))
+
+		_, flags, found := strings.Cut(reply.stdout, "\nFlags:\n")
+		if reply.code != 0 || reply.stderr != "" || !found || !strings.Contains(flags, "--help ") {
+			t.Fatalf("%s help: code=%d stderr=%q flags found=%t", cmd.Path, reply.code, reply.stderr, found)
+		}
+
+		leaves = append(leaves, helpLeaf{words, cmd.Aliases, reply.stdout, strings.Contains(flags, "--config "), strings.Contains(flags, "--output ")})
+	}
+
+	return leaves, run
+}
+
+func (l helpLeaf) check(r helpReply, chunks [][]string) error {
+	if r.answers != 0 {
+		return fmt.Errorf("%w: help received %d API answers", errModelMismatch, r.answers)
+	}
+
+	for _, chunk := range chunks {
+		spelling, _, _ := strings.Cut(chunk[0], "=")
+
+		var wrong string
+
+		switch {
+		case !l.config && (spelling == "-c" || spelling == "--config"):
+			wrong = "--config"
+		case !l.output && (spelling == "-o" || spelling == "--output"):
+			wrong = "--output"
+		default:
+			continue
+		}
+
+		if r.code != 1 || r.stdout != "" || !strings.HasPrefix(r.stderr, "Error: "+wrong+" does not apply to ") {
+			return fmt.Errorf("%w: unsupported option: exit=%d stdout=%q stderr=%q", errModelMismatch, r.code, r.stdout, r.stderr)
+		}
+
+		return nil
+	}
+
+	if r.code != 0 || r.stderr != "" || r.stdout != l.help {
+		return fmt.Errorf("%w: exit=%d stderr=%q canonical help matches=%t", errModelMismatch, r.code, r.stderr, r.stdout == l.help)
+	}
+
+	return nil
+}
+
+// Public help declares which global flags can reach each leaf.
+func TestRapidLeafOptionPlacement(t *testing.T) {
+	leaves, run := helpCatalogue(t)
+	hit := map[string]bool{}
+
+	var accepted, unsupported, withAlias, interleaved int
+
+	rapid.Check(t, func(rt *rapid.T) {
+		leaf := leaves[rapid.IntRange(0, len(leaves)-1).Draw(rt, "command index")]
+
+		path := slices.Clone(leaf.words)
+		if len(leaf.aliases) > 0 && rapid.Bool().Draw(rt, "alias") {
+			path[len(path)-1] = rapid.SampledFrom(leaf.aliases).Draw(rt, "leaf alias")
+			withAlias++
+		}
+
+		options := [][]string{{rapid.SampledFrom([]string{"-h", "--help"}).Draw(rt, "help spelling")}}
+		config := rapid.Bool().Draw(rt, "config")
+
+		output := rapid.Bool().Draw(rt, "output")
+		if config {
+			flag := rapid.SampledFrom([]string{"-c", "--config"}).Draw(rt, "config spelling")
+			value := rapid.SampledFrom([]string{"unused.yaml", "with space.yaml", "--help", "--output", ""}).Draw(rt, "config value")
+			options = append(options, argtest.Option(rt, flag, value))
+		}
+
+		if output {
+			flag := rapid.SampledFrom([]string{"-o", "--output"}).Draw(rt, "output spelling")
+			options = append(options, argtest.Option(rt, flag, "json"))
+		}
+
+		chunks := argtest.InterleaveChunks(rt, path, options...)
+
+		argv := slices.Concat(chunks...)
+		if len(options) > 1 && slices.Index(argv, path[len(path)-1]) > len(path)-1 {
+			interleaved++
+		}
+
+		err := leaf.check(run(argv), chunks)
+		if err != nil {
+			rt.Fatalf("argv=%q: %v", argv, err)
+		}
+
+		hit[strings.Join(leaf.words, " ")] = true
+		if config && !leaf.config || output && !leaf.output {
+			unsupported++
+		} else {
+			accepted++
+		}
+	})
+	t.Logf("model classes accepted-placements=%d refused-placements=%d leaf-aliases=%d help-or-option-before-leaf=%d", accepted, unsupported, withAlias, interleaved)
+	t.Logf("reached %d of %d canonical leaves", len(hit), len(leaves))
+}
+
+func TestAllLeafGlobalOptionPositions(t *testing.T) {
+	leaves, run := helpCatalogue(t)
+
+	var forms, refusals int
+
+	for _, leaf := range leaves {
+		for _, last := range append([]string{leaf.words[len(leaf.words)-1]}, leaf.aliases...) {
+			path := slices.Clone(leaf.words)
+			path[len(path)-1] = last
+
+			for _, option := range []struct {
+				spell, value string
+				config       bool
+			}{{"-c", "unused.yaml", true}, {"--config", "unused.yaml", true}, {"-o", "json", false}, {"--output", "json", false}} {
+				for _, words := range [][]string{{option.spell, option.value}, {option.spell + "=" + option.value}} {
+					for _, help := range []string{"-h", "--help"} {
+						for argv := range argtest.Placements(path, []string{help}, words) {
+							err := leaf.check(run(argv), [][]string{words})
+							if err != nil {
+								t.Fatalf("argv=%q: %v", argv, err)
+							}
+
+							forms++
+
+							if option.config && !leaf.config || !option.config && !leaf.output {
+								refusals++
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	t.Logf("all %d two-option positions/spellings, %d refused, %d canonical leaves", forms, refusals, len(leaves))
+}
 
 // cliCase is one run of the CLI: a row of the table of a command group.
 // Every case runs on a server of its own, so a case that writes changes
