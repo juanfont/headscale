@@ -6,6 +6,7 @@ import (
 	"errors"
 	"maps"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"time"
@@ -77,24 +78,14 @@ type UpdateUserBody struct {
 	ProfilePicURL Optional[string] `doc:"An absolute http or https URL; \"\" clears it." json:"profilePicUrl,omitzero" maxLength:"2048"`
 }
 
-func (b *CreateUserBody) fieldErrors() []FieldError {
-	return checkUserFields(map[string]*string{
-		"name": &b.Name, "displayName": &b.DisplayName.Value, "email": &b.Email.Value, "profilePicUrl": &b.ProfilePicURL.Value,
-	})
+// Resolve reports user checks alongside schema errors for other fields.
+func (in *createUserInput) Resolve(_ huma.Context) []error {
+	return checkUserFields(in.RawBody, false)
 }
 
-func (b *UpdateUserBody) fieldErrors() []FieldError {
-	fields := map[string]*string{}
-
-	for name, f := range map[string]*Optional[string]{
-		"name": &b.Name, "displayName": &b.DisplayName, "email": &b.Email, "profilePicUrl": &b.ProfilePicURL,
-	} {
-		if f.Set {
-			fields[name] = &f.Value
-		}
-	}
-
-	return checkUserFields(fields)
+// Resolve checks only fields supplied by the update.
+func (in *updateUserInput) Resolve(_ huma.Context) []error {
+	return checkUserFields(in.RawBody, true)
 }
 
 // maxUserBody bounds a user body: four short texts.
@@ -127,12 +118,14 @@ type (
 	}
 
 	createUserInput struct {
-		Body CreateUserBody
+		RawBody []byte
+		Body    CreateUserBody
 	}
 
 	updateUserInput struct {
-		ID   string `doc:"The ID of the user." path:"id"`
-		Body UpdateUserBody
+		RawBody []byte
+		ID      string `doc:"The ID of the user." path:"id"`
+		Body    UpdateUserBody
 	}
 
 	deleteUserInput struct {
@@ -361,18 +354,44 @@ var userFieldChecks = map[string]struct {
 
 // checkUserFields checks each field given, by its name in the body, and
 // returns every one that is not valid.
-func checkUserFields(fields map[string]*string) []FieldError {
-	var errs []FieldError
+func checkUserFields(raw []byte, patch bool) []error {
+	// A mistyped member stops a typed decode. Its siblings can still be checked.
+	var fields map[string]any
+
+	err := bodyFormat.Unmarshal(raw, &fields)
+	if err != nil {
+		return nil
+	}
+
+	var errs []error
 
 	for _, name := range slices.Sorted(maps.Keys(fields)) {
-		c := userFieldChecks[name]
+		value := fields[name]
+		text, isText := value.(string)
+		c, known := userFieldChecks[name]
+
+		var msg string
 
 		switch {
-		case types.ValidateUserText(*fields[name]) != nil:
-			errs = append(errs, FieldError{Location: "body." + name, Message: hasControlCharacter})
-		case c.check(*fields[name]) != nil:
-			errs = append(errs, FieldError{Location: "body." + name, Message: c.message})
+		case !known:
+			msg = "unexpected property"
+		case value == nil && name == "name":
+			msg = "cannot be null; send a valid username"
+		case value == nil:
+			msg = nullMessage(reflect.TypeFor[Optional[string]](), patch)
+		case !isText:
+			continue
+		case types.ValidateUserText(text) != nil:
+			msg = hasControlCharacter
+		case c.check(text) != nil:
+			msg = c.message
+		default:
+			continue
 		}
+
+		loc := fieldLocation("body." + name)
+		detail := FieldError{Location: loc, Message: msg}
+		errs = append(errs, &huma.ErrorDetail{Location: loc, Message: msg, Value: detail})
 	}
 
 	return errs

@@ -454,6 +454,16 @@ func fromHumaError(em *huma.ErrorModel) *Problem {
 			continue
 		}
 
+		// A resolver supplies our own field error. A schema or null failure at
+		// the same location already tells the caller which field to correct.
+		if f, ok := d.Value.(FieldError); ok {
+			if !slices.ContainsFunc(p.Errors, func(prev FieldError) bool { return prev.Location == f.Location }) {
+				p.Errors = append(p.Errors, f)
+			}
+
+			continue
+		}
+
 		// The strict decode of bodyFormat names the member in its message.
 		if at, ok := strings.CutPrefix(d.Message, unknownMember); ok && d.Location == "body" {
 			p.Errors = append(p.Errors, FieldError{Location: fieldLocation(at), Message: "unexpected property"})
