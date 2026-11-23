@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"reflect"
 	"regexp"
@@ -189,11 +190,12 @@ type Filter[R any] struct {
 	op   byte
 	text string
 
-	num  float64
-	yes  bool
-	dur  time.Duration
-	at   time.Time
-	span bool // the time is a duration from now, not a point in time
+	num     float64
+	precise *big.Float
+	yes     bool
+	dur     time.Duration
+	at      time.Time
+	span    bool // the time is a duration from now, not a point in time
 
 	// user is the ID of the user that owner=<user> names, once resolved.
 	user string
@@ -242,11 +244,11 @@ func (cs Columns[R]) ParseFilter(text string) (Filter[R], error) {
 		return f, mistake("the filter %q has no value.", text)
 	}
 
-	return f, f.read()
+	return f, f.read(t)
 }
 
 // read checks the value of f for its kind.
-func (f *Filter[R]) read() error {
+func (f *Filter[R]) read(t reflect.Type) error {
 	name := f.col.Name
 
 	switch f.kind { //nolint:exhaustive // text, list and owner take any value
@@ -257,6 +259,27 @@ func (f *Filter[R]) read() error {
 		}
 
 		f.num = n
+
+		if t == nil || t.Kind() < reflect.Int || t.Kind() > reflect.Uintptr {
+			break
+		}
+
+		if n == math.Trunc(n) && n >= math.MinInt64 && n <= math.MaxUint64 {
+			// Every integer strictly inside this range has a unique binary64 value.
+			if n > -(1<<53) && n < 1<<53 && f.text == strconv.FormatInt(int64(n), 10) {
+				break
+			}
+
+			text := f.text
+			if n == 0 {
+				// A nonzero significand keeps its sign even beyond big.Float's exponent range.
+				if i := strings.LastIndexAny(text, "eEpP"); i >= 0 {
+					text = text[:i]
+				}
+			}
+
+			f.precise, _, _ = big.ParseFloat(text, 0, uint(64+4*len(text)), big.ToNearestEven)
+		}
 	case ID:
 		if f.op == '=' {
 			return nil
@@ -366,26 +389,18 @@ func (f Filter[R]) Match(row R, now time.Time) (bool, error) {
 
 func (f Filter[R]) matchNumber(v reflect.Value) bool {
 	n := number(v)
-	if n != f.num || (!v.CanInt() && !v.CanUint()) {
+	if n != f.num || f.precise == nil || (!v.CanInt() && !v.CanUint()) {
 		return compare(n, f.num, f.op)
 	}
 
-	var digits string
+	var actual big.Float
 	if v.CanInt() {
-		digits = strconv.FormatInt(v.Int(), 10)
+		actual.SetInt64(v.Int())
 	} else {
-		digits = strconv.FormatUint(v.Uint(), 10)
+		actual.SetUint64(v.Uint())
 	}
 
-	text := f.text
-	if n == 0 {
-		// Scaling cannot change the sign, even outside big.Float's exponent range.
-		if i := strings.LastIndexAny(text, "eEpP"); i >= 0 {
-			text = text[:i]
-		}
-	}
-
-	return compare(float64(compareTiedNumbers(digits, text)), 0, f.op)
+	return compare(float64(actual.Cmp(f.precise)), 0, f.op)
 }
 
 func (f Filter[R]) textMatch(s string) bool {

@@ -430,3 +430,39 @@ func TestIntegerFilterTinyNonzero(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, match)
 }
+
+func BenchmarkNumericThreshold(b *testing.B) {
+	type row struct {
+		Count int64   `json:"count"`
+		Rate  float64 `json:"rate"`
+	}
+
+	cols := Columns[row]{{Name: "count", Field: "count"}, {Name: "rate", Field: "rate"}}
+
+	b.Run("integer-match", func(b *testing.B) {
+		filter, err := cols.ParseFilter("count<1.00000000000000001")
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.ReportAllocs()
+
+		for b.Loop() {
+			keep, err := filter.Match(row{Count: 1}, time.Time{})
+			if err != nil || !keep {
+				b.Fatalf("one below threshold: keep=%t, err=%v", keep, err)
+			}
+		}
+	})
+
+	b.Run("float-parse", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			_, err := cols.ParseFilter("rate<1.00000000000000001")
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
