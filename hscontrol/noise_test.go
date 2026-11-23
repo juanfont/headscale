@@ -520,13 +520,13 @@ func TestSSHActionFollowUp_ReleasesConsumedSession(t *testing.T) {
 	authID, auth := f.mint(t)
 	auth.FinishAuth(types.AuthVerdict{})
 
-	_, ok := f.ns.headscale.state.GetAuthCacheEntry(authID)
+	_, ok := f.ns.headscale.state.GetAuthCacheEntryForFollowup(authID)
 	require.True(t, ok, "approval must remain available until the client consumes it")
 
 	action := sshActionFromRecorder(t, f.followUp(t, authID))
 	require.True(t, action.Accept)
 
-	_, ok = f.ns.headscale.state.GetAuthCacheEntry(authID)
+	_, ok = f.ns.headscale.state.GetAuthCacheEntryForFollowup(authID)
 	require.False(t, ok, "a consumed verdict must release its admission slot")
 }
 
@@ -1183,10 +1183,10 @@ type sshVerdictFixture struct {
 	src, dst types.NodeID
 }
 
-func newSSHVerdictFixture(t *testing.T) *sshVerdictFixture {
+func newSSHVerdictFixture(t *testing.T, options ...func(*types.Config)) *sshVerdictFixture {
 	t.Helper()
 
-	app := createTestApp(t)
+	app := createTestApp(t, options...)
 	user := app.state.CreateUserForTest("ssh-verdict-user")
 	require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
 
@@ -1310,9 +1310,8 @@ func requireSSHHold(t *testing.T, action tailcfg.SSHAction) types.AuthID {
 }
 
 // TestSSHActionFollowUp_ConsumedVerdictNotReplayed guards the one-shot
-// verdict channel: after a follow-up consumed the verdict, a second follow-up
-// on the same auth_id must re-decide instead of reading the closed channel's
-// zero value, which Accept() reports as success.
+// check: after a follow-up consumed the verdict, a second follow-up on the
+// same auth_id must re-decide instead of acting on it again.
 func TestSSHActionFollowUp_ConsumedVerdictNotReplayed(t *testing.T) {
 	t.Parallel()
 
@@ -1498,6 +1497,21 @@ func TestSSHActionFollowUp_CancelRacingVerdictAtMostOnce(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSSHActionFollowUp_ExpiryRejectsWaiter: expiry retires the session
+// itself, so the follow-up waiting on it is refused rather than re-delegated.
+func TestSSHActionFollowUp_ExpiryRejectsWaiter(t *testing.T) {
+	t.Parallel()
+
+	f := newSSHVerdictFixture(t, func(cfg *types.Config) {
+		cfg.Tuning.RegisterCacheExpiration = 2 * time.Second
+	})
+	authID, _ := f.mint(t)
+
+	action := sshActionFromRecorder(t, f.followUp(t, authID))
+	assert.True(t, action.Reject, "expiry must refuse the waiter, got %+v", action)
+	assert.Empty(t, action.HoldAndDelegate)
 }
 
 // TestSSHActionFollowUp_LostResponseRedecides: the client never saw the

@@ -348,12 +348,12 @@ func (h *Headscale) waitForFollowup(
 		return nil, NewHTTPError(http.StatusUnauthorized, "invalid registration ID", err)
 	}
 
-	if reg, ok := h.state.GetAuthCacheEntry(followupReg); ok {
+	if reg, ok := h.state.GetAuthCacheEntryForFollowup(followupReg); ok {
 		// The followup poll is only authenticated by the auth ID in the
 		// URL, so fail closed unless the Noise session asking for the
 		// result was started with the same machine key that opened the
-		// registration. Check before waiting: the session hands out one
-		// verdict, which another machine must not take from the owner.
+		// registration. Check before waiting: another machine must neither
+		// read the owner's identity nor displace its waiting follow-up.
 		// [State.HandleNodeFromAuthPath] builds the node from this cached
 		// [types.RegistrationData.MachineKey]. [Headscale.handleRegister]
 		// and [Headscale.handleLogout] apply the same check.
@@ -365,16 +365,15 @@ func (h *Headscale) waitForFollowup(
 			)
 		}
 
-		superseded := reg.Park()
-
-		var verdict types.AuthVerdict
 		select {
 		// Prefer a completed registration even if the context has also
 		// expired. When both are ready, a plain select picks at random and
 		// would discard a successful registration as a spurious timeout
 		// (issue #3385).
-		case verdict = <-reg.WaitForAuth():
+		case <-reg.WaitForAuth():
 		default:
+			superseded := reg.Park()
+
 			select {
 			case <-ctx.Done():
 				return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", ctx.Err())
@@ -384,12 +383,11 @@ func (h *Headscale) waitForFollowup(
 				return nil, NewHTTPError(
 					http.StatusConflict, "superseded by a newer followup request", nil,
 				)
-			case verdict = <-reg.WaitForAuth():
+			case <-reg.WaitForAuth():
 			}
 		}
 
-		h.state.DeleteAuthCacheEntry(followupReg)
-
+		verdict := reg.Verdict()
 		if verdict.Accept() {
 			if !verdict.Node.Valid() {
 				// registration is expired in the cache, instruct the client to try a new registration

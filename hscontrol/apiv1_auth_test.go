@@ -132,7 +132,7 @@ func TestAPIV1AuthApprove(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.status)
 		assert.JSONEq(t, `{}`, string(res.body))
 
-		verdict := <-authReq.WaitForAuth()
+		verdict := authReq.Verdict()
 		assert.True(t, verdict.Accept(), "approve must finish the session with a passing verdict")
 	})
 
@@ -167,7 +167,7 @@ func TestAPIV1AuthReject(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.status)
 		assert.JSONEq(t, `{}`, string(res.body))
 
-		verdict := <-authReq.WaitForAuth()
+		verdict := authReq.Verdict()
 		assert.False(t, verdict.Accept(), "reject must finish the session with a failing verdict")
 	})
 

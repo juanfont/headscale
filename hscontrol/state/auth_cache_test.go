@@ -34,7 +34,8 @@ func requireExpiredVerdict(t *testing.T, entry *types.AuthRequest) {
 	t.Helper()
 
 	select {
-	case verdict := <-entry.WaitForAuth():
+	case <-entry.WaitForAuth():
+		verdict := entry.Verdict()
 		require.False(t, verdict.Accept(), "evicted entry must not signal Accept")
 		require.ErrorIs(t,
 			verdict.Err, ErrRegistrationExpired,
