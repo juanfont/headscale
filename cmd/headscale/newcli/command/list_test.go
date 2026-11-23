@@ -233,6 +233,19 @@ func TestFilterHelp(t *testing.T) {
 	require.Empty(t, filterExample([]string{"prog items --sort id"}))
 }
 
+func TestInvalidColumnModifier(t *testing.T) {
+	for _, value := range []string{"+name,++id", "+name, ++id", "+name,+-id", "-name,--id"} {
+		t.Run(value, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			args := []string{"items", "list", "--columns", value, "--list-columns"}
+			require.Equal(t, 1, Run(testTree(t), args, Env{Stdout: &stdout, Stderr: &stderr}))
+			require.Empty(t, stdout.String())
+			require.NotEmpty(t, stderr.String())
+		})
+	}
+}
+
 // TestColumnsOfTheList: the list flags read the columns of the list the
 // line reaches. Two lists of one row type, in one tree or in two, each
 // have their own, also where a name is the same and its field is not.
@@ -267,6 +280,7 @@ func TestColumnsOfTheList(t *testing.T) {
 		{tree: one, line: "keys --columns id", stderr: "Error: unknown column \"id\".\nRun `prog keys --list-columns`.\n"},
 		{tree: one, line: "__complete keys --columns ''", stdout: "name\n:4\n"},
 		{tree: one, line: "__complete items --columns ''", stdout: "id\nname\n:4\n"},
+		{tree: one, line: "__complete items --filter=id=1,na", stdout: "id=1,name\n:6\n"},
 		{tree: other, line: "keys --filter name=2", stdout: "NAME\n2\n"},
 	} {
 		var stdout, stderr bytes.Buffer
@@ -274,5 +288,34 @@ func TestColumnsOfTheList(t *testing.T) {
 		Run(tt.tree, words(tt.line), Env{Stdout: &stdout, Stderr: &stderr})
 		require.Equal(t, tt.stdout, stdout.String(), tt.line)
 		require.Equal(t, tt.stderr, stderr.String(), tt.line)
+	}
+
+	for _, line := range []string{"__complete items --filter=0,na", "__complete keys --filter=id=1,na"} {
+		var stdout bytes.Buffer
+
+		require.Equal(t, 0, Run(one, words(line), Env{Stdout: &stdout}))
+		require.Contains(t, []string{":4\n", ":6\n"}, stdout.String(), line)
+	}
+}
+
+func TestListItemSpaces(t *testing.T) {
+	for _, tc := range []struct{ flag, compact, spaced string }{
+		{"--columns", "name,id", "name, id"},
+		{"--filter", "id=1,name=apple", "id=1, name=apple"},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			run := func(value string) string {
+				t.Helper()
+
+				var out, stderr bytes.Buffer
+
+				args := []string{"items", "list", tc.flag, value}
+				require.Equal(t, 0, Run(testTree(t), args, Env{Stdout: &out, Stderr: &stderr}), stderr.String())
+				require.Empty(t, stderr.String())
+
+				return out.String()
+			}
+			require.Equal(t, run(tc.compact), run(tc.spaced))
+		})
 	}
 }
