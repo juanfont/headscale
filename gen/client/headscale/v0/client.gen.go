@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	jsonv2 "github.com/go-json-experiment/json"
+	jsontext "github.com/go-json-experiment/json/jsontext"
+	jsonv1 "github.com/go-json-experiment/json/v1"
 	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime"
 )
@@ -1258,6 +1262,52 @@ type VersionInfo struct {
 	Dirty     bool   `json:"dirty"`
 	Go        GoInfo `json:"go"`
 	Version   string `json:"version"`
+}
+
+// DecodeResponse preserves case-sensitive wire names, including inside nullable values.
+func DecodeResponse(raw []byte, out any) error {
+	return jsonv2.Unmarshal(raw, out, responseOptions)
+}
+
+var responseOptions = jsonv2.JoinOptions(
+	jsonv1.DefaultOptionsV1(),
+	jsonv2.MatchCaseInsensitiveNames(false),
+	jsonv2.WithUnmarshalers(jsonv2.JoinUnmarshalers(
+		nullableResponse[Owner](),
+		nullableResponse[UserReference](),
+		nullableResponse[Owner](),
+		nullableResponse[SSHCheckNodeReference](),
+		nullableResponse[SSHCheckNodeReference](),
+		nullableResponse[[]string](),
+		nullableResponse[Owner](),
+		nullableResponse[UserReference](),
+		nullableResponse[Owner](),
+		nullableResponse[UserReference](),
+		nullableResponse[ClientReference](),
+		nullableResponse[Owner](),
+		nullableResponse[Credential](),
+		nullableResponse[UserReference](),
+		nullableResponse[Owner](),
+		nullableResponse[UserReference](),
+		nullableResponse[OwnerUser](),
+		nullableResponse[Identity](),
+		nullableResponse[UserReference](),
+		nullableResponse[ProblemObject](),
+	)),
+)
+
+func nullableResponse[T any]() *jsonv2.Unmarshalers {
+	return jsonv2.UnmarshalFromFunc(func(d *jsontext.Decoder, n *nullable.Nullable[T]) error {
+		if kind := d.PeekKind(); kind != '{' && kind != '[' {
+			return errors.ErrUnsupported
+		}
+		var value T
+		if err := jsonv2.UnmarshalDecode(d, &value); err != nil {
+			return err
+		}
+		n.Set(value)
+		return nil
+	})
 }
 
 // ListApiKeysParams defines parameters for ListApiKeys.
