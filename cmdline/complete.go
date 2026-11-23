@@ -70,9 +70,13 @@ func (f *field) completer(nodes map[*reader.Command]*node) reader.Completer {
 		}
 
 		words, dir := c.Complete(l, cur[i+1:])
+		// Extensions and directories describe the shell's file search.
+		if dir&(FilterExt|FilterDirs) != 0 {
+			return words, reader.Directive(dir | NoSpace)
+		}
+
 		// The list prefix is copied verbatim into every candidate.
-		if len(words) > 0 && dir&(FilterExt|FilterDirs) == 0 &&
-			strings.ContainsAny(cur[:i+1], "\t\r\n") {
+		if len(words) > 0 && strings.ContainsAny(cur[:i+1], "\t\r\n") {
 			return nil, reader.NoFiles
 		}
 

@@ -962,6 +962,45 @@ func TestSealedListSeparator(t *testing.T) {
 	}
 }
 
+type fileLookup struct{ color }
+
+func (fileLookup) Complete(_ *Line, prefix string) ([]string, Directive) {
+	if prefix == "dir" {
+		return []string{"fixtures"}, FilterDirs
+	}
+
+	return []string{"json"}, FilterExt
+}
+
+func TestListFileMetadata(t *testing.T) {
+	type input struct {
+		Files []fileLookup `flag:"files"`
+	}
+
+	tree, err := New(
+		Command[input]{
+			Name: "app",
+			Run:  func(context.Context, input) error { return nil },
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		suffix, word string
+		dir          Directive
+	}{
+		{"ext", "json", FilterExt},
+		{"dir", "fixtures", FilterDirs},
+	} {
+		words, dir := tree.Complete([]string{"--files"}, "red,"+tc.suffix)
+		if !slices.Equal(words, []string{tc.word}) || dir != tc.dir|NoSpace {
+			t.Errorf("red,%s: got %q directive %d", tc.suffix, words, dir)
+		}
+	}
+}
+
 // TestTab: what the types offer (rules T14, T19–T22); the line is split on
 // spaces and the last word is under the cursor.
 func TestTab(t *testing.T) {
