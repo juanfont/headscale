@@ -145,7 +145,7 @@ func fleet(tb testing.TB, f *fixture) {
 		}
 	}
 
-	for name, t := range map[string]time.Time{"now": f.now, "in89d": f.now.Add(89 * day), "ago120d": f.now.Add(-120 * day), "ago60d": f.now.Add(-60 * day), "ago40d": f.now.Add(-40 * day)} {
+	for name, t := range map[string]time.Time{"in89d": f.now.Add(89 * day), "ago120d": f.now.Add(-120 * day), "ago60d": f.now.Add(-60 * day), "ago40d": f.now.Add(-40 * day)} {
 		f.vars[name] = t.UTC().Format("2006-01-02 15:04 UTC")
 	}
 }
@@ -185,7 +185,7 @@ Owner:              User 3 (alice)
 IP:                 100.64.0.12, fd7a:115c:a1e0::c
 Version:            1.82.0
 Online:             yes
-Last seen:          now ({now})
+Last seen:          {online-last-seen}
 Expiry:             in 89d ({in89d})
 Hostname:           ubuntu-vm
 OS:                 linux
@@ -206,6 +206,30 @@ Problems:           -
 Attributes:
   ip:publicAddress   203.0.113.7
 `
+
+func wantMynodeSheet(tb testing.TB, f *fixture, r result) string {
+	tb.Helper()
+
+	// An online node gets its timestamp from the API response clock.
+	rows := nodes.kept(tb, r, onlyID("12"))
+	require.Len(tb, rows, 1)
+
+	var node struct {
+		LastSeen time.Time `json:"lastSeen"`
+	}
+	require.NoError(tb, json.Unmarshal(rows[0], &node))
+	require.WithinRange(tb, node.LastSeen, f.started.Truncate(time.Microsecond), f.finished)
+
+	relative := "now"
+	if elapsed := node.LastSeen.Sub(f.now); elapsed >= time.Minute {
+		// The test client can be more than a minute behind the responding server.
+		relative = fmt.Sprintf("in %dm", elapsed.Round(time.Minute)/time.Minute)
+	}
+
+	f.vars["online-last-seen"] = relative + " (" + node.LastSeen.UTC().Format("2006-01-02 15:04 UTC") + ")"
+
+	return f.expand(mynodeSheet)
+}
 
 func onlyID(ids ...string) func(map[string]any) bool {
 	return func(row map[string]any) bool {
@@ -314,10 +338,10 @@ func TestNodesList(t *testing.T) {
 }
 
 var nodesGetCases = []cliCase{
-	{name: "by name, a sheet with the attributes", args: "nodes get mynode", stdout: mynodeSheet},
+	{name: "by name, a sheet with the attributes", args: "nodes get mynode", want: wantMynodeSheet},
 	{name: "by ID as JSON", args: "nodes get 12 -o json", want: nodes.row(onlyID("12"))},
-	{name: "by tailnet IP", args: "nodes get 100.64.0.12", stdout: mynodeSheet},
-	{name: "an IP is compared as an address", args: "nodes get fd7a:115c:a1e0:0:0::c", stdout: mynodeSheet},
+	{name: "by tailnet IP", args: "nodes get 100.64.0.12", want: wantMynodeSheet},
+	{name: "an IP is compared as an address", args: "nodes get fd7a:115c:a1e0:0:0::c", want: wantMynodeSheet},
 	{name: "by hostname", args: "nodes get ubuntu-vm -o json", want: nodes.row(onlyID("12"))},
 	{
 		name: "a word that names two nodes", args: "nodes get web",
@@ -370,7 +394,13 @@ Problems:           node_expiry_invalid
 func TestNodesGet(t *testing.T) {
 	t.Parallel()
 
-	runCases(t, fleet, nodesGetCases)
+	runCases(t, func(tb testing.TB, f *fixture) {
+		tb.Helper()
+
+		// Cross a minute before the API timestamps the online node.
+		f.now = f.now.Truncate(time.Minute).Add(-time.Nanosecond)
+		fleet(tb, f)
+	}, nodesGetCases)
 }
 
 // nodeOf reads a node back from the server.

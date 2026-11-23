@@ -409,6 +409,9 @@ type fixture struct {
 	env []string
 	// vars fill the {name} places in a case.
 	vars map[string]string
+
+	started, finished time.Time
+
 	// releases are the release tags that `version` sees; no case reaches
 	// GitHub.
 	releases []string
@@ -596,7 +599,9 @@ func runCase(t *testing.T, setup func(testing.TB, *fixture), tc cliCase) {
 		tc.setup(t, f)
 	}
 
+	f.started = time.Now()
 	r := f.run(t, tc)
+	f.finished = time.Now()
 	ran.add(tc, f)
 
 	want := f.expand(tc.stdout)
