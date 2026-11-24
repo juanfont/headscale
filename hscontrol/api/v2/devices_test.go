@@ -3,6 +3,7 @@ package apiv2
 import (
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
@@ -53,4 +54,22 @@ func TestDeviceHostDetail(t *testing.T) {
 	assert.False(t, *bare.SSHEnabled)
 	assert.Equal(t, Distro{}, *bare.Distro)
 	assert.Equal(t, []string{}, bare.ClientConnectivity.Endpoints)
+}
+
+// TestDeviceConnectedWhileExpired: as Tailscale reports it (capture
+// expire-key-expiry, step X4), an expired device that still polls is
+// connected to control, though peers do not see it online.
+func TestDeviceConnectedWhileExpired(t *testing.T) {
+	t.Parallel()
+
+	past := time.Now().Add(-time.Minute)
+	node := &types.Node{GivenName: "expired", Expiry: &past, ActiveSessions: 1}
+	node.IsOnline = new(node.ShouldBeOnline())
+
+	d := deviceFromView(node.View(), false, "")
+	assert.True(t, d.ConnectedToControl)
+	assert.NotNil(t, d.LastSeen)
+
+	node.ActiveSessions = 0
+	assert.False(t, deviceFromView(node.View(), false, "").ConnectedToControl)
 }

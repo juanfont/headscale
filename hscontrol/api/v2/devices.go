@@ -646,7 +646,7 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 		Created:            view.CreatedAt(),
 		Hostname:           view.Hostname(),
 		IsEphemeral:        view.IsEphemeral(),
-		ConnectedToControl: view.IsOnline().Valid() && view.IsOnline().Get(),
+		ConnectedToControl: view.ActiveSessions() > 0, // an expired device that polls stays connected
 		MachineKey:         view.MachineKey().String(),
 		NodeKey:            view.NodeKey().String(),
 		OS:                 hostinfoOS(view),

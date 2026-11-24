@@ -315,8 +315,9 @@ func (e *expiryStep) viewChecks(x, v string) []stepCheck {
 }
 
 // apiChecks compares the step's last routes read and last device read of
-// each device: advertised and enabled routes, and the key expiry, which for
-// a future expiry also says whether the step moved it.
+// each device: advertised and enabled routes, whether it is connected, and
+// the key expiry, which for a future expiry also says whether the step moved
+// it.
 func (e *expiryStep) apiChecks(t *testing.T, saasPrev, hsPrev map[string]deviceView) []stepCheck {
 	t.Helper()
 
@@ -337,6 +338,12 @@ func (e *expiryStep) apiChecks(t *testing.T, saasPrev, hsPrev map[string]deviceV
 			device[alias] = a
 		}
 	}
+
+	// Not compared after a client logout (expiry D4, D5): SaaS reports the
+	// logged-out device connected for at least the ten seconds to the
+	// recorded read, while Headscale reports it disconnected once its poll
+	// ends. A known difference, left for its own change.
+	loggedOut := slices.ContainsFunc(e.step.Actions, func(a testcapture.Action) bool { return a.Kind == "logout" })
 
 	var checks []stepCheck
 
@@ -400,6 +407,32 @@ func (e *expiryStep) apiChecks(t *testing.T, saasPrev, hsPrev map[string]deviceV
 
 			// Judged against an earlier reading only where SaaS has one.
 			return renderKeyExpiry(views[0], prevGot, hadGot && hadWant)
+		}})
+
+		if loggedOut {
+			continue
+		}
+
+		// The raw key, not the decoded bool: a field left out when false
+		// must not pass as false.
+		var recorded map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(a.Response, &recorded), "%s: %s", e.step.Name, a.Path)
+
+		checks = append(checks, stepCheck{alias + "/device-connected", rawField(recorded, "connectedToControl"), func() string {
+			// An expired device that still polls is connected (step X4).
+			path, ok := e.r.v2Path(a.Path)
+			if !ok {
+				return "no device"
+			}
+
+			status, body := e.r.call(t, http.MethodGet, path, nil)
+
+			var got map[string]json.RawMessage
+			if status != http.StatusOK || json.Unmarshal(body, &got) != nil {
+				return fmt.Sprintf("status %d", status)
+			}
+
+			return rawField(got, "connectedToControl")
 		}})
 	}
 
@@ -725,4 +758,14 @@ func renderSSHPolicy(nm *netmap.NetworkMap) string {
 	}
 
 	return string(b)
+}
+
+// rawField renders a JSON object's field as sent, or "absent".
+func rawField(obj map[string]json.RawMessage, key string) string {
+	v, ok := obj[key]
+	if !ok {
+		return "absent"
+	}
+
+	return string(v)
 }
