@@ -232,12 +232,16 @@ func (b *builder) build(n Node, above []string, scope []*field) *node {
 	nd := &node{
 		info: &Info{
 			Name:    d.name,
-			Aliases: d.aliases,
+			Aliases: slices.Clone(d.aliases),
 			Help:    d.help,
 			Path:    names[1:],
 			Usage:   at,
 		},
-		low:   &reader.Command{Name: d.name, Aliases: d.aliases, Help: d.help},
+		low: &reader.Command{
+			Name:    d.name,
+			Aliases: slices.Clone(d.aliases),
+			Help:    d.help,
+		},
 		flags: map[string]*field{},
 		spell: map[string]string{},
 		in:    d.in,

@@ -1456,3 +1456,33 @@ func TestRun(t *testing.T) {
 		t.Errorf("G7: a Line made by hand: %v", err)
 	}
 }
+
+// TestReuseDeclaredAlias: the tree owns its aliases; neither the caller's
+// slice nor the one Info hands out changes dispatch.
+func TestReuseDeclaredAlias(t *testing.T) {
+	t.Parallel()
+
+	aliases := []string{"ls"}
+	cmd := func(name string, aliases []string) Node {
+		return Command[struct{}]{
+			Name:    name,
+			Aliases: aliases,
+			Run:     func(context.Context, struct{}) error { return nil },
+		}
+	}
+
+	tree, err := New(
+		Group{Name: "tool", Commands: []Node{cmd("list", aliases), cmd("count", nil)}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	aliases[0] = "count"
+	tree.Root().Commands[0].Aliases[0] = "count"
+
+	line, err := tree.Parse([]string{"count"})
+	if err != nil || line.Command.Name != "count" {
+		t.Fatalf("count selected %q: %v", line.Command.Name, err)
+	}
+}
