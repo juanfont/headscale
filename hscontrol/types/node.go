@@ -526,6 +526,7 @@ func (node *Node) CanAccessRoutes(
 
 	ips := node.IPs()
 	subnetRoutes := node.SubnetRoutes()
+	isExit := node.IsExitNode()
 	sides := make([]struct{ isSrc, isDst bool }, len(matchers))
 
 	for i, m := range matchers {
@@ -538,9 +539,11 @@ func (node *Node) CanAccessRoutes(
 
 		// Reverse: traffic from the route's subnet is destined for
 		// this node's subnets; the router needs the route for return
-		// traffic.
+		// traffic. An exit node serves a rule's internet destinations,
+		// so it is on that side too, as [Node.CanAccess] has it.
 		sides[i].isDst = m.DestsContainsIP(ips...) ||
-			m.DestsOverlapsPrefixes(subnetRoutes...)
+			m.DestsOverlapsPrefixes(subnetRoutes...) ||
+			(isExit && m.DestsIsTheInternet())
 	}
 
 	var result []netip.Prefix

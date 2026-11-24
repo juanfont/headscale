@@ -1369,6 +1369,12 @@ func canAccessRouteReference(
 			return true
 		}
 
+		// An exit node serves the rule's internet destinations, so traffic
+		// from the route's subnet may leave through it.
+		if matcher.SrcsOverlapsPrefixes(route) && node.IsExitNode() && matcher.DestsIsTheInternet() {
+			return true
+		}
+
 		// A subnet router acts on behalf of its advertised subnets.
 		// If the node's approved subnet routes overlap the source set
 		// and the route overlaps the destination set, the router needs
