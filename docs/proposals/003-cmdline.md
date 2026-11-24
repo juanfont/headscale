@@ -241,11 +241,11 @@ type (
 | K9   | an input type that is not a struct; an entry of `Flags` that is not a struct value (a pointer, `nil`, any other value)                                                                                                                                                              |
 | K10  | a field that is not exported; a field with no `arg` and no `flag` tag, or with both                                                                                                                                                                                                 |
 | K11  | a tag that is not in the form `key:"value"`; a key given twice; a key other than `arg`, `flag`, `short`, `help` and `default`                                                                                                                                                       |
-| K12  | a field whose type cannot be read ([Which type is read how](#which-type-is-read-how)); `Opt` or `Repeat` inside `Opt` or `Repeat`; a list of `Opt` or `Repeat`; a named type of kind bool with a late reader                                                                        |
+| K12  | a field whose type cannot be read ([Which type is read how](#which-type-is-read-how)); `Opt` or `Repeat` inside `Opt` or `Repeat`; a list of `Opt` or `Repeat`; a pointer to `Opt` or `Repeat`; a named type of kind bool with a late reader                                        |
 | K13  | a `short` that is not one character; a `short` or a `default` on an argument                                                                                                                                                                                                        |
 | K14  | a `default` that the reader of the field refuses; a `default` on an `Opt` field or on a field with a late reader                                                                                                                                                                    |
 | K15  | an argument in a struct of flags; an argument name that is empty or holds a space, a control byte or one of `<>[]`; an argument name used twice in one command; an argument of type `Repeat`; a needed argument after an optional one; a help text of an argument with a line break |
-| K16  | a `Command` without `Run`; a `Group` without a command; a command that is `nil`; a root without a name; a `nil` root                                                                                                                                                                |
+| K16  | a `Command` without `Run`; a `Group` without a command; a command that is `nil`, also a `nil` `*Group` or `*Command`; a root without a name, or with a name that K3 refuses for a command; a `nil` root                                                                             |
 | K17  | a type with two readers: two `Reader`s, two `LateReader`s, or one of each                                                                                                                                                                                                           |
 | K18  | one flag name declared by two struct types where a line can end at a group: a group and the groups above it use one struct type for one flag name, so there is one field to fill (G3)                                                                                               |
 
@@ -364,7 +364,7 @@ The library has no setting for these rules. A program that wants another list sy
 
 ### Defaults
 
-**A flag with a `default` tag that is not given is read from the tag, through the reader of its type** (Y9). `New` reads every default once and refuses one that does not read (K14). `Parse` uses the value that `New` read and does not run the reader again, so a reader that would refuse the same text later cannot leave the field at its zero value. A flag that takes its default is not in `Line.Flags`. `Info` gives the tag as `Flag.Default`, for a help text.
+**A flag with a `default` tag that is not given is read from the tag, through the reader of its type** (Y9). `New` reads every default once and refuses one that does not read (K14). A line owns the values it is given: a default whose type can share memory (a map, a slice, a pointer, a channel, a function or an interface, or a struct or array holding one) is read again from its text for each line, so a command may change it; any other default is the value `New` read, and the reader is not asked again. A reader that refuses on a later line the text it took at `New` fails that line with `BadValue` (`Value` is the default's text), never with the zero value. Such a refusal comes before a wrong count of arguments, and of two refused defaults the first in field order is the one reported. A flag that takes its default is not in `Line.Flags`. `Info` gives the tag as `Flag.Default`, for a help text.
 
 - **Every other field that is not given keeps its zero value** (Y9).
 - **An `Opt` field and a field with a late reader take no default** (K14). An argument takes none (K13).
@@ -916,6 +916,10 @@ id,name
 :6
 ```
 
+**Tab offers nothing (`NoFiles`) when an item before the cursor is empty, or holds a tab or a line break** (T20). The check is the split of the list alone; no reader runs (T16). Words with `FilterExt` or `FilterDirs` come back without the items before the cursor.
+
+**What a caller's type offers in a list is the caller's** (E6). Headscale completes the item after the last comma by that item's own sign, and offers nothing after an earlier item that the run refuses: an unknown column, a second sign, a column added and taken away, a condition its column refuses. Typing more cannot repair those. A list that only mixes plain and signed items is not one of them: Tab goes on, and the run refuses the mix.
+
 ### What Tab never does
 
 - **Tab treats `-h`, `--help` and `--version` as ordinary flags, and keeps completing after them** (T15).
@@ -1011,7 +1015,7 @@ A reader who knows cobra should know where this library's answer is not cobra's:
 
 ### The scripts
 
-- **`script.Write(w, shell, program)` writes cobra's script, with help texts, for `bash` (cobra's V2 script), `zsh`, `fish` and `powershell`** (S8). Any other shell is an error: `no completion script for shell "tcsh"`. `program` is the root's `Name`; the script uses it for its function names and to call the program.
+- **`script.Write(w, shell, program)` writes cobra's script, with help texts, for `bash` (cobra's V2 script), `zsh`, `fish` and `powershell`** (S8). Any other shell is an error: `no completion script for shell "tcsh"`. `program` is the root's `Name`; the script uses it for its function names and to call the program. A fish script is refused for a program name outside letters, digits, `-` and `_`.
 
 - **The script calls `program __complete <words…> <cursor word>` and reads the answer of S3** (S9). A fault in a script is cobra's. It is fixed in cobra, not in a copy (decision D23).
 
@@ -1336,8 +1340,13 @@ flag, named by a struct tag:
     	Force  bool                       `flag:"force" help:"Do not ask"`
     }
 
-The tags are arg, flag, short, help and default. The type of the field says how
-its word is read:
+The tags are arg, flag, short, help and default; New reads a default
+once, and every line without the flag gets that value. A line owns what it
+is given: a default whose type can share memory (a map, a slice, a
+pointer, or a struct or array holding one) is read again for each line, so
+a command may change it; a reader that then refuses the text it took at
+New fails the line with BadValue. The type of the field says how its word
+is read:
 
     string, bool, int…, uint…, float…   read by the library
     a type with UnmarshalText           reads itself (encoding.TextUnmarshaler)
