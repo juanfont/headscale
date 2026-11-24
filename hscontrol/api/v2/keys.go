@@ -104,7 +104,7 @@ type (
 
 	listKeysInput struct {
 		Tailnet string `path:"tailnet"`
-		All     bool   `doc:"Without it, a token sees only the auth keys tokens made." query:"all"`
+		All     bool   `doc:"Without it, a token sees only the auth keys tokens made, and an admin API key sees no OAuth clients." query:"all"`
 	}
 
 	keyByIDInput struct {
@@ -173,7 +173,7 @@ func registerKeys(api huma.API, b Backend) {
 		Method:      http.MethodGet,
 		Path:        "/api/v2/tailnet/{tailnet}/keys",
 		Summary:     "List auth keys and OAuth clients",
-		Description: "A token sees the kinds it can read: `auth_keys:read` for auth keys, `oauth_keys:read` for OAuth clients (an admin API key sees all).",
+		Description: "A token sees the kinds it can read: `auth_keys:read` for auth keys, `oauth_keys:read` for OAuth clients. An admin API key sees every auth key, and OAuth clients only with `all=true`.",
 		Tags:        keysTags,
 		Security:    security,
 		Errors: []int{
