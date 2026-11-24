@@ -394,7 +394,15 @@ func (h *Headscale) waitForFollowup(
 				return h.reqToNewRegisterResponse(regData)
 			}
 
-			return nodeToRegisterResponse(verdict.Node), nil
+			// The verdict is as old as the approval; the node may have been
+			// deleted or expired since, which the client's first map
+			// request would find.
+			node, ok := h.state.GetNodeByID(verdict.Node.ID())
+			if !ok || node.IsExpired() {
+				return h.reqToNewRegisterResponse(regData)
+			}
+
+			return nodeToRegisterResponse(node), nil
 		}
 	}
 
