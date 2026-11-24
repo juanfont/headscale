@@ -472,6 +472,8 @@ func TestOrder(t *testing.T) {
 		{"O3", "-o|a|nodes|-o|b|lst", `[{output a 0} {output b 3}] []@[] unknown command "lst" for "nodes"@5`},
 		{"O4", "nodes|list|-o|a|-o|b|--sort", `[{output a 2} {output b 4}] []@[] flag --sort needs a value@6`},
 		{"O5", "-c|a|-o|j|-c|b|policy|check", `[{config a 0}] []@[] unknown flag -o for "policy check"@2`},
+		{"O7", "nodes|delete| ", `[] [ ]@[2] <nil>`},
+		{"O8", "nodes|delete|--| ", `[] [ ]@[3] <nil>`},
 		{"O6", "nodes|delete|-o=x|12|--bogus|13", `[{output x 2}] [12]@[3] unknown flag --bogus for "nodes delete"@4`},
 	} {
 		m, err := Parse(tree(), strings.Split(tc.argv, "|"))
