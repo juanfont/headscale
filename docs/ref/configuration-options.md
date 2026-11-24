@@ -301,7 +301,7 @@ Replaces `noise_private_key_path` ([removed](#noise_private_key_path)).
 
 ## `prefixes` { #prefixes data-toc-label="prefixes" }
 
-The IP ranges node addresses are allocated from. Keep at least one of [`prefixes.v4`](#prefixes.v4) and [`prefixes.v6`](#prefixes.v6). Use the Tailscale ranges, `100.64.0.0/10` and `fd7a:115c:a1e0::/48`, or ranges inside them: the client assumes them, and other ranges are unsupported.
+The IP ranges node addresses are allocated from. Keep at least one of [`prefixes.v4`](#prefixes.v4) and [`prefixes.v6`](#prefixes.v6). Use the Tailscale ranges, `100.64.0.0/10` and `fd7a:115c:a1e0::/48`, or ranges inside them: the client assumes them, and headscale refuses other ranges.
 
 ??? example "All `prefixes` keys and defaults"
 

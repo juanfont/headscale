@@ -45,7 +45,7 @@ noise:
 # The IP ranges node addresses are allocated from. Keep at least one of
 # `prefixes.v4` and `prefixes.v6`. Use the Tailscale ranges, `100.64.0.0/10` and
 # `fd7a:115c:a1e0::/48`, or ranges inside them: the client assumes them, and
-# other ranges are unsupported.
+# headscale refuses other ranges.
 prefixes:
   # The IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4 address. Use
   # a prefix inside `100.64.0.0/10`. A range outside it is not supported and
