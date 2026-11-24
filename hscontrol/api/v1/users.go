@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 
@@ -69,6 +70,7 @@ func registerUsers(api huma.API, b Backend) {
 		Summary:     "Create user",
 		Tags:        []string{"Users"},
 		Security:    bearerAuth,
+		Responses:   conflictResponses(api),
 	}, func(ctx context.Context, in *createUserInput) (*userOutput, error) {
 		// Pre-check yields a 409 for the common case; the DB unique constraint
 		// is the real guard.
@@ -104,6 +106,7 @@ func registerUsers(api huma.API, b Backend) {
 		Summary:     "Rename user",
 		Tags:        []string{"Users"},
 		Security:    bearerAuth,
+		Responses:   conflictResponses(api),
 	}, func(ctx context.Context, in *renameUserInput) (*userOutput, error) {
 		oldID, err := parseUserID(in.OldID)
 		if err != nil {
@@ -224,4 +227,20 @@ func parseUserID(s string) (types.UserID, error) {
 	}
 
 	return types.UserID(id), nil
+}
+
+// conflictResponses documents a 409 beside the default error. Listing it in
+// Operation.Errors would drop the default and change every other error in
+// the document and its generated client.
+func conflictResponses(api huma.API) map[string]*huma.Response {
+	problem := map[string]*huma.MediaType{
+		"application/problem+json": {
+			Schema: api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[huma.ErrorModel](), true, "Error"),
+		},
+	}
+
+	return map[string]*huma.Response{
+		"409":     {Description: http.StatusText(http.StatusConflict), Content: problem},
+		"default": {Description: "Error", Content: problem},
+	}
 }

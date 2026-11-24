@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/danielgtaylor/huma/v2"
+	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
@@ -215,4 +217,21 @@ func TestAPIV1ListUsers(t *testing.T) {
 		res := h.assertParity(t, http.MethodGet, "/api/v1/user?id=abc", nil)
 		assertStatus(t, res, http.StatusBadRequest)
 	})
+}
+
+// TestAPIV1UserConflictDocumented pins the 409 of user create and rename in
+// the OpenAPI document, so generated clients decode it.
+func TestAPIV1UserConflictDocumented(t *testing.T) {
+	app := createTestApp(t)
+	_, api := apiv1.Handler(apiv1.Backend{State: app.state, Change: app.Change, Cfg: app.cfg})
+	paths := api.OpenAPI().Paths
+
+	for path, op := range map[string]*huma.Operation{
+		"/api/v1/user":                          paths["/api/v1/user"].Post,
+		"/api/v1/user/{oldId}/rename/{newName}": paths["/api/v1/user/{oldId}/rename/{newName}"].Post,
+	} {
+		require.NotNil(t, op, path)
+		assert.Contains(t, op.Responses, "409", path)
+		assert.Contains(t, op.Responses, "default", path)
+	}
 }
