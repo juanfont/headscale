@@ -115,6 +115,12 @@ func registerAuth(api huma.API, b Backend) {
 			return nil, err
 		}
 
+		// A registration is approved by auth register, which makes its node;
+		// an empty verdict would tell the client to start over.
+		if !authReq.IsSSHCheck() {
+			return nil, huma.Error400BadRequest("auth_id " + in.Body.AuthID + " is not an SSH check; register a node with auth register")
+		}
+
 		authReq.FinishAuth(types.AuthVerdict{})
 
 		return &authApproveOutput{}, nil

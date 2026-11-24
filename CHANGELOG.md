@@ -530,6 +530,7 @@ Every option below is under `services.headscale`.
 - The fix hint for a node whose name cannot form a valid FQDN, in the startup check and the map log, reads `headscale nodes rename --identifier <id> <name>`; the printed `headscale nodes rename <id> <name>` was a usage error. [#3364](https://github.com/juanfont/headscale/issues/3364)
 - The v1 API returns `409 Conflict`, not `500`, when a user create or rename asks for a name another user already has. A rename to a taken name always returned `500`. This also holds for a name that only users from an identity provider hold: a create succeeded and a rename returned `500`. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - Exit nodes get the subnet routes behind the sources of a rule to `autogroup:internet`, as on Tailscale SaaS. Traffic to a source's own subnet also goes through the exit node. [#3757](https://github.com/juanfont/headscale/pull/3757)
+- `/api/v1/auth/approve` approves only an SSH check. It returns `400` for a pending node registration. Approving one finished the login without creating its node, so its client started over. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - An approval of a login that another approval already decided is refused. Two approvals can no longer both register one login. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - A late or repeated follow-up of a login gets the verdict the login already reached, instead of starting over. [#3757](https://github.com/juanfont/headscale/pull/3757)
 
