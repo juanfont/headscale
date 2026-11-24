@@ -115,17 +115,12 @@ func registerUsers(api huma.API, b Backend) {
 			return nil, mapError("renaming user", err)
 		}
 
-		_, c, err := b.State.RenameUser(types.UserID(oldUser.ID), in.NewName)
+		newUser, c, err := b.State.RenameUser(types.UserID(oldUser.ID), in.NewName)
 		if err != nil {
 			return nil, mapError("renaming user", err)
 		}
 
 		b.Change(c)
-
-		newUser, err := b.State.GetUserByName(in.NewName)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("renaming user", err)
-		}
 
 		out := &userOutput{}
 		out.Body.User = userFromView(newUser.View())
