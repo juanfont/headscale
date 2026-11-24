@@ -1525,3 +1525,35 @@ func TestRunAfterArgvReuse(t *testing.T) {
 		})
 	}
 }
+
+// TestOptNil: a reader may return nil for an Opt of an interface; the flag
+// is given, its value nil (Y3, Y7).
+func TestOptNil(t *testing.T) {
+	type input struct {
+		X Opt[any] `flag:"x"`
+	}
+
+	var got Opt[any]
+
+	//nolint:nilnil // a nil value is the case
+	tree, err := New(
+		Command[input]{
+			Name: "c",
+			Run:  func(_ context.Context, in input) error { got = in.X; return nil },
+		},
+		Reader(func(string) (any, error) { return nil, nil }),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := tree.Parse([]string{"--x=1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = l.Run(t.Context())
+	if v, ok := got.Get(); err != nil || v != nil || !ok {
+		t.Errorf("Opt[any] read as nil: got %v %v, run %v", v, ok, err)
+	}
+}

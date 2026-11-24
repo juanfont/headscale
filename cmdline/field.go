@@ -28,9 +28,15 @@ func Some[T any](v T) Opt[T] { return Opt[T]{v, true} }
 // Get returns the value and whether it was given.
 func (o Opt[T]) Get() (T, bool) { return o.v, o.ok }
 
-//nolint:forcetypeassert // the library sets only a T
-func (o *Opt[T]) set(v reflect.Value) { o.v, o.ok = v.Interface().(T), true }
-func (*Opt[T]) one() reflect.Type     { return reflect.TypeFor[T]() }
+// set goes through reflect: a nil interface read for an Opt[any] has no
+// dynamic type to assert.
+func (o *Opt[T]) set(
+	v reflect.Value,
+) {
+	reflect.ValueOf(&o.v).Elem().Set(v)
+	o.ok = true
+}
+func (*Opt[T]) one() reflect.Type { return reflect.TypeFor[T]() }
 
 // Repeat is a flag that may be given more than once: each occurrence adds
 // one T. Every other flag is given once; a list is one comma-separated
