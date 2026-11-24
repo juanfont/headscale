@@ -204,8 +204,14 @@ func New(root Node, opts ...Option) (*Tree, error) {
 	}
 
 	t := &Tree{root: b.build(root, nil, nil, nil), nodes: b.nodes}
-	if t.root.info.Name == "" {
+	switch name := t.root.info.Name; {
+	case name == "":
 		b.bad("the root has no name")
+	case strings.HasPrefix(name, "-") || strings.ContainsFunc(name, func(r rune) bool { return r <= ' ' || r == 0x7f }):
+		b.bad(
+			"the root name %q cannot be typed as a program name",
+			name,
+		) // the scripts register it as one word (K3)
 	}
 
 	err := reader.Check(t.root.low)

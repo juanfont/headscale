@@ -849,6 +849,8 @@ func TestNew(t *testing.T) {
 		{"K16", leaf(Command[ok]{Name: "c"}), nil, "prog c: Run is missing"},
 		{"K16", leaf(Group{Name: "g"}), nil, "prog g: a group needs a command"},
 		{"K16", Group{Commands: []Node{Command[ok]{Name: "c", Run: nop}}}, nil, "the root has no name"},
+		{"K3", Group{Name: "tool helper", Commands: []Node{Command[ok]{Name: "c", Run: nop}}}, nil, `the root name "tool helper" cannot be typed`},
+		{"K3", Group{Name: "-tool", Commands: []Node{Command[ok]{Name: "c", Run: nop}}}, nil, `the root name "-tool" cannot be typed`},
 		{"K16", Group{Name: "prog", Commands: []Node{nil}}, nil, "prog: a command is nil"},
 		{"K16", Group{Name: "prog", Commands: []Node{(*Group)(nil)}}, nil, "prog: a command is nil"},
 		{"K16", Group{Name: "prog", Commands: []Node{(*Command[ok])(nil)}}, nil, "prog: a command is nil"},
