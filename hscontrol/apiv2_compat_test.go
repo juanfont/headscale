@@ -26,7 +26,6 @@ import (
 	"time"
 
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
-	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
@@ -277,21 +276,12 @@ func newAPIReplay(t *testing.T, c *testcapture.Capture, useV1 bool) *apiReplay {
 	return r
 }
 
-// newAddressedTestApp is [createTestApp] with address prefixes, so joined
-// nodes get addresses the replayed policies can name.
+// newAddressedTestApp is [createTestApp], whose config gives joined
+// nodes addresses the replayed policies can name.
 func newAddressedTestApp(t *testing.T) *Headscale {
 	t.Helper()
 
-	cfg := validConfig(t)
-
-	app, err := NewHeadscale(&cfg)
-	require.NoError(t, err)
-
-	app.mapBatcher = mapper.NewBatcherAndMapper(&cfg, app.state)
-	app.mapBatcher.Start()
-	t.Cleanup(app.mapBatcher.Close)
-
-	return app
+	return createTestApp(t)
 }
 
 // apiCheck is one rendering of an outcome: SaaS's and headscale's.

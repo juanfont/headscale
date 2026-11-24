@@ -1,12 +1,15 @@
 package hscontrol
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
 	"net/url"
+	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"testing"
@@ -3372,18 +3375,79 @@ func createTestApp(t *testing.T, options ...func(*types.Config)) *Headscale {
 	app, err := NewHeadscale(&cfg)
 	require.NoError(t, err)
 
-	// Initialize and start the mapBatcher to handle Change() calls
-	app.mapBatcher = mapper.NewBatcherAndMapper(&cfg, app.state)
-	app.mapBatcher.Start()
+	// Each close is registered as its part is made, so the parts close in
+	// reverse, the batcher before the state, as the server shuts down. They
+	// close what this helper made, not what app holds at the end: a test that
+	// swaps app.state or app.mapBatcher owns what it puts there, nil from a
+	// failed reopen included. Both are safe to close again.
+	st := app.state
 
-	// Clean up the batcher when the test finishes
-	t.Cleanup(func() {
-		if app.mapBatcher != nil {
-			app.mapBatcher.Close()
-		}
-	})
+	t.Cleanup(func() { _ = st.Close() })
+
+	// Initialize and start the mapBatcher to handle Change() calls
+	batcher := mapper.NewBatcherAndMapper(&cfg, app.state)
+	app.mapBatcher = batcher
+	app.mapBatcher.Start()
+	t.Cleanup(batcher.Close)
 
 	return app
+}
+
+// TestCreateTestAppStops: once a test that made an app ends, the app's node
+// store writer, map batcher and database pool have stopped, whatever the
+// test left in app.state; an app left running costs the tests after it a
+// timer wake every batch tick.
+func TestCreateTestAppStops(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		swap func(t *testing.T, app *Headscale)
+	}{
+		{"as made", func(*testing.T, *Headscale) {}},
+		{"its state swapped for nil, as by a failed reopen", func(_ *testing.T, app *Headscale) {
+			app.state = nil
+		}},
+		{"its state swapped for one the test closes", func(t *testing.T, app *Headscale) {
+			t.Helper()
+
+			st, err := state.NewState(app.cfg)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = st.Close() })
+
+			app.state = st
+		}},
+	} {
+		var gid string
+
+		t.Run(tt.name, func(t *testing.T) {
+			buf := make([]byte, 64)
+			gid = strings.Fields(string(buf[:runtime.Stack(buf, false)]))[1]
+
+			app := createTestApp(t)
+			tt.swap(t, app)
+		})
+
+		running := func() []string {
+			var buf bytes.Buffer
+
+			require.NoError(t, pprof.Lookup("goroutine").WriteTo(&buf, 2))
+
+			var left []string
+
+			for g := range strings.SplitSeq(buf.String(), "\n\n") {
+				if strings.Contains(g, " in goroutine "+gid+"\n") &&
+					(strings.Contains(g, "(*NodeStore).processWrite") ||
+						strings.Contains(g, "(*Batcher).doWork") ||
+						strings.Contains(g, "(*DB).connectionOpener")) {
+					left = append(left, g)
+				}
+			}
+
+			return left
+		}
+
+		assert.Eventually(t, func() bool { return len(running()) == 0 }, 5*time.Second, 10*time.Millisecond,
+			"%s: still running: %v", tt.name, running())
+	}
 }
 
 func TestRegistrationFollowupReleasesRejectedSession(t *testing.T) {

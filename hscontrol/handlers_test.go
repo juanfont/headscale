@@ -70,6 +70,7 @@ func TestVerifyHandler_SuccessSetsJSONContentType(t *testing.T) {
 
 	h, err := NewHeadscale(&cfg)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = h.state.Close() })
 
 	reqBody, err := json.Marshal(tailcfg.DERPAdmitClientRequest{
 		NodePublic: key.NewNode().Public(),

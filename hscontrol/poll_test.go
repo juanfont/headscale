@@ -379,9 +379,10 @@ func TestServeLongPollWritesErrorWhenInitialMapFails(t *testing.T) {
 		Update("given_name", "").Error)
 	require.NoError(t, database.Close())
 
-	app.state, err = state.NewState(app.cfg)
+	reopened, err := state.NewState(app.cfg)
 	require.NoError(t, err)
 
+	app.state = reopened
 	app.mapBatcher = mapper.NewBatcherAndMapper(app.cfg, app.state)
 	app.mapBatcher.Start()
 
@@ -1197,13 +1198,14 @@ func TestLongPollShutdownWaitsForCleanup(t *testing.T) {
 			app.mapBatcher.Close()
 			require.NoError(t, app.state.Close())
 
-			var err error
-
-			app.state, err = state.NewState(app.cfg)
+			reopened, err := state.NewState(app.cfg)
 			require.NoError(t, err)
+			t.Cleanup(func() { _ = reopened.Close() })
 
+			app.state = reopened
 			app.mapBatcher = mapper.NewBatcherAndMapper(app.cfg, app.state)
 			app.mapBatcher.Start()
+			t.Cleanup(app.mapBatcher.Close)
 
 			node, ok := app.state.GetNodeByID(createdNode.ID)
 			require.True(t, ok)
