@@ -1,11 +1,9 @@
 package state
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"maps"
 	"net/http"
 	"net/netip"
@@ -28,8 +26,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -2349,15 +2345,13 @@ func TestNewStateChecksNodeAddresses(t *testing.T) {
 	const (
 		v4a, v4b = "100.64.0.1", "100.64.0.2"
 		v6a, v6b = "fd7a:115c:a1e0::1", "fd7a:115c:a1e0::2"
-		outside  = "outside the Tailscale ranges"
 	)
 
 	for _, tt := range []struct {
 		name string
 		// ipv4 and ipv6 of nodes alpha and beta; nil stores NULL.
-		addrs    [2][2]any
-		wantErr  []string
-		wantWarn bool
+		addrs   [2][2]any
+		wantErr []string
 	}{
 		{
 			name:    "shared IPv4",
@@ -2379,9 +2373,19 @@ func TestNewStateChecksNodeAddresses(t *testing.T) {
 			addrs: [2][2]any{{v4a, nil}, {nil, v6b}},
 		},
 		{
-			name:     "outside the Tailscale ranges",
-			addrs:    [2][2]any{{v4a, v6a}, {"10.0.0.2", "2001:db8::2"}},
-			wantWarn: true,
+			name:    "outside the Tailscale ranges",
+			addrs:   [2][2]any{{v4a, v6a}, {"10.0.0.2", "2001:db8::2"}},
+			wantErr: []string{"outside the Tailscale ranges", `"beta"`, "10.0.0.2", "2001:db8::2"},
+		},
+		{
+			name:    "one family outside",
+			addrs:   [2][2]any{{v4a, v6a}, {"10.0.0.2", v6b}},
+			wantErr: []string{"outside the Tailscale ranges", `"beta"`, "10.0.0.2"},
+		},
+		{
+			name:    "in the ChromeOS block",
+			addrs:   [2][2]any{{v4a, v6a}, {"100.115.92.2", v6b}},
+			wantErr: []string{"outside the Tailscale ranges", `"beta"`, "100.115.92.2"},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2392,58 +2396,25 @@ func TestNewStateChecksNodeAddresses(t *testing.T) {
 
 			user := database.CreateUserForTest("address-user")
 
-			var beta types.NodeID
-
 			for i, hostname := range []string{"alpha", "beta"} {
 				node := database.CreateRegisteredNodeForTest(user, hostname)
-				beta = node.ID
 				require.NoError(t, database.DB.Exec("UPDATE nodes SET ipv4 = ?, ipv6 = ? WHERE id = ?",
 					tt.addrs[i][0], tt.addrs[i][1], node.ID).Error)
 			}
 
 			require.NoError(t, database.Close())
 
-			var logs bytes.Buffer
-
-			prevLogger, prevLevel := log.Logger, zerolog.GlobalLevel()
-			log.Logger = zerolog.New(&logs)
-
-			zerolog.SetGlobalLevel(zerolog.WarnLevel)
-			t.Cleanup(func() {
-				log.Logger = prevLogger
-
-				zerolog.SetGlobalLevel(prevLevel)
-			})
-
 			s, err := NewState(cfg)
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				require.NoError(t, s.Close())
+
+				return
+			}
 
 			for _, want := range tt.wantErr {
 				require.ErrorContains(t, err, want)
 			}
-
-			if tt.wantErr != nil {
-				return
-			}
-
-			require.NoError(t, err)
-			require.NoError(t, s.Close())
-
-			var warned []string
-
-			for line := range strings.Lines(logs.String()) {
-				if strings.Contains(line, outside) {
-					warned = append(warned, line)
-				}
-			}
-
-			if !tt.wantWarn {
-				assert.Empty(t, warned)
-
-				return
-			}
-
-			require.Len(t, warned, 1, "one warning per node")
-			assert.Contains(t, warned[0], fmt.Sprintf(`"node.id":%d`, beta))
 		})
 	}
 }
