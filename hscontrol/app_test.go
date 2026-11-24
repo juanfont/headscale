@@ -14,6 +14,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/dns"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/libdns/cloudflare"
 	"github.com/rs/zerolog"
@@ -281,7 +282,8 @@ func TestNewHeadscaleSecrets(t *testing.T) {
 
 // validConfig is config.Default with a local server URL, its files under a
 // fresh temp dir, the policy in the database, DNS off, and the batcher
-// quick and single-threaded for tests.
+// quick and single-threaded, and the node store batching briefly, for
+// tests.
 func validConfig(t *testing.T) types.Config {
 	t.Helper()
 
@@ -302,6 +304,8 @@ func validConfig(t *testing.T) types.Config {
 	cfg.DNSConfig.BaseDomain = ""
 	cfg.Tuning.BatchChangeDelay = 100 * time.Millisecond
 	cfg.Tuning.BatcherWorkers = 1
+	cfg.Tuning.NodeStoreBatchSize = state.TestBatchSize
+	cfg.Tuning.NodeStoreBatchTimeout = state.TestBatchTimeout
 
 	return cfg
 }
