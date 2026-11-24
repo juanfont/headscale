@@ -233,7 +233,7 @@ type (
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | K1   | a word, name or alias, that appears twice among the children of one group                                                                                                                                                                                                           |
 | K3   | a command name or alias that is empty, holds a space or a control byte, or starts with `-`                                                                                                                                                                                          |
-| K4   | a flag name that is empty, holds a space or a control byte, starts with `-` or holds `=`; a short that is not one printable ASCII character other than `-` and `=`                                                                                                                  |
+| K4   | a flag name that is empty, holds a space or a control byte, starts with `-` or holds `=`; a short that is not one ASCII character from `!` to `~` other than `-` and `=`                                                                                                            |
 | K5   | a flag name declared twice on one command, in one struct or in two                                                                                                                                                                                                                  |
 | K6   | two meanings for one spelling where both can be typed (in a group's scope, or in a leaf's flags together with the scope above it): one long name with two shorts, or bool in one place and value in the other; one short for two long names                                         |
 | K7   | a child of the root named `__complete` or `__completeNoDesc`, as name or alias: `Serve` would hide it. Below the root these words are allowed                                                                                                                                       |
@@ -241,7 +241,7 @@ type (
 | K9   | an input type that is not a struct; an entry of `Flags` that is not a struct value (a pointer, `nil`, any other value)                                                                                                                                                              |
 | K10  | a field that is not exported; a field with no `arg` and no `flag` tag, or with both                                                                                                                                                                                                 |
 | K11  | a tag that is not in the form `key:"value"`; a key given twice; a key other than `arg`, `flag`, `short`, `help` and `default`                                                                                                                                                       |
-| K12  | a field whose type cannot be read ([Which type is read how](#which-type-is-read-how)); `Opt` or `Repeat` inside `Opt` or `Repeat`; a list of `Opt` or `Repeat`                                                                                                                      |
+| K12  | a field whose type cannot be read ([Which type is read how](#which-type-is-read-how)); `Opt` or `Repeat` inside `Opt` or `Repeat`; a list of `Opt` or `Repeat`; a named type of kind bool with a late reader                                                                        |
 | K13  | a `short` that is not one character; a `short` or a `default` on an argument                                                                                                                                                                                                        |
 | K14  | a `default` that the reader of the field refuses; a `default` on an `Opt` field or on a field with a late reader                                                                                                                                                                    |
 | K15  | an argument in a struct of flags; an argument name that is empty or holds a space, a control byte or one of `<>[]`; an argument name used twice in one command; an argument of type `Repeat`; a needed argument after an optional one; a help text of an argument with a line break |
@@ -364,7 +364,7 @@ The library has no setting for these rules. A program that wants another list sy
 
 ### Defaults
 
-**A flag with a `default` tag that is not given is read from the tag, through the reader of its type** (Y9). `New` reads every default once and refuses one that does not read (K14). A flag that takes its default is not in `Line.Flags`. `Info` gives the tag as `Flag.Default`, for a help text.
+**A flag with a `default` tag that is not given is read from the tag, through the reader of its type** (Y9). `New` reads every default once and refuses one that does not read (K14). `Parse` uses the value that `New` read and does not run the reader again, so a reader that would refuse the same text later cannot leave the field at its zero value. A flag that takes its default is not in `Line.Flags`. `Info` gives the tag as `Flag.Default`, for a help text.
 
 - **Every other field that is not given keeps its zero value** (Y9).
 - **An `Opt` field and a field with a late reader take no default** (K14). An argument takes none (K13).
@@ -424,7 +424,7 @@ These rules apply to every word that is not a flag's value and does not follow a
 
 - **A typed name that starts with `--` names the long flag whose name equals the rest exactly** (L10). `---x` names no flag. `--` with nothing after it (from `--=v`) names no flag.
 
-- **A typed name with one leading dash names the short flag whose short equals the rest exactly** (L11). `-ojson`, `-vv`, `-ho`, `-output` and `-e24h` name no flag, and `-=v` names no flag. So the library refuses attached short values and groups of shorts, and its tests hold that. Headscale does not promise either form to its users (D11). A short is one printable ASCII character in every tree that `New` accepts (K4).
+- **A typed name with one leading dash names the short flag whose short equals the rest exactly** (L11). `-ojson`, `-vv`, `-ho`, `-output` and `-e24h` name no flag, and `-=v` names no flag. So the library refuses attached short values and groups of shorts, and its tests hold that. Headscale does not promise either form to its users (D11). A short is one ASCII character from `!` to `~` in every tree that `New` accepts (K4).
 
 - **Long and short names do not cross** (L12). `--o` is not `-o`, and `-help` is not `--help`.
 
@@ -472,7 +472,7 @@ These rules apply to every word that is not a flag's value and does not follow a
 
 ### Bool flags
 
-- **A flag is a bool flag when the value type of its field has the kind bool** (Y10): a `bool`, an `Opt[bool]` or a `Repeat[bool]` field. A named type of kind bool that reads itself is a bool flag too. A `[]bool` field is a value flag: it takes a comma list.
+- **A flag is a bool flag when the value type of its field has the kind bool** (Y10): a `bool`, an `Opt[bool]` or a `Repeat[bool]` field. A named type of kind bool that reads itself is a bool flag too. A named type of kind bool with a late reader is refused by `New` (K12): a bare `--x` could not fill it. A `[]bool` field is a value flag: it takes a comma list.
 
 - **A bool flag never takes the next word** (B1). In `--force maybe`, the word `maybe` is an argument.
 
@@ -611,6 +611,8 @@ These rules apply to every word that is not a flag's value and does not follow a
 - **Next to a mistake, the `Line` holds what the reader read** (M5): the command reached, and the flags and arguments before the word that the reader refused. When the reader refused no word, that is the whole line, also the words after a repeat or a bad value. There is one exception to "before the refused word": a flag typed before the leaf that the leaf does not take is found only when the leaf's word is read. The `Line` then has the leaf as its command, and only the flags before the refused one.
 
 - **`Parse`, `Complete` and `Serve` change neither argv nor the tree, keep no state, and may run at the same time on one tree** (M7). Every `Line` has structs of its own.
+
+- **`New` copies what it keeps** (M7), so a change to the caller's values after `New`, such as a slice of aliases, does not reach the tree. What `Root` returns is read-only. A slice that a `Complete` method returns stays the method's: the library copies it before it changes it.
 
 | argv                                     | `Line` next to the mistake                          | Mistake                                                                                | Structs readable |
 | ---------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------- |
@@ -2010,7 +2012,7 @@ The assistant settled these to make the rules complete. Each one is in the text 
 | a wrong argument count has the end of the line as its position, after every other mistake                                                                         | X4, A2                                           | the first extra argument; then the caller must know `--help` before the line is read  |
 | "`--version` not alone" stands at the second of the two words (Headscale's layer)                                                                                 | X2                                               | always at `--version`                                                                 |
 | several mistakes in one word: a repeat comes before a bad value. Headscale's layer puts "the group does not take the flag" before both and "not alone" after both | X3                                               | no order; D35 reports one mistake, so one is needed                                   |
-| the sets of `New`: names not empty, no space or control byte, no leading `-`, no `=` in a flag name; shorts printable ASCII                                       | K3, K4                                           | stricter: `[a-z0-9-]` for names, letters or digits for shorts                         |
+| the sets of `New`: names not empty, no space or control byte, no leading `-`, no `=` in a flag name; shorts from `!` to `~`                                       | K3, K4                                           | stricter: `[a-z0-9-]` for names, letters or digits for shorts                         |
 | the real-shell job runs on every pull request that changes `go.mod` or the CLI                                                                                    | [Real shells](#real-shells)                      | only on CLI changes, and by hand on a cobra bump                                      |
 | `New` refuses a child of the root named `__complete` or `__completeNoDesc`, and a help text with a line break                                                     | K7, K8                                           | leave both to the caller                                                              |
 | a late reader or a `Complete` method that calls a server is specified when the first one is built                                                                 | [Limits](#limits)                                | specify the time limit and the failure now                                            |
