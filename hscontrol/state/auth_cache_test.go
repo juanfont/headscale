@@ -16,6 +16,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -383,4 +384,106 @@ func TestConcurrentApprovalsOfOneLoginRegisterOnce(t *testing.T) {
 
 	assert.Equal(t, 1, refused, "the second approval must be refused")
 	assert.Equal(t, 1, s.ListNodes().Len(), "one login must register one node")
+}
+
+// approveUnderLock starts an approval of authID and returns once it has
+// looked the login up and waits for the registration lock, which the
+// caller holds. The approval's result arrives on the returned channel.
+func approveUnderLock(t *testing.T, s *State, authID types.AuthID, machineKey key.MachinePublic, user *types.User) <-chan error {
+	t.Helper()
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodCLI)
+		done <- err
+	}()
+
+	require.Eventually(t, func() bool {
+		return registrationsAt(s, machineKey)+len(done) == 2
+	}, 10*time.Second, time.Millisecond)
+
+	return done
+}
+
+// TestApprovalDecidesALoginThatExpiresUnderIt drives the sweeper's expiry
+// of a login whose approval has looked it up and not yet stored the node.
+func TestApprovalDecidesALoginThatExpiresUnderIt(t *testing.T) {
+	s, err := NewState(persistTestConfig(t.TempDir() + "/headscale.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	machineKey := key.NewMachine().Public()
+	authID := types.MustAuthID()
+	reg := types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "expires-while-approved",
+	})
+	require.NoError(t, s.SetAuthCacheEntry(authID, reg))
+
+	user := s.CreateUserForTest("approver")
+
+	unlock := s.lockRegistration(machineKey)
+	done := approveUnderLock(t, s, authID, machineKey, user)
+
+	// Removal runs the eviction callback the sweeper runs on expiry.
+	s.DeleteAuthCacheEntryForTest(authID)
+	unlock()
+
+	require.NoError(t, <-done, "the approval that started first decides the login")
+
+	verdict := reg.Verdict()
+	require.NoError(t, verdict.Err, "the follow-up must get the approval's verdict")
+	require.True(t, verdict.Node.Valid())
+	assert.Equal(t, 1, s.ListNodes().Len())
+}
+
+// TestFailedApprovalHandsOnExpiry: an approval that fails after expiry
+// passed it by leaves the login expired, not waiting forever; one that
+// fails without expiry leaves it pending.
+func TestFailedApprovalHandsOnExpiry(t *testing.T) {
+	s, err := NewState(persistTestConfig(t.TempDir() + "/headscale.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("approver")
+
+	for _, expires := range []bool{false, true} {
+		machineKey := key.NewMachine().Public()
+		authID := types.MustAuthID()
+		reg := types.NewRegisterAuthRequest(&types.RegistrationData{
+			MachineKey: machineKey,
+			NodeKey:    key.NewNode().Public(),
+			Hostname:   "refused-tags",
+			// No policy owns the tag, so the approval fails once it
+			// holds the lock.
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "refused-tags", RequestTags: []string{"tag:unowned"}},
+		})
+		require.NoError(t, s.SetAuthCacheEntry(authID, reg))
+
+		unlock := s.lockRegistration(machineKey)
+		done := approveUnderLock(t, s, authID, machineKey, user)
+
+		if expires {
+			s.DeleteAuthCacheEntryForTest(authID)
+		}
+
+		unlock()
+		require.ErrorIs(t, <-done, ErrRequestedTagsInvalidOrNotPermitted)
+
+		if !expires {
+			_, pending := s.GetAuthCacheEntry(authID)
+			assert.True(t, pending, "a failed approval leaves the login pending")
+
+			continue
+		}
+
+		select {
+		case <-reg.WaitForAuth():
+			require.ErrorIs(t, reg.Verdict().Err, ErrRegistrationExpired)
+		case <-time.After(5 * time.Second):
+			t.Fatal("a login that expired under a failed approval was never decided")
+		}
+	}
 }

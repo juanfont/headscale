@@ -275,7 +275,12 @@ func (rn *AuthRequest) IsSSHCheck() bool {
 
 // IsFinished reports whether a verdict has already resolved this request.
 func (rn *AuthRequest) IsFinished() bool {
-	return rn.closed.Load()
+	select {
+	case <-rn.done:
+		return true
+	default:
+		return false
+	}
 }
 
 // SetPendingConfirmation marks this [AuthRequest] as having an
@@ -295,13 +300,28 @@ func (rn *AuthRequest) PendingConfirmation() *PendingRegistrationConfirmation {
 
 // FinishAuth decides the request. Only the first verdict counts.
 func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
-	if rn.closed.Swap(true) {
-		return
+	if rn.Claim() {
+		rn.Deliver(verdict)
 	}
+}
 
+// Claim takes the request's verdict for the caller, who must then Deliver or
+// Release it; FinishAuth from anyone else, expiry included, is dropped until
+// then. It reports false when the request is decided or claimed.
+func (rn *AuthRequest) Claim() bool {
+	return !rn.closed.Swap(true)
+}
+
+// Deliver decides a request the caller claimed.
+func (rn *AuthRequest) Deliver(verdict AuthVerdict) {
 	rn.verdict = verdict
 
 	close(rn.done)
+}
+
+// Release returns a request the caller claimed to pending.
+func (rn *AuthRequest) Release() {
+	rn.closed.Store(false)
 }
 
 // WaitForAuth returns a channel that is closed once the request is decided.
