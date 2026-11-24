@@ -1858,7 +1858,7 @@ func (b *MapResponseBuilder) buildTailPeersCapMapsReference(peers views.Slice[ty
 				Uint64(zf.NodeID, peer.ID().Uint64()).
 				Str(zf.NodeHostname, peer.Hostname()).
 				Uint64("map.viewer.node.id", b.nodeID.Uint64()).
-				Msgf("dropping peer %d from map response: invalid node data; fix with `headscale nodes rename %d <name>`", peer.ID(), peer.ID())
+				Msgf("dropping peer %d from map response: invalid node data; fix with `%s`", peer.ID(), types.RenameNodeCommand(peer.ID()))
 
 			continue
 		}
