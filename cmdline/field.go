@@ -140,7 +140,7 @@ type field struct {
 	short string
 	help  string
 	def   *string
-	defv  []reflect.Value // def as New read it, used on every line
+	defv  []reflect.Value // def as New read it; see defaults
 
 	// The field's type is elem, or one of []elem, Opt[..] and Repeat[..]
 	// around either.
@@ -475,6 +475,42 @@ func (f *field) split(text string) ([]string, error) {
 	}
 
 	return items, nil
+}
+
+// defaults is what a line without the flag gets. A value that can share
+// memory with another (a map, a slice, a pointer…) is read again for each
+// line, so that no line sees what another changed in it; any other value is
+// the one New read.
+func (f *field) defaults() ([]reflect.Value, error) {
+	if !shares(f.elem) {
+		return f.defv, nil
+	}
+
+	return f.parse(*f.def)
+}
+
+// shares says whether two copies of a value of t can reach the same memory.
+func shares(t reflect.Type) bool {
+	switch t.Kind() { //nolint:exhaustive // every other kind is a plain value
+	case reflect.Map,
+		reflect.Slice,
+		reflect.Pointer,
+		reflect.Interface,
+		reflect.Chan,
+		reflect.Func,
+		reflect.UnsafePointer:
+		return true
+	case reflect.Array:
+		return shares(t.Elem())
+	case reflect.Struct:
+		for sf := range t.Fields() {
+			if shares(sf.Type) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // parse reads one occurrence of a field that is not late.

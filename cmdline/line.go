@@ -182,6 +182,28 @@ func (t *Tree) Parse(argv []string) (*Line, error) {
 		}
 	}
 
+	// In field order, so the same line reports the same refusal (X1).
+	for _, f := range n.defs {
+		if !seen[f.name] {
+			vals, err := f.defaults()
+			if err != nil {
+				found(
+					&UsageError{
+						Kind:  BadValue,
+						At:    len(argv),
+						Flag:  f.name,
+						Value: *f.def,
+						Err:   err,
+					},
+				)
+
+				continue
+			}
+
+			f.store(l.parts[f.part].Field(f.index), vals)
+		}
+	}
+
 	needed := slices.IndexFunc(n.args, func(a *field) bool { return a.opt })
 	if needed < 0 {
 		needed = len(n.args)
@@ -190,12 +212,6 @@ func (t *Tree) Parse(argv []string) (*Line, error) {
 	if l.err == nil && n.in != nil &&
 		(len(l.Args) < needed || len(l.Args) > len(n.args)) {
 		found(&UsageError{Kind: ArgCount, At: len(argv)})
-	}
-
-	for name, f := range n.flags {
-		if f.def != nil && !seen[name] {
-			f.store(l.parts[f.part].Field(f.index), f.defv)
-		}
 	}
 
 	if l.err != nil {

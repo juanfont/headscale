@@ -1708,6 +1708,108 @@ func TestDefaultReadOnce(t *testing.T) {
 	}
 }
 
+// TestDefaultOwned: a line owns its default. A map that one command changes
+// is not the map of the next line, and a reader that refuses on a later line
+// fails that line with BadValue.
+func TestDefaultOwned(t *testing.T) {
+	type input struct {
+		Labels map[string]string `default:"original" flag:"labels"`
+	}
+
+	calls := 0
+	read := Reader(func(s string) (map[string]string, error) {
+		calls++
+		if calls > 3 {
+			return nil, errNoPeer
+		}
+
+		return map[string]string{"value": s}, nil
+	})
+
+	var got []string
+
+	tree, err := New(
+		Command[input]{Name: "c", Run: func(_ context.Context, in input) error {
+			got = append(got, in.Labels["value"])
+			in.Labels["value"] = "changed"
+
+			return nil
+		}},
+		read,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		l, err := tree.Parse(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = l.Run(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if want := []string{"original", "original"}; !slices.Equal(got, want) {
+		t.Fatalf("lines saw %q, want %q", got, want)
+	}
+
+	_, err = tree.Parse(nil)
+
+	ue, ok := errors.AsType[*UsageError](err)
+	if !ok || ue.Kind != BadValue || ue.Flag != "labels" || ue.Value != "original" ||
+		!errors.Is(ue.Err, errNoPeer) {
+		t.Fatalf("refused default: %v", err)
+	}
+}
+
+// TestRefusedDefaultOrder: a default refused on its line is a BadValue, so
+// it comes before a wrong argument count (X4), and of two refused defaults
+// the first declared is the one reported, every time (X1).
+func TestRefusedDefaultOrder(t *testing.T) {
+	type input struct {
+		File string            `arg:"file"`
+		One  map[string]string `default:"1" flag:"one"`
+		Two  map[string]string `default:"2" flag:"two"`
+	}
+
+	refuse := false
+
+	tree, err := New(
+		Command[input]{
+			Name: "c",
+			Run:  func(context.Context, input) error { return nil },
+		},
+		Reader(func(s string) (map[string]string, error) {
+			if refuse {
+				return nil, errNoPeer
+			}
+
+			return map[string]string{"v": s}, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	refuse = true
+
+	for _, argv := range [][]string{nil, {"file"}} {
+		for range 300 {
+			_, err := tree.Parse(argv)
+
+			ue, ok := errors.AsType[*UsageError](err)
+			if !ok || ue.Kind != BadValue || ue.Flag != "one" ||
+				!errors.Is(ue.Err, errNoPeer) {
+				t.Fatalf("Parse(%q): %v", argv, err)
+			}
+		}
+	}
+}
+
 type ordered struct{ color }
 
 func (ordered) Complete(_ *Line, prefix string) ([]string, Directive) {

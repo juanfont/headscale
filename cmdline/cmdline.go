@@ -12,8 +12,12 @@
 //	}
 //
 // The tags are arg, flag, short, help and default; New reads a default
-// once, and every line without the flag gets that value. The type of the field
-// says how its word is read:
+// once, and every line without the flag gets that value. A line owns what it
+// is given: a default whose type can share memory (a map, a slice, a
+// pointer, or a struct or array holding one) is read again for each line, so
+// a command may change it; a reader that then refuses the text it took at
+// New fails the line with BadValue. The type of the field says how its word
+// is read:
 //
 //	string, bool, int…, uint…, float…   read by the library
 //	a type with UnmarshalText           reads itself (encoding.TextUnmarshaler)
@@ -157,6 +161,7 @@ type node struct {
 	low   *reader.Command
 	parts []reflect.Type    // the structs a line that ends here fills
 	flags map[string]*field // by long name: every flag a line that ends here may hold
+	defs  []*field          // those of flags with a default, in field order
 	spell map[string]string // "--name" and "-x" to the long name
 	args  []*field
 	in    reflect.Type
@@ -352,6 +357,9 @@ func (b *builder) build(
 
 	for _, f := range all {
 		nd.flags[f.name] = f
+		if f.def != nil {
+			nd.defs = append(nd.defs, f)
+		}
 
 		nd.spell["--"+f.name] = f.name
 		if f.short != "" {
