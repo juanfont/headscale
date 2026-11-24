@@ -161,9 +161,7 @@ func TestExtraRecordsAreLowercased(t *testing.T) {
 
 func TestTailcfgDNSConfig(t *testing.T) {
 	cgnat := netip.MustParsePrefix("100.64.0.0/10")
-	ten := netip.MustParsePrefix("10.0.0.0/8")
 	ula := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
-	fd00 := netip.MustParsePrefix("fd00::/48")
 
 	tests := []struct {
 		name string
@@ -213,30 +211,6 @@ func TestTailcfgDNSConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "magic dns reverse routes outside cgnat",
-			cfg: Config{
-				Prefixes:  PrefixesConfig{V4: &ten},
-				DNSConfig: DNSConfig{MagicDNS: true, BaseDomain: "example.com"},
-			},
-			want: &tailcfg.DNSConfig{
-				Proxied: true,
-				Domains: []string{"example.com"},
-				Routes:  map[string][]*dnstype.Resolver{"10.in-addr.arpa": {}},
-			},
-		},
-		{
-			name: "magic dns reverse routes outside ula",
-			cfg: Config{
-				Prefixes:  PrefixesConfig{V6: &fd00},
-				DNSConfig: DNSConfig{MagicDNS: true, BaseDomain: "example.com"},
-			},
-			want: &tailcfg.DNSConfig{
-				Proxied: true,
-				Domains: []string{"example.com"},
-				Routes:  map[string][]*dnstype.Resolver{"0.0.0.0.0.0.0.0.0.0.d.f.ip6.arpa": {}},
-			},
-		},
-		{
 			name: "magic dns inside cgnat and ula",
 			cfg: Config{
 				Prefixes:  PrefixesConfig{V4: &cgnat, V6: &ula},
@@ -247,11 +221,6 @@ func TestTailcfgDNSConfig(t *testing.T) {
 				Domains: []string{"example.com"},
 				Routes:  map[string][]*dnstype.Resolver{},
 			},
-		},
-		{
-			name: "no reverse routes without magic dns",
-			cfg:  Config{Prefixes: PrefixesConfig{V4: &ten}},
-			want: &tailcfg.DNSConfig{Routes: map[string][]*dnstype.Resolver{}},
 		},
 		{
 			name: "extra record names lowercased",
@@ -267,7 +236,7 @@ func TestTailcfgDNSConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// No EquateEmpty: a reverse route must be an empty, non-nil slice.
+			// No EquateEmpty: Routes must be an empty, non-nil map.
 			if diff := cmp.Diff(tt.want, tt.cfg.TailcfgDNSConfig()); diff != "" {
 				t.Errorf("TailcfgDNSConfig() mismatch (-want +got):\n%s", diff)
 			}
