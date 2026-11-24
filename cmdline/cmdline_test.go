@@ -1576,3 +1576,25 @@ func TestOptNil(t *testing.T) {
 		t.Errorf("Opt[any] read as nil: got %v %v, run %v", v, ok, err)
 	}
 }
+
+// TestUnknownTagsOrder: New names the unknown tags of a field in one order
+// (K11, K19); map order would give one of two texts each time.
+func TestUnknownTagsOrder(t *testing.T) {
+	type input struct {
+		X string `aa:"2" flag:"x" zz:"1"`
+	}
+
+	want := `prog: cmdline.input.X: unknown tag "aa"` + "\n" + `prog: cmdline.input.X: unknown tag "zz"`
+
+	for range 64 {
+		_, err := New(
+			Command[input]{
+				Name: "prog",
+				Run:  func(context.Context, input) error { return nil },
+			},
+		)
+		if err == nil || err.Error() != want {
+			t.Fatalf("got %v\nwant %s", err, want)
+		}
+	}
+}

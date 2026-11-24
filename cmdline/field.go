@@ -5,6 +5,7 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -201,7 +202,7 @@ func (b *builder) fields(at string, t reflect.Type, input bool) (flags, args []*
 			continue
 		}
 
-		for k := range tags {
+		for _, k := range slices.Sorted(maps.Keys(tags)) { // one text for one tree (K19)
 			if !slices.Contains(tagKeys, k) {
 				bad("unknown tag %q", k)
 			}
