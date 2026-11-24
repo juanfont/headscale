@@ -18,7 +18,7 @@ func TestGivenNameMapsToValidFQDNCheck(t *testing.T) {
 	problem, fixHint, ok := givenNameMapsToValidFQDN.check((&types.Node{ID: 7, GivenName: ""}).View(), cfg)
 	require.False(t, ok, "an empty given name must fail the check")
 	require.NotEmpty(t, problem)
-	require.Contains(t, fixHint, "rename 7", "fix hint must name the offending node")
+	require.Contains(t, fixHint, "rename --identifier 7", "fix hint must name the offending node")
 }
 
 func TestExpiryIsEncodableCheck(t *testing.T) {

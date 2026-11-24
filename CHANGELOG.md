@@ -526,6 +526,7 @@ Every option below is under `services.headscale`.
 - The v2 API refuses an auth key `expirySeconds` below 0 or above 90 days, as Tailscale does; a negative value used to mean 90 days [#3254](https://github.com/juanfont/headscale/pull/3254)
 - The v1 API returns `409 Conflict`, not `500`, when a user create or rename asks for a name another user already has; a rename to a taken name always returned `500`. A rename to a name that only OIDC users hold is allowed and answers `200`
 - The v1 OpenAPI document declares `409 Conflict` for user create and rename. The generated Go client `gen/client/v1` decodes it into `ApplicationproblemJSON409`; a caller that read `ApplicationproblemJSONDefault` for a 409 gets `nil` there. [#3364](https://github.com/juanfont/headscale/issues/3364)
+- The fix hint for a node whose name cannot form a valid FQDN, in the startup check and the map log, reads `headscale nodes rename --identifier <id> <name>`; the printed `headscale nodes rename <id> <name>` was a usage error. [#3364](https://github.com/juanfont/headscale/issues/3364)
 
 - The configuration search path now also includes `$XDG_CONFIG_HOME/headscale` and `$XDG_CONFIG_DIRS`, and the files `config.json` and `config.hujson`. [#3674](https://github.com/juanfont/headscale/pull/3674)
 - `HEADSCALE_DEBUG_DUMP_CONFIG` prints the configuration as YAML, with secrets redacted. [#3677](https://github.com/juanfont/headscale/pull/3677)
