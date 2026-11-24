@@ -285,7 +285,7 @@ the `tailscale.com/cap/tailsql` app capability lets a user query it; see
 - The v2 API accepts an auth key create that leaves out `tags`, as Tailscale does [#3254](https://github.com/juanfont/headscale/pull/3254)
 - The v2 API refuses an auth key `expirySeconds` below 0 or above 90 days, as Tailscale does; a negative value used to mean 90 days [#3254](https://github.com/juanfont/headscale/pull/3254)
 - The v1 API returns `409 Conflict`, not `500`, when a user create or rename asks for a name another user already has; a rename to a taken name always returned `500`
-- Fix `nodeAttrs` `suggest-exit-node` not limiting the suggested exit nodes: when the policy gives it to some of a node's peers, only those peers are suggested; without it, every approved exit node stays suggested [#3733](https://github.com/juanfont/headscale/issues/3733)
+- Fix `nodeAttrs` `suggest-exit-node` not limiting the suggested exit nodes: when the policy gives it to some of a node's peers, only those peers are suggested; without it, every approved exit node stays suggested [#3733](https://github.com/juanfont/headscale/issues/3733), [#3734](https://github.com/juanfont/headscale/pull/3734)
 
 ## 0.29.7 (2026-10-30)
 
