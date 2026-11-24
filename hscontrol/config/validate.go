@@ -18,7 +18,10 @@ import (
 	"tailscale.com/util/dnsname"
 )
 
-const dnsDocsURL = "https://headscale.net/stable/ref/dns/"
+const (
+	dnsDocsURL      = "https://headscale.net/stable/ref/dns/"
+	prefixesDocsURL = "https://headscale.net/stable/about/faq/#how-can-i-migrate-back-to-the-recommended-ip-prefixes"
+)
 
 var (
 	errOIDCClientIDRequired     = errors.New("oidc.client_id is required when oidc.issuer is set")
@@ -671,7 +674,8 @@ func validateCertificates(c *types.Config, v *configValidator) {
 }
 
 // validatePrefixes records ConfigErrors for a catch-all trusted proxy, no
-// node range, and no allocation strategy.
+// node range, a node range outside the Tailscale ranges, and no allocation
+// strategy.
 func validatePrefixes(c *types.Config, v *configValidator) {
 	// 0.0.0.0/0 and ::/0 defeat the peer-trust gate and almost always
 	// indicate misconfiguration.
@@ -699,6 +703,40 @@ func validatePrefixes(c *types.Config, v *configValidator) {
 			},
 			Hint:  `set at least one of prefixes.v4 (default: "100.64.0.0/10") or prefixes.v6 (default: "fd7a:115c:a1e0::/48")`,
 			Cause: types.ErrNoPrefixConfigured,
+		})
+	}
+
+	for _, p := range []struct {
+		key    string
+		prefix *netip.Prefix
+		within netip.Prefix
+	}{
+		{"prefixes.v4", c.Prefixes.V4, tsaddr.CGNATRange()},
+		{"prefixes.v6", c.Prefixes.V6, tsaddr.TailscaleULARange()},
+	} {
+		if p.prefix == nil || !p.prefix.IsValid() {
+			continue
+		}
+
+		// The Tailscale client assumes its addresses come from these ranges,
+		// and the allocator never hands out one in the ChromeOS block.
+		var reason string
+
+		switch {
+		case outsideRange(*p.prefix, p.within):
+			reason = fmt.Sprintf("%s is outside %s", p.key, p.within)
+		case !outsideRange(*p.prefix, tsaddr.ChromeOSVMRange()):
+			reason = fmt.Sprintf("%s is inside %s, which Tailscale reserves for ChromeOS VMs", p.key, tsaddr.ChromeOSVMRange())
+		default:
+			continue
+		}
+
+		v.Add(&types.ConfigError{
+			Reason:  reason,
+			Current: []types.KV{{Key: p.key, Value: p.prefix.String()}},
+			Hint:    fmt.Sprintf("use %s or a range inside it; nodes already holding other addresses must be given new ones", p.within),
+			See:     prefixesDocsURL,
+			Cause:   types.ErrPrefixOutsideTailscaleRanges,
 		})
 	}
 
@@ -777,28 +815,6 @@ func Warnings(c *types.Config) []string {
 		// Only a warning: something in front of headscale may redirect the
 		// traffic (e.g. an iptables rule).
 		warnings = append(warnings, "Warning: when using tls.acme.hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
-	}
-
-	if v4, v6 := c.Prefixes.V4, c.Prefixes.V6; (v4 != nil && outsideRange(*v4, tsaddr.CGNATRange())) ||
-		(v6 != nil && outsideRange(*v6, tsaddr.TailscaleULARange())) {
-		warnings = append(warnings, bannerText([]string{
-			"You have overridden the default Headscale IP prefixes",
-			"with a range outside of the standard CGNAT and/or ULA",
-			"ranges. This is NOT a supported configuration.",
-			"",
-			"Using subsets of the default ranges (100.64.0.0/10 for",
-			"IPv4, fd7a:115c:a1e0::/48 for IPv6) is fine. Using",
-			"ranges outside of these will cause undefined behaviour",
-			"as the Tailscale client is NOT designed to operate on",
-			"any other ranges.",
-			"",
-			"Please revert your prefixes to subsets of the standard",
-			"ranges as described in the example configuration.",
-			"",
-			"Any issue raised using a range outside of the",
-			"supported range will be labelled as wontfix",
-			"and closed.",
-		}))
 	}
 
 	return append(warnings, c.DNSConfig.NameserverWarnings()...)
@@ -934,34 +950,6 @@ func validateListenerCollisions(c *types.Config, v *configValidator) {
 			})
 		}
 	}
-}
-
-// bannerText wraps lines in an ASCII-art box with a "Warning!" header, for
-// critical configuration issues that users must not ignore.
-func bannerText(lines []string) string {
-	var b strings.Builder
-
-	b.WriteString("\n")
-	b.WriteString("################################################################\n")
-	b.WriteString("###      __          __              _             _         ###\n")
-	b.WriteString("###      \\ \\        / /             (_)           | |        ###\n")
-	b.WriteString("###       \\ \\  /\\  / /_ _ _ __ _ __  _ _ __   __ _| |        ###\n")
-	b.WriteString("###        \\ \\/  \\/ / _` | '__| '_ \\| | '_ \\ / _` | |        ###\n")
-	b.WriteString("###         \\  /\\  / (_| | |  | | | | | | | | (_| |_|        ###\n")
-	b.WriteString("###          \\/  \\/ \\__,_|_|  |_| |_|_|_| |_|\\__, (_)        ###\n")
-	b.WriteString("###                                           __/ |          ###\n")
-	b.WriteString("###                                          |___/           ###\n")
-	b.WriteString("################################################################\n")
-	b.WriteString("###                                                          ###\n")
-
-	for _, line := range lines {
-		fmt.Fprintf(&b, "###  %-54s  ###\n", line)
-	}
-
-	b.WriteString("###                                                          ###\n")
-	b.WriteString("################################################################")
-
-	return b.String()
 }
 
 // addServerURLConfigError pushes a structured ConfigError onto v for

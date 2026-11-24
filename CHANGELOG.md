@@ -325,6 +325,7 @@ maps each one to its replacement.
 - `database.sqlite.write_ahead_log: false` turns WAL off again. Since 0.27.0 it only skipped `wal_autocheckpoint`. SQLite now uses its rollback journal with `synchronous=FULL`, and a database left in WAL mode is converted when Headscale opens it. [#3689](https://github.com/juanfont/headscale/pull/3689)
 - `derp.server.region_id` is required and positive when `derp.server.enabled` is true. Unset, it was 0, a region clients never connect to. [#3691](https://github.com/juanfont/headscale/pull/3691)
 - An empty value is rejected where Headscale cannot run with it: `unix_socket`, `log.level`, `log.format`, an item in a list, one half of `tls.cert_path` and `tls.key_path`, and ACME without `tls.acme.http_listen` or `tls.acme.cache_dir`. [#3687](https://github.com/juanfont/headscale/pull/3687) [#3691](https://github.com/juanfont/headscale/pull/3691)
+- `prefixes.v4` must lie inside `100.64.0.0/10` and outside `100.115.92.0/23`, which Tailscale reserves for ChromeOS VMs. `prefixes.v6` must lie inside `fd7a:115c:a1e0::/48`. Any other prefix is refused. headscale also refuses to start while a node holds an address outside these ranges. Other prefixes were unsupported, and the policy's `*` did not treat their addresses the same everywhere. A deployment with custom prefixes must give its nodes new addresses before upgrading. See [How can I migrate back to the recommended IP prefixes?](https://headscale.net/stable/about/faq/#how-can-i-migrate-back-to-the-recommended-ip-prefixes) [#3757](https://github.com/juanfont/headscale/pull/3757)
 
 #### Configuration files
 
@@ -894,11 +895,10 @@ connected" routers that maintain their control session but cannot route packets.
 
 #### ACL Policy
 
-- Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Wildcard (`*`) in ACL sources now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
   - This better matches Tailscale's security model where `*` means "any node in the tailnet" rather than "any IP address"
-  - Policies that need to match all IP addresses including non-Tailscale IPs should use `autogroup:danger-all` as a source, or explicit CIDR ranges as destinations [#2180](https://github.com/juanfont/headscale/pull/2180)
+  - Policies that need to match all IP addresses including non-Tailscale IPs should use `autogroup:danger-all` as a source [#2180](https://github.com/juanfont/headscale/pull/2180)
   - `autogroup:danger-all` can only be used as a source; it cannot be used as a destination
-  - **Note**: Users with non-standard IP ranges configured in `prefixes.ipv4` or `prefixes.ipv6` (which is unsupported and produces a warning) will need to explicitly specify their CIDR ranges in ACL rules instead of using `*`
 - Validate `autogroup:self` source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for `autogroup:self` destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
   - Policies using tags, hosts, or IP addresses as sources for `autogroup:self` destinations will now fail validation
 - The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)

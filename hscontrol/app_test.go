@@ -412,8 +412,7 @@ func TestNewHeadscaleWarnsBeforeRejecting(t *testing.T) {
 	buf := captureLog(t, zerolog.WarnLevel)
 
 	cfg := validConfig(t)
-	v4 := netip.MustParsePrefix("10.0.0.0/8")
-	cfg.Prefixes.V4 = &v4
+	cfg.DNSConfig.Nameservers.Global = []string{"https://dns.example.com:port"}
 	cfg.Tuning.BatchChangeDelay = 0
 
 	warnings := config.Warnings(&cfg)

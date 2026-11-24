@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -261,4 +262,49 @@ func TestConfigValidator_AddErrSkipsNil(t *testing.T) {
 	v.AddErr(nil)
 	assert.False(t, v.HasErrors())
 	assert.NoError(t, v.Err())
+}
+
+// TestValidatePrefixesInsideTailscaleRanges: node ranges must lie inside
+// the ranges the Tailscale client assumes; a range wholly in the block
+// Tailscale reserves for ChromeOS VMs holds no address to hand out.
+func TestValidatePrefixesInsideTailscaleRanges(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		v4, v6  string // "" leaves the family unset
+		wantErr string // "" validates
+	}{
+		{name: "v4 subnet", v4: "100.64.0.0/24"},
+		{name: "v6 subnet", v6: "fd7a:115c:a1e0::/64"},
+		{name: "both whole ranges", v4: "100.64.0.0/10", v6: "fd7a:115c:a1e0::/48"},
+		{name: "v4 over the ChromeOS block", v4: "100.115.0.0/16"},
+		{name: "v4 outside", v4: "10.0.0.0/8", wantErr: "prefixes.v4 is outside 100.64.0.0/10"},
+		{name: "v4 wider", v4: "100.0.0.0/8", wantErr: "prefixes.v4 is outside 100.64.0.0/10"},
+		{name: "v4 in the ChromeOS block", v4: "100.115.92.0/24", wantErr: "prefixes.v4 is inside 100.115.92.0/23"},
+		{name: "v6 outside", v6: "fd00::/48", wantErr: "prefixes.v6 is outside fd7a:115c:a1e0::/48"},
+		{name: "v6 wider", v6: "fd7a:115c::/32", wantErr: "prefixes.v6 is outside fd7a:115c:a1e0::/48"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Prefixes.V4, cfg.Prefixes.V6 = nil, nil
+
+			if tt.v4 != "" {
+				cfg.Prefixes.V4 = new(netip.MustParsePrefix(tt.v4))
+			}
+
+			if tt.v6 != "" {
+				cfg.Prefixes.V6 = new(netip.MustParsePrefix(tt.v6))
+			}
+
+			err := Validate(&cfg)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorContains(t, err, tt.wantErr)
+			require.ErrorIs(t, err, types.ErrPrefixOutsideTailscaleRanges)
+			assert.Len(t, types.ConfigErrors(err), 1, err.Error())
+		})
+	}
 }

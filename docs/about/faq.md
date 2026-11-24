@@ -165,8 +165,9 @@ indicates which part of the policy is invalid. Follow these steps to fix your po
 
 ## How can I migrate back to the recommended IP prefixes?
 
-Tailscale only supports the IP prefixes `100.64.0.0/10` and `fd7a:115c:a1e0::/48` or smaller subnets thereof. The
-following steps can be used to migrate from unsupported IP prefixes back to the supported and recommended ones.
+Tailscale only supports the IP prefixes `100.64.0.0/10` and `fd7a:115c:a1e0::/48` or smaller subnets thereof. Headscale
+refuses any other prefix, and refuses to start while a node holds an address outside them. The following steps can be used
+to migrate from unsupported IP prefixes back to the supported and recommended ones.
 
 !!! warning "Backup and test in a demo environment required"
 
