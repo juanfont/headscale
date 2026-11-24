@@ -50,4 +50,15 @@ func TestWrite(t *testing.T) {
 	if err == nil {
 		t.Error("tcsh: no error")
 	}
+
+	// fish cannot read a variable named after tool.v2; tool-v2 is fine.
+	err = Write(&bytes.Buffer{}, "fish", "tool.v2")
+	if err == nil {
+		t.Error("fish tool.v2: no error")
+	}
+
+	err = Write(&bytes.Buffer{}, "fish", "tool-v2")
+	if err != nil {
+		t.Errorf("fish tool-v2: %v", err)
+	}
 }
