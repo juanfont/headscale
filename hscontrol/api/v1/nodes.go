@@ -287,8 +287,9 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		// gRPC parity: disableExpiry => nil expiry (never expires); explicit
-		// expiry honoured; absent/zero body expires now. Both set is a 400.
+		// disableExpiry turns key expiry off and keeps the time, which v1
+		// shows as none; explicit expiry honoured; absent/zero body expires
+		// now. Both set is a 400.
 		var (
 			disableExpiry bool
 			customExpiry  *time.Time
@@ -307,7 +308,7 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 
 		switch {
 		case disableExpiry:
-			node, nodeChange, expErr := b.State.SetNodeExpiry(nodeID, nil)
+			node, nodeChange, expErr := b.State.SetNodeKeyExpiryDisabled(nodeID, true)
 			b.Change(nodeChange)
 
 			if expErr != nil {
