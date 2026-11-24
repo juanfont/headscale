@@ -9,8 +9,8 @@
 // driving `tailscale exit-node list`.
 //
 // Captures live under testdata/issue_3212/ rather than testdata/
-// routes_results/ so the broader TestRoutesCompat / *PeerAllowedIPs /
-// *ReduceRoutes machinery does not pull them in. Those tests assume a
+// routes_results/ so the broader TestRoutesCompat / *ReduceRoutes
+// machinery does not pull them in. Those tests assume a
 // PacketFilterRules wire format (CIDR prefix per dest entry) that
 // differs from what SaaS emits for autogroup:internet (range form per
 // IPSet range — e.g. "0.0.0.0-9.255.255.255"). Aligning that wire
