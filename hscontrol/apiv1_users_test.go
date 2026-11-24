@@ -116,6 +116,26 @@ func TestAPIV1RenameUser(t *testing.T) {
 		assertStatus(t, res, http.StatusBadRequest)
 	})
 
+	// Names are unique among local users only, so the rename commits.
+	t.Run("name held by an oidc user", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		h.app.state.CreateUserForTest("alice")
+		oidc := h.app.state.CreateUserForTest("bob")
+		require.NoError(t, h.app.state.DB().DB.Model(oidc).Updates(map[string]any{
+			"provider": util.RegisterMethodOIDC, "provider_identifier": "https://idp.example.com/bob",
+		}).Error)
+
+		res := h.callHuma(http.MethodPost, "/api/v1/user/1/rename/bob", nil)
+		require.Equal(t, http.StatusOK, res.status, string(res.body))
+
+		var got struct {
+			User map[string]any `json:"user"`
+		}
+		require.NoError(t, json.Unmarshal(res.body, &got))
+		assert.Equal(t, "1", got.User["id"])
+		assert.Equal(t, "bob", got.User["name"])
+	})
+
 	t.Run("oidc user refused", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 		user := h.app.state.CreateUserForTest("alice")
