@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,22 +16,7 @@ import (
 func createTestAppWithNodeExpiry(t *testing.T, nodeExpiry time.Duration) *Headscale {
 	t.Helper()
 
-	cfg := validConfig(t)
-	cfg.Node.Expiry = nodeExpiry
-
-	app, err := NewHeadscale(&cfg)
-	require.NoError(t, err)
-
-	app.mapBatcher = mapper.NewBatcherAndMapper(&cfg, app.state)
-	app.mapBatcher.Start()
-
-	t.Cleanup(func() {
-		if app.mapBatcher != nil {
-			app.mapBatcher.Close()
-		}
-	})
-
-	return app
+	return createTestApp(t, func(cfg *types.Config) { cfg.Node.Expiry = nodeExpiry })
 }
 
 // TestTaggedPreAuthKeyCreatesTaggedNode tests that a PreAuthKey with tags creates

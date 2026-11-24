@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -198,20 +197,5 @@ func TestAPIV1PolicyCheck(t *testing.T) {
 func createFilePolicyApp(t *testing.T) *Headscale {
 	t.Helper()
 
-	cfg := validConfig(t)
-	cfg.Policy.Mode = types.PolicyModeFile
-
-	app, err := NewHeadscale(&cfg)
-	require.NoError(t, err)
-
-	app.mapBatcher = mapper.NewBatcherAndMapper(&cfg, app.state)
-	app.mapBatcher.Start()
-
-	t.Cleanup(func() {
-		if app.mapBatcher != nil {
-			app.mapBatcher.Close()
-		}
-	})
-
-	return app
+	return createTestApp(t, func(cfg *types.Config) { cfg.Policy.Mode = types.PolicyModeFile })
 }
