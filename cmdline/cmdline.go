@@ -202,7 +202,7 @@ func New(root Node, opts ...Option) (*Tree, error) {
 		return nil, errNoRoot
 	}
 
-	t := &Tree{root: b.build(root, nil, nil), nodes: b.nodes}
+	t := &Tree{root: b.build(root, nil, nil, nil), nodes: b.nodes}
 	if t.root.info.Name == "" {
 		b.bad("the root has no name")
 	}
@@ -231,8 +231,13 @@ func null(n Node) bool {
 
 // build makes the node of n. above holds the names down to its parent;
 // scope the flags of the groups above, which may be typed before n is
-// reached.
-func (b *builder) build(n Node, above []string, scope []*field) *node {
+// reached, and parts their structs.
+func (b *builder) build(
+	n Node,
+	above []string,
+	scope []*field,
+	parts []reflect.Type,
+) *node {
 	d := n.decl()
 	names := append(slices.Clip(above), d.name)
 	at := strings.Join(names, " ")
@@ -326,10 +331,14 @@ func (b *builder) build(n Node, above []string, scope []*field) *node {
 			}
 		}
 
-		nd.parts = nil
-		for _, f := range all {
-			if !slices.Contains(nd.parts, f.part) {
-				nd.parts = append(nd.parts, f.part)
+		// From the structs, not their fields: a struct with no field is
+		// one too (G1, G3).
+		mine := nd.parts
+
+		nd.parts = slices.Clone(parts)
+		for _, p := range mine {
+			if !slices.Contains(nd.parts, p) {
+				nd.parts = append(nd.parts, p)
 			}
 		}
 	}
@@ -356,7 +365,7 @@ func (b *builder) build(n Node, above []string, scope []*field) *node {
 			continue
 		}
 
-		ch := b.build(c, names, all)
+		ch := b.build(c, names, all, nd.parts)
 		nd.info.Commands = append(nd.info.Commands, ch.info)
 		nd.low.Commands = append(nd.low.Commands, ch.low)
 	}

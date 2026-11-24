@@ -1598,3 +1598,31 @@ func TestUnknownTagsOrder(t *testing.T) {
 		}
 	}
 }
+
+// TestEmptyFlagStruct: a struct in Flags with no field is still one of the
+// structs of the line, at its group and at a group below (G1, G3).
+func TestEmptyFlagStruct(t *testing.T) {
+	type marker struct{}
+
+	tree, err := New(Group{Name: "prog", Flags: []any{marker{}}, Commands: []Node{
+		Group{
+			Name: "g",
+			Commands: []Node{
+				Command[struct{}]{
+					Name: "c",
+					Run:  func(context.Context, struct{}) error { return nil },
+				},
+			},
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, argv := range [][]string{nil, {"g"}} {
+		l, _ := tree.Parse(argv)
+		if _, ok := Get[marker](l); !ok {
+			t.Errorf("%q: Get[marker] reports false", argv)
+		}
+	}
+}
