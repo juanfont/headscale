@@ -723,6 +723,12 @@ func TestNew(t *testing.T) {
 		nested2 struct {
 			X []Opt[string] `flag:"x"`
 		}
+		ptrOpt struct {
+			X *Opt[int] `flag:"x"`
+		}
+		ptrRepeat struct {
+			X *Repeat[int] `flag:"x"`
+		}
 		short2 struct {
 			X string `flag:"x" short:"xy"`
 		}
@@ -813,6 +819,8 @@ func TestNew(t *testing.T) {
 		{"K12", leaf(Command[setIn]{Name: "c", Run: record[setIn]}), nil, "Peer: cmdline.peer cannot be read"},
 		{"K12", leaf(Command[nested]{Name: "c", Run: record[nested]}), nil, "Opt and Repeat do not nest"},
 		{"K12", leaf(Command[nested2]{Name: "c", Run: record[nested2]}), nil, "cannot be read"},
+		{"K12", leaf(Command[ptrOpt]{Name: "c", Run: record[ptrOpt]}), nil, "X: *cmdline.Opt[int] is a pointer"},
+		{"K12", leaf(Command[ptrRepeat]{Name: "c", Run: record[ptrRepeat]}), nil, "X: *cmdline.Repeat[int] is a pointer"},
 		{"K13", leaf(Command[short2]{Name: "c", Run: record[short2]}), nil, `short "xy" is not one letter`},
 		{"K13", leaf(Command[shortArg]{Name: "c", Run: record[shortArg]}), nil, "an argument takes no short and no default"},
 		{"K13", leaf(Command[defArg]{Name: "c", Run: record[defArg]}), nil, "an argument takes no short and no default"},

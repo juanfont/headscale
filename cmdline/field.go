@@ -83,6 +83,7 @@ var (
 	errTagForm  = errors.New("is not in the form key:\"value\"")
 	errTagTwice = errors.New("given twice")
 	errNest     = errors.New("Opt and Repeat do not nest")
+	errPointer  = errors.New("is a pointer: Opt and Repeat are values")
 	errNoReader = errors.New(
 		"cannot be read: give it an UnmarshalText method, or New a Reader",
 	)
@@ -325,6 +326,11 @@ var textType = reflect.TypeFor[encoding.TextUnmarshaler]()
 
 // typ finds how a field of type t is read.
 func (b *builder) typ(f *field, t reflect.Type) error {
+	// A *Opt matches repeated through its method set, and store cannot fill it.
+	if t.Kind() == reflect.Pointer && wrapper(t.Elem()) {
+		return fmt.Errorf("%s %w", t, errPointer)
+	}
+
 	f.one = t
 	if o, ok := reflect.TypeAssert[optional](reflect.New(t)); ok {
 		f.opt, f.one = true, o.one()
