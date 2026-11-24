@@ -1590,7 +1590,9 @@ func TestExpiredTaggedNodeReauthRetags(t *testing.T) {
 // is a node property, not tied to the auth key, so re-keying an already-tagged
 // node with a different key must retag it WITHOUT wiping that future expiry.
 // Only a stale PAST expiry is cleared (see TestExpiredTaggedNodeReauthRetags).
-// Symmetric with the same-key relogin path.
+// Symmetric with the same-key relogin path. The login with a tagged key turns
+// key expiry off, as on Tailscale SaaS, so the kept time no longer counts
+// until an admin turns it on again.
 func TestTaggedPAKReauthRetagPreservesFutureAdminExpiry(t *testing.T) {
 	s := newRetagTestState(t)
 
@@ -1607,10 +1609,11 @@ func TestTaggedPAKReauthRetagPreservesFutureAdminExpiry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Admin sets a deliberate future expiry on the tagged node
-	// (`headscale nodes expire`), which SetNodeExpiry permits.
+	// (`headscale nodes expire`), which turns key expiry on.
 	future := time.Now().Add(30 * 24 * time.Hour)
-	_, _, err = s.SetNodeExpiry(first.ID(), &future)
+	expiring, _, err := s.ExpireNodeAt(first.ID(), future)
 	require.NoError(t, err)
+	require.True(t, expiring.IsExpiredAt(future.Add(time.Hour)), "the admin expiry counts before the relogin")
 
 	// Re-key with a different tagged key.
 	key2, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:tag2"})
@@ -1627,6 +1630,8 @@ func TestTaggedPAKReauthRetagPreservesFutureAdminExpiry(t *testing.T) {
 		"a deliberate future admin expiry must survive a different-key retag")
 	require.Equal(t, future.Unix(), second.AsStruct().Expiry.Unix(),
 		"the admin expiry value must be unchanged")
+	require.True(t, second.KeyExpiryDisabled(), "a login with a tagged key turns key expiry off")
+	require.False(t, second.IsExpiredAt(future.Add(time.Hour)), "the kept expiry does not count while key expiry is off")
 }
 
 // newRetagTestState builds a State with an empty policy (tagged-PAK tags need
