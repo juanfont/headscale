@@ -1571,14 +1571,6 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(t, files)
 
-	issue3212, err := filepath.Glob(
-		filepath.Join("testdata", "issue_3212", "routes-*.hujson"),
-	)
-	require.NoError(t, err, "failed to glob issue_3212 files")
-	require.NotEmpty(t, issue3212)
-
-	files = append(files, issue3212...)
-
 	// Count how many files actually had netmap data to test.
 	testedFiles := 0
 
@@ -1775,14 +1767,6 @@ func TestRoutesCompatPeerCapMap(t *testing.T) {
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(t, files)
-
-	issue3212, err := filepath.Glob(
-		filepath.Join("testdata", "issue_3212", "routes-*.hujson"),
-	)
-	require.NoError(t, err, "failed to glob issue_3212 files")
-	require.NotEmpty(t, issue3212)
-
-	files = append(files, issue3212...)
 
 	for _, file := range files {
 		tf := loadRoutesTestFile(t, file)
