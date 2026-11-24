@@ -21,5 +21,9 @@ func TestMain(m *testing.M) {
 		panic("could not chdir to test source directory: " + err.Error())
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+
+	testPostgres.stop()
+
+	os.Exit(code)
 }
