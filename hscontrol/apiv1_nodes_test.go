@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
@@ -253,6 +254,38 @@ func TestAPIV1NodeExpire(t *testing.T) {
 		require.True(t, ok)
 		assert.False(t, node.KeyExpiryDisabled())
 		assert.True(t, node.IsExpired())
+	})
+
+	// disableExpiry turns the switch on and keeps the time, so turning key
+	// expiry on again (v2 POST /device/{id}/key) brings it back.
+	t.Run("huma disable keeps the expiry", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		seedNodes(newNodeSeed("alice", "node-a"))(t, h.app)
+
+		future := time.Now().Add(30 * 24 * time.Hour).UTC().Truncate(time.Second)
+		_, _, err := h.app.state.ExpireNodeAt(1, future)
+		require.NoError(t, err)
+
+		res := h.callHuma(http.MethodPost, "/api/v1/node/1/expire", []byte(`{"disableExpiry":true}`))
+		require.Equal(t, http.StatusOK, res.status)
+
+		var got struct {
+			Node map[string]any `json:"node"`
+		}
+		require.NoError(t, json.Unmarshal(res.body, &got))
+		assert.Nil(t, got.Node["expiry"], "v1 shows no expiry while key expiry is off")
+
+		node, ok := h.app.state.GetNodeByID(1)
+		require.True(t, ok)
+		assert.True(t, node.KeyExpiryDisabled())
+		assert.False(t, node.IsExpiredAt(future.Add(time.Hour)))
+
+		node, _, err = h.app.state.SetNodeKeyExpiryDisabled(1, false)
+		require.NoError(t, err)
+
+		exp, ok := node.KeyExpiry()
+		require.True(t, ok, "turning key expiry on must bring the time back")
+		assert.True(t, future.Equal(exp))
 	})
 
 	t.Run("huma refuses an unencodable expiry", func(t *testing.T) {

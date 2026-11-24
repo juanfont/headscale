@@ -938,8 +938,8 @@ func TestNodeExpireFlagsCommand(t *testing.T) {
 			return
 		}
 
-		// --disable clears the expiry (nil), so the node has no expiry in the
-		// future — it never expires. A nil expiry deserialises to the Unix
+		// --disable turns key expiry off, so v1 shows no expiry and the node
+		// never expires. A nil expiry deserialises to the Unix
 		// epoch rather than the zero time, so assert "not in the future"
 		// rather than IsZero.
 		assert.False(ct, n.Expiry != nil && n.Expiry.After(time.Now()),
