@@ -1679,3 +1679,67 @@ func TestDefaultReadOnce(t *testing.T) {
 		}
 	}
 }
+
+type ordered struct{ color }
+
+func (ordered) Complete(_ *Line, prefix string) ([]string, Directive) {
+	return Words(prefix, "red", "green"), KeepOrder
+}
+
+// TestBounds: numbers are read at the width of their type, a short is one
+// of "!" to "~", and a list keeps the completer's KeepOrder after a comma.
+func TestBounds(t *testing.T) {
+	type input struct {
+		I int8        `flag:"i"`
+		F float32     `flag:"f"`
+		O []ordered   `flag:"o"`
+		A Opt[string] `flag:"a" short:"!"`
+		Z Opt[string] `flag:"z" short:"~"`
+	}
+
+	tree, err := New(
+		Command[input]{
+			Name: "c",
+			Run:  func(context.Context, input) error { return nil },
+		},
+	)
+	if err != nil {
+		t.Fatalf("shorts ! and ~: %v", err)
+	}
+
+	for _, tc := range []struct {
+		arg string
+		ok  bool
+	}{
+		{"--i=127", true},
+		{"--i=128", false},
+		{"--i=-129", false},
+		{"--f=3.4e38", true},
+		{"--f=3.5e38", false},
+	} {
+		_, err := tree.Parse([]string{tc.arg})
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: %v", tc.arg, err)
+		}
+	}
+
+	_, dir := tree.Complete([]string{"--o"}, "red,g")
+	if dir != KeepOrder|NoSpace {
+		t.Errorf("after a comma: directive %d, want KeepOrder|NoSpace", dir)
+	}
+
+	type space struct {
+		X string `flag:"x" short:" "`
+	}
+
+	_, err = New(
+		Command[space]{
+			Name: "c",
+			Run:  func(context.Context, space) error { return nil },
+		},
+	)
+	if err == nil ||
+		!strings.Contains(err.Error(), "is not one printable ASCII letter") {
+		t.Errorf("short space: %v", err)
+	}
+}
