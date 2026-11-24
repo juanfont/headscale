@@ -51,7 +51,8 @@ func Words(prefix string, words ...string) []string {
 // completer is the reader's Completer for f, or nil when the type of f
 // offers nothing. In a list only the item after the last comma is
 // completed; the items before it are kept, and no space follows, so the
-// next item can.
+// next item can. After an empty item nothing is offered: the run refuses
+// the list whatever follows.
 func (f *field) completer(nodes map[*reader.Command]*node) reader.Completer {
 	c, ok := reflect.TypeAssert[Completer](reflect.Zero(f.elem))
 	if !ok {
@@ -67,6 +68,12 @@ func (f *field) completer(nodes map[*reader.Command]*node) reader.Completer {
 		if !f.list || i < 0 {
 			words, dir := c.Complete(l, cur)
 			return words, reader.Directive(dir)
+		}
+
+		// Only the split, never a reader: Tab runs none (T16).
+		_, err := f.split(cur[:i])
+		if err != nil {
+			return nil, reader.Directive(NoFiles)
 		}
 
 		words, dir := c.Complete(l, cur[i+1:])

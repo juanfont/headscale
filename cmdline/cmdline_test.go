@@ -1001,6 +1001,38 @@ func TestListFileMetadata(t *testing.T) {
 	}
 }
 
+// TestTabRunsNoReader: Tab checks the items before the cursor by their
+// split only; the reader may be slow or have effects (T16).
+func TestTabRunsNoReader(t *testing.T) {
+	type input struct {
+		Colors []color `flag:"colors"`
+	}
+
+	calls := 0
+	read := Reader(func(s string) (color, error) { calls++; return color(s), nil })
+
+	tree, err := New(
+		Command[input]{
+			Name: "paint",
+			Run:  func(context.Context, input) error { return nil },
+		},
+		read,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	calls = 0
+
+	if words, _ := tree.Complete(
+		[]string{"--colors"},
+		"red,blue,g",
+	); !slices.Equal(words, []string{"red,blue,green"}) ||
+		calls != 0 {
+		t.Errorf("red,blue,g: got %q with %d reader calls", words, calls)
+	}
+}
+
 // TestTab: what the types offer (rules T14, T19–T22); the line is split on
 // spaces and the last word is under the cursor.
 func TestTab(t *testing.T) {
@@ -1013,6 +1045,10 @@ func TestTab(t *testing.T) {
 		{"T20", "peers set 7 ::/0 --colors red,blue,g", "red,blue,green | :6"},
 		{"T20", "peers set 7 ::/0 --colors=red,g", "red,green | :6"},
 		{"T20", "peers set 7 ::/0 --rule red --rule green,b", "green,blue | :6"},
+		// Nothing after an empty item: the run refuses the list.
+		{"T20", "peers set 7 ::/0 --colors ,", ":4"},
+		{"T20", "peers set 7 ::/0 --colors=,b", ":4"},
+		{"T20", "peers set 7 ::/0 --colors=red,,b", ":4"},
 		{"T21", "peers set ", ":4"},                // a late type offers nothing
 		{"T21", "peers set 7 ", ":4"},              // netip.Prefix has no Complete
 		{"T21", "peers set 7 ::/0 --name ", ":4"},  // nor has string
