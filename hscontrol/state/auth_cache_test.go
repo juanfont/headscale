@@ -10,9 +10,13 @@ import (
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/types/key"
 )
 
 func newTestAuthCache(t *testing.T, maxEntries int, ttl time.Duration) *expirable.LRU[types.AuthID, *types.AuthRequest] {
@@ -313,4 +317,70 @@ func TestStateCloseStopsAuthCacheSweeper(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return authCacheSweepers(t, gid) == 0
 	}, 5*time.Second, 10*time.Millisecond, "sweeper must stop on State.Close")
+}
+
+// registrationsAt counts the registrations holding or waiting for the
+// registration lock of machineKey.
+func registrationsAt(s *State, machineKey key.MachinePublic) int {
+	var n int
+
+	s.registerLocks.Compute(machineKey, func(l *registerLock, loaded bool) (*registerLock, xsync.ComputeOp) {
+		if loaded {
+			n = l.refs
+		}
+
+		return l, xsync.CancelOp
+	})
+
+	return n
+}
+
+// TestConcurrentApprovalsOfOneLoginRegisterOnce drives two approvals of one
+// login that both found it pending before either decided it: the test holds
+// the registration lock until both have looked the login up.
+func TestConcurrentApprovalsOfOneLoginRegisterOnce(t *testing.T) {
+	s, err := NewState(persistTestConfig(t.TempDir() + "/headscale.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	machineKey := key.NewMachine().Public()
+	authID := types.MustAuthID()
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "approved-twice",
+	})))
+
+	users := []*types.User{s.CreateUserForTest("first-approver"), s.CreateUserForTest("second-approver")}
+
+	unlock := s.lockRegistration(machineKey)
+	errs := make(chan error, len(users))
+
+	for _, u := range users {
+		go func() {
+			_, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(u.ID), nil, util.RegisterMethodCLI)
+			errs <- err
+		}()
+	}
+
+	// Each approval has looked the login up once it waits for the lock or
+	// has been answered.
+	require.Eventually(t, func() bool {
+		return registrationsAt(s, machineKey)+len(errs) == len(users)+1
+	}, 10*time.Second, time.Millisecond)
+	unlock()
+
+	var refused int
+
+	for range users {
+		err := <-errs
+		if err != nil {
+			require.ErrorIs(t, err, db.ErrNodeNotFoundRegistrationCache)
+
+			refused++
+		}
+	}
+
+	assert.Equal(t, 1, refused, "the second approval must be refused")
+	assert.Equal(t, 1, s.ListNodes().Len(), "one login must register one node")
 }
