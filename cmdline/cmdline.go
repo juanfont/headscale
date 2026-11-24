@@ -198,7 +198,7 @@ func New(root Node, opts ...Option) (*Tree, error) {
 		}
 	}
 
-	if root == nil {
+	if null(root) {
 		return nil, errNoRoot
 	}
 
@@ -221,6 +221,13 @@ func New(root Node, opts ...Option) (*Tree, error) {
 
 // Root returns the description of the root; its Commands lead to the rest.
 func (t *Tree) Root() *Info { return t.root.info }
+
+// null: a nil Node, or a nil *Group or *Command in one, whose decl would
+// panic.
+func null(n Node) bool {
+	v := reflect.ValueOf(n)
+	return n == nil || v.Kind() == reflect.Pointer && v.IsNil()
+}
 
 // build makes the node of n. above holds the names down to its parent;
 // scope the flags of the groups above, which may be typed before n is
@@ -344,7 +351,7 @@ func (b *builder) build(n Node, above []string, scope []*field) *node {
 	}
 
 	for _, c := range d.commands {
-		if c == nil {
+		if null(c) {
 			b.bad("%s: a command is nil", at)
 			continue
 		}

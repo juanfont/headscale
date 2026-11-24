@@ -840,6 +840,8 @@ func TestNew(t *testing.T) {
 		{"K16", leaf(Group{Name: "g"}), nil, "prog g: a group needs a command"},
 		{"K16", Group{Commands: []Node{Command[ok]{Name: "c", Run: nop}}}, nil, "the root has no name"},
 		{"K16", Group{Name: "prog", Commands: []Node{nil}}, nil, "prog: a command is nil"},
+		{"K16", Group{Name: "prog", Commands: []Node{(*Group)(nil)}}, nil, "prog: a command is nil"},
+		{"K16", Group{Name: "prog", Commands: []Node{(*Command[ok])(nil)}}, nil, "prog: a command is nil"},
 		{"K17", leaf(Command[ok]{Name: "c", Run: nop}), []Option{Reader(time.ParseDuration), Reader(time.ParseDuration)}, "time.Duration has two readers"},
 		{"K17", leaf(Command[ok]{Name: "c", Run: nop}), []Option{Reader(func(string) (peer, error) { return peer{}, nil }), LateReader(findPeer)}, "cmdline.peer has two readers"},
 		{"K18", Group{Name: "prog", Flags: []any{other2{}}, Commands: []Node{Group{Name: "g", Flags: []any{common{}}, Commands: []Node{Command[ok]{Name: "c", Run: nop}}}}}, nil, "prog g: --help is declared by cmdline.common here and by cmdline.other2 above"},
@@ -868,6 +870,11 @@ func TestNew(t *testing.T) {
 	_, err = New(nil)
 	if err == nil {
 		t.Error("K16: no root")
+	}
+
+	_, err = New((*Group)(nil))
+	if err == nil {
+		t.Error("K16: a nil *Group root")
 	}
 	// Every problem is named, not only the first.
 	_, err = New(Group{Name: "prog", Commands: []Node{
