@@ -260,6 +260,24 @@ These come on top of `AGENTS.md` and the maintainer's own instructions.
 - **The notes on the code.** "What the code does today" in 001 was checked against `main` only for the files that changed in the last rebase.
 - **Whether `hscontrol/servertest` can serve v0 over a unix socket** for the test helper of part 3. Checked: it serves no socket today. Part 2 adds one.
 
+## Independent review after each work package
+
+A standing instruction of the maintainer, given on 2026-11-22 and again on 2026-11-24.
+
+Two reviewers of another model family sit in the Rex session `headscale`, tab `pr-3715-cli-v0-stack-root`: the lead in block `01a20247-73bf-76ac-8533-478ffcdd1b98`, and "Sol" in block `01a2024d-eef8-7ee2-a526-02724bdcc422`. If a pane was replaced, its context is in the two reports below.
+
+- **Whenever a small package is ready, and again after each fix or rebase**, the root sends both panes: the pull request, the base and head commit, the rows of the proposal that the change is about, the intended behaviour, the diff, the test commands with their results, any deliberate change of published behaviour, and the command that replays the original failure. Both give a disposition of the same revision. Corrections go back to both for a second look before the package is marked complete. Other work goes on while a review runs.
+- **Their first reports** are untracked files in the worktree `kradalby/cli-v0-root`: `DEEP-REVIEW.md` (the lead; it starts with a fix queue of six work packages and the regression targets), `CLI-STACK-REVIEW.md`, `SOL-CLI-REVIEW.md`, `TEST-GAP-REVIEW.md`, and the four reports they link (`PARSER-CONTRACT-`, `CLI-CONTRACT-`, `API-CONTRACT-`, `SPEC-DECISIONS-REVIEW.md`). Evidence: `~/.cache/tmp/headscale-review-258f93d7-deep/` and `~/.cache/tmp/headscale-sol-review-258f93d7/evidence/`. They reviewed the proposal at `17b136f33` and the stack at `258f93d7d`.
+- **The root's own team validates both reports** before anything is fixed: six validators, one for each slice, each gives every finding a disposition with evidence (confirmed; already fixed; duplicate; not reproduced; not a defect; a decision; deferred to the cutover). Brief: `~/.cache/handover/headscale-kradalby-cli-v0-review-validation.md`. Results: `…-review-validation-1.md` to `-6.md`, with an index of every finding. Then a fixer closes every validated, outstanding finding in the part that owns it, with a regression test; a finding in merged code (#3717, #3718) gets a corrective pull request on `main`.
+- **Held**: the two terminal-width candidates of the property tests (draft pull request #3732, `tools/rapid-cli`) stay as they are until the maintainer decides which terminals are supported.
+- The existing permissions to push own branches and to open draft pull requests hold.
+
+### Running record: fixes, verification, and decisions that need the maintainer
+
+| Finding (validator's ID)                     | Owning part | Disposition | Fix (commit) | Verified by | Both reviewers | Needs the maintainer |
+| -------------------------------------------- | ----------- | ----------- | ------------ | ----------- | -------------- | -------------------- |
+| (validation runs since 2026-11-24 05:10 UTC) |             |             |              |             |                |                      |
+
 ## State
 
 The root keeps this section true. It holds the tasks of the part that is active, because the root has no TODO tool. The stack on GitHub is stack #3719, made with `gh stack link --remote juanfont <pull requests, bottom to top>`; it holds #3717, #3718, #3715, #3720, #3721, #3722, #3723, #3725 and #3727.
