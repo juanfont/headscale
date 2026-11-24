@@ -373,7 +373,9 @@ WHERE auth_key_id IN (
 			{
 				// Key expiry becomes a switch beside the expiry time, as on
 				// Tailscale. Tagged nodes had expiry turned off by clearing the
-				// time; the switch now says so, so they still never expire.
+				// time; the switch now says so, so they still never expire. A
+				// tagged node with a stored time got it from an admin or a
+				// logout and expired by it, so its key expiry stays on.
 				ID: "202611171200-node-key-expiry-disabled",
 				Migrate: func(tx *gorm.DB) error {
 					return tx.Transaction(func(tx *gorm.DB) error {
@@ -394,7 +396,8 @@ WHERE auth_key_id IN (
 						// The tagged-node predicate of 202607241200-clear-tagged-node-expiry.
 						err = tx.Exec(`
 UPDATE nodes SET key_expiry_disabled = true
-WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null';
+WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
+	AND expiry IS NULL;
 							`).Error
 						if err != nil {
 							return fmt.Errorf("disabling key expiry on tagged nodes: %w", err)

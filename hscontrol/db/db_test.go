@@ -3,9 +3,12 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -511,36 +514,7 @@ func TestPostgresMigrationAndDataValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			u := newPostgresDBForTest(t)
-
-			pgRestorePath, err := exec.LookPath("pg_restore")
-			if err != nil {
-				t.Fatal("pg_restore not found in PATH. Please install it and ensure it is accessible.")
-			}
-
-			// Construct the pg_restore command
-			cmd := exec.CommandContext(context.Background(), pgRestorePath, "--verbose", "--if-exists", "--clean", "--no-owner", "--dbname", u.String(), tt.dbPath)
-
-			// Set the output streams
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-
-			// Execute the command
-			err = cmd.Run()
-			if err != nil {
-				t.Fatalf("failed to restore postgres database: %s", err)
-			}
-
-			if len(tt.preSQL) > 0 {
-				raw, err := sql.Open("pgx", u.String())
-				require.NoError(t, err)
-
-				for _, stmt := range tt.preSQL {
-					_, err := raw.ExecContext(context.Background(), stmt)
-					require.NoError(t, err, stmt)
-				}
-
-				require.NoError(t, raw.Close())
-			}
+			restorePostgresFixture(t, u, tt.dbPath, tt.preSQL...)
 
 			db := newHeadscaleDBFromPostgresURL(t, u)
 
@@ -548,6 +522,37 @@ func TestPostgresMigrationAndDataValidation(t *testing.T) {
 				tt.wantFunc(t, db)
 			}
 		})
+	}
+}
+
+// restorePostgresFixture loads a pg_dump into u, then runs preSQL.
+func restorePostgresFixture(t *testing.T, u *url.URL, dumpPath string, preSQL ...string) {
+	t.Helper()
+
+	pgRestorePath, err := exec.LookPath("pg_restore")
+	if err != nil {
+		t.Fatal("pg_restore not found in PATH. Please install it and ensure it is accessible.")
+	}
+
+	cmd := exec.CommandContext(context.Background(), pgRestorePath, "--verbose", "--if-exists", "--clean", "--no-owner", "--dbname", u.String(), dumpPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err = cmd.Run()
+	if err != nil {
+		t.Fatalf("failed to restore postgres database: %s", err)
+	}
+
+	if len(preSQL) > 0 {
+		raw, err := sql.Open("pgx", u.String())
+		require.NoError(t, err)
+
+		for _, stmt := range preSQL {
+			_, err := raw.ExecContext(context.Background(), stmt)
+			require.NoError(t, err, stmt)
+		}
+
+		require.NoError(t, raw.Close())
 	}
 }
 
@@ -1207,4 +1212,231 @@ func TestLastControlAddressMigration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, reloaded.LastControlAddress,
 		"existing nodes must receive NULL rather than an invented address")
+}
+
+// expiryBackend is one database for the tagged key expiry tests: open runs a
+// start (nil and its error when the start fails), exec runs SQL beside it.
+type expiryBackend struct {
+	open    func() (*HSDatabase, error)
+	exec    func(stmts ...string)
+	release func(stmts ...string) // load the 0.29.3 fixture, then stmts
+	// stopAt makes the next start fail at a write; drop undoes it.
+	stopAt func(when string)
+	drop   func()
+}
+
+func expiryBackends(t *testing.T, fn func(t *testing.T, b expiryBackend)) {
+	t.Helper()
+
+	t.Run("sqlite", func(t *testing.T) {
+		path := t.TempDir() + "/headscale.db"
+		exec := func(stmts ...string) {
+			raw, err := sql.Open("sqlite", path)
+			require.NoError(t, err)
+
+			defer raw.Close()
+
+			for _, stmt := range stmts {
+				_, err := raw.ExecContext(context.Background(), stmt)
+				require.NoError(t, err, stmt)
+			}
+		}
+
+		fn(t, expiryBackend{
+			open: func() (*HSDatabase, error) {
+				return NewHeadscaleDatabase(&types.Config{
+					Database: types.DatabaseConfig{Type: types.DatabaseSqlite, Sqlite: types.SqliteConfig{Path: path}},
+					Policy:   types.PolicyConfig{Mode: types.PolicyModeDB},
+				})
+			},
+			exec: exec,
+			release: func(stmts ...string) {
+				require.NoError(t, createSQLiteFromSQLFile("testdata/sqlite/headscale_0.29.3_dump.sql", path))
+				exec(stmts...)
+			},
+			stopAt: func(when string) {
+				exec(`CREATE TRIGGER stop_start ` + when + ` BEGIN SELECT RAISE(ABORT, 'stopped'); END`)
+			},
+			drop: func() { exec(`DROP TRIGGER stop_start`) },
+		})
+	})
+
+	t.Run("postgres", func(t *testing.T) {
+		u := newPostgresDBForTest(t)
+		exec := func(stmts ...string) {
+			raw, err := sql.Open("pgx", u.String())
+			require.NoError(t, err)
+
+			defer raw.Close()
+
+			for _, stmt := range stmts {
+				_, err := raw.ExecContext(context.Background(), stmt)
+				require.NoError(t, err, stmt)
+			}
+		}
+
+		fn(t, expiryBackend{
+			open: func() (*HSDatabase, error) {
+				pass, _ := u.User.Password()
+				port, _ := strconv.Atoi(u.Port())
+
+				return NewHeadscaleDatabase(&types.Config{
+					Database: types.DatabaseConfig{
+						Type: types.DatabasePostgres,
+						Postgres: types.PostgresConfig{
+							Host: u.Hostname(), User: u.User.Username(), Name: strings.TrimLeft(u.Path, "/"),
+							Pass: types.Secret(pass), Port: port, Ssl: "disable",
+						},
+					},
+					Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
+				})
+			},
+			exec: exec,
+			release: func(stmts ...string) {
+				restorePostgresFixture(t, u, "testdata/postgres/headscale_0.29.3.pssql", stmts...)
+			},
+			stopAt: func(when string) {
+				when = strings.Replace(when, "WHEN", "FOR EACH ROW WHEN (", 1) + ")"
+				exec(
+					`CREATE FUNCTION stop_start() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'stopped'; END $$ LANGUAGE plpgsql`,
+					`CREATE TRIGGER stop_start `+when+` EXECUTE FUNCTION stop_start()`,
+				)
+			},
+			drop: func() { exec(`DROP FUNCTION stop_start() CASCADE`) },
+		})
+	})
+}
+
+func mustOpen(t *testing.T, b expiryBackend) *HSDatabase {
+	t.Helper()
+
+	hsdb, err := b.open()
+	require.NoError(t, err)
+
+	return hsdb
+}
+
+// stopAfterMigration lets 202611171200 commit and fails its record, as a
+// start that stops inside the migration run does.
+const stopAfterMigration = `BEFORE INSERT ON migrations WHEN NEW.id = '202611171200-node-key-expiry-disabled'`
+
+// releasedExpiryRows gives the nodes of the 0.29.3 fixtures expiries an admin
+// or a logout could set on 0.29.3 or later, after 202607241200 ran.
+func releasedExpiryRows(past, future time.Time) []string {
+	ts := func(t time.Time) string { return t.UTC().Format("'2006-01-02 15:04:05-07:00'") }
+
+	return []string{
+		// node4 is tagged in the fixture.
+		`UPDATE nodes SET expiry = ` + ts(past) + ` WHERE id = 4`,
+		`UPDATE nodes SET tags = '["tag:server"]', user_id = NULL, expiry = ` + ts(future) + ` WHERE id = 1`,
+		`UPDATE nodes SET tags = '["tag:server"]', user_id = NULL, expiry = NULL WHERE id = 2`,
+		`UPDATE nodes SET expiry = NULL WHERE id = 3`,
+		`UPDATE nodes SET expiry = ` + ts(past) + ` WHERE id = 5`,
+	}
+}
+
+// assertReleasedExpiry checks the rows of releasedExpiryRows after an upgrade:
+// each node's expiry counts as it did on the release.
+func assertReleasedExpiry(t *testing.T, hsdb *HSDatabase, future time.Time) {
+	t.Helper()
+
+	nodes, err := Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) { return ListNodes(rx) })
+	require.NoError(t, err)
+
+	byID := make(map[types.NodeID]*types.Node, len(nodes))
+	for _, n := range nodes {
+		byID[n.ID] = n
+	}
+
+	for _, want := range []struct {
+		id                     types.NodeID
+		tagged, switchOn       bool
+		expiredNow, expiredLtr bool
+	}{
+		{id: 4, tagged: true, expiredNow: true, expiredLtr: true},
+		{id: 1, tagged: true, expiredLtr: true},
+		{id: 2, tagged: true, switchOn: true},
+		{id: 3},
+		{id: 5, expiredNow: true, expiredLtr: true},
+	} {
+		n := byID[want.id]
+		require.NotNil(t, n, "node %d", want.id)
+		assert.Equal(t, want.tagged, n.IsTagged(), "node %d tagged", want.id)
+		assert.Equal(t, want.switchOn, n.KeyExpiryDisabled, "node %d key expiry switch", want.id)
+		assert.Equal(t, want.expiredNow, n.IsExpired(), "node %d expired now", want.id)
+		assert.Equal(t, want.expiredLtr, n.IsExpiredAt(future.Add(time.Hour)), "node %d expired after the future expiry", want.id)
+	}
+}
+
+// TestTaggedNodeKeyExpiryUpgrade upgrades a released database: a tagged
+// node's stored expiry keeps counting, one without an expiry gets key expiry
+// off, user-owned nodes keep theirs, and later starts change nothing. A start
+// stopped after the migration commits and before it is recorded runs it again
+// to the same result.
+func TestTaggedNodeKeyExpiryUpgrade(t *testing.T) {
+	past := time.Now().Add(-time.Hour).Truncate(time.Second)
+	future := time.Now().Add(30 * 24 * time.Hour).Truncate(time.Second)
+
+	for _, stopped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stopped=%v", stopped), func(t *testing.T) {
+			expiryBackends(t, func(t *testing.T, b expiryBackend) {
+				t.Helper()
+
+				b.release(releasedExpiryRows(past, future)...)
+
+				if stopped {
+					b.stopAt(stopAfterMigration)
+
+					_, err := b.open()
+					require.ErrorContains(t, err, "stopped")
+					b.drop()
+				}
+
+				for range 2 {
+					hsdb := mustOpen(t, b)
+					assertReleasedExpiry(t, hsdb, future)
+					require.NoError(t, hsdb.Close())
+				}
+			})
+		})
+	}
+}
+
+// TestTaggedNodeKeyExpiryAlreadyMigrated: a database that ran
+// 202611171200 before its tagged nodes kept a stored time is left as it is.
+func TestTaggedNodeKeyExpiryAlreadyMigrated(t *testing.T) {
+	expiryBackends(t, func(t *testing.T, b expiryBackend) {
+		t.Helper()
+
+		hsdb := mustOpen(t, b)
+		user := hsdb.CreateUserForTest("alice")
+		past := time.Now().Add(-time.Hour)
+
+		for _, n := range []struct {
+			host     string
+			switchOn bool
+		}{{"tagged-off", true}, {"tagged-on", false}} {
+			node := hsdb.CreateNodeForTest(user, n.host)
+			require.NoError(t, hsdb.DB.Model(&types.Node{}).Where("id = ?", node.ID).Updates(map[string]any{
+				"tags": `["tag:ci"]`, "user_id": nil, "expiry": past, "key_expiry_disabled": n.switchOn,
+			}).Error)
+		}
+
+		before, err := Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) { return ListNodes(rx) })
+		require.NoError(t, err)
+		require.NoError(t, hsdb.Close())
+
+		hsdb = mustOpen(t, b)
+		after, err := Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) { return ListNodes(rx) })
+		require.NoError(t, err)
+		require.NoError(t, hsdb.Close())
+
+		require.Len(t, after, len(before))
+
+		for i := range before {
+			assert.Equal(t, before[i].KeyExpiryDisabled, after[i].KeyExpiryDisabled, "%s switch", before[i].Hostname)
+			assert.True(t, before[i].Expiry.Equal(*after[i].Expiry), "%s expiry", before[i].Hostname)
+			assert.Equal(t, before[i].IsExpired(), after[i].IsExpired(), "%s expired", before[i].Hostname)
+		}
+	})
 }
