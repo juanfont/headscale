@@ -96,6 +96,10 @@ var ErrNodeAddressShared = errors.New("nodes share a tailnet address")
 // IPv4 nor an IPv6 address.
 var ErrNodeAddressMissing = errors.New("node has no tailnet address")
 
+// ErrNodeAddressOutside refuses a database with a node address outside the
+// Tailscale ranges.
+var ErrNodeAddressOutside = errors.New("node address is outside the Tailscale ranges")
+
 // nodeUpdateColumns lists all Node columns that should be written
 // during a struct-based GORM Updates() call.  Listing them explicitly
 // forces GORM to include nil/zero-value fields (e.g. UserID=nil when
@@ -355,11 +359,12 @@ func (s *State) lockRegistration(machineKey key.MachinePublic) func() {
 	}
 }
 
-// checkNodeAddresses refuses address states only a hand edit of the database
-// can produce. Policy, routes and SSH find a node by its address, so a shared
-// address serves one node's grants to the other, and a node without one cannot
-// be served. An address outside the Tailscale ranges comes from prefixes
-// configured outside them, unsupported but allowed, so it only warns.
+// checkNodeAddresses refuses address states the allocator never produces.
+// Policy, routes and SSH find a node by its address, so a shared address
+// serves one node's grants to the other, and a node without one cannot be
+// served. The policy's * covers only the Tailscale ranges, so an address
+// outside them would be read one way as a source and another as a
+// destination.
 func checkNodeAddresses(nodes types.Nodes) error {
 	var errs []error
 
@@ -373,7 +378,7 @@ func checkNodeAddresses(nodes types.Nodes) error {
 				ErrNodeAddressMissing, node.ID, node.Hostname))
 		}
 
-		outside := false
+		var outside []string
 
 		for _, ip := range ips {
 			if other, ok := holder[ip]; ok {
@@ -384,15 +389,15 @@ func checkNodeAddresses(nodes types.Nodes) error {
 				holder[ip] = node
 			}
 
-			if !tsaddr.CGNATRange().Contains(ip) && !tsaddr.TailscaleULARange().Contains(ip) {
-				outside = true
+			if !tsaddr.IsTailscaleIP(ip) {
+				outside = append(outside, ip.String())
 			}
 		}
 
-		if outside {
-			log.Warn().Uint64(zf.NodeID, node.ID.Uint64()).Str(zf.NodeHostname, node.Hostname).
-				Strs("addresses", node.IPsAsString()).
-				Msg("node address is outside the Tailscale ranges 100.64.0.0/10 and fd7a:115c:a1e0::/48, which the Tailscale client is not designed for")
+		if len(outside) > 0 {
+			errs = append(errs, fmt.Errorf(
+				"%w: node %d %q holds %s; give it addresses from the configured prefixes, inside 100.64.0.0/10 (less 100.115.92.0/23) and fd7a:115c:a1e0::/48, in the nodes table",
+				ErrNodeAddressOutside, node.ID, node.Hostname, strings.Join(outside, ", ")))
 		}
 	}
 
