@@ -1486,3 +1486,42 @@ func TestReuseDeclaredAlias(t *testing.T) {
 		t.Fatalf("count selected %q: %v", line.Command.Name, err)
 	}
 }
+
+// TestRunAfterArgvReuse: a late error names the word as it was typed, even
+// when the caller reuses argv after Parse, and a positional word keeps
+// its "=".
+func TestRunAfterArgvReuse(t *testing.T) {
+	for _, tt := range []struct {
+		line  string
+		at    int
+		word  string
+		value string
+	}{
+		{"peers set nobody ::/0", 2, "nobody", "nobody"},
+		{"peers set no=body ::/0", 2, "no=body", "no=body"},
+		{"peers set -- --no=body ::/0", 3, "--no=body", "--no=body"},
+		{"peers set --owner=nobody 7 ::/0", 2, "--owner", "nobody"},
+	} {
+		t.Run(tt.line, func(t *testing.T) {
+			words := argv(tt.line)
+
+			line, err := testTree().Parse(words)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			words[tt.at] = "reused"
+
+			e, ok := errors.AsType[*UsageError](line.Run(t.Context()))
+			if !ok || e.Kind != Unresolved || e.At != tt.at || e.Word != tt.word ||
+				e.Value != tt.value {
+				t.Fatalf(
+					"late error after argv reuse = %#v, want word %q at %d",
+					e,
+					tt.word,
+					tt.at,
+				)
+			}
+		})
+	}
+}
