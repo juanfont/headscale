@@ -1632,3 +1632,48 @@ func TestEmptyFlagStruct(t *testing.T) {
 		}
 	}
 }
+
+// TestDefaultReadOnce: New reads a default once and every line uses that
+// value; a reader that later refuses it leaves no silent zero (Y9).
+func TestDefaultReadOnce(t *testing.T) {
+	type pick string
+
+	type input struct {
+		P pick `default:"approved" flag:"pick"`
+	}
+
+	calls := 0
+	read := Reader(func(s string) (pick, error) {
+		calls++
+		if calls > 1 {
+			return "", errNoPeer
+		}
+
+		return pick(s), nil
+	})
+
+	var got pick
+
+	tree, err := New(
+		Command[input]{
+			Name: "c",
+			Run:  func(_ context.Context, in input) error { got = in.P; return nil },
+		},
+		read,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		l, err := tree.Parse(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = l.Run(t.Context())
+		if err != nil || got != "approved" || calls != 1 {
+			t.Fatalf("default = %q after %d reads, run %v", got, calls, err)
+		}
+	}
+}

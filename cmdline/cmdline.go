@@ -11,7 +11,8 @@
 //		Force  bool                       `flag:"force" help:"Do not ask"`
 //	}
 //
-// The tags are arg, flag, short, help and default. The type of the field
+// The tags are arg, flag, short, help and default; New reads a default
+// once, and every line without the flag gets that value. The type of the field
 // says how its word is read:
 //
 //	string, bool, int…, uint…, float…   read by the library

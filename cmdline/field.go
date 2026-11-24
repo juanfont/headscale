@@ -140,6 +140,7 @@ type field struct {
 	short string
 	help  string
 	def   *string
+	defv  []reflect.Value // def as New read it, used on every line
 
 	// The field's type is elem, or one of []elem, Opt[..] and Repeat[..]
 	// around either.
@@ -250,7 +251,7 @@ func (b *builder) fields(at string, t reflect.Type, input bool) (flags, args []*
 			case hasDef:
 				f.def = &def
 
-				_, err := f.parse(def)
+				f.defv, err = f.parse(def)
 				if err != nil {
 					bad("default %q: %v", def, err)
 				}

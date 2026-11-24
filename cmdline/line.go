@@ -194,7 +194,7 @@ func (t *Tree) Parse(argv []string) (*Line, error) {
 
 	for name, f := range n.flags {
 		if f.def != nil && !seen[name] {
-			_ = l.put(f, *f.def, "", -1) // New read it once already
+			f.store(l.parts[f.part].Field(f.index), f.defv)
 		}
 	}
 
