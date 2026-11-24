@@ -1356,7 +1356,7 @@ func (s *State) updateNodeExpiry(
 	nodeID types.NodeID,
 	update func(*types.Node) bool,
 ) (types.NodeView, change.Change, error) {
-	var onlineChanged, expired, refused bool
+	var onlineChanged, expired, refused, expiryChanged bool
 
 	genBefore := s.polMan.NodesGeneration()
 
@@ -1366,12 +1366,19 @@ func (s *State) updateNodeExpiry(
 	// change will remain, and the change describing it is returned with the error.
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		wasOnline := node.Online()
+		wasExpiry, _ := node.View().KeyExpiry()
 
 		if !update(node) {
 			refused = true
 
 			return
 		}
+
+		// Peers see only the expiry in force, as TailNode sends it: none and
+		// a zero time are the same to them, and a time kept while key
+		// expiry is off, or a switch write that changes nothing, is not news.
+		nowExpiry, _ := node.View().KeyExpiry()
+		expiryChanged = !wasExpiry.Equal(nowExpiry)
 		// Control stays connected in NeedsLogin so an expiry extension can
 		// recover the client, but an expired key is not online.
 		node.IsOnline = new(node.ShouldBeOnline())
@@ -1421,7 +1428,11 @@ func (s *State) updateNodeExpiry(
 
 	// Resolve expiry and online status together from the current snapshot
 	// when the mapper sends the change, including after a rapid restoration.
-	c = c.Merge(change.NodeAdded(n.ID())).Merge(recompute)
+	if expiryChanged || onlineChanged {
+		c = c.Merge(change.NodeAdded(n.ID()))
+	}
+
+	c = c.Merge(recompute)
 
 	return n, c, nil
 }
