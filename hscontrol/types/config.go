@@ -24,7 +24,6 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
-	"tailscale.com/util/dnsname"
 )
 
 const (
@@ -1100,11 +1099,6 @@ func (c *Config) ServesRoute(p netip.Prefix) bool {
 		(c.Prefixes.V6 == nil || !c.Prefixes.V6.Contains(addr))
 }
 
-// outsideRange reports whether p holds addresses outside r.
-func outsideRange(p, r netip.Prefix) bool {
-	return p.Bits() < r.Bits() || !r.Contains(p.Addr())
-}
-
 // parseResolvers converts nameserver strings into DNS resolvers: an IP is a
 // plain resolver, a URL a DoH one. Anything else is skipped;
 // [DNSConfig.NameserverWarnings] lists it for config.Warnings.
@@ -1193,42 +1187,12 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 	return &cfg
 }
 
-// TailcfgDNSConfig builds the DNS config clients get from DNSConfig and the
-// IP prefixes. It is never nil.
+// TailcfgDNSConfig builds the DNS config clients get from DNSConfig. It is
+// never nil. Clients route reverse lookups for the Tailscale ranges, the only
+// ones node addresses come from, themselves (magicDNSRootDomains in
+// tailscale.com/ipn/ipnlocal), so it adds no reverse routes.
 func (c *Config) TailcfgDNSConfig() *tailcfg.DNSConfig {
-	cfg := dnsToTailcfgDNS(c.DNSConfig)
-	if !cfg.Proxied {
-		return cfg
-	}
-
-	// Clients route reverse lookups for the Tailscale ranges themselves
-	// (magicDNSRootDomains in tailscale.com/ipn/ipnlocal) and SaaS sends
-	// no reverse routes, so only a prefix outside those ranges needs them.
-	var reverse []dnsname.FQDN
-	if v4 := c.Prefixes.V4; v4 != nil && outsideRange(*v4, tsaddr.CGNATRange()) {
-		reverse = append(reverse, util.GenerateIPv4DNSRootDomain(*v4)...)
-	}
-
-	if v6 := c.Prefixes.V6; v6 != nil && outsideRange(*v6, tsaddr.TailscaleULARange()) {
-		reverse = append(reverse, util.GenerateIPv6DNSRootDomain(*v6)...)
-	}
-
-	for _, d := range reverse {
-		// Empty non-nil slice rather than nil: tailcfg.DNSConfig.Clone
-		// and dns.Config.Clone in tailscale drop map entries whose
-		// value is nil (see tailscale.com/tailcfg/tailcfg_clone.go and
-		// tailscale.com/net/dns/dns_clone.go: `if sv == nil { continue }`).
-		// Sending nil here caused the client's wgengine LinkChange:major
-		// handler to clobber /etc/resolv.conf on every tunnel-IP rebind
-		// — the handler reapplies a Clone of lastDNSConfig and the magic
-		// DNS routes vanish, taking the resolver with them for ~6 min
-		// until the next route-changing netmap. Empty slice survives
-		// Clone and carries the same "resolve locally" semantics
-		// ([tailcfg.DNSConfig.Routes] documents the empty-resolver form).
-		cfg.Routes[d.WithoutTrailingDot()] = []*dnstype.Resolver{}
-	}
-
-	return cfg
+	return dnsToTailcfgDNS(c.DNSConfig)
 }
 
 // StartDNS builds the DNS config clients get, from here on changed only by
