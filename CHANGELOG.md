@@ -524,7 +524,8 @@ Every option below is under `services.headscale`.
 - The v1 API stores an API key or pre-auth key created without `expiration` as one that never expires, and reports its expiration as `null`. It was stored as already expired and rejected on first use. The CLI always sends an expiration and was not affected. Keys created this way before stay expired; create new ones [#3254](https://github.com/juanfont/headscale/pull/3254)
 - The v2 API accepts an auth key create that leaves out `tags`, as Tailscale does [#3254](https://github.com/juanfont/headscale/pull/3254)
 - The v2 API refuses an auth key `expirySeconds` below 0 or above 90 days, as Tailscale does; a negative value used to mean 90 days [#3254](https://github.com/juanfont/headscale/pull/3254)
-- The v1 API returns `409 Conflict`, not `500`, when a user create or rename asks for a name another user already has; a rename to a taken name always returned `500`
+- The v1 API returns `409 Conflict`, not `500`, when a user create or rename asks for a name another user already has; a rename to a taken name always returned `500`. A rename to a name that only OIDC users hold is allowed and answers `200`
+- The v1 OpenAPI document declares `409 Conflict` for user create and rename. The generated Go client `gen/client/v1` decodes it into `ApplicationproblemJSON409`; a caller that read `ApplicationproblemJSONDefault` for a 409 gets `nil` there. [#3364](https://github.com/juanfont/headscale/issues/3364)
 
 - The configuration search path now also includes `$XDG_CONFIG_HOME/headscale` and `$XDG_CONFIG_DIRS`, and the files `config.json` and `config.hujson`. [#3674](https://github.com/juanfont/headscale/pull/3674)
 - `HEADSCALE_DEBUG_DUMP_CONFIG` prints the configuration as YAML, with secrets redacted. [#3677](https://github.com/juanfont/headscale/pull/3677)
