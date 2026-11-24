@@ -54,7 +54,7 @@ func TestCreatePreAuthKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := newSQLiteTestDB()
+			db, err := newSQLiteTestDB(t)
 			require.NoError(t, err)
 
 			tt.test(t, db)
@@ -106,7 +106,7 @@ func TestPreAuthKeyACLTags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := newSQLiteTestDB()
+			db, err := newSQLiteTestDB(t)
 			require.NoError(t, err)
 
 			tt.test(t, db)
@@ -115,7 +115,7 @@ func TestPreAuthKeyACLTags(t *testing.T) {
 }
 
 func TestDestroyPreAuthKeyKeepsReferencedEphemeralKey(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("ephemeral-key-user")
@@ -165,7 +165,7 @@ func TestDestroyPreAuthKeyKeepsReferencedEphemeralKey(t *testing.T) {
 // TestCreateTokenPreAuthKeyIsAtomic: a key a token makes is marked in the
 // transaction that creates it, so a failed mark leaves no unmarked key.
 func TestCreateTokenPreAuthKeyIsAtomic(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	pak, err := db.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
@@ -188,7 +188,7 @@ func TestCreateTokenPreAuthKeyIsAtomic(t *testing.T) {
 }
 
 func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 	user, err := db.CreateUser(types.User{Name: "test8"})
 	require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 }
 
 func TestPreAuthKeyAuthentication(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("test-user")
@@ -422,7 +422,7 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 // TestPreAuthKeysHaveUniqueIdentifiers verifies that freshly created pre-auth
 // keys get distinct identifiers in the unified credentials table.
 func TestPreAuthKeysHaveUniqueIdentifiers(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user, err := db.CreateUser(types.User{Name: "test-unique"})
@@ -449,7 +449,7 @@ func TestPreAuthKeysHaveUniqueIdentifiers(t *testing.T) {
 // compare-and-set: a second call against an already-used key reports
 // PAKError("authkey already used") rather than silently succeeding.
 func TestUsePreAuthKeyAtomicCAS(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user, err := db.CreateUser(types.User{Name: "atomic-cas"})
@@ -491,7 +491,7 @@ func TestUsePreAuthKeyAtomicCAS(t *testing.T) {
 // pre-auth key resolves to a record-not-found error, which the registration
 // handler maps to a 401 rather than a raw server error.
 func TestGetPreAuthKeyUnknownMapsToRecordNotFound(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	_, err = db.GetPreAuthKey("nonexistent-key")
@@ -506,7 +506,7 @@ func TestGetPreAuthKeyUnknownMapsToRecordNotFound(t *testing.T) {
 //
 // TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
 func TestPreAuthKeyLazyRehashesBcrypt(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("rehash-user")
@@ -561,7 +561,7 @@ func TestPreAuthKeyInvalidatedWhileQueuedOnLegacyLimiter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := newSQLiteTestDB()
+			db, err := newSQLiteTestDB(t)
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, db.Close()) })
 

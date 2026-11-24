@@ -1,9 +1,7 @@
 package db
 
 import (
-	"log"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,20 +10,18 @@ import (
 	"zombiezen.com/go/postgrestest"
 )
 
-func newSQLiteTestDB() (*HSDatabase, error) {
-	tmpDir, err := os.MkdirTemp("", "headscale-db-test-*")
-	if err != nil {
-		return nil, err
-	}
-
-	log.Printf("database path: %s", tmpDir+"/headscale_test.db")
+// newSQLiteTestDB is a database in a directory of t's, closed when t ends.
+func newSQLiteTestDB(t *testing.T) (*HSDatabase, error) {
+	t.Helper()
 
 	db, err := NewHeadscaleDatabase(
 		&types.Config{
 			Database: types.DatabaseConfig{
 				Type: types.DatabaseSqlite,
 				Sqlite: types.SqliteConfig{
-					Path: tmpDir + "/headscale_test.db",
+					Path: t.TempDir() + "/headscale_test.db",
+					// WAL as in production: a commit then needs no fsync.
+					WriteAheadLog: true,
 				},
 			},
 			Policy: types.PolicyConfig{
@@ -36,6 +32,8 @@ func newSQLiteTestDB() (*HSDatabase, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	t.Cleanup(func() { _ = db.Close() })
 
 	return db, nil
 }

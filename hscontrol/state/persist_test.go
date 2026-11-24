@@ -38,17 +38,19 @@ import (
 // persistTestSetup pre-creates a sqlite database on disk with a single
 // registered node, then constructs a State that loads it. The on-disk
 // path is returned so the test can close the State and re-open one
-// against the same file to simulate a server restart. The caller owns
-// the returned State and must Close it; persistTestReopen handles the
-// second State's lifecycle for the restart simulation.
+// against the same file to simulate a server restart. The State is
+// closed when the test ends, and may be closed before for the restart;
+// persistTestReopen handles the second State's lifecycle.
 func persistTestSetup(t *testing.T) (string, *State, types.NodeID) {
 	t.Helper()
 
 	dbPath := t.TempDir() + "/headscale.db"
 	cfg := persistTestConfig(dbPath)
 
+	// Each close is registered as its part is made; both are safe to repeat.
 	database, err := db.NewHeadscaleDatabase(cfg)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = database.Close() })
 
 	user := database.CreateUserForTest("persist-user")
 	node := database.CreateRegisteredNodeForTest(user, "persist-node")
@@ -57,6 +59,7 @@ func persistTestSetup(t *testing.T) (string, *State, types.NodeID) {
 
 	s, err := NewState(cfg)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
 
 	return dbPath, s, node.ID
 }
@@ -84,6 +87,8 @@ func persistTestConfig(dbPath string) *types.Config {
 			Type: types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{
 				Path: dbPath,
+				// WAL as in production: a commit then needs no fsync.
+				WriteAheadLog: true,
 			},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &prefixV4, V6: &prefixV6, Allocation: types.IPAllocationStrategySequential},

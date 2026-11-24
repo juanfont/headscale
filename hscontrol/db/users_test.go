@@ -12,7 +12,7 @@ import (
 )
 
 func TestDestroyUserKeepsTaggedNodeEphemeral(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("tagged-ephemeral-user")
@@ -46,7 +46,7 @@ func TestDestroyUserKeepsTaggedNodeEphemeral(t *testing.T) {
 }
 
 func TestCreateAndDestroyUser(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("test")
@@ -268,7 +268,7 @@ func TestDestroyUserErrors(t *testing.T) {
 	// server can be started.
 	for _, tt := range tests {
 		t.Run(tt.name+"-sqlite", func(t *testing.T) {
-			db, err := newSQLiteTestDB()
+			db, err := newSQLiteTestDB(t)
 			require.NoError(t, err)
 
 			tt.test(t, db)
@@ -306,7 +306,7 @@ func TestGetUserErrorPropagation(t *testing.T) {
 	for _, lookup := range lookups {
 		for _, tt := range tests {
 			t.Run(lookup.name+"/"+tt.name, func(t *testing.T) {
-				db, err := newSQLiteTestDB()
+				db, err := newSQLiteTestDB(t)
 				require.NoError(t, err)
 
 				if tt.closeDB {
@@ -338,7 +338,7 @@ func TestDuplicateUserNameIsTyped(t *testing.T) {
 		"sqlite": func(t *testing.T) *HSDatabase {
 			t.Helper()
 
-			db, err := newSQLiteTestDB()
+			db, err := newSQLiteTestDB(t)
 			require.NoError(t, err)
 
 			return db
@@ -423,7 +423,7 @@ func TestRenameUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := newSQLiteTestDB()
+			db, err := newSQLiteTestDB(t)
 			require.NoError(t, err)
 
 			tt.test(t, db)

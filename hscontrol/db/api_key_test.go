@@ -13,7 +13,7 @@ import (
 )
 
 func TestCreateAPIKey(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	apiKeyStr, apiKey, err := db.CreateAPIKey(nil)
@@ -34,7 +34,7 @@ func TestCreateAPIKey(t *testing.T) {
 }
 
 func TestAPIKeyDoesNotExist(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	key, err := db.GetAPIKey("does-not-exist")
@@ -43,7 +43,7 @@ func TestAPIKeyDoesNotExist(t *testing.T) {
 }
 
 func TestValidateAPIKeyOk(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	nowPlus2 := time.Now().Add(2 * time.Hour)
@@ -64,7 +64,7 @@ func TestValidateAPIKeyOk(t *testing.T) {
 }
 
 func TestValidateAPIKeyNotOk(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	nowMinus2 := time.Now().Add(time.Duration(-2) * time.Hour)
@@ -95,7 +95,7 @@ func TestValidateAPIKeyNotOk(t *testing.T) {
 }
 
 func TestExpireAPIKey(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	nowPlus2 := time.Now().Add(2 * time.Hour)
@@ -258,7 +258,7 @@ func TestAPIKeyWithPrefix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := newSQLiteTestDB()
+			db, err := newSQLiteTestDB(t)
 			require.NoError(t, err)
 
 			tt.test(t, db)
@@ -267,7 +267,7 @@ func TestAPIKeyWithPrefix(t *testing.T) {
 }
 
 func TestGetAPIKeyByID(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	// Create an API key
@@ -284,7 +284,7 @@ func TestGetAPIKeyByID(t *testing.T) {
 }
 
 func TestGetAPIKeyByIDNotFound(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	// Try to get a non-existent key by ID
@@ -299,7 +299,7 @@ func TestGetAPIKeyByIDNotFound(t *testing.T) {
 //
 // TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
 func TestAPIKeyLazyRehashesBcrypt(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	prefix := "abcdefghijkl"
@@ -332,7 +332,7 @@ func TestAPIKeyLazyRehashesBcrypt(t *testing.T) {
 // TestCredentialKindsAreIsolated asserts that ids and identifiers, which now
 // share one table, never let an operation or secret of one kind reach another.
 func TestCredentialKindsAreIsolated(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	apiKeyStr, apiKey, err := db.CreateAPIKey(nil)
