@@ -243,6 +243,8 @@ func (b *builder) fields(at string, t reflect.Type, input bool) (flags, args []*
 			switch {
 			case hasShort && (len([]rune(f.short)) != 1 || f.short == "\x00"): // low reads rune 0 as no short
 				bad("short %q is not one letter", f.short)
+			case f.late != nil && !f.list && f.elem.Kind() == reflect.Bool: // bare --x would need a value (Y10)
+				bad("a bool flag cannot be read late")
 			case hasDef && (f.opt || f.late != nil):
 				bad("an Opt or a late value takes no default")
 			case hasDef:

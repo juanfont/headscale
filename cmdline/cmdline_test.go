@@ -700,6 +700,8 @@ func TestInfo(t *testing.T) {
 func TestNew(t *testing.T) {
 	leaf := func(n Node) Node { return Group{Name: "prog", Commands: []Node{n}} }
 
+	type named bool
+
 	type (
 		noTag struct{ X string }
 		both  struct {
@@ -731,6 +733,9 @@ func TestNew(t *testing.T) {
 		}
 		short2 struct {
 			X string `flag:"x" short:"xy"`
+		}
+		lateBool struct {
+			X named `flag:"x"`
 		}
 		shortNul struct {
 			X string `flag:"x" short:"\x00"`
@@ -828,6 +833,7 @@ func TestNew(t *testing.T) {
 		{"K13", leaf(Command[shortNul]{Name: "c", Run: record[shortNul]}), nil, `short "\x00" is not one letter`},
 		{"K13", leaf(Command[shortArg]{Name: "c", Run: record[shortArg]}), nil, "an argument takes no short and no default"},
 		{"K13", leaf(Command[defArg]{Name: "c", Run: record[defArg]}), nil, "an argument takes no short and no default"},
+		{"Y10", leaf(Command[lateBool]{Name: "c", Run: record[lateBool]}), []Option{LateReader(func(_ context.Context, s string) (named, error) { return s == "true", nil })}, "X: a bool flag cannot be read late"},
 		{"K14", leaf(Command[defOpt]{Name: "c", Run: record[defOpt]}), nil, "an Opt or a late value takes no default"},
 		{"K14", leaf(Command[defLate]{Name: "c", Run: record[defLate]}), opts(), "an Opt or a late value takes no default"},
 		{"K14", leaf(Command[defBad]{Name: "c", Run: record[defBad]}), nil, `default "one": strconv.ParseInt`},
