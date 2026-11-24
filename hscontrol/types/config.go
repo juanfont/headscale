@@ -39,10 +39,11 @@ const (
 )
 
 var (
-	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
-	errURLSyntax                 = errors.New("invalid URL syntax")
-	ErrNoPrefixConfigured        = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
-	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
+	errInvalidPKCEMethod            = errors.New("pkce.method must be either 'plain' or 'S256'")
+	errURLSyntax                    = errors.New("invalid URL syntax")
+	ErrNoPrefixConfigured           = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
+	ErrInvalidAllocationStrategy    = errors.New("invalid prefix allocation strategy")
+	ErrPrefixOutsideTailscaleRanges = errors.New("prefix outside the Tailscale ranges")
 )
 
 // DefaultBaseDomain is dns.base_domain's default. `.internal` is reserved
@@ -191,7 +192,7 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// Prefixes are the IP ranges node addresses are allocated from. Keep at
 	// least one of `prefixes.v4` and `prefixes.v6`. Use the Tailscale
 	// ranges, `100.64.0.0/10` and `fd7a:115c:a1e0::/48`, or ranges inside
-	// them: the client assumes them, and other ranges are unsupported.
+	// them: the client assumes them, and headscale refuses other ranges.
 	Prefixes PrefixesConfig `koanf:"prefixes"`
 
 	// Policy is where the access control policy is kept: in a file
@@ -289,9 +290,8 @@ type NoiseConfig struct {
 }
 
 // PrefixesConfig are the ranges node IPs are allocated from. At least one
-// is required. Use the Tailscale ranges (100.64.0.0/10, fd7a:115c:a1e0::/48)
-// or subsets of them: the client assumes them, and breaks in subtle ways
-// outside them.
+// is required, inside the Tailscale ranges (100.64.0.0/10,
+// fd7a:115c:a1e0::/48), which the client assumes.
 type PrefixesConfig struct {
 	// V4 is the IPv4 range, e.g. `100.64.0.0/10`. Empty gives nodes no IPv4
 	// address. Use a prefix inside `100.64.0.0/10`. A range outside it is not

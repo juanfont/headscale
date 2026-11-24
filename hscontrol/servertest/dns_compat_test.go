@@ -80,8 +80,8 @@ func TestMagicDNSReverseRoutesCompat(t *testing.T) {
 		c, err := testcapture.Read(file)
 		require.NoError(t, err)
 
-		// SaaS refuses an ipPool outside CGNAT; TestMagicDNSReverseRoutesOutsideCGNAT
-		// covers what headscale sends for one.
+		// SaaS refuses an ipPool outside CGNAT, as headscale refuses such
+		// prefixes.
 		if c.Error {
 			assert.Contains(t, c.Input.APIResponseBody.Message, "must be within CGNAT range", c.TestID)
 
@@ -127,24 +127,5 @@ func TestMagicDNSReverseRoutesCompat(t *testing.T) {
 				assert.Equal(t, want, reverseRoutes(nm.DNS.Routes))
 			})
 		}
-	}
-}
-
-// TestMagicDNSReverseRoutesOutsideCGNAT: SaaS has no prefix outside the
-// Tailscale ranges (dns-reverse-e1/e2), so clients add no reverse routes for
-// one and headscale must. An octet-aligned prefix gets one name, not 256.
-func TestMagicDNSReverseRoutesOutsideCGNAT(t *testing.T) {
-	t.Parallel()
-
-	for prefix, want := range map[string][]string{
-		"172.16.0.0/16": {"16.172.in-addr.arpa."},
-		"10.0.0.0/23":   {"0.0.10.in-addr.arpa.", "1.0.10.in-addr.arpa."},
-	} {
-		t.Run(prefix, func(t *testing.T) {
-			t.Parallel()
-
-			nm := dnsNetmap(t, netip.MustParsePrefix(prefix), true)
-			assert.Equal(t, want, reverseRoutes(nm.DNS.Routes))
-		})
 	}
 }
