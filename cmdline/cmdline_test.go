@@ -732,6 +732,9 @@ func TestNew(t *testing.T) {
 		short2 struct {
 			X string `flag:"x" short:"xy"`
 		}
+		shortNul struct {
+			X string `flag:"x" short:"\x00"`
+		}
 		shortArg struct {
 			X string `arg:"x" short:"x"`
 		}
@@ -822,6 +825,7 @@ func TestNew(t *testing.T) {
 		{"K12", leaf(Command[ptrOpt]{Name: "c", Run: record[ptrOpt]}), nil, "X: *cmdline.Opt[int] is a pointer"},
 		{"K12", leaf(Command[ptrRepeat]{Name: "c", Run: record[ptrRepeat]}), nil, "X: *cmdline.Repeat[int] is a pointer"},
 		{"K13", leaf(Command[short2]{Name: "c", Run: record[short2]}), nil, `short "xy" is not one letter`},
+		{"K13", leaf(Command[shortNul]{Name: "c", Run: record[shortNul]}), nil, `short "\x00" is not one letter`},
 		{"K13", leaf(Command[shortArg]{Name: "c", Run: record[shortArg]}), nil, "an argument takes no short and no default"},
 		{"K13", leaf(Command[defArg]{Name: "c", Run: record[defArg]}), nil, "an argument takes no short and no default"},
 		{"K14", leaf(Command[defOpt]{Name: "c", Run: record[defOpt]}), nil, "an Opt or a late value takes no default"},
