@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -130,4 +132,28 @@ func TestBypassDatabaseValidates(t *testing.T) {
 	_, err := bypassDatabase()
 	require.ErrorContains(t, err, "node.ephemeral.inactivity_timeout is below the minimum")
 	assert.NoFileExists(t, filepath.Join(dir, "headscale.db"))
+}
+
+// serveSocket serves h on a unix socket for the CLI and returns the env that
+// points the CLI at it.
+func serveSocket(t *testing.T, h http.Handler) []string {
+	t.Helper()
+
+	sock := filepath.Join(t.TempDir(), "s")
+
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", sock)
+	require.NoError(t, err)
+
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: time.Second}
+
+	go srv.Serve(ln) //nolint:errcheck // closed below
+
+	t.Cleanup(func() { srv.Close() })
+
+	return []string{
+		"HOME=" + t.TempDir(),
+		"HEADSCALE_UNIX_SOCKET=" + sock,
+		"HEADSCALE_CLI_TIMEOUT=5s",
+		"HEADSCALE_DISABLE_CHECK_UPDATES=true",
+	}
 }
