@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"runtime"
+	"runtime/pprof"
 	"slices"
 	"strings"
 	"sync"
@@ -161,12 +162,20 @@ type node struct {
 // node data for testing full map responses and comprehensive update scenarios.
 //
 // Returns TestData struct containing all created entities and a cleanup function.
+// Each before is called with the name of a part just before it is made.
 func setupBatcherWithTestData(
 	tb testing.TB,
 	bf batcherFunc,
 	userCount, nodesPerUser, bufferSize int,
+	before ...func(part string),
 ) (*TestData, func()) {
 	tb.Helper()
+
+	making := func(part string) {
+		for _, f := range before {
+			f(part)
+		}
+	}
 
 	// Create database and populate with test data first
 	tmpDir := tb.TempDir()
@@ -180,6 +189,8 @@ func setupBatcherWithTestData(
 			Type: types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{
 				Path: dbPath,
+				// WAL as in production: a commit then needs no fsync.
+				WriteAheadLog: true,
 			},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &prefixV4, V6: &prefixV6, Allocation: types.IPAllocationStrategySequential},
@@ -205,10 +216,16 @@ func setupBatcherWithTestData(
 	}
 
 	// Create database and populate it with test data
+	// Each part's close is registered as it is made, so a setup that stops
+	// half-way leaves nothing open and the parts close in reverse.
+	making("database")
+
 	database, err := db.NewHeadscaleDatabase(cfg)
 	if err != nil {
 		tb.Fatalf("setting up database: %s", err)
 	}
+
+	tb.Cleanup(func() { _ = database.Close() })
 
 	// Create test users and nodes in the database
 	users := database.CreateUsersForTest(userCount, "testuser")
@@ -225,10 +242,14 @@ func setupBatcherWithTestData(
 	}
 
 	// Now create state using the same database
+	making("state")
+
 	state, err := state.NewState(cfg)
 	if err != nil {
 		tb.Fatalf("Failed to create state: %v", err)
 	}
+
+	tb.Cleanup(func() { _ = state.Close() })
 
 	derpMap, err := derp.GetDERPMap(cfg.DERP, cfg.DNSConfig.BaseDomain)
 	require.NoError(tb, err)
@@ -253,8 +274,11 @@ func setupBatcherWithTestData(
 	}
 
 	// Create batcher with the state and wrap it for testing
+	making("batcher")
+
 	batcher := wrapBatcherForTest(bf(cfg, state), state)
 	batcher.Start()
+	tb.Cleanup(batcher.Close)
 
 	testData := &TestData{
 		Database: database,
@@ -265,6 +289,7 @@ func setupBatcherWithTestData(
 		Batcher:  batcher,
 	}
 
+	// For a test that closes early; each close is safe to repeat.
 	cleanup := func() {
 		batcher.Close()
 		state.Close()
@@ -272,6 +297,256 @@ func setupBatcherWithTestData(
 	}
 
 	return testData, cleanup
+}
+
+// stopAtTB is the test object of a setup that [stopEach] stops: it keeps
+// the cleanups to run them itself as the test's end would, and records each
+// failure the setup reports.
+type stopAtTB struct {
+	testing.TB
+
+	cleanups []func()
+	failure  []string
+}
+
+func (s *stopAtTB) Helper()          {}
+func (s *stopAtTB) Cleanup(f func()) { s.cleanups = append(s.cleanups, f) }
+
+func (s *stopAtTB) Errorf(format string, args ...any) {
+	s.failure = append(s.failure, fmt.Sprintf(format, args...))
+}
+
+func (s *stopAtTB) Fatalf(format string, args ...any) {
+	s.Errorf(format, args...)
+	runtime.Goexit()
+}
+
+func (s *stopAtTB) FailNow() {
+	if len(s.failure) == 0 {
+		s.failure = append(s.failure, "FailNow")
+	}
+
+	runtime.Goexit()
+}
+
+// errSetupNeverDone: the setup made more parts than [stopMarks].
+var errSetupNeverDone = errors.New("the setup did not finish")
+
+// stopMarks bounds the walk over a setup's parts; the batcher setup has
+// three.
+const stopMarks = 50
+
+// stopEach runs setup once stopped just before each part it makes, and once
+// in full. The stop comes from the making of a part, not from where the
+// setup registers a close, so a close registered late leaves its part open
+// at the next stop. After each run it runs the registered cleanups; a
+// failure the setup reported ends the walk with its own message, and
+// otherwise nothing started by the setup may still be running.
+func stopEach(t *testing.T, setup func(tb testing.TB, before func(part string))) error {
+	t.Helper()
+
+	for n := 1; n <= stopMarks; n++ {
+		tb := &stopAtTB{TB: t}
+
+		var (
+			gid      string
+			parts    int
+			finished bool
+			done     = make(chan struct{})
+		)
+
+		go func() {
+			defer close(done)
+
+			buf := make([]byte, 64)
+			gid = strings.Fields(string(buf[:runtime.Stack(buf, false)]))[1]
+
+			setup(tb, func(string) {
+				parts++
+				if parts == n {
+					runtime.Goexit()
+				}
+			})
+
+			finished = true
+		}()
+
+		<-done
+
+		for _, f := range slices.Backward(tb.cleanups) {
+			f()
+		}
+
+		if len(tb.failure) > 0 {
+			return fmt.Errorf("the setup failed: %s", strings.Join(tb.failure, "; ")) //nolint:err113
+		}
+
+		left := func() []string {
+			var buf strings.Builder
+
+			require.NoError(t, pprof.Lookup("goroutine").WriteTo(&buf, 2))
+
+			var left []string
+
+			for g := range strings.SplitSeq(buf.String(), "\n\n") {
+				if strings.Contains(g, " in goroutine "+gid+"\n") {
+					left = append(left, g)
+				}
+			}
+
+			return left
+		}
+
+		if !assert.Eventually(t, func() bool { return len(left()) == 0 }, 5*time.Second, 10*time.Millisecond,
+			"stopped before part %d: still running: %v", n, left()) {
+			return nil
+		}
+
+		if finished {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%w within %d parts", errSetupNeverDone, stopMarks)
+}
+
+// TestSetupBatcherStoppedHalfWay: a setup that stops before any of its parts
+// is made leaves nothing running once its cleanups have run: no node store
+// writer, batcher or database pool.
+func TestSetupBatcherStoppedHalfWay(t *testing.T) {
+	made := map[string]bool{}
+
+	require.NoError(t, stopEach(t, func(tb testing.TB, before func(string)) {
+		tb.Helper()
+
+		setupBatcherWithTestData(tb, NewBatcherAndMapper, 1, 2, 4, func(part string) { //nolint:testifylint
+			made[part] = true
+
+			before(part)
+		})
+	}))
+	assert.Equal(t, map[string]bool{"database": true, "state": true, "batcher": true}, made,
+		"the walk stopped before each part")
+}
+
+// TestStopEachReportsTheSetup: a setup that fails for a reason of its own,
+// once or every time, fatally or not, ends the walk at once with that
+// reason, after the cleanups it registered have run; one that never
+// finishes ends it at the bound.
+func TestStopEachReportsTheSetup(t *testing.T) {
+	// openDB opens a database, at a path that is a directory when fail says
+	// so for this open, so SQLite really refuses it.
+	var opens int
+
+	openDB := func(tb testing.TB, fail func(open int) bool) error {
+		tb.Helper()
+
+		opens++
+
+		path := tb.TempDir()
+		if !fail(opens) {
+			path += "/headscale.db"
+		}
+
+		database, err := db.NewHeadscaleDatabase(&types.Config{
+			Database: types.DatabaseConfig{
+				Type:   types.DatabaseSqlite,
+				Sqlite: types.SqliteConfig{Path: path, WriteAheadLog: true},
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		tb.Cleanup(func() { _ = database.Close() })
+
+		return nil
+	}
+
+	for _, tt := range []struct {
+		name  string
+		fails func(open int) bool
+		check func(tb testing.TB, err error)
+		want  string
+	}{
+		{
+			name:  "the first open fails",
+			fails: func(open int) bool { return open == 1 },
+			check: func(tb testing.TB, err error) {
+				tb.Helper()
+
+				if err != nil {
+					tb.Fatalf("setting up database: %s", err)
+				}
+			},
+			want: "the setup failed: setting up database: unable to open database file",
+		},
+		{
+			name:  "every open fails",
+			fails: func(int) bool { return true },
+			check: func(tb testing.TB, err error) {
+				tb.Helper()
+
+				if err != nil {
+					tb.Fatalf("setting up database: %s", err)
+				}
+			},
+			want: "the setup failed: setting up database: unable to open database file",
+		},
+		{
+			name:  "a require fails",
+			fails: func(int) bool { return true },
+			check: func(tb testing.TB, err error) {
+				tb.Helper()
+
+				require.NoError(tb, err, "opening the database")
+			},
+			want: "opening the database",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var registered, cleaned int
+
+			opens = 0
+
+			err := stopEach(t, func(tb testing.TB, before func(string)) {
+				tb.Helper()
+
+				registered++
+
+				tb.Cleanup(func() { cleaned++ })
+				before("database")
+				tt.check(tb, openDB(tb, tt.fails))
+			})
+			require.ErrorContains(t, err, tt.want)
+			assert.Equal(t, registered, cleaned, "every run's cleanups ran, the failed one's too")
+		})
+	}
+
+	t.Run("a check that fails, then a stop", func(t *testing.T) {
+		var cleaned int
+
+		err := stopEach(t, func(tb testing.TB, before func(string)) {
+			tb.Helper()
+
+			tb.Cleanup(func() { cleaned++ })
+			tb.Errorf("a check that failed")
+			before("state")
+		})
+		require.EqualError(t, err, "the setup failed: a check that failed")
+		assert.Equal(t, 1, cleaned, "one run, and its cleanup ran")
+	})
+
+	t.Run("a setup that never finishes", func(t *testing.T) {
+		err := stopEach(t, func(tb testing.TB, before func(string)) {
+			tb.Helper()
+
+			for {
+				before("part")
+			}
+		})
+		require.ErrorIs(t, err, errSetupNeverDone)
+	})
 }
 
 type UpdateStats struct {

@@ -24,7 +24,7 @@ import (
 )
 
 func TestGetNode(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("test")
@@ -40,7 +40,7 @@ func TestGetNode(t *testing.T) {
 }
 
 func TestGetNodeByID(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("test")
@@ -56,7 +56,7 @@ func TestGetNodeByID(t *testing.T) {
 }
 
 func TestHardDeleteNode(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("test")
@@ -72,7 +72,7 @@ func TestHardDeleteNode(t *testing.T) {
 }
 
 func TestListPeersManyNodes(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("test")
@@ -93,7 +93,7 @@ func TestListPeersManyNodes(t *testing.T) {
 }
 
 func TestExpireNode(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user, err := db.CreateUser(types.User{Name: "test"})
@@ -139,7 +139,7 @@ func TestExpireNode(t *testing.T) {
 }
 
 func TestDisableNodeExpiry(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user, err := db.CreateUser(types.User{Name: "test"})
@@ -305,7 +305,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 		pmfs := policy.PolicyManagerFuncsForTest([]byte(tt.acl))
 		for i, pmf := range pmfs {
 			t.Run(fmt.Sprintf("%s-policy-index%d", tt.name, i), func(t *testing.T) {
-				adb, err := newSQLiteTestDB()
+				adb, err := newSQLiteTestDB(t)
 				require.NoError(t, err)
 
 				user, err := adb.CreateUser(types.User{Name: "test"})
@@ -522,7 +522,7 @@ func generateRandomNumber(t *testing.T, maxVal int64) int64 {
 }
 
 func TestListEphemeralNodes(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	if err != nil {
 		t.Fatalf("creating db: %s", err)
 	}
@@ -583,7 +583,7 @@ func TestListEphemeralNodes(t *testing.T) {
 
 func TestListPeers(t *testing.T) {
 	// Setup test database
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	if err != nil {
 		t.Fatalf("creating db: %s", err)
 	}
@@ -669,7 +669,7 @@ func TestListPeers(t *testing.T) {
 
 func TestListNodes(t *testing.T) {
 	// Setup test database
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	if err != nil {
 		t.Fatalf("creating db: %s", err)
 	}

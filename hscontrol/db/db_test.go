@@ -429,7 +429,7 @@ func TestConstraints(t *testing.T) {
 			tt.run(t, db.DB.Debug())
 		})
 		t.Run(tt.name+"-sqlite", func(t *testing.T) {
-			db, err := newSQLiteTestDB()
+			db, err := newSQLiteTestDB(t)
 			if err != nil {
 				t.Fatalf("creating database: %s", err)
 			}
@@ -844,7 +844,7 @@ func TestSQLiteAllTestdataMigrations(t *testing.T) {
 // by migration (newSQLiteTestDB validates the schema with squibble) and stores
 // and reads back a credential of each kind.
 func TestCredentialTableRoundTrip(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	now := time.Now().UTC()
@@ -904,7 +904,7 @@ func requireCredentialConstraints(t *testing.T, db *gorm.DB) {
 
 func TestCredentialConstraints(t *testing.T) {
 	t.Run("fresh sqlite", func(t *testing.T) {
-		db, err := newSQLiteTestDB()
+		db, err := newSQLiteTestDB(t)
 		require.NoError(t, err)
 		requireCredentialConstraints(t, db.DB)
 	})
@@ -924,7 +924,7 @@ func TestCredentialConstraints(t *testing.T) {
 // another kind, which the shared table's foreign key permits, and asserts it
 // is not loaded as the node's pre-auth key.
 func TestNodeAuthKeyOnlyResolvesPreAuthKeys(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	user := db.CreateUserForTest("kind-filter")

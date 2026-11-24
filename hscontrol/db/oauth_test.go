@@ -215,7 +215,7 @@ func TestGenerateSecret(t *testing.T) {
 }
 
 func TestOAuthClientCreateAndAuthenticate(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	secret, client, err := db.CreateOAuthClient(
@@ -255,7 +255,7 @@ func TestOAuthClientCreateAndAuthenticate(t *testing.T) {
 // authenticates under the tskey-client- alias, and that only a leading prefix
 // is recognised.
 func TestOAuthClientAuthenticateTailscalePrefix(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	secret, client, err := db.CreateOAuthClient(
@@ -300,7 +300,7 @@ func TestOAuthClientAuthenticateTailscalePrefix(t *testing.T) {
 }
 
 func TestOAuthClientRevoke(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	secret, client, err := db.CreateOAuthClient([]string{"auth_keys"}, []string{"tag:ci"}, "", nil)
@@ -344,7 +344,7 @@ func TestOAuthClientRevoke(t *testing.T) {
 }
 
 func TestOAuthAccessTokenMintAuthenticateExpire(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	_, client, err := db.CreateOAuthClient([]string{"auth_keys"}, []string{"tag:ci"}, "", nil)
@@ -408,7 +408,7 @@ func TestOAuthAccessTokenMintAuthenticateExpire(t *testing.T) {
 // longer exists (orphaned by a delete/revoke race) is rejected, even though the
 // token row itself is valid and unexpired.
 func TestAccessTokenRejectedWhenClientGone(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	_, client, err := db.CreateOAuthClient([]string{"auth_keys"}, []string{"tag:ci"}, "", nil)
@@ -463,7 +463,7 @@ func TestOAuthClientCreateRejectsUnknownScopes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := newSQLiteTestDB()
+			db, err := newSQLiteTestDB(t)
 			require.NoError(t, err)
 
 			_, client, err := db.CreateOAuthClient(tt.scopes, []string{"tag:ci"}, "", nil)
@@ -487,7 +487,7 @@ func TestOAuthClientCreateRejectsUnknownScopes(t *testing.T) {
 // TestOAuthClientCreateReportsEveryUnknownScope asserts validation does not stop
 // at the first bad scope, so a caller can fix them all in one pass.
 func TestOAuthClientCreateReportsEveryUnknownScope(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	_, _, err = db.CreateOAuthClient(
@@ -543,7 +543,7 @@ func TestMintAccessTokenKeepsNewestPerClient(t *testing.T) {
 	}
 
 	t.Run("sqlite", func(t *testing.T) {
-		db, err := newSQLiteTestDB()
+		db, err := newSQLiteTestDB(t)
 		require.NoError(t, err)
 
 		test(t, db)

@@ -368,7 +368,7 @@ func TestBuildFromChangeFiltersPeerPatchesByVisibility(t *testing.T) {
 	cfg := &types.Config{
 		Database: types.DatabaseConfig{
 			Type:   types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db", WriteAheadLog: true},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
 		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
@@ -452,7 +452,7 @@ func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
 	cfg := &types.Config{
 		Database: types.DatabaseConfig{
 			Type:   types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db", WriteAheadLog: true},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
 		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
@@ -535,7 +535,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 	cfg := &types.Config{
 		Database: types.DatabaseConfig{
 			Type:   types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db", WriteAheadLog: true},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
 		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
@@ -745,7 +745,7 @@ func TestFullMapResponseSurvivesPeerWithInvalidData(t *testing.T) {
 			cfg := &types.Config{
 				Database: types.DatabaseConfig{
 					Type:   types.DatabaseSqlite,
-					Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+					Sqlite: types.SqliteConfig{Path: tmp + "/h.db", WriteAheadLog: true},
 				},
 				Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
 				DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
@@ -846,7 +846,7 @@ func TestPeerCarriesOwnCapabilityVersion(t *testing.T) {
 	cfg := &types.Config{
 		Database: types.DatabaseConfig{
 			Type:   types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db", WriteAheadLog: true},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
 		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
@@ -1105,7 +1105,7 @@ func TestBackfillNodeIPsReachesBackfilledNode(t *testing.T) {
 	cfg := &types.Config{
 		Database: types.DatabaseConfig{
 			Type:   types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db", WriteAheadLog: true},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
 		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
@@ -1178,7 +1178,7 @@ func TestFailedExpiryOfPrimaryAnnouncesBackup(t *testing.T) {
 	cfg := &types.Config{
 		Database: types.DatabaseConfig{
 			Type:   types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db", WriteAheadLog: true},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
 		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
@@ -1268,7 +1268,7 @@ func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
 	cfg := &types.Config{
 		Database: types.DatabaseConfig{
 			Type:   types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db", WriteAheadLog: true},
 		},
 		Prefixes: types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
 		Policy:   types.PolicyConfig{Mode: types.PolicyModeDB},
@@ -1945,7 +1945,7 @@ func capMapsMapperFixture(tb testing.TB, n int, attrs string) (*mapper, []types.
 	cfg := &types.Config{
 		Database: types.DatabaseConfig{
 			Type:   types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{Path: tb.TempDir() + "/caps.db"},
+			Sqlite: types.SqliteConfig{Path: tb.TempDir() + "/caps.db", WriteAheadLog: true},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &p4, V6: &p6, Allocation: types.IPAllocationStrategySequential},
 		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},

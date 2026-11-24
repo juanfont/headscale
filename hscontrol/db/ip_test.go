@@ -530,7 +530,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 }
 
 func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
-	db, err := newSQLiteTestDB()
+	db, err := newSQLiteTestDB(t)
 	require.NoError(t, err)
 
 	defer db.Close()

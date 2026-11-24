@@ -39,7 +39,7 @@ func setupStormBatcher(tb testing.TB, nodeCount, workers int, policy string) (*T
 	cfg := &types.Config{
 		Database: types.DatabaseConfig{
 			Type:   types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db"},
+			Sqlite: types.SqliteConfig{Path: tmpDir + "/headscale_test.db", WriteAheadLog: true},
 		},
 		Prefixes:  types.PrefixesConfig{V4: &prefixV4, V6: &prefixV6, Allocation: types.IPAllocationStrategySequential},
 		DNSConfig: types.DNSConfig{BaseDomain: "headscale.test"},
