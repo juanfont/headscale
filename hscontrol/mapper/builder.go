@@ -14,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
 )
@@ -310,6 +311,19 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 
 	_, ipv4Disabled := b.mapper.state.NodeCapMap(node.ID())[types.NodeAttrDisableIPv4]
 
+	// If the policy gives suggest-exit-node to some of these peers,
+	// only those peers are suggested. Without a grant, the default
+	// (each approved exit node) stays.
+	suggestLimited := false
+
+	for _, caps := range peerCapMaps {
+		if caps.Contains(nodecap.SuggestExitNode) {
+			suggestLimited = true
+
+			break
+		}
+	}
+
 	// Build tail nodes with per-peer via-aware route function.
 	tailPeers := make([]*tailcfg.Node, 0, peers.Len())
 
@@ -354,6 +368,12 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		// cap stays off the peer view, leaving CapMap empty for most
 		// peers. [policyv2.PeerCapMap] encodes those conditions.
 		tn.CapMap = policyv2.PeerCapMap(peer, peerCapMaps[peer.ID()])
+
+		if suggestLimited &&
+			!peerCapMaps[peer.ID()].Contains(nodecap.SuggestExitNode) {
+			delete(tn.CapMap, nodecap.SuggestExitNode)
+		}
+
 		tn.Hostinfo = types.PeerHostinfo(tn.Hostinfo)
 
 		// A disable-ipv4 holder sees its peers over IPv6 only, as on SaaS, so

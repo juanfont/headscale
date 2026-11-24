@@ -496,6 +496,79 @@ func TestSuggestExitNodeDefaultOnPeerCapMap(t *testing.T) {
 		10*time.Second, peerHasCap(false))
 }
 
+// TestSuggestExitNodeLimitedToNodeAttrsTargets covers the limit: when
+// the policy gives suggest-exit-node to some nodes, an approved exit
+// node that is not a target does not carry the cap on its peer view.
+func TestSuggestExitNodeLimitedToNodeAttrsTargets(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	alice := srv.CreateUser(t, "alice")
+	bob := srv.CreateUser(t, "bob")
+
+	wanted := servertest.NewClient(t, srv, "sel-wanted", servertest.WithUser(alice))
+	other := servertest.NewClient(t, srv, "sel-other", servertest.WithUser(bob))
+	viewer := servertest.NewClient(t, srv, "sel-viewer", servertest.WithUser(bob))
+
+	exitRoutes := []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/0"),
+		netip.MustParsePrefix("::/0"),
+	}
+
+	peerHasCap := func(name string, want bool) func(*netmap.NetworkMap) bool {
+		return func(nm *netmap.NetworkMap) bool {
+			if nm == nil {
+				return false
+			}
+
+			for _, peer := range nm.Peers {
+				if peer.ComputedName() == name {
+					return peer.CapMap().Contains(nodecap.SuggestExitNode) == want
+				}
+			}
+
+			return false
+		}
+	}
+
+	acl := `"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]`
+	reloadPolicy(t, srv, `{`+acl+`}`)
+
+	for _, c := range []*servertest.TestClient{wanted, other} {
+		c.Direct().SetHostinfo(&tailcfg.Hostinfo{
+			BackendLogID: "servertest-" + c.Name,
+			Hostname:     c.Name,
+			RoutableIPs:  exitRoutes,
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		require.NoError(t, c.Direct().SendUpdate(ctx))
+		cancel()
+
+		_, ch, err := srv.State().SetApprovedRoutes(findNodeID(t, srv, c.Name), exitRoutes)
+		require.NoError(t, err)
+		srv.App.Change(ch)
+	}
+
+	// No grant in the policy: the default applies to the two exit nodes.
+	viewer.WaitForCondition(t, "default suggest on sel-wanted",
+		10*time.Second, peerHasCap("sel-wanted", true))
+	viewer.WaitForCondition(t, "default suggest on sel-other",
+		10*time.Second, peerHasCap("sel-other", true))
+
+	reloadPolicy(t, srv, `{`+acl+`,
+		"nodeAttrs": [{
+			"target": ["alice@"],
+			"attr":   ["suggest-exit-node"]
+		}]
+	}`)
+
+	viewer.WaitForCondition(t, "non-target exit node loses suggest",
+		10*time.Second, peerHasCap("sel-other", false))
+	viewer.WaitForCondition(t, "target exit node keeps suggest",
+		10*time.Second, peerHasCap("sel-wanted", true))
+}
+
 // firstResolver returns the address of the first DNS resolver in nm.
 func firstResolver(nm *netmap.NetworkMap) string {
 	if nm == nil || len(nm.DNS.Resolvers) == 0 {
