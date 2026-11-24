@@ -533,6 +533,7 @@ Every option below is under `services.headscale`.
 - `/api/v1/auth/approve` approves only an SSH check. It returns `400` for a pending node registration. Approving one finished the login without creating its node, so its client started over. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - An approval of a login that another approval already decided is refused. Two approvals can no longer both register one login. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - A late or repeated follow-up of a login gets the verdict the login already reached, instead of starting over. A follow-up whose node is gone starts the login over. [#3757](https://github.com/juanfont/headscale/pull/3757)
+- The IP allocators never hand out an address in `fd7a:115c:a1e0:b1a::/64`. The Tailscale client reads that range as IPv4 routes mapped into IPv6 (4via6). The random strategy could draw one, and a node with that address did not work. [#3757](https://github.com/juanfont/headscale/pull/3757)
 
 - The configuration search path now also includes `$XDG_CONFIG_HOME/headscale` and `$XDG_CONFIG_DIRS`, and the files `config.json` and `config.hujson`. [#3674](https://github.com/juanfont/headscale/pull/3674)
 - `HEADSCALE_DEBUG_DUMP_CONFIG` prints the configuration as YAML, with secrets redacted. [#3677](https://github.com/juanfont/headscale/pull/3677)

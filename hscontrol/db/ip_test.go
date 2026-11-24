@@ -27,6 +27,65 @@ var nap = func(pref string) *netip.Addr {
 	return &n
 }
 
+// TestIPAllocatorPrefixOverlappingTheViaRange pins that a prefix overlapping
+// the via range hands out no address inside it, whatever its shape: the walk
+// starts past the range and crosses it whole. When the prefix is the range
+// itself, nothing is left to allocate, and when a wrapping walk lands on the
+// prefix's first address — inside the range — only the used pool keeps it
+// from being handed out. The wrap is driven under the sequential strategy
+// alone: the walk is shared, only its start differs by strategy, and a random
+// start cannot be aimed at the top of the prefix without filling it.
+func TestIPAllocatorPrefixOverlappingTheViaRange(t *testing.T) {
+	via := tsaddr.TailscaleViaRange()
+
+	// A /63 whose first half is the via range.
+	overlapping := netip.PrefixFrom(via.Masked().Addr(), via.Bits()-1)
+	_, viaTop := util.GetIPPrefixEndpoints(via)
+	firstPast := viaTop.Next()
+
+	for _, strategy := range []types.IPAllocationStrategy{
+		types.IPAllocationStrategySequential,
+		types.IPAllocationStrategyRandom,
+	} {
+		t.Run(string(strategy), func(t *testing.T) {
+			alloc, err := NewIPAllocator(nil, nil, &via, strategy)
+			require.NoError(t, err)
+
+			_, _, err = alloc.Next()
+			require.ErrorIs(t, err, ErrCouldNotAllocateIP, "a prefix that is the via range holds no node address")
+
+			alloc, err = NewIPAllocator(nil, nil, &overlapping, strategy)
+			require.NoError(t, err)
+
+			for i := range 8 {
+				_, got, err := alloc.Next()
+				require.NoError(t, err)
+				require.False(t, via.Contains(*got), "an address in the via range is a route, never a node's")
+
+				if strategy == types.IPAllocationStrategySequential && i == 0 {
+					require.Equal(t, firstPast, *got, "the walk starts past the range, not inside it")
+				}
+			}
+		})
+	}
+
+	// The wrap: from just below the top of the /63 the walk leaves the
+	// prefix and lands on its first address, in the via range. The used
+	// pool holds it — the endpoints NewIPAllocator seeds — and the walk
+	// goes on past the range.
+	alloc, err := NewIPAllocator(nil, nil, &overlapping, types.IPAllocationStrategySequential)
+	require.NoError(t, err)
+
+	_, top := util.GetIPPrefixEndpoints(overlapping)
+	alloc.usedIPs.Add(top)
+	alloc.usedIPs.Add(top.Prev())
+	alloc.usedIPs.Add(top.Prev().Prev())
+
+	got, err := alloc.next(top.Prev().Prev().Prev(), &overlapping)
+	require.NoError(t, err)
+	require.Equal(t, firstPast, *got, "a wrapped walk hands out the address past the range, not the range's first")
+}
+
 func TestIPAllocatorSequentialReusesFreedIPs(t *testing.T) {
 	prefix := netip.MustParsePrefix("100.64.0.0/29")
 	alloc, err := NewIPAllocator(
@@ -560,6 +619,15 @@ func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
 	t.Logf("chrome: %s", nextChrome.String())
 	require.NoError(t, err)
 	assert.Equal(t, na("100.115.94.0"), *nextChrome)
+
+	// Validate that we do not give out the via range: the client reads
+	// its addresses as IPv4 routes mapped into IPv6, never as a node's.
+	nextVia, err := alloc.next(
+		na("fd7a:115c:a1e0:b19:ffff:ffff:ffff:ffff"),
+		new(tsaddr.TailscaleULARange()),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, na("fd7a:115c:a1e0:b1b::"), *nextVia)
 }
 
 // TestIPAllocatorNextIPv6OnlyExhausted pins that an IPv6 failure with no IPv4
