@@ -502,7 +502,7 @@ in
         type = t.secretFile;
         default = "";
         description = ''
-          The password, or `file:<path>` to read it from a file, read only when `database.type` is `postgres`. `headscale generate config --running` and `/debug/config` show a literal password as `<redacted>` and a `file:` reference as written.
+          The password, or `file:<path>` to read it from a file, read only when `database.type` is `postgres`. `/debug/config` shows a literal password as `<redacted>` and a `file:` reference as written.
 
           On NixOS, the value must be `""` or `file:<path>`: load the secret as a systemd credential with `systemd.services.headscale.serviceConfig.LoadCredential = [ "database_postgres_pass:/run/secrets/database_postgres_pass" ];` and set this option to `"file:\''${CREDENTIALS_DIRECTORY}/database_postgres_pass"`.
         '';
@@ -715,7 +715,7 @@ in
         type = lib.types.attrsOf lib.types.anything;
         default = { };
         description = ''
-          The DNS provider that writes challenge records: `name` selects it, the other keys are its settings. Keys are lowercased on load, at every depth; two that differ only in case are an error. Any setting may be `file:<path>` to read it from a file; a non-string one, such as acme-dns `config`, is the JSON in it. `headscale generate config --running` and `/debug/config` show `name` and `file:` references; every other setting is `<redacted>`, as any may be a credential. See [DNS-01 challenge provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider) to set a provider up, acme-dns included, and to set it from environment variables.
+          The DNS provider that writes challenge records: `name` selects it, the other keys are its settings. Keys are lowercased on load, at every depth; two that differ only in case are an error. Any setting may be `file:<path>` to read it from a file; a non-string one, such as acme-dns `config`, is the JSON in it. `/debug/config` shows `name` and `file:` references; every other setting is `<redacted>`, as any may be a credential. See [DNS-01 challenge provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider) to set a provider up, acme-dns included, and to set it from environment variables.
 
           On NixOS, keep a secret setting out of the Nix store: load it as a systemd credential with `systemd.services.headscale.serviceConfig.LoadCredential = [ "dns_challenge_provider_<setting>:/run/secrets/dns_challenge_provider_<setting>" ];` and set the setting to `"file:\''${CREDENTIALS_DIRECTORY}/dns_challenge_provider_<setting>"`. `name` is not a secret.
         '';
@@ -840,7 +840,7 @@ in
       type = t.secretFile;
       default = "";
       description = ''
-        The client secret from the provider, or `file:<path>` to read it from a file; required when `oidc.issuer` is set. `headscale generate config --running` and `/debug/config` show a literal secret as `<redacted>` and a `file:` reference as written.
+        The client secret from the provider, or `file:<path>` to read it from a file; required when `oidc.issuer` is set. `/debug/config` shows a literal secret as `<redacted>` and a `file:` reference as written.
 
         On NixOS, the value must be `""` or `file:<path>`: load the secret as a systemd credential with `systemd.services.headscale.serviceConfig.LoadCredential = [ "oidc_client_secret:/run/secrets/oidc_client_secret" ];` and set this option to `"file:\''${CREDENTIALS_DIRECTORY}/oidc_client_secret"`.
       '';
