@@ -1,9 +1,11 @@
 package apiv1
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 )
 
@@ -49,4 +51,15 @@ func userFromView(u types.UserView) User {
 		Provider:      u.Provider(),
 		ProfilePicURL: u.ProfilePicURL(),
 	}
+}
+
+// refuseLeadingZero refuses a path ID with a leading zero. 0.29's gateway
+// parsed path IDs with strconv.ParseUint(s, 0, 64) (runtime.Uint64), so
+// /node/010 was node 8; read as decimal it would act on node 10.
+func refuseLeadingZero(s, param string) error {
+	if len(s) > 1 && s[0] == '0' {
+		return huma.Error400BadRequest(fmt.Sprintf("type mismatch, parameter: %s, error: leading zero in %q", param, s))
+	}
+
+	return nil
 }

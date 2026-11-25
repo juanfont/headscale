@@ -216,6 +216,24 @@ func TestAPIV1NodeDelete(t *testing.T) {
 		res := h.assertParity(t, http.MethodDelete, "/api/v1/node/abc", nil)
 		assertStatus(t, res, http.StatusBadRequest)
 	})
+
+	// 0.29 read a path ID with base 0, so 01 was node 1 and 010 node 8:
+	// refused rather than read another way.
+	t.Run("leading zero", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		seedNodes(newNodeSeed("alice", "node-a"))(t, h.app)
+
+		for _, id := range []string{"01", "00"} {
+			res := h.callHuma(http.MethodDelete, "/api/v1/node/"+id, nil)
+			assertStatus(t, res, http.StatusBadRequest)
+		}
+
+		_, ok := h.app.state.GetNodeByID(1)
+		assert.True(t, ok, "the node must not be deleted")
+
+		res := h.callHuma(http.MethodDelete, "/api/v1/user/01", nil)
+		assertStatus(t, res, http.StatusBadRequest)
+	})
 }
 
 func TestAPIV1NodeExpire(t *testing.T) {

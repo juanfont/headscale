@@ -221,6 +221,11 @@ func listUsersFiltered(b Backend, in *listUsersInput) ([]types.User, error) {
 }
 
 func parseUserID(s string) (types.UserID, error) {
+	err := refuseLeadingZero(s, "id")
+	if err != nil {
+		return 0, err
+	}
+
 	id, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
 		return 0, huma.Error400BadRequest("invalid user id", err)
