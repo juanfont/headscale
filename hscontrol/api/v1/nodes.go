@@ -3,10 +3,14 @@ package apiv1
 import (
 	"context"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -121,15 +125,158 @@ type (
 )
 
 // ExpireNodeRequestBody mirrors v1.ExpireNodeRequest. Both fields are optional;
-// an absent or all-zero body expires the node immediately, as gRPC does.
+// an absent body, or one that gives neither, expires the node immediately, as
+// gRPC does. Both are pointers so a member given, even false or the zero
+// time, is told from one not given (absent or null, as protojson reads null).
 type ExpireNodeRequestBody struct {
 	Expiry        *time.Time `json:"expiry,omitempty"`
-	DisableExpiry bool       `json:"disableExpiry,omitempty"`
+	DisableExpiry *bool      `json:"disableExpiry,omitempty"`
 }
 
+// expireNodeInput takes expiry and disableExpiry in the query, where 0.29 read
+// them and web UIs still send them, or in the body. Resolve fills the query
+// fields.
 type expireNodeInput struct {
 	NodeID string                 `format:"uint64"  path:"nodeId"`
 	Body   *ExpireNodeRequestBody `required:"false"`
+
+	queryExpiry  *time.Time
+	queryDisable *bool
+}
+
+// expireQueryParams documents the query Resolve reads; the input struct
+// cannot, since Huma's parser would read some forms the gateway refused.
+var expireQueryParams = []*huma.Param{
+	{Name: "expiry", In: "query", Schema: &huma.Schema{Type: huma.TypeString, Format: "date-time"}},
+	{
+		Name: "disableExpiry", In: "query",
+		Description: "When true, sets expiry to null (node will never expire).",
+		Schema:      &huma.Schema{Type: huma.TypeBoolean},
+	},
+}
+
+// Resolve reads the query by the rules 0.29's grpc-gateway applied to
+// ExpireNodeRequest (runtime/query.go, v2.29.0): a field by its JSON or proto
+// name, a Timestamp in RFC 3339 or by its seconds and nanos, one value per
+// name. A form the gateway refused, an unknown parameter, or two forms that
+// disagree is a 400, so no query this cannot read changes the node.
+func (in *expireNodeInput) Resolve(ctx huma.Context) []error {
+	u := ctx.URL()
+
+	query, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return []error{huma.Error400BadRequest(err.Error())}
+	}
+
+	var (
+		errs     []error
+		disables []bool
+		whole    *time.Time
+		parts    bool
+		seconds  int64
+		nanos    int64
+	)
+
+	refuse := func(format string, a ...any) {
+		errs = append(errs, huma.Error400BadRequest(fmt.Sprintf(format, a...)))
+	}
+
+	for _, key := range slices.Sorted(maps.Keys(query)) {
+		path, values := gatewayQueryKey(key, query[key])
+
+		// The path's own field, by either name, was filtered out
+		// (query.go:57); queryMiddleware refuses nodeId.x, which was not.
+		if path[0] == "node_id" || path[0] == "nodeId" {
+			continue
+		}
+
+		name := strings.Join(path, ".")
+
+		if len(values) > 1 {
+			refuse("too many values for field %q: %s", name, strings.Join(values, ", "))
+
+			continue
+		}
+
+		value := values[0]
+
+		switch name {
+		case "disableExpiry", "disable_expiry":
+			v, err := strconv.ParseBool(value)
+			if err != nil {
+				refuse("parsing field %q: %v", name, err)
+
+				continue
+			}
+
+			disables = append(disables, v)
+		case "expiry":
+			t, err := time.Parse(time.RFC3339Nano, value)
+			if err != nil {
+				refuse("parsing field %q: %v", name, err)
+
+				continue
+			}
+
+			// timestamppb.Timestamp.IsValid: years 1 to 9999.
+			if t = t.UTC(); t.Year() < 1 {
+				refuse("parsing field %q: %s before 0001-01-01", name, value)
+
+				continue
+			}
+
+			whole = &t
+		case "expiry.seconds", "expiry.nanos":
+			bits := 64
+			if name == "expiry.nanos" {
+				bits = 32
+			}
+
+			v, err := strconv.ParseInt(value, 10, bits)
+			if err != nil {
+				refuse("parsing field %q: %v", name, err)
+
+				continue
+			}
+
+			parts = true
+
+			if name == "expiry.seconds" {
+				seconds = v
+			} else {
+				nanos = v
+			}
+		default:
+			refuse("unknown query parameter %q", key)
+		}
+	}
+
+	// The gateway set the field once per name, in map order.
+	if len(disables) == 2 && disables[0] != disables[1] {
+		refuse("disableExpiry and disable_expiry differ")
+	}
+
+	if whole != nil && parts {
+		refuse("expiry given whole and by its fields")
+	}
+
+	if len(errs) > 0 {
+		return errs
+	}
+
+	if len(disables) > 0 {
+		in.queryDisable = &disables[0]
+	}
+
+	switch {
+	case whole != nil:
+		in.queryExpiry = whole
+	case parts:
+		t := time.Unix(seconds, nanos).UTC()
+		in.queryExpiry = &t
+	}
+
+	return nil
 }
 
 type renameNodeInput struct {
@@ -281,6 +428,7 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 		Summary:     "Expire node",
 		Tags:        []string{"Nodes"},
 		Security:    bearerAuth,
+		Parameters:  expireQueryParams,
 	}, func(ctx context.Context, in *expireNodeInput) (*nodeOutput, error) {
 		nodeID, err := parseNodeID(in.NodeID)
 		if err != nil {
@@ -288,16 +436,31 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 		}
 
 		// disableExpiry turns key expiry off and keeps the time, which v1
-		// shows as none; explicit expiry honoured; absent/zero body expires
-		// now. Both set is a 400.
-		var (
-			disableExpiry bool
-			customExpiry  *time.Time
-		)
+		// shows as none; explicit expiry honoured; neither given expires now.
+		// Both set is a 400.
+		disableExpiry := in.queryDisable != nil && *in.queryDisable
+		customExpiry := in.queryExpiry
 
 		if in.Body != nil {
-			disableExpiry = in.Body.DisableExpiry
-			customExpiry = in.Body.Expiry
+			// A query and a body that disagree are no request to read either
+			// way.
+			if b := in.Body.DisableExpiry; b != nil {
+				if in.queryDisable != nil && *in.queryDisable != *b {
+					return nil, huma.Error400BadRequest("disableExpiry in the query and the body differ")
+				}
+
+				disableExpiry = disableExpiry || *b
+			}
+
+			// Two different times leave no safe guess; expiring now would lose
+			// the node.
+			if customExpiry != nil && in.Body.Expiry != nil && !customExpiry.Equal(*in.Body.Expiry) {
+				return nil, huma.Error400BadRequest("expiry in the query and the body differ")
+			}
+
+			if customExpiry == nil {
+				customExpiry = in.Body.Expiry
+			}
 		}
 
 		if disableExpiry && customExpiry != nil {
