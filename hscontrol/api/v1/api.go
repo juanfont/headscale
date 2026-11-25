@@ -67,8 +67,8 @@ func NewAPI(router chi.Router, backend Backend) huma.API {
 	config.Transformers = append(config.Transformers, grpcStatusTransformer)
 	config.OnAddOperation = append(config.OnAddOperation, documentStatus)
 
-	router.NotFound(routingError(http.StatusNotFound, http.StatusNotFound, codeNotFound))
-	router.MethodNotAllowed(routingError(http.StatusMethodNotAllowed, http.StatusNotImplemented, codeUnimplemented))
+	router.NotFound(routingError(backend, http.StatusNotFound, http.StatusNotFound, codeNotFound))
+	router.MethodNotAllowed(routingError(backend, http.StatusMethodNotAllowed, http.StatusNotImplemented, codeUnimplemented))
 
 	api := humachi.New(router, config)
 	api.UseMiddleware(statusMiddleware)
@@ -149,33 +149,14 @@ func WithLocalTrust(next http.Handler) http.Handler {
 // served, so it is never dereferenced there.
 func authMiddleware(b Backend) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		if ctx.Context().Value(localTrustKey{}) != nil {
+		local := ctx.Context().Value(localTrustKey{}) != nil
+		if len(ctx.Operation().Security) == 0 || authorized(local, ctx.Header("Authorization"), b) {
 			next(ctx)
 
 			return
 		}
 
-		if len(ctx.Operation().Security) == 0 {
-			next(ctx)
-
-			return
-		}
-
-		token, ok := strings.CutPrefix(ctx.Header("Authorization"), "Bearer ")
-		if !ok {
-			writeUnauthorized(ctx)
-
-			return
-		}
-
-		valid, err := b.State.ValidateAPIKey(token)
-		if err != nil || !valid {
-			writeUnauthorized(ctx)
-
-			return
-		}
-
-		next(ctx)
+		writeUnauthorized(ctx)
 	}
 }
 
@@ -313,4 +294,21 @@ func protoName(jsonName string) string {
 
 func takesQuery(op *huma.Operation) bool {
 	return slices.ContainsFunc(op.Parameters, func(p *huma.Param) bool { return p.In == "query" })
+}
+
+// authorized reports whether a request may reach the API: it arrived over a
+// locally-trusted transport, or carries a valid bearer API key.
+func authorized(local bool, authHeader string, b Backend) bool {
+	if local {
+		return true
+	}
+
+	token, ok := strings.CutPrefix(authHeader, "Bearer ")
+	if !ok {
+		return false
+	}
+
+	valid, err := b.State.ValidateAPIKey(token)
+
+	return err == nil && valid
 }
