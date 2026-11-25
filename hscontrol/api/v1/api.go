@@ -8,14 +8,20 @@
 package apiv1
 
 import (
+	"bytes"
 	"context"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -24,6 +30,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // Backend is the dependency surface the v1 API needs from the control plane:
@@ -65,7 +73,15 @@ func NewAPI(router chi.Router, backend Backend) huma.API {
 
 	// Errors keep the 0.29 body; see Status.
 	config.Transformers = append(config.Transformers, grpcStatusTransformer)
-	config.OnAddOperation = append(config.OnAddOperation, documentStatus)
+
+	// JSON only, whatever else imports register in huma.DefaultFormats: every
+	// body Huma decodes is then one bodyMiddleware reads (see huma.API
+	// Unmarshal there).
+	config.Formats = map[string]huma.Format{
+		"application/json": huma.DefaultJSONFormat,
+		"json":             huma.DefaultJSONFormat,
+	}
+	config.OnAddOperation = append(config.OnAddOperation, documentStatus, documentOpenBodies)
 
 	router.NotFound(routingError(backend, http.StatusNotFound, http.StatusNotFound, codeNotFound))
 	router.MethodNotAllowed(routingError(backend, http.StatusMethodNotAllowed, http.StatusNotImplemented, codeUnimplemented))
@@ -77,6 +93,7 @@ func NewAPI(router chi.Router, backend Backend) huma.API {
 	// registration, so a middleware added afterwards would silently never run.
 	api.UseMiddleware(authMiddleware(backend))
 	api.UseMiddleware(queryMiddleware(api))
+	api.UseMiddleware(bodyMiddleware(api))
 
 	register(api, backend)
 
@@ -311,4 +328,245 @@ func authorized(local bool, authHeader string, b Backend) bool {
 	valid, err := b.State.ValidateAPIKey(token)
 
 	return err == nil && valid
+}
+
+// bodyMiddleware reads a JSON request body as 0.29's grpc-gateway did
+// (protojson with DiscardUnknown, grpc-gateway v2.29.0): a member by its JSON
+// or its proto name, a member it does not know dropped, the same field twice
+// refused, every ID read by protojson's uint64 rules (protoUint64), null as
+// not given and "" too for a declared ID member, and the
+// path's own field in the body checked against the path, then dropped, since
+// the path overwrote it. Without it, a proto name such as acl_tags would be
+// dropped as unknown and the write would go ahead without it.
+//
+// It runs for exactly the bodies Huma decodes (decodesBody). The body is read
+// as Huma reads it, under the operation's read deadline and size limit, and
+// handed on with any read error as it came. encoding/json/v2 alone decides
+// whether it is JSON: syntax, trailing data, duplicate names.
+//
+// shortcut: top-level members only; every v1 request body is flat. Walk the
+// schema if one ever nests an object.
+func bodyMiddleware(api huma.API) func(huma.Context, func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
+		op := ctx.Operation()
+
+		members := bodyMembers(api, op)
+		if members == nil || !decodesBody(api, ctx.Header("Content-Type")) {
+			next(ctx)
+
+			return
+		}
+
+		// As Huma does before it reads the body (huma.go, Register).
+		if op.BodyReadTimeout > 0 {
+			_ = ctx.SetReadDeadline(time.Now().Add(op.BodyReadTimeout))
+		} else if op.BodyReadTimeout < 0 {
+			_ = ctx.SetReadDeadline(time.Time{})
+		}
+
+		raw, err := io.ReadAll(io.LimitReader(ctx.BodyReader(), op.MaxBodyBytes+1))
+		if err != nil {
+			next(bodyContext{ctx, io.MultiReader(bytes.NewReader(raw), errReader{err})})
+
+			return
+		}
+
+		if int64(len(raw)) > op.MaxBodyBytes {
+			// Huma's own limit refuses it.
+			next(bodyContext{ctx, io.MultiReader(bytes.NewReader(raw), ctx.BodyReader())})
+
+			return
+		}
+
+		body, msg := gatewayBody(raw, members, ctx.Param)
+		if msg != "" {
+			_ = huma.WriteErr(api, ctx, http.StatusBadRequest, msg)
+
+			return
+		}
+
+		next(bodyContext{ctx, bytes.NewReader(body)})
+	}
+}
+
+// decodesBody reports whether Huma will decode a body of this Content-Type,
+// asked of Huma's own format lookup with the fallback Huma uses for a request
+// without one (every v1 body is application/json). v1 registers JSON only, so
+// that is a JSON body; for any other type Huma answers 415 itself.
+func decodesBody(api huma.API, contentType string) bool {
+	if contentType == "" {
+		contentType = "application/json"
+	}
+
+	return api.Unmarshal(contentType, []byte("null"), new(any)) == nil
+}
+
+// errReader hands on a read error after the bytes read before it.
+type errReader struct{ err error }
+
+func (r errReader) Read([]byte) (int, error) { return 0, r.err }
+
+// bodyContext serves a body the middleware already read.
+type bodyContext struct {
+	humaContext
+
+	body io.Reader
+}
+
+func (c bodyContext) BodyReader() io.Reader { return c.body }
+
+// bodyMember is what a member name of a body stands for: a declared member,
+// by its JSON name, or the path's own field.
+type bodyMember struct {
+	name string
+	path bool
+	id   bool
+}
+
+// bodyMembers maps each name a member of op's JSON body may have, the JSON
+// or the proto name of a declared member or of a path field, to what it
+// stands for; nil when op takes no JSON body.
+func bodyMembers(api huma.API, op *huma.Operation) map[string]bodyMember {
+	if op.RequestBody == nil {
+		return nil
+	}
+
+	mt := op.RequestBody.Content["application/json"]
+	if mt == nil || mt.Schema == nil || mt.Schema.Ref == "" {
+		return nil
+	}
+
+	schema := api.OpenAPI().Components.Schemas.SchemaFromRef(mt.Schema.Ref)
+	if schema == nil {
+		return nil
+	}
+
+	members := make(map[string]bodyMember, 2*len(schema.Properties))
+
+	for name, prop := range schema.Properties {
+		m := bodyMember{name: name, id: prop.Format == "uint64"}
+		members[name] = m
+		members[protoName(name)] = m
+	}
+
+	for _, p := range op.Parameters {
+		if p.In == "path" {
+			members[p.Name] = bodyMember{name: p.Name, path: true}
+			members[protoName(p.Name)] = bodyMember{name: p.Name, path: true}
+		}
+	}
+
+	return members
+}
+
+// gatewayBody rewrites a JSON object to the declared members under their JSON
+// names, or returns why the gateway would have refused it. A body that is
+// empty or null is left for Huma: it was no request message.
+func gatewayBody(raw []byte, members map[string]bodyMember, param func(string) string) ([]byte, string) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return raw, ""
+	}
+
+	var object map[string]jsontext.Value
+
+	err := jsonv2.Unmarshal(raw, &object)
+	if err != nil {
+		return nil, err.Error()
+	}
+
+	if object == nil {
+		return raw, ""
+	}
+
+	seen := map[string]string{}
+	out := map[string]jsontext.Value{}
+
+	for _, key := range slices.Sorted(maps.Keys(object)) {
+		m, known := members[key]
+		if !known {
+			continue
+		}
+
+		if other, dup := seen[m.name]; dup {
+			return nil, fmt.Sprintf("duplicate field %q and %q", other, key)
+		}
+
+		seen[m.name] = key
+
+		value := object[key]
+
+		switch {
+		case value.Kind() == jsontext.KindNull:
+			// protojson read null as not given.
+			if m.path {
+				continue
+			}
+		case m.id && string(value) == `""`:
+			// Not given either, as main reads it: the CLI's tags-only
+			// pre-auth key sends user "" (the 0.29 CLI spoke gRPC), and the
+			// two expire selectors keep main's reading of an empty id. No ID
+			// is "", though protojson refused it. The path's own field keeps
+			// protojson's refusal, as main did too.
+			continue
+		case m.path:
+			id, err := protoUint64(value)
+			if err != nil {
+				return nil, fmt.Sprintf("parsing field %q: %v", key, err)
+			}
+
+			if strconv.FormatUint(id, 10) != param(m.name) {
+				return nil, fmt.Sprintf("field %q is %d, the path names %s", key, id, param(m.name))
+			}
+
+			continue
+		case m.id:
+			id, err := protoUint64(value)
+			if err != nil {
+				return nil, fmt.Sprintf("parsing field %q: %v", key, err)
+			}
+
+			value = jsontext.Value(strconv.Quote(strconv.FormatUint(id, 10)))
+		}
+
+		out[m.name] = value
+	}
+
+	body, err := jsonv2.Marshal(out)
+	if err != nil {
+		return nil, err.Error()
+	}
+
+	return body, ""
+}
+
+// protoUint64 reads an ID member as 0.29 decoded it, with protojson's own
+// uint64 rules: a JSON number or string, integral, 1.0 and "1e0" as 1, "01",
+// " 1" and "" refused.
+func protoUint64(value jsontext.Value) (uint64, error) {
+	var v wrapperspb.UInt64Value
+
+	err := protojson.Unmarshal(value, &v)
+	if err != nil {
+		return 0, err
+	}
+
+	return v.GetValue(), nil
+}
+
+// documentOpenBodies says in the OpenAPI document that a request body may
+// carry members v1 does not declare, as bodyMiddleware accepts them.
+func documentOpenBodies(oapi *huma.OpenAPI, op *huma.Operation) {
+	if op.RequestBody == nil {
+		return
+	}
+
+	for _, mt := range op.RequestBody.Content {
+		if mt.Schema == nil || mt.Schema.Ref == "" {
+			continue
+		}
+
+		if s := oapi.Components.Schemas.SchemaFromRef(mt.Schema.Ref); s != nil {
+			s.AdditionalProperties = true
+		}
+	}
 }
