@@ -19,7 +19,8 @@ import (
 // ServeMux: DefaultHTTPErrorHandler writes status.Convert(err).Proto() with
 // protojson (EmitUnpopulated, so details is []), at HTTPStatusFromCode(code);
 // DefaultRoutingErrorHandler answers an unknown path with NotFound and a wrong
-// method with Unimplemented (501). The 401 is pinned in TestAPIV1Unauthorized401.
+// method with Unimplemented (501). The 401 is pinned in TestAPIV1Unauthorized401,
+// the routing errors in TestAPIV1RoutingError.
 //
 // Where the 0.29 text is reproduced byte for byte the whole body is pinned;
 // elsewhere the code, the status and the message as main words it.
@@ -116,20 +117,6 @@ func TestAPIV1ErrorBody(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 			wantBody:   `{"code":3,"message":"validation failed: unexpected end of JSON input (body)","details":[]}`,
 		},
-		{
-			name:       "unknown path",
-			method:     http.MethodGet,
-			path:       "/api/v1/nope",
-			wantStatus: http.StatusNotFound,
-			wantBody:   `{"code":5,"message":"Not Found","details":[]}`,
-		},
-		{
-			name:       "method not served",
-			method:     http.MethodPut,
-			path:       "/api/v1/node/1",
-			wantStatus: http.StatusNotImplemented,
-			wantBody:   `{"code":12,"message":"Method Not Allowed","details":[]}`,
-		},
 	}
 
 	for _, tt := range tests {
@@ -165,4 +152,70 @@ func TestAPIV1SpecDescribesStatus(t *testing.T) {
 	assert.Contains(t, string(spec), "#/components/schemas/Status")
 	assert.NotContains(t, string(spec), "ErrorModel")
 	assert.NotContains(t, string(spec), "application/problem+json")
+}
+
+// TestAPIV1RoutingError: 0.29 authenticated every /api request before the
+// gateway routed it (hscontrol/app.go at v0.29.7), so without a valid key an
+// unknown path or method was a 401 and only with one the gateway's 404 or 501.
+// 0.29's socket spoke gRPC only, so it had no HTTP answer to keep; the socket
+// is trusted like an operation call over it is.
+func TestAPIV1RoutingError(t *testing.T) {
+	app := createTestApp(t)
+	router := app.HTTPHandler()
+	socket := newHumaTestHandler(app)
+
+	expiry := time.Now().Add(time.Hour)
+	apiKey, _, err := app.state.CreateAPIKey(&expiry)
+	require.NoError(t, err)
+
+	const (
+		notFound      = `{"code":5,"message":"Not Found","details":[]}`
+		notAllowed    = `{"code":12,"message":"Method Not Allowed","details":[]}`
+		unauthorized  = "Unauthorized"
+		textPlain     = "text/plain; charset=utf-8"
+		jsonType      = "application/json"
+		unknownPath   = "/api/v1/nope"
+		servedPathPut = "/api/v1/node/1"
+	)
+
+	tests := []struct {
+		name       string
+		handler    http.Handler
+		auth       string
+		method     string
+		path       string
+		wantStatus int
+		wantType   string
+		wantBody   string
+	}{
+		{"unknown path, no key", router, "", http.MethodGet, unknownPath, http.StatusUnauthorized, textPlain, unauthorized},
+		{"unknown path, bad key", router, "Bearer hskey-api-bad", http.MethodGet, unknownPath, http.StatusUnauthorized, textPlain, unauthorized},
+		{"unknown path, good key", router, "Bearer " + apiKey, http.MethodGet, unknownPath, http.StatusNotFound, jsonType, notFound},
+		{"unknown path, socket", socket, "", http.MethodGet, unknownPath, http.StatusNotFound, jsonType, notFound},
+		{"wrong method, no key", router, "", http.MethodPut, servedPathPut, http.StatusUnauthorized, textPlain, unauthorized},
+		{"wrong method, bad key", router, "Bearer hskey-api-bad", http.MethodPut, servedPathPut, http.StatusUnauthorized, textPlain, unauthorized},
+		{"wrong method, good key", router, "Bearer " + apiKey, http.MethodPut, servedPathPut, http.StatusNotImplemented, jsonType, notAllowed},
+		{"wrong method, socket", socket, "", http.MethodPut, servedPathPut, http.StatusNotImplemented, jsonType, notAllowed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(context.Background(), tt.method, tt.path, nil)
+			if tt.auth != "" {
+				req.Header.Set("Authorization", tt.auth)
+			}
+
+			rec := httptest.NewRecorder()
+			tt.handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
+			assert.Equal(t, tt.wantType, rec.Header().Get("Content-Type"))
+
+			if tt.wantType == jsonType {
+				assert.JSONEq(t, tt.wantBody, rec.Body.String())
+			} else {
+				assert.Equal(t, tt.wantBody, rec.Body.String())
+			}
+		})
+	}
 }

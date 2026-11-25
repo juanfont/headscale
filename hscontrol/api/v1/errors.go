@@ -132,14 +132,25 @@ func statusMiddleware(ctx huma.Context, next func(huma.Context)) {
 	next(statusContext{ctx})
 }
 
-// routingError answers a path or method no operation serves as the gateway's
-// DefaultRoutingErrorHandler did: 404 NotFound, and 501 Unimplemented for a
+// routingError answers a path or method no operation serves as 0.29 did: its
+// auth middleware ran before the gateway, so a caller without a valid key gets
+// the 401 and learns nothing of the routes. Then the gateway's
+// DefaultRoutingErrorHandler: 404 NotFound, and 501 Unimplemented for a
 // method the path does not take. The message is the routing status's text.
-func routingError(routing, status int, code int32) http.HandlerFunc {
+func routingError(b Backend, routing, status int, code int32) http.HandlerFunc {
 	// Status texts are ASCII, so %q quotes them as JSON does.
 	body := fmt.Appendf(nil, `{"code":%d,"message":%q,"details":[]}`, code, http.StatusText(routing))
 
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		local := r.Context().Value(localTrustKey{}) != nil
+		if !authorized(local, r.Header.Get("Authorization"), b) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Unauthorized"))
+
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		_, _ = w.Write(body)
