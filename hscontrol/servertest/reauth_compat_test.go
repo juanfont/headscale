@@ -2,7 +2,8 @@
 //
 // Test data source: testdata/steps/{owner-routes,reauth,reauth-foreign,
 // reauth-owner,identity,reauth-user,tag-owner-chain,reauth-wake,
-// reauth-wake-tsnet,reauth-wake-tags,tag-gone}.hujson, loaded by name.
+// reauth-wake-tsnet,reauth-wake-tags,tag-gone,tag-claim}.hujson, loaded by
+// name.
 // owner-routes is checked by runRouteLifecycleCompat in
 // lifecycle_compat_test.go. tag-owner-chain's joins are replayed here; its
 // OAuth mints and the tag owner functions are checked in ../policy/v2. The
@@ -46,6 +47,36 @@ var reauthSkipReasons = map[string]string{
 	"ephemeral-lifecycle/late-expired/late-exp/text":        refusalText,
 	"ephemeral-lifecycle/late-expired/late-exp/legacy-text": refusalText,
 
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/devices":       ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/owner":         ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/node-key":      ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/expiry":        ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/expires":       ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/expiry-switch": ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/ephemeral":     ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/peer-obs":      ownerOverride,
+	"tag-claim/tc-thor-own-relogin/obs/filter":                ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/login-devices": ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/login-owner":   ownerOverride,
+
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/devices":       ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/owner":         ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/node-key":      ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/expiry":        ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/expires":       ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/expiry-switch": ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/ephemeral":     ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/peer-obs":      ownerOverride,
+	"tag-claim/tc-oc-own-relogin/obs/filter":              ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/login-devices": ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/login-owner":   ownerOverride,
+
+	"tag-claim/tc-self-kris-relogin/tc-self-kris/login-devices": loginTagged,
+	"tag-claim/tc-self-kris-relogin/tc-self-kris/login-owner":   loginTagged,
+
+	"tag-claim/tc-adm-own-tags-relogin/tc-adm-own-tags/expires": expiryTimeKept,
+	"reauth-wake/wk-force-other-relogin/wk-force-other/expires": expiryTimeKept,
+
 	"reauth-user/a8-convert/u-convert/owner":                                   tagsAwake,
 	"reauth-user/a8-convert/obs/filter":                                        tagsAwake,
 	"reauth-user/a8-convert/t-server/filter":                                   tagsAwake,
@@ -57,6 +88,7 @@ var reauthSkipReasons = map[string]string{
 	"reauth-wake-tags/wt-foreign-restart/wt-foreign/peer-obs":                  tagsAwake,
 	"reauth-wake-tags/wt-foreign-restart/obs/filter":                           tagsAwake,
 	"reauth-wake-tags/wt-more-restart/wt-more/expiry":                          tagsAwake,
+	"reauth-wake-tags/wt-more-restart/wt-more/expiry-switch":                   tagsAwake,
 	"reauth-wake-tags/wt-more-restart/wt-more/peer-obs":                        tagsAwake,
 	"reauth-wake-tags/wt-owned-nokey-relogin/wt-owned-nokey/owner":             tagsAwake,
 	"reauth-wake-tags/wt-owned-nokey-relogin/obs/filter":                       tagsAwake,
@@ -68,12 +100,19 @@ var reauthSkipReasons = map[string]string{
 	"reauth-wake-tags/wt-foreign-tsnet-restart/wt-foreign-tsnet/peer-obs":      tagsAwake,
 	"reauth-wake-tags/wt-foreign-tsnet-restart/obs/filter":                     tagsAwake,
 	"reauth-wake-tags/wt-more-tsnet-restart/wt-more-tsnet/expiry":              tagsAwake,
+	"reauth-wake-tags/wt-more-tsnet-restart/wt-more-tsnet/expiry-switch":       tagsAwake,
 	"reauth-wake-tags/wt-more-tsnet-restart/wt-more-tsnet/peer-obs":            tagsAwake,
 }
 
 const (
+	ownerOverride = "OWNER_OVERRIDE: SaaS lets the tailnet Owner take back any tagged device; headscale has no " +
+		"Owner role, so only the user of the key the device joined with takes it back"
 	refusalText = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
-	tagsAwake   = "TAGS_AWAKE: SaaS takes the tags a node asks for under its own node key, with any key or none " +
+	loginTagged = "LOGIN_TAGGED: a node tagged at an interactive join records no user, so any login takes it " +
+		"back; SaaS keeps the joining user as the device's user and gives anyone else a second device"
+	expiryTimeKept = "EXPIRY_TIME_KEPT: SaaS drops the expiry time of a tagged device with key expiry off when " +
+		"another login rekeys it; headscale keeps the stored time, which may be one an admin set"
+	tagsAwake = "TAGS_AWAKE: SaaS takes the tags a node asks for under its own node key, with any key or none " +
 		"(reauth-wake-tags), and expires its node key when they are not its to take; headscale applies " +
 		"requested tags only at login"
 )
@@ -99,7 +138,7 @@ var reauthNotCompared = []string{
 // reauthCompatTests are the captures [runReauthCompat] replays.
 var reauthCompatTests = []string{
 	"reauth", "reauth-foreign", "reauth-owner", "identity", "reauth-user", "tag-owner-chain",
-	"reauth-wake", "reauth-wake-tsnet", "reauth-wake-tags", "tag-gone",
+	"reauth-wake", "reauth-wake-tsnet", "reauth-wake-tags", "tag-gone", "tag-claim",
 }
 
 // reauthObservers stay up through a capture: their view of each cell and
@@ -391,6 +430,8 @@ func (run *reauthRun) cellChecks(
 	}
 
 	check("expiry", renderExpiry(want, run.saasPrev), func() string { return renderExpiry(got(), prev.views) })
+	check("expires", renderDeadlines(want), func() string { return renderDeadlines(got()) })
+	check("expiry-switch", renderSwitches(want), func() string { return renderSwitches(got()) })
 	check("ephemeral", renderEphemeral(want), func() string { return renderEphemeral(got()) })
 
 	self := step.Captures[cell]
@@ -582,6 +623,8 @@ type deviceView struct {
 	owner     string
 	expiry    string // "disabled", "past" or "future"
 	expires   string // the raw expiry, to tell a renewal from no change
+	deadline  string // "none" or "set": whether a time is kept, key expiry on or off
+	switchOff bool   // keyExpiryDisabled, apart from any time
 	ephemeral bool
 	nodeKey   string
 	addrs     string
@@ -610,6 +653,12 @@ func saasDeviceView(c *testcapture.Capture, d saasDevice, at time.Time) deviceVi
 	expiry := "disabled"
 
 	exp, err := time.Parse(time.RFC3339, d.Expires)
+
+	deadline := "none"
+	if err == nil && !exp.IsZero() {
+		deadline = "set"
+	}
+
 	if err == nil && !d.KeyExpiryDisabled {
 		expiry = "future"
 		if exp.Before(at) {
@@ -624,6 +673,8 @@ func saasDeviceView(c *testcapture.Capture, d saasDevice, at time.Time) deviceVi
 		owner:     saasOwner(d),
 		expiry:    expiry,
 		expires:   d.Expires,
+		deadline:  deadline,
+		switchOff: d.KeyExpiryDisabled,
 		ephemeral: d.IsEphemeral,
 		nodeKey:   d.NodeKey,
 		addrs:     sortedStrings(d.Addresses),
@@ -648,6 +699,8 @@ func (r *stepReplay) hsViews(alias string) []deviceView {
 			nodeID:    nv.ID().NodeID(),
 			tagged:    nv.IsTagged(),
 			expiry:    "disabled",
+			deadline:  "none",
+			switchOff: nv.KeyExpiryDisabled(),
 			ephemeral: nv.IsEphemeral(),
 			nodeKey:   nv.NodeKey().String(),
 			addrs:     sortedStrings(nv.IPsAsString()),
@@ -658,6 +711,10 @@ func (r *stepReplay) hsViews(alias string) []deviceView {
 			v.owner = "tags " + sortedStrings(nv.Tags().AsSlice())
 		} else {
 			v.owner = "user " + nv.User().Name()
+		}
+
+		if exp, ok := nv.Expiry().GetOk(); ok && !exp.IsZero() {
+			v.deadline = "set"
 		}
 
 		if exp, ok := nv.KeyExpiry(); ok && !exp.IsZero() {
@@ -716,6 +773,24 @@ func renderExpiry(views []deviceView, prev map[string]deviceView) string {
 		}
 
 		return "future, renewed"
+	})
+}
+
+// renderDeadlines gives whether each device keeps an expiry time, which
+// Tailscale reports apart from the key expiry switch.
+func renderDeadlines(views []deviceView) string {
+	return renderEach(views, func(v deviceView) string { return v.deadline })
+}
+
+// renderSwitches gives each device's key expiry switch as sent, whether or
+// not it keeps a time.
+func renderSwitches(views []deviceView) string {
+	return renderEach(views, func(v deviceView) string {
+		if v.switchOff {
+			return "off"
+		}
+
+		return "on"
 	})
 }
 
