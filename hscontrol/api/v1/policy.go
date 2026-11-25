@@ -44,8 +44,9 @@ type (
 		Body PolicyResponseBody
 	}
 
+	// The gateway read a request without a body as an empty one.
 	checkPolicyInput struct {
-		Body PolicyRequestBody
+		Body *PolicyRequestBody `required:"false"`
 	}
 	checkPolicyOutput struct {
 		Body struct{}
@@ -139,6 +140,11 @@ func registerPolicy(api huma.API, b Backend) {
 		Tags:        []string{"Policy"},
 		Security:    bearerAuth,
 	}, func(ctx context.Context, in *checkPolicyInput) (*checkPolicyOutput, error) {
+		// 0.29 passed an empty policy; only a write must refuse one.
+		if in.Body == nil || in.Body.Policy == "" {
+			return &checkPolicyOutput{}, nil
+		}
+
 		err := b.State.ValidatePolicy([]byte(in.Body.Policy))
 		if err != nil {
 			return nil, mapError(err.Error(), err)

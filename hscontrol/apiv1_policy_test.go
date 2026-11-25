@@ -189,13 +189,20 @@ func TestAPIV1PolicyCheck(t *testing.T) {
 		assertStatus(t, res, http.StatusBadRequest)
 	})
 
-	t.Run("empty rejected", func(t *testing.T) {
+	// 0.29 answered an empty check with 200 {} (CheckPolicy in grpcv1.go at
+	// v0.29.7); a write of one stays refused (TestAPIV1PolicySet/empty_rejected).
+	t.Run("empty passes", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 
-		res := h.callHuma(
-			http.MethodPost, "/api/v1/policy/check", []byte(`{"policy":""}`),
-		)
-		assertStatus(t, res, http.StatusBadRequest)
+		// "" is a request with no body at all.
+		for _, body := range []string{`{"policy":""}`, `{}`, `{"policy":null}`, ""} {
+			res := h.callHuma(http.MethodPost, "/api/v1/policy/check", []byte(body))
+			assertStatus(t, res, http.StatusOK)
+			assert.JSONEq(t, `{}`, string(res.body))
+
+			res = h.callHuma(http.MethodPut, "/api/v1/policy", []byte(body))
+			assertStatus(t, res, http.StatusBadRequest)
+		}
 	})
 
 	t.Run("valid returns empty object", func(t *testing.T) {
