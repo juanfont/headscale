@@ -701,6 +701,11 @@ func cmpNodeID(a, b string) int {
 }
 
 func parseNodeID(s string) (types.NodeID, error) {
+	err := refuseLeadingZero(s, "node_id")
+	if err != nil {
+		return 0, err
+	}
+
 	id, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
 		return 0, huma.Error400BadRequest(
