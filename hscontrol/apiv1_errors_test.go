@@ -115,7 +115,8 @@ func TestAPIV1ErrorBody(t *testing.T) {
 			path:       "/api/v1/user",
 			body:       `{`,
 			wantStatus: http.StatusBadRequest,
-			wantBody:   `{"code":3,"message":"validation failed: unexpected end of JSON input (body)","details":[]}`,
+			// encoding/json/v2's words: it decides what is JSON (bodyMiddleware).
+			wantBody: `{"code":3,"message":"jsontext: unexpected EOF after offset 1","details":[]}`,
 		},
 	}
 
