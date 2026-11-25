@@ -32,7 +32,6 @@ func TestSkipsInitConfig(t *testing.T) {
 		{"check", []string{"check"}, true},
 		{"help check policy", []string{"help", "check", "policy"}, true},
 		{"generate config", []string{"generate", "config"}, true},
-		{"generate config running", []string{"generate", "config", "--running"}, true},
 		{"generate config with config flag", []string{"-c", "x.yaml", "generate", "config"}, true},
 		{"gen config", []string{"gen", "config"}, true},
 		{"help generate config", []string{"help", "generate", "config"}, true},

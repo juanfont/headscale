@@ -20,10 +20,9 @@ import (
 var (
 	cfgFile string = ""
 
-	// loaded is what initConfig loaded, or generate config --running, which
-	// skips initConfig and loads it itself; nil for the other commands that
-	// skip initConfig: check, generate config, generate nixos-options,
-	// version, mockoidc and completion.
+	// loaded is what initConfig loaded; nil for the commands that skip it:
+	// check, generate config, generate nixos-options, version, mockoidc and
+	// completion.
 	loaded *config.Loaded
 )
 
