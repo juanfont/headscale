@@ -315,6 +315,140 @@ func TestAPIV1NodeExpire(t *testing.T) {
 		assertStatus(t, res, http.StatusBadRequest)
 	})
 
+	// The query forms and what 0.29 stored for each, from the pinned
+	// gateway's parser (runtime/query.go at grpc-gateway v2.29.0) and
+	// ExpireNode in hscontrol/grpcv1.go at v0.29.7. Every node starts with an
+	// expiry in 2099; a refused request must leave it there. Only the bare
+	// call expires the node now, as in 0.29.
+	t.Run("query and body forms", func(t *testing.T) {
+		start := time.Date(2099, 6, 15, 0, 0, 0, 0, time.UTC)
+		at := func(s string) *time.Time {
+			v, err := time.Parse(time.RFC3339Nano, s)
+			require.NoError(t, err)
+
+			return &v
+		}
+
+		const (
+			keep    = "keep"    // refused: the 2099 expiry stays
+			off     = "off"     // key expiry off, the time kept
+			set     = "set"     // expiry stored as want
+			expired = "expired" // expired now
+		)
+
+		tests := []struct {
+			name   string
+			query  string
+			body   string
+			status int
+			want   string
+			at     *time.Time
+		}{
+			// The reviewer's thirteen, against the tagged parser.
+			{name: "disableExpiry=true", query: "disableExpiry=true", status: http.StatusOK, want: off},
+			{name: "disable_expiry=true", query: "disable_expiry=true", status: http.StatusOK, want: off},
+			{name: "disableExpiry empty", query: "disableExpiry=", status: http.StatusBadRequest, want: keep},
+			{name: "disableExpiry twice", query: "disableExpiry=true&disableExpiry=false", status: http.StatusBadRequest, want: keep},
+			{name: "expiry empty", query: "expiry=", status: http.StatusBadRequest, want: keep},
+			{name: "expiry date only", query: "expiry=2030-01-02", status: http.StatusBadRequest, want: keep},
+			{name: "expiry", query: "expiry=2030-01-02T00:00:00Z", status: http.StatusOK, want: set, at: at("2030-01-02T00:00:00Z")},
+			{name: "expiry year 1", query: "expiry=0001-01-01T00:00:00Z", status: http.StatusOK, want: set, at: at("0001-01-01T00:00:00Z")},
+			{name: "expiry.seconds", query: "expiry.seconds=1893456000", status: http.StatusOK, want: set, at: at("2030-01-01T00:00:00Z")},
+			{name: "expiry twice", query: "expiry=2030-01-02T00:00:00Z&expiry=2040-01-02T00:00:00Z", status: http.StatusBadRequest, want: keep},
+			{name: "expiry year 0", query: "expiry=0000-01-01T00:00:00Z", status: http.StatusBadRequest, want: keep},
+			{name: "expiry offset and nanos", query: "expiry=2030-01-02T03:04:05.123456789%2B01:30", status: http.StatusOK, want: set, at: at("2030-01-02T01:34:05.123456789Z")},
+			{name: "semicolon", query: "expiry=invalid;other=x", status: http.StatusBadRequest, want: keep},
+
+			// 0.29 ignored a parameter it did not know and expired the node:
+			// the caller asked for something, so it is refused.
+			{name: "unknown parameter", query: "unrelated=1", status: http.StatusBadRequest, want: keep},
+			{name: "unknown spelling", query: "DisableExpiry=true", status: http.StatusBadRequest, want: keep},
+			{name: "unknown subfield", query: "expiry.foo=1", status: http.StatusBadRequest, want: keep},
+			// The path's field in the query was filtered out, by either name.
+			{name: "path field by proto name", query: "node_id=2&disableExpiry=true", status: http.StatusOK, want: off},
+			{name: "path field by JSON name", query: "nodeId=2&disableExpiry=true", status: http.StatusOK, want: off},
+			{name: "path field by JSON name, dotted", query: "nodeId.x=2&disableExpiry=true", status: http.StatusBadRequest, want: keep},
+			{name: "path field by JSON name, bracketed", query: "nodeId[x]=2&disableExpiry=true", status: http.StatusOK, want: off},
+			// Without its closing bracket the key is one unknown name.
+			{name: "unclosed bracket after nodeId", query: "nodeId[old=2&expiry=2031-01-01T00:00:00Z", status: http.StatusBadRequest, want: keep},
+			{name: "bracket form", query: "disableExpiry[true]=", status: http.StatusBadRequest, want: keep},
+			{name: "both names agree", query: "disableExpiry=true&disable_expiry=1", status: http.StatusOK, want: off},
+			{name: "both names differ", query: "disableExpiry=true&disable_expiry=false", status: http.StatusBadRequest, want: keep},
+			{name: "expiry whole and by fields", query: "expiry=2030-01-02T00:00:00Z&expiry.seconds=1", status: http.StatusBadRequest, want: keep},
+			{name: "expiry and disableExpiry", query: "expiry=2030-01-02T00:00:00Z&disableExpiry=true", status: http.StatusBadRequest, want: keep},
+			{name: "disableExpiry=false", query: "disableExpiry=false", status: http.StatusOK, want: expired},
+			{name: "bare call", status: http.StatusOK, want: expired},
+
+			// The body the CLI sends, and the body against the query.
+			{name: "body expiry", body: `{"expiry":"2030-01-02T00:00:00Z"}`, status: http.StatusOK, want: set, at: at("2030-01-02T00:00:00Z")},
+			{name: "body disableExpiry", body: `{"disableExpiry":true}`, status: http.StatusOK, want: off},
+			{name: "body proto name", body: `{"disable_expiry":true}`, status: http.StatusUnprocessableEntity, want: keep},
+			{name: "same expiry in both", query: "expiry=2030-01-02T00:00:00Z", body: `{"expiry":"2030-01-02T00:00:00Z"}`, status: http.StatusOK, want: set, at: at("2030-01-02T00:00:00Z")},
+			{name: "different expiry in both", query: "expiry=2030-01-02T00:00:00Z", body: `{"expiry":"2040-01-02T00:00:00Z"}`, status: http.StatusBadRequest, want: keep},
+			{name: "query expiry and body disableExpiry", query: "expiry=2030-01-02T00:00:00Z", body: `{"disableExpiry":true}`, status: http.StatusBadRequest, want: keep},
+			{name: "query false and body true", query: "disableExpiry=false", body: `{"disableExpiry":true}`, status: http.StatusBadRequest, want: keep},
+			{name: "query true and body false", query: "disableExpiry=true", body: `{"disableExpiry":false}`, status: http.StatusBadRequest, want: keep},
+			{name: "query true and body true", query: "disableExpiry=true", body: `{"disableExpiry":true}`, status: http.StatusOK, want: off},
+			{name: "query true and body null", query: "disableExpiry=true", body: `{"disableExpiry":null}`, status: http.StatusOK, want: off},
+			{name: "query true and body empty", query: "disableExpiry=true", body: `{}`, status: http.StatusOK, want: off},
+			{name: "body false alone", body: `{"disableExpiry":false}`, status: http.StatusOK, want: expired},
+			{name: "query expiry and body null expiry", query: "expiry=2030-01-02T00:00:00Z", body: `{"expiry":null}`, status: http.StatusOK, want: set, at: at("2030-01-02T00:00:00Z")},
+			{name: "query expiry and body zero expiry", query: "expiry=2030-01-02T00:00:00Z", body: `{"expiry":"0001-01-01T00:00:00Z"}`, status: http.StatusBadRequest, want: keep},
+			{name: "query zero expiry and body expiry", query: "expiry=0001-01-01T00:00:00Z", body: `{"expiry":"2030-01-02T00:00:00Z"}`, status: http.StatusBadRequest, want: keep},
+			{name: "body zero expiry", body: `{"expiry":"0001-01-01T00:00:00Z"}`, status: http.StatusOK, want: set, at: at("0001-01-01T00:00:00Z")},
+		}
+
+		// One server; each row starts from the same stored node.
+		h := newFastAPIV1Harness(t)
+		seedNodes(newNodeSeed("alice", "node-a"))(t, h.app)
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, _, err := h.app.state.SetNodeKeyExpiryDisabled(1, false)
+				require.NoError(t, err)
+
+				_, _, err = h.app.state.SetNodeExpiry(1, &start)
+				require.NoError(t, err)
+
+				var body []byte
+				if tt.body != "" {
+					body = []byte(tt.body)
+				}
+
+				path := "/api/v1/node/1/expire"
+				if tt.query != "" {
+					path += "?" + tt.query
+				}
+
+				res := h.callHuma(http.MethodPost, path, body)
+				assert.Equal(t, tt.status, res.status, "body: %s", res.body)
+
+				node, ok := h.app.state.GetNodeByID(1)
+				require.True(t, ok)
+
+				switch tt.want {
+				case keep:
+					require.True(t, node.Expiry().Valid())
+					assert.True(t, start.Equal(node.Expiry().Get()), "stored %v", node.Expiry().Get())
+				case off:
+					// Key expiry off keeps the stored time (#3735); v1 shows none.
+					assert.True(t, node.KeyExpiryDisabled(), "key expiry off")
+					require.True(t, node.Expiry().Valid())
+					assert.True(t, start.Equal(node.Expiry().Get()), "stored %v", node.Expiry().Get())
+				case set:
+					require.True(t, node.Expiry().Valid())
+					assert.True(t, tt.at.Equal(node.Expiry().Get()), "stored %v", node.Expiry().Get())
+				case expired:
+					assert.True(t, node.IsExpired())
+
+					return
+				}
+
+				assert.False(t, node.IsExpired(), "the node must not be logged out")
+			})
+		}
+	})
+
 	t.Run("not found parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 		res := h.assertParity(t, http.MethodPost, "/api/v1/node/99999/expire", nil)

@@ -10,12 +10,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/pprof"
 	"strings"
 	"testing"
 	"time"
 	"unicode"
 
 	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,6 +55,90 @@ func newHumaTestHandler(app *Headscale) http.Handler {
 	})
 
 	return apiv1.WithLocalTrust(mux)
+}
+
+// newFastAPIV1Harness is newAPIV1Harness whose NodeStore flushes each write
+// at once: a lone write otherwise waits out the 500ms batch timeout, which
+// tables of stored-state rows pay many times over. Its state is closed when
+// the test ends, after the batcher; left open, its 1ms ticker would spin for
+// the rest of the package.
+func newFastAPIV1Harness(t *testing.T) *apiV1Harness {
+	t.Helper()
+
+	app := createTestApp(t, func(cfg *types.Config) {
+		cfg.Tuning.NodeStoreBatchTimeout = time.Millisecond
+	})
+
+	t.Cleanup(func() {
+		app.mapBatcher.Close()
+		// createTestApp's own cleanup skips a batcher already closed.
+		app.mapBatcher = nil
+
+		assert.NoError(t, app.state.Close())
+	})
+
+	return &apiV1Harness{app: app, huma: newHumaTestHandler(app)}
+}
+
+// nodeStoreWriters returns the IDs of the goroutines running a NodeStore
+// write loop, from a full goroutine dump. They are found by their creator,
+// not their frames: a writer not yet scheduled shows only Start's wrapper.
+func nodeStoreWriters() map[string]bool {
+	var buf bytes.Buffer
+
+	_ = pprof.Lookup("goroutine").WriteTo(&buf, 2)
+
+	ids := map[string]bool{}
+
+	for g := range strings.SplitSeq(buf.String(), "\n\n") {
+		if strings.Contains(g, "\ncreated by github.com/juanfont/headscale/hscontrol/state.(*NodeStore).Start in ") {
+			id, _, _ := strings.Cut(strings.TrimPrefix(g, "goroutine "), " ")
+			ids[id] = true
+		}
+	}
+
+	return ids
+}
+
+// TestAPIV1FastHarnessCloses: nothing of a fast harness runs or answers once
+// its test has ended: the NodeStore writer it started is gone and its
+// database closed. Other tests' writers come and go, so only its own are
+// followed.
+func TestAPIV1FastHarnessCloses(t *testing.T) {
+	before := nodeStoreWriters()
+
+	var (
+		h       *apiV1Harness
+		started []string
+	)
+
+	t.Run("harness", func(t *testing.T) {
+		h = newFastAPIV1Harness(t)
+		h.app.state.CreateUserForTest("alice")
+
+		for id := range nodeStoreWriters() {
+			if !before[id] {
+				started = append(started, id)
+			}
+		}
+
+		require.Len(t, started, 1, "the harness's own writer")
+	})
+
+	// A -run selector that filters out the harness subtest leaves nothing
+	// to check.
+	if h == nil {
+		return
+	}
+
+	// Stop signals the writer; it exits on its own.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		running := nodeStoreWriters()
+		for _, id := range started {
+			assert.False(c, running[id], "the NodeStore writer must stop")
+		}
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Error(t, h.app.state.PingDB(t.Context()), "the database must be closed")
 }
 
 // httpResult is one HTTP exchange captured for comparison.
