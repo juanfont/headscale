@@ -132,49 +132,6 @@ type DeletePreAuthKeyOutputBody = map[string]interface{}
 // DeleteUserOutputBody defines model for DeleteUserOutputBody.
 type DeleteUserOutputBody = map[string]interface{}
 
-// ErrorDetail defines model for ErrorDetail.
-type ErrorDetail struct {
-	// Location Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
-	Location *string `json:"location,omitempty"`
-
-	// Message Error message text
-	Message *string `json:"message,omitempty"`
-
-	// Value The value at the given location
-	Value interface{} `json:"value,omitempty"`
-}
-
-// ErrorModel defines model for ErrorModel.
-type ErrorModel struct {
-	// Detail A human-readable explanation specific to this occurrence of the problem.
-	//
-	// Example: Property foo is required but is missing.
-	Detail *string `json:"detail,omitempty"`
-
-	// Errors Optional list of individual error details
-	Errors *[]ErrorDetail `json:"errors,omitempty"`
-
-	// Instance A URI reference that identifies the specific occurrence of the problem.
-	//
-	// Example: https://example.com/error-log/abc123
-	Instance *string `json:"instance,omitempty"`
-
-	// Status HTTP status code
-	//
-	// Example: 400
-	Status *int64 `json:"status,omitempty"`
-
-	// Title A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
-	//
-	// Example: Bad Request
-	Title *string `json:"title,omitempty"`
-
-	// Type A URI reference to human-readable documentation for the error.
-	//
-	// Example: https://example.com/errors/example
-	Type *string `json:"type,omitempty"`
-}
-
 // ExpireApiKeyOutputBody defines model for ExpireApiKeyOutputBody.
 type ExpireApiKeyOutputBody = map[string]interface{}
 
@@ -274,8 +231,8 @@ type PolicyRequestBody struct {
 
 // PolicyResponseBody defines model for PolicyResponseBody.
 type PolicyResponseBody struct {
-	Policy    string    `json:"policy"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Policy    string     `json:"policy"`
+	UpdatedAt *time.Time `json:"updatedAt"`
 }
 
 // PreAuthKey defines model for PreAuthKey.
@@ -304,6 +261,16 @@ type SetApprovedRoutesRequestBody struct {
 // SetTagsRequestBody defines model for SetTagsRequestBody.
 type SetTagsRequestBody struct {
 	Tags *[]string `json:"tags,omitempty"`
+}
+
+// Status defines model for Status.
+type Status struct {
+	// Code gRPC status code
+	Code int32 `json:"code"`
+
+	// Details Always empty; kept for the 0.29 shape.
+	Details []interface{} `json:"details"`
+	Message string        `json:"message"`
 }
 
 // User defines model for User.
@@ -342,6 +309,14 @@ type BackfillNodeIPsParams struct {
 type RegisterNodeParams struct {
 	User *string `form:"user,omitempty" json:"user,omitempty"`
 	Key  *string `form:"key,omitempty" json:"key,omitempty"`
+}
+
+// ExpireNodeParams defines parameters for ExpireNode.
+type ExpireNodeParams struct {
+	Expiry *time.Time `form:"expiry,omitempty" json:"expiry,omitempty"`
+
+	// DisableExpiry When true, sets expiry to null (node will never expire).
+	DisableExpiry *bool `form:"disableExpiry,omitempty" json:"disableExpiry,omitempty"`
 }
 
 // DeletePreAuthKeyParams defines parameters for DeletePreAuthKey.
@@ -617,14 +592,14 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
-	ExpireNodeWithBody(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ExpireNodeWithBody(ctx context.Context, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExpireNode Expire node
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
-	ExpireNode(ctx context.Context, nodeId string, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ExpireNode(ctx context.Context, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RenameNode Rename node
 	//
@@ -1115,8 +1090,8 @@ func (c *Client) SetApprovedRoutes(ctx context.Context, nodeId string, body SetA
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
-func (c *Client) ExpireNodeWithBody(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewExpireNodeRequestWithBody(c.Server, nodeId, contentType, body)
+func (c *Client) ExpireNodeWithBody(ctx context.Context, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExpireNodeRequestWithBody(c.Server, nodeId, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1132,8 +1107,8 @@ func (c *Client) ExpireNodeWithBody(ctx context.Context, nodeId string, contentT
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
-func (c *Client) ExpireNode(ctx context.Context, nodeId string, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewExpireNodeRequest(c.Server, nodeId, body)
+func (c *Client) ExpireNode(ctx context.Context, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExpireNodeRequest(c.Server, nodeId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2102,18 +2077,18 @@ func NewSetApprovedRoutesRequestWithBody(server string, nodeId string, contentTy
 }
 
 // NewExpireNodeRequest calls the generic ExpireNode builder with application/json body
-func NewExpireNodeRequest(server string, nodeId string, body ExpireNodeJSONRequestBody) (*http.Request, error) {
+func NewExpireNodeRequest(server string, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewExpireNodeRequestWithBody(server, nodeId, "application/json", bodyReader)
+	return NewExpireNodeRequestWithBody(server, nodeId, params, "application/json", bodyReader)
 }
 
 // NewExpireNodeRequestWithBody constructs an http.Request for the ExpireNode method, with any body, and a specified content type
-func NewExpireNodeRequestWithBody(server string, nodeId string, contentType string, body io.Reader) (*http.Request, error) {
+func NewExpireNodeRequestWithBody(server string, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2136,6 +2111,45 @@ func NewExpireNodeRequestWithBody(server string, nodeId string, contentType stri
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Expiry != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "expiry", *params.Expiry, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.DisableExpiry != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "disableExpiry", *params.DisableExpiry, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
@@ -2902,14 +2916,14 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
-	ExpireNodeWithBodyWithResponse(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error)
+	ExpireNodeWithBodyWithResponse(ctx context.Context, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error)
 
 	// ExpireNodeWithResponse Expire node
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
-	ExpireNodeWithResponse(ctx context.Context, nodeId string, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error)
+	ExpireNodeWithResponse(ctx context.Context, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error)
 
 	// RenameNodeWithResponse Rename node
 	//
@@ -3054,8 +3068,8 @@ type ListApiKeysResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *ListApiKeysOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3063,9 +3077,9 @@ func (r ListApiKeysResponse) GetJSON200() *ListApiKeysOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r ListApiKeysResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListApiKeysResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3102,8 +3116,8 @@ type CreateApiKeyResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *CreateApiKeyOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3111,9 +3125,9 @@ func (r CreateApiKeyResponse) GetJSON200() *CreateApiKeyOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r CreateApiKeyResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateApiKeyResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3150,8 +3164,8 @@ type ExpireApiKeyResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *ExpireApiKeyOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3159,9 +3173,9 @@ func (r ExpireApiKeyResponse) GetJSON200() *ExpireApiKeyOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r ExpireApiKeyResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ExpireApiKeyResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3198,8 +3212,8 @@ type DeleteApiKeyResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *DeleteApiKeyOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3207,9 +3221,9 @@ func (r DeleteApiKeyResponse) GetJSON200() *DeleteApiKeyOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r DeleteApiKeyResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteApiKeyResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3246,8 +3260,8 @@ type AuthApproveResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *AuthApproveOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3255,9 +3269,9 @@ func (r AuthApproveResponse) GetJSON200() *AuthApproveOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r AuthApproveResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r AuthApproveResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3294,8 +3308,8 @@ type AuthRegisterResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *AuthRegisterOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3303,9 +3317,9 @@ func (r AuthRegisterResponse) GetJSON200() *AuthRegisterOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r AuthRegisterResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r AuthRegisterResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3342,8 +3356,8 @@ type AuthRejectResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *AuthRejectOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3351,9 +3365,9 @@ func (r AuthRejectResponse) GetJSON200() *AuthRejectOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r AuthRejectResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r AuthRejectResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3390,8 +3404,8 @@ type DebugCreateNodeResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NodeOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3399,9 +3413,9 @@ func (r DebugCreateNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r DebugCreateNodeResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DebugCreateNodeResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3438,8 +3452,8 @@ type HealthResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *HealthResponseBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3447,9 +3461,9 @@ func (r HealthResponse) GetJSON200() *HealthResponseBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r HealthResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r HealthResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3486,8 +3500,8 @@ type ListNodesResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *ListNodesOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3495,9 +3509,9 @@ func (r ListNodesResponse) GetJSON200() *ListNodesOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r ListNodesResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListNodesResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3534,8 +3548,8 @@ type BackfillNodeIPsResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *BackfillNodeIPsOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3543,9 +3557,9 @@ func (r BackfillNodeIPsResponse) GetJSON200() *BackfillNodeIPsOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r BackfillNodeIPsResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r BackfillNodeIPsResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3582,8 +3596,8 @@ type RegisterNodeResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NodeOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3591,9 +3605,9 @@ func (r RegisterNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r RegisterNodeResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RegisterNodeResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3630,8 +3644,8 @@ type DeleteNodeResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *DeleteNodeOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3639,9 +3653,9 @@ func (r DeleteNodeResponse) GetJSON200() *DeleteNodeOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r DeleteNodeResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteNodeResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3678,8 +3692,8 @@ type GetNodeResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NodeOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3687,9 +3701,9 @@ func (r GetNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r GetNodeResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetNodeResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3726,8 +3740,8 @@ type SetApprovedRoutesResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NodeOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3735,9 +3749,9 @@ func (r SetApprovedRoutesResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r SetApprovedRoutesResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SetApprovedRoutesResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3774,8 +3788,8 @@ type ExpireNodeResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NodeOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3783,9 +3797,9 @@ func (r ExpireNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r ExpireNodeResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ExpireNodeResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3822,8 +3836,8 @@ type RenameNodeResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NodeOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3831,9 +3845,9 @@ func (r RenameNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r RenameNodeResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RenameNodeResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3870,8 +3884,8 @@ type SetTagsResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NodeOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3879,9 +3893,9 @@ func (r SetTagsResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r SetTagsResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SetTagsResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3918,8 +3932,8 @@ type GetPolicyResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *PolicyResponseBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3927,9 +3941,9 @@ func (r GetPolicyResponse) GetJSON200() *PolicyResponseBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r GetPolicyResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetPolicyResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -3966,8 +3980,8 @@ type SetPolicyResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *PolicyResponseBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -3975,9 +3989,9 @@ func (r SetPolicyResponse) GetJSON200() *PolicyResponseBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r SetPolicyResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SetPolicyResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4014,8 +4028,8 @@ type CheckPolicyResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *CheckPolicyOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4023,9 +4037,9 @@ func (r CheckPolicyResponse) GetJSON200() *CheckPolicyOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r CheckPolicyResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CheckPolicyResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4062,8 +4076,8 @@ type DeletePreAuthKeyResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *DeletePreAuthKeyOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4071,9 +4085,9 @@ func (r DeletePreAuthKeyResponse) GetJSON200() *DeletePreAuthKeyOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r DeletePreAuthKeyResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeletePreAuthKeyResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4110,8 +4124,8 @@ type ListPreAuthKeysResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *ListPreAuthKeysOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4119,9 +4133,9 @@ func (r ListPreAuthKeysResponse) GetJSON200() *ListPreAuthKeysOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r ListPreAuthKeysResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListPreAuthKeysResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4158,8 +4172,8 @@ type CreatePreAuthKeyResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *PreAuthKeyOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4167,9 +4181,9 @@ func (r CreatePreAuthKeyResponse) GetJSON200() *PreAuthKeyOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r CreatePreAuthKeyResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreatePreAuthKeyResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4206,8 +4220,8 @@ type ExpirePreAuthKeyResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *ExpirePreAuthKeyOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4215,9 +4229,9 @@ func (r ExpirePreAuthKeyResponse) GetJSON200() *ExpirePreAuthKeyOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r ExpirePreAuthKeyResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ExpirePreAuthKeyResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4254,8 +4268,8 @@ type ListUsersResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *ListUsersOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4263,9 +4277,9 @@ func (r ListUsersResponse) GetJSON200() *ListUsersOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r ListUsersResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListUsersResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4302,10 +4316,10 @@ type CreateUserResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *UserOutputBody
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *ErrorModel
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Status
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4313,14 +4327,14 @@ func (r CreateUserResponse) GetJSON200() *UserOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r CreateUserResponse) GetApplicationproblemJSON409() *ErrorModel {
-	return r.ApplicationproblemJSON409
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateUserResponse) GetJSON409() *Status {
+	return r.JSON409
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r CreateUserResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateUserResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4357,8 +4371,8 @@ type DeleteUserResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *DeleteUserOutputBody
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4366,9 +4380,9 @@ func (r DeleteUserResponse) GetJSON200() *DeleteUserOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r DeleteUserResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteUserResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4405,10 +4419,10 @@ type RenameUserResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *UserOutputBody
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *ErrorModel
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *ErrorModel
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Status
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Status
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4416,14 +4430,14 @@ func (r RenameUserResponse) GetJSON200() *UserOutputBody {
 	return r.JSON200
 }
 
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r RenameUserResponse) GetApplicationproblemJSON409() *ErrorModel {
-	return r.ApplicationproblemJSON409
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RenameUserResponse) GetJSON409() *Status {
+	return r.JSON409
 }
 
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r RenameUserResponse) GetApplicationproblemJSONDefault() *ErrorModel {
-	return r.ApplicationproblemJSONDefault
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RenameUserResponse) GetJSONDefault() *Status {
+	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -4748,8 +4762,8 @@ func (c *ClientWithResponses) SetApprovedRoutesWithResponse(ctx context.Context,
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
-func (c *ClientWithResponses) ExpireNodeWithBodyWithResponse(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error) {
-	rsp, err := c.ExpireNodeWithBody(ctx, nodeId, contentType, body, reqEditors...)
+func (c *ClientWithResponses) ExpireNodeWithBodyWithResponse(ctx context.Context, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error) {
+	rsp, err := c.ExpireNodeWithBody(ctx, nodeId, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -4761,8 +4775,8 @@ func (c *ClientWithResponses) ExpireNodeWithBodyWithResponse(ctx context.Context
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
-func (c *ClientWithResponses) ExpireNodeWithResponse(ctx context.Context, nodeId string, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error) {
-	rsp, err := c.ExpireNode(ctx, nodeId, body, reqEditors...)
+func (c *ClientWithResponses) ExpireNodeWithResponse(ctx context.Context, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error) {
+	rsp, err := c.ExpireNode(ctx, nodeId, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -5042,11 +5056,11 @@ func ParseListApiKeysResponse(rsp *http.Response) (*ListApiKeysResponse, error) 
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5075,11 +5089,11 @@ func ParseCreateApiKeyResponse(rsp *http.Response) (*CreateApiKeyResponse, error
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5108,11 +5122,11 @@ func ParseExpireApiKeyResponse(rsp *http.Response) (*ExpireApiKeyResponse, error
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5141,11 +5155,11 @@ func ParseDeleteApiKeyResponse(rsp *http.Response) (*DeleteApiKeyResponse, error
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5174,11 +5188,11 @@ func ParseAuthApproveResponse(rsp *http.Response) (*AuthApproveResponse, error) 
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5207,11 +5221,11 @@ func ParseAuthRegisterResponse(rsp *http.Response) (*AuthRegisterResponse, error
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5240,11 +5254,11 @@ func ParseAuthRejectResponse(rsp *http.Response) (*AuthRejectResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5273,11 +5287,11 @@ func ParseDebugCreateNodeResponse(rsp *http.Response) (*DebugCreateNodeResponse,
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5306,11 +5320,11 @@ func ParseHealthResponse(rsp *http.Response) (*HealthResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5339,11 +5353,11 @@ func ParseListNodesResponse(rsp *http.Response) (*ListNodesResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5372,11 +5386,11 @@ func ParseBackfillNodeIPsResponse(rsp *http.Response) (*BackfillNodeIPsResponse,
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5405,11 +5419,11 @@ func ParseRegisterNodeResponse(rsp *http.Response) (*RegisterNodeResponse, error
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5438,11 +5452,11 @@ func ParseDeleteNodeResponse(rsp *http.Response) (*DeleteNodeResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5471,11 +5485,11 @@ func ParseGetNodeResponse(rsp *http.Response) (*GetNodeResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5504,11 +5518,11 @@ func ParseSetApprovedRoutesResponse(rsp *http.Response) (*SetApprovedRoutesRespo
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5537,11 +5551,11 @@ func ParseExpireNodeResponse(rsp *http.Response) (*ExpireNodeResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5570,11 +5584,11 @@ func ParseRenameNodeResponse(rsp *http.Response) (*RenameNodeResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5603,11 +5617,11 @@ func ParseSetTagsResponse(rsp *http.Response) (*SetTagsResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5636,11 +5650,11 @@ func ParseGetPolicyResponse(rsp *http.Response) (*GetPolicyResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5669,11 +5683,11 @@ func ParseSetPolicyResponse(rsp *http.Response) (*SetPolicyResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5702,11 +5716,11 @@ func ParseCheckPolicyResponse(rsp *http.Response) (*CheckPolicyResponse, error) 
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5735,11 +5749,11 @@ func ParseDeletePreAuthKeyResponse(rsp *http.Response) (*DeletePreAuthKeyRespons
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5768,11 +5782,11 @@ func ParseListPreAuthKeysResponse(rsp *http.Response) (*ListPreAuthKeysResponse,
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5801,11 +5815,11 @@ func ParseCreatePreAuthKeyResponse(rsp *http.Response) (*CreatePreAuthKeyRespons
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5834,11 +5848,11 @@ func ParseExpirePreAuthKeyResponse(rsp *http.Response) (*ExpirePreAuthKeyRespons
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5867,11 +5881,11 @@ func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5900,18 +5914,18 @@ func ParseCreateUserResponse(rsp *http.Response) (*CreateUserResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSON409 = &dest
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5940,11 +5954,11 @@ func ParseDeleteUserResponse(rsp *http.Response) (*DeleteUserResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 
@@ -5973,18 +5987,18 @@ func ParseRenameUserResponse(rsp *http.Response) (*RenameUserResponse, error) {
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSON409 = &dest
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorModel
+		var dest Status
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSONDefault = &dest
+		response.JSONDefault = &dest
 
 	}
 

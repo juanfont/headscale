@@ -86,7 +86,7 @@ var registerNodeCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		node := resp.JSON200.Node
@@ -117,7 +117,7 @@ var listNodesCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		nodes := resp.JSON200.Nodes
@@ -146,7 +146,7 @@ var listNodeRoutesCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		nodes := resp.JSON200.Nodes
@@ -188,7 +188,7 @@ Use --disable to disable key expiry (node will never expire).`,
 		if disableExpiry {
 			disable := true
 
-			resp, err := client.ExpireNodeWithResponse(ctx, nodeID, clientv1.ExpireNodeJSONRequestBody{
+			resp, err := client.ExpireNodeWithResponse(ctx, nodeID, nil, clientv1.ExpireNodeJSONRequestBody{
 				DisableExpiry: &disable,
 			})
 			if err != nil {
@@ -196,7 +196,7 @@ Use --disable to disable key expiry (node will never expire).`,
 			}
 
 			if resp.StatusCode() != http.StatusOK {
-				return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+				return apiError(resp.StatusCode(), resp.JSONDefault)
 			}
 
 			return printOutput(cmd, resp.JSON200.Node, "Node expiry disabled")
@@ -217,7 +217,7 @@ Use --disable to disable key expiry (node will never expire).`,
 			}
 		}
 
-		resp, err := client.ExpireNodeWithResponse(ctx, nodeID, clientv1.ExpireNodeJSONRequestBody{
+		resp, err := client.ExpireNodeWithResponse(ctx, nodeID, nil, clientv1.ExpireNodeJSONRequestBody{
 			Expiry: &expiryTime,
 		})
 		if err != nil {
@@ -225,7 +225,7 @@ Use --disable to disable key expiry (node will never expire).`,
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		node := resp.JSON200.Node
@@ -255,7 +255,7 @@ var renameNodeCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200.Node, "Node renamed")
@@ -316,7 +316,7 @@ var deleteNodeCmd = &cobra.Command{
 		}
 
 		if getResponse.StatusCode() != http.StatusOK {
-			return apiError(getResponse.StatusCode(), getResponse.ApplicationproblemJSONDefault)
+			return apiError(getResponse.StatusCode(), getResponse.JSONDefault)
 		}
 
 		if !confirmAction(cmd, fmt.Sprintf(
@@ -332,7 +332,7 @@ var deleteNodeCmd = &cobra.Command{
 		}
 
 		if deleteResponse.StatusCode() != http.StatusOK {
-			return apiError(deleteResponse.StatusCode(), deleteResponse.ApplicationproblemJSONDefault)
+			return apiError(deleteResponse.StatusCode(), deleteResponse.JSONDefault)
 		}
 
 		return printOutput(
@@ -374,7 +374,7 @@ be assigned to nodes.`,
 			}
 
 			if resp.StatusCode() != http.StatusOK {
-				return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+				return apiError(resp.StatusCode(), resp.JSONDefault)
 			}
 
 			return printOutput(cmd, resp.JSON200, "Node IPs backfilled successfully")
@@ -523,7 +523,7 @@ var tagCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200.Node, "Node updated")
@@ -545,7 +545,7 @@ var approveRoutesCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200.Node, "Node updated")
