@@ -170,9 +170,10 @@ func runReauthCompat(t *testing.T, id string, viaLogin bool) {
 	}
 
 	for _, step := range c.Steps {
-		// The replay has no OAuth client; ../policy/v2 checks the mints
-		// against TagOwnedByTags, which headscale's mint asks.
-		if slices.ContainsFunc(step.Actions, func(a testcapture.Action) bool { return a.Kind == "token" }) {
+		// The replay mints an OAuth client's keys through State and has no
+		// client to delete; ../policy/v2 checks a client's mints against
+		// TagOwnedByTags, which headscale's mint asks.
+		if slices.ContainsFunc(step.Actions, oauthBeyondReplay) {
 			break
 		}
 
@@ -503,6 +504,15 @@ func loginReplayable(step testcapture.Step, a testcapture.Action, keyTags map[st
 
 	return minted && len(tags) == 0 && step.Result == "observed" &&
 		strings.HasSuffix(registerOutcome(step.Register[a.Node]), "accepted")
+}
+
+// oauthBeyondReplay reports whether a is an admin call on an OAuth client, or
+// a write its token made other than a mint SaaS accepted.
+func oauthBeyondReplay(a testcapture.Action) bool {
+	mint := a.Method == http.MethodPost && a.Path == "/tailnet/-/keys" && a.Status == http.StatusOK
+	tokenWrite := strings.HasPrefix(a.Principal, "token:") && a.Method != http.MethodGet && !mint
+
+	return a.Kind == "api" && (strings.Contains(a.Path, "{client:") || tokenWrite)
 }
 
 // tagRefusal is the text of a login's refused-tags answer: a client shows it as
