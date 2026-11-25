@@ -1,14 +1,26 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol"
+	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
+	"github.com/juanfont/headscale/hscontrol/config"
+	"github.com/juanfont/headscale/hscontrol/state"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -156,4 +168,176 @@ func serveSocket(t *testing.T, h http.Handler) []string {
 		"HEADSCALE_CLI_TIMEOUT=5s",
 		"HEADSCALE_DISABLE_CHECK_UPDATES=true",
 	}
+}
+
+// TestCLIWritesThroughV1 runs the old CLI's writes, as a process, against
+// the real v1 API over its socket: the bytes the generated client sends are
+// the ones a frozen v1 must keep accepting until the CLI goes. Each command
+// is checked by what it stored.
+func TestCLIWritesThroughV1(t *testing.T) {
+	before := nodeStoreWriters()
+
+	var (
+		st      *state.State
+		started []string
+	)
+
+	t.Run("writes", func(t *testing.T) {
+		dir := t.TempDir()
+		v4, v6 := netip.MustParsePrefix("100.64.0.0/10"), netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+
+		cfg := config.Default()
+		cfg.ServerURL = "http://localhost:8080"
+		cfg.Noise.PrivateKeyPath = filepath.Join(dir, "noise.key")
+		cfg.Database.Type = types.DatabaseSqlite
+		cfg.Database.Sqlite.Path = filepath.Join(dir, "db.sqlite")
+		cfg.Prefixes.V4, cfg.Prefixes.V6 = &v4, &v6
+		cfg.Policy.Mode = types.PolicyModeDB
+
+		app, err := hscontrol.NewHeadscale(&cfg)
+		require.NoError(t, err)
+
+		st = app.GetState()
+
+		// Registered first, so it runs last: after the batcher stops.
+		t.Cleanup(func() { assert.NoError(t, st.Close()) })
+		app.StartBatcherForTest(t)
+
+		for id := range nodeStoreWriters() {
+			if !before[id] {
+				started = append(started, id)
+			}
+		}
+
+		mux, _ := apiv1.Handler(apiv1.Backend{State: st, Change: app.Change, Cfg: &cfg})
+
+		sock := filepath.Join(dir, "s.sock")
+		serveConfig(t, sock, apiv1.WithLocalTrust(mux).ServeHTTP)
+		cliConfig := writeFile(t, dir, "cli.yaml", "unix_socket: "+sock+"\n")
+
+		run := func(args ...string) string {
+			t.Helper()
+
+			stdout, stderr, err := runHeadscale(t, []string{"HOME=" + t.TempDir()}, append([]string{"-c", cliConfig}, args...)...)
+			require.NoError(t, err, "%v: %s", args, stderr)
+
+			return stdout
+		}
+
+		run("users", "create", "alice", "--display-name", "Alice", "--email", "alice@example.com")
+
+		users, err := st.ListAllUsers()
+		require.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, "Alice", users[0].DisplayName)
+
+		run("users", "rename", "--identifier", "1", "--new-name", "bob")
+
+		users, err = st.ListAllUsers()
+		require.NoError(t, err)
+		assert.Equal(t, "bob", users[0].Name)
+
+		// The tags-only key: the generated client sends "user": "".
+		run("preauthkeys", "create", "--tags", "tag:x", "--expiration", "24h")
+		run("preauthkeys", "create", "--user", "1", "--reusable", "--expiration", "24h")
+
+		keys, err := st.ListPreAuthKeys()
+		require.NoError(t, err)
+		require.Len(t, keys, 2)
+
+		tagged := slices.IndexFunc(keys, func(k types.PreAuthKey) bool { return len(k.Tags) > 0 })
+		require.NotEqual(t, -1, tagged)
+
+		tagsOnly, owned := keys[tagged], keys[1-tagged]
+		assert.Nil(t, tagsOnly.User, "a tags-only key")
+		assert.Equal(t, []string{"tag:x"}, tagsOnly.Tags)
+		require.NotNil(t, owned.User)
+		assert.Equal(t, "bob", owned.User.Name)
+		assert.True(t, owned.Reusable)
+
+		// Live before, so expiring it is a change.
+		require.NotNil(t, owned.Expiration)
+		assert.True(t, owned.Expiration.After(time.Now()), "live before expire")
+
+		run("preauthkeys", "expire", "--id", strconv.FormatUint(owned.ID, 10))
+		run("preauthkeys", "delete", "--id", strconv.FormatUint(tagsOnly.ID, 10))
+
+		keys, err = st.ListPreAuthKeys()
+		require.NoError(t, err)
+		require.Len(t, keys, 1)
+		assert.Equal(t, owned.ID, keys[0].ID)
+		assert.True(t, keys[0].Expiration.Before(time.Now()), "expired")
+
+		run("apikeys", "create", "--expiration", "24h")
+
+		apiKeys, err := st.ListAPIKeys()
+		require.NoError(t, err)
+		require.Len(t, apiKeys, 1)
+
+		require.NotNil(t, apiKeys[0].Expiration)
+		assert.True(t, apiKeys[0].Expiration.After(time.Now()), "live before expire")
+
+		run("apikeys", "expire", "--prefix", apiKeys[0].Prefix)
+		apiKeys, err = st.ListAPIKeys()
+		require.NoError(t, err)
+		assert.True(t, apiKeys[0].Expiration.Before(time.Now()), "expired")
+
+		run("apikeys", "delete", "--id", strconv.FormatUint(apiKeys[0].ID, 10))
+		apiKeys, err = st.ListAPIKeys()
+		require.NoError(t, err)
+		assert.Empty(t, apiKeys)
+	})
+
+	// A -run selector that filters out the subtest leaves nothing to check.
+	if st == nil {
+		return
+	}
+
+	// Nothing of the server runs or answers once the test has ended: the
+	// writer it started exits once signalled, and the database is closed.
+	require.NotEmpty(t, started)
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		running := nodeStoreWriters()
+		for _, id := range started {
+			assert.False(c, running[id], "the NodeStore writer must stop")
+		}
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Error(t, st.PingDB(t.Context()), "the database must be closed")
+}
+
+// nodeStoreWriters returns the IDs of the goroutines running a NodeStore
+// write loop, from a full goroutine dump. They are found by their creator,
+// not their frames: a writer not yet scheduled shows only Start's wrapper.
+func nodeStoreWriters() map[string]bool {
+	var buf bytes.Buffer
+
+	_ = pprof.Lookup("goroutine").WriteTo(&buf, 2)
+
+	ids := map[string]bool{}
+
+	for g := range strings.SplitSeq(buf.String(), "\n\n") {
+		if strings.Contains(g, "\ncreated by github.com/juanfont/headscale/hscontrol/state.(*NodeStore).Start in ") {
+			id, _, _ := strings.Cut(strings.TrimPrefix(g, "goroutine "), " ")
+			ids[id] = true
+		}
+	}
+
+	return ids
+}
+
+// serveConfig serves handler on a unix socket at sock, as the server's
+// API would.
+func serveConfig(t *testing.T, sock string, handler http.HandlerFunc) {
+	t.Helper()
+
+	var lc net.ListenConfig
+
+	ln, err := lc.Listen(t.Context(), "unix", sock)
+	require.NoError(t, err)
+
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
 }
