@@ -3,6 +3,9 @@ package hscontrol
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -57,6 +60,21 @@ func TestAPIV1PolicyGet(t *testing.T) {
 		assert.JSONEq(t, validPolicy, got.Policy)
 		// updatedAt is emitted even though no omitempty is set.
 		assert.NotEmpty(t, got.UpdatedAt)
+	})
+
+	// 0.29 answered file mode with GetPolicyResponse{Policy} (grpcv1.go at
+	// v0.29.7); the gateway's protojson has EmitUnpopulated, which writes an
+	// unset message field as null. Headplane reads null as "not editable".
+	t.Run("file mode updatedAt is null", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "policy.hujson")
+		require.NoError(t, os.WriteFile(path, []byte(validPolicy), 0o600))
+
+		app := createFilePolicyApp(t)
+		app.cfg.Policy.Path = path
+
+		res := callHandler(newHumaTestHandler(app), http.MethodGet, "/api/v1/policy", nil)
+		require.Equal(t, http.StatusOK, res.status, "body: %s", res.body)
+		assert.JSONEq(t, `{"policy":`+strconv.Quote(validPolicy)+`,"updatedAt":null}`, string(res.body))
 	})
 }
 
