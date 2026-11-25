@@ -916,7 +916,14 @@ func (r *stepReplay) relogin(ctx context.Context, t *testing.T, step testcapture
 	hi := r.hostinfo[a.Node].Clone()
 	hi.Hostname = a.Hostname
 	hi.RoutableIPs = prefixes(t, a.Routes)
-	hi.RequestTags = requestTags(a, hi.RequestTags)
+	// `tailscale up --force-reauth` restates every flag: no tags sent is
+	// none asked for.
+	last := hi.RequestTags
+	if a.Force {
+		last = nil
+	}
+
+	hi.RequestTags = requestTags(a, last)
 	r.hostinfo[a.Node] = hi
 
 	if r.interactive != nil && r.interactive(step, a) {

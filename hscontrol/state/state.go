@@ -3863,6 +3863,7 @@ func (s *State) reregisterNodeWithPAK(
 		// Read before the switch below can hide it.
 		wasExpired := node.IsExpiredAt(now)
 		becameTagged := retag && !node.IsTagged()
+		claimedWithoutExpiry := false
 
 		if retag {
 			node.Tags = tags
@@ -3872,12 +3873,13 @@ func (s *State) reregisterNodeWithPAK(
 			// A user key that speaks for a tagged node, with a new node key,
 			// takes it back as that user's device, as on Tailscale SaaS. A
 			// relogin under the same node key keeps it tagged. As at a login
-			// that untags it, the claimed device is not ephemeral.
+			// that untags it, the claimed device is not ephemeral. Its key
+			// expiry stays as it was, off for a tagged node (tag-claim).
 			node.Tags = nil
 			node.UserID = &pak.User.ID
 			node.User = pak.User
 			node.Ephemeral = false
-			node.KeyExpiryDisabled = false
+			claimedWithoutExpiry = prior.KeyExpiryDisabled
 		}
 
 		// A login that tags the node, or with a tagged key, turns key expiry
@@ -3901,6 +3903,11 @@ func (s *State) reregisterNodeWithPAK(
 		// clear the expiry so the database holds NULL instead of
 		// a pointer to zero time.
 		switch {
+		case claimedWithoutExpiry:
+			// Tailscale leaves a device taken back with key expiry off no
+			// expiry time (tag-claim). A tagged node that stays tagged keeps
+			// a stored time, which an admin may have set.
+			node.Expiry = nil
 		case node.IsTagged() && !becameTagged && !wasExpired:
 			// A tagged node keeps its expiry: a future administrative one has
 			// not taken effect. A valid key renews a past one below.
