@@ -48,7 +48,7 @@ const (
 		"`file:${CREDENTIALS_DIRECTORY}/oidc_client_secret`.\n\n" +
 		"- Environment variables in the path are expanded.\n" +
 		"- Whitespace around the content of the file is trimmed, an empty file is an error.\n" +
-		"- `headscale generate config --running` and `/debug/config` show a literal secret as `<redacted>`.\n\n"
+		"- `/debug/config` shows a literal secret as `<redacted>`.\n\n"
 
 	referenceNixSecret = "On NixOS, load the secret as a systemd credential to keep it out of the Nix store:\n\n" +
 		"```nix\n" +

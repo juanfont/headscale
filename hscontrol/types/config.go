@@ -407,9 +407,8 @@ type DNSChallengeConfig struct {
 	// lowercased on load, at every depth; two that differ only in case
 	// are an error. Any setting may be `file:<path>` to read it from a
 	// file; a non-string one, such as acme-dns `config`, is the JSON in it.
-	// `headscale generate config --running` and `/debug/config`
-	// show `name` and `file:` references; every other setting is
-	// `<redacted>`, as any may be a credential. See
+	// `/debug/config` shows `name` and `file:` references; every other
+	// setting is `<redacted>`, as any may be a credential. See
 	// [DNS-01 challenge provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider)
 	// to set a provider up, acme-dns included, and to set it from
 	// environment variables.
@@ -530,9 +529,8 @@ type PostgresConfig struct {
 	User string `example:"\"headscale\"" koanf:"user"`
 
 	// Pass is the password, or `file:<path>` to read it from a file, read
-	// only when `database.type` is `postgres`. `headscale generate config
-	// --running` and `/debug/config` show a literal password as
-	// `<redacted>` and a `file:` reference as written.
+	// only when `database.type` is `postgres`. `/debug/config` shows a
+	// literal password as `<redacted>` and a `file:` reference as written.
 	Pass Secret `example:"\"file:/run/secrets/postgres_password\"" json:"-" koanf:"pass"`
 
 	// Ssl is the TLS mode: `true` keeps the driver's default `sslmode`,
@@ -723,8 +721,8 @@ type OIDCConfig struct {
 
 	// ClientSecret is the client secret from the provider, or
 	// `file:<path>` to read it from a file; required when `oidc.issuer` is
-	// set. `headscale generate config --running` and `/debug/config` show a
-	// literal secret as `<redacted>` and a `file:` reference as written.
+	// set. `/debug/config` shows a literal secret as `<redacted>` and a
+	// `file:` reference as written.
 	ClientSecret Secret `example:"\"file:/run/secrets/oidc_client_secret\"" json:"-" koanf:"client_secret"`
 
 	// Scope are the scopes requested; include `openid`.
