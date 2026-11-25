@@ -526,7 +526,6 @@ Every option below is under `services.headscale`.
 - The configuration search path now also includes `$XDG_CONFIG_HOME/headscale` and `$XDG_CONFIG_DIRS`, and the files `config.json` and `config.hujson`. [#3674](https://github.com/juanfont/headscale/pull/3674)
 - `HEADSCALE_DEBUG_DUMP_CONFIG` prints the configuration as YAML, with secrets redacted. [#3677](https://github.com/juanfont/headscale/pull/3677)
 - Embedding Headscale is now easier: start from `config.Default()`, set `server_url` and pass it to `hscontrol.NewHeadscale`, which validates it. [#3677](https://github.com/juanfont/headscale/pull/3677) [#3683](https://github.com/juanfont/headscale/pull/3683)
-- Add `GET /api/v1/config`, the running configuration with secrets redacted. [#3680](https://github.com/juanfont/headscale/pull/3680)
 - Add `headscale generate nixos-options`. Each release attaches its output as `headscale-nixos-options.nix`. [#3680](https://github.com/juanfont/headscale/pull/3680)
 - The NixOS unit no longer has `CAP_CHOWN`: its capability set is empty unless `listen_addr` needs `CAP_NET_BIND_SERVICE`. [#3682](https://github.com/juanfont/headscale/pull/3682)
 - `dns.override_local_dns: true` no longer requires `dns.nameservers.global`. Headscale used to refuse to start without one. Clients now keep their own DNS servers until a global nameserver is set. [#3683](https://github.com/juanfont/headscale/pull/3683)
