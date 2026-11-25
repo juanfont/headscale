@@ -9,8 +9,14 @@ package apiv1
 
 import (
 	"context"
+	"fmt"
+	"maps"
 	"net/http"
+	"net/url"
+	"regexp"
+	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -62,6 +68,7 @@ func NewAPI(router chi.Router, backend Backend) huma.API {
 	// Must run before register: Huma snapshots the middleware chain at operation
 	// registration, so a middleware added afterwards would silently never run.
 	api.UseMiddleware(authMiddleware(api, backend))
+	api.UseMiddleware(queryMiddleware(api))
 
 	register(api, backend)
 
@@ -157,4 +164,140 @@ func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Contex
 
 		next(ctx)
 	}
+}
+
+// queryMiddleware refuses the query keys and values 0.29's grpc-gateway
+// refused (runtime/query.go, v2.29.0), which Huma reads as something else or
+// not at all, so a write cannot act on what the caller did not ask for:
+//   - a parameter given twice, where Huma takes the first (query.go:159-161);
+//   - an empty value of a typed parameter, which Huma treats as absent
+//     (query.go:166-170);
+//   - a dotted key into a scalar, name.child (query.go:144-146), and a
+//     bracketed one, name[x], which adds a second value (query.go:50-53);
+//   - a dotted key into a path parameter named by its JSON name where that
+//     differs from the proto name, nodeId.x; node_id.x and nodeId were
+//     filtered out as the path's (query.go:57) and stay ignored;
+//   - a query the gateway's ParseForm could not parse.
+//
+// A date-time parameter is a google.protobuf.Timestamp, a message: its
+// operation reads the dotted fields itself. Keys naming nothing are ignored,
+// as the gateway did. An operation without query parameters had no query
+// parsed at all (the generated headscale.pb.gw.go at v0.29.7 calls
+// PopulateQueryParameters only for those), so its query is left alone.
+func queryMiddleware(api huma.API) func(huma.Context, func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
+		op := ctx.Operation()
+		if !takesQuery(op) {
+			next(ctx)
+
+			return
+		}
+
+		u := ctx.URL()
+
+		// url.Values.Query drops a pair it cannot read, such as one with a
+		// semicolon; the gateway's ParseForm refused the request.
+		query, err := url.ParseQuery(u.RawQuery)
+		if err != nil {
+			_ = huma.WriteErr(api, ctx, http.StatusBadRequest, err.Error())
+
+			return
+		}
+
+		for _, key := range slices.Sorted(maps.Keys(query)) {
+			msg := gatewayQueryError(op, key, query[key])
+			if msg != "" {
+				_ = huma.WriteErr(api, ctx, http.StatusBadRequest, msg)
+
+				return
+			}
+		}
+
+		next(queryContext{ctx, query})
+	}
+}
+
+// queryContext answers Huma's query reads from the values queryMiddleware
+// checked. Huma's own reader takes a bare key, ?name, as "true"; the gateway
+// read it as "", as url.ParseQuery does.
+type queryContext struct {
+	humaContext
+
+	query url.Values
+}
+
+// humaContext names the embedded field, since huma.Context has a Context
+// method.
+type humaContext = huma.Context
+
+func (c queryContext) Query(name string) string { return c.query.Get(name) }
+
+var bracketKey = regexp.MustCompile(`^(.*)\[(.*)\]$`)
+
+// gatewayQueryKey parses a query key by the gateway's grammar
+// (runtime/query.go:50-56): a whole key of the form base[v] adds v as a
+// value before the key's own, and base is a dotted path of field names.
+// Anything else, an unclosed bracket included, is one field name.
+func gatewayQueryKey(key string, values []string) ([]string, []string) {
+	if m := bracketKey.FindStringSubmatch(key); m != nil {
+		key = m[1]
+		values = append([]string{m[2]}, values...)
+	}
+
+	return strings.Split(key, "."), values
+}
+
+// gatewayQueryError is the gateway's refusal of key=values on op, or "".
+func gatewayQueryError(op *huma.Operation, key string, values []string) string {
+	path, values := gatewayQueryKey(key, values)
+
+	for _, p := range op.Parameters {
+		switch {
+		case p.In == "query" && p.Name == path[0]:
+			if p.Schema != nil && p.Schema.Format == "date-time" {
+				return ""
+			}
+
+			if len(path) > 1 {
+				return fmt.Sprintf("invalid path: %q is not a message", p.Name)
+			}
+
+			if len(values) > 1 {
+				return fmt.Sprintf("too many values for field %q: %s", p.Name, strings.Join(values, ", "))
+			}
+
+			plainString := p.Schema != nil && p.Schema.Type == huma.TypeString && p.Schema.Format == ""
+			if values[0] == "" && !plainString {
+				return fmt.Sprintf("parsing field %q: empty value", p.Name)
+			}
+
+			return ""
+		case p.In == "path" && p.Name == path[0] && len(path) > 1 && protoName(p.Name) != p.Name:
+			return fmt.Sprintf("invalid path: %q is not a message", p.Name)
+		}
+	}
+
+	return ""
+}
+
+// protoName is the proto field name protoc derived the JSON name from:
+// nodeId from node_id.
+func protoName(jsonName string) string {
+	var b strings.Builder
+
+	for _, r := range jsonName {
+		if unicode.IsUpper(r) {
+			b.WriteByte('_')
+
+			r = unicode.ToLower(r)
+		}
+
+		b.WriteRune(r)
+	}
+
+	return b.String()
+}
+
+func takesQuery(op *huma.Operation) bool {
+	return slices.ContainsFunc(op.Parameters, func(p *huma.Param) bool { return p.In == "query" })
 }
