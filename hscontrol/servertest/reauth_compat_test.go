@@ -2,7 +2,7 @@
 //
 // Test data source: testdata/steps/{owner-routes,reauth,reauth-foreign,
 // reauth-owner,identity,reauth-user,tag-owner-chain,reauth-wake,
-// reauth-wake-tsnet,reauth-wake-tags}.hujson, loaded by name.
+// reauth-wake-tsnet,reauth-wake-tags,tag-gone}.hujson, loaded by name.
 // owner-routes is checked by runRouteLifecycleCompat in
 // lifecycle_compat_test.go. tag-owner-chain's joins are replayed here; its
 // OAuth mints and the tag owner functions are checked in ../policy/v2. The
@@ -99,7 +99,7 @@ var reauthNotCompared = []string{
 // reauthCompatTests are the captures [runReauthCompat] replays.
 var reauthCompatTests = []string{
 	"reauth", "reauth-foreign", "reauth-owner", "identity", "reauth-user", "tag-owner-chain",
-	"reauth-wake", "reauth-wake-tsnet", "reauth-wake-tags",
+	"reauth-wake", "reauth-wake-tsnet", "reauth-wake-tags", "tag-gone",
 }
 
 // reauthObservers stay up through a capture: their view of each cell and
@@ -515,11 +515,12 @@ func oauthBeyondReplay(a testcapture.Action) bool {
 	return a.Kind == "api" && (strings.Contains(a.Path, "{client:") || tokenWrite)
 }
 
-// tagRefusal is the text of a login's refused-tags answer: a client shows it as
-// it is, so unlike other refusals its words are compared.
+// tagRefusal is the text of a login's answer refusing its tags or its key's:
+// a client shows it as it is, so unlike other refusals its words are
+// compared.
 func tagRefusal(attempts []testcapture.RegisterAttempt) string {
 	for _, a := range attempts {
-		if strings.Contains(a.Err, "requested tags") {
+		if strings.Contains(a.Err, "requested tags") || strings.Contains(a.Err, "non-existent tag") {
 			return a.Err
 		}
 	}

@@ -3563,6 +3563,13 @@ func (s *State) HandleNodeFromPreAuthKey(
 		err = pak.Validate()
 	}
 
+	// As on Tailscale SaaS, a key is refused once one of its tags leaves the
+	// policy; it stays valid, and the nodes that hold the tag keep it. A
+	// wake-up does not use the key.
+	if tag, undefined := s.polMan.UndefinedTag(pak.Tags); err == nil && reauth && undefined {
+		err = types.PAKError("key tagged with non-existent tag: " + tag)
+	}
+
 	// A wake-up writes no tags, so the tags it asks for are not refused.
 	if requestedTagsErrorTakesPrecedence(tagsErr, err, reauth) {
 		return types.NodeView{}, s.policyChangeSince(genBefore), tagsErr

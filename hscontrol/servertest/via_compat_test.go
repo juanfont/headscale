@@ -439,17 +439,6 @@ func startCaptureClients(
 	tagUser := srv.CreateUser(t, "tag-user")
 	users := createCaptureUsers(t, srv)
 
-	policyJSON := convertCapturePolicy(t, c)
-
-	changed, err := srv.State().SetPolicy(policyJSON)
-	require.NoError(t, err, "failed to set policy")
-
-	if changed {
-		changes, err := srv.State().ReloadPolicy()
-		require.NoError(t, err)
-		srv.App.Change(changes...)
-	}
-
 	// Create clients matching the golden topology: tagged nodes under
 	// tag-user, user-owned nodes under their capture user.
 	// Nodes are created in SaaS registration order so headscale assigns
@@ -485,6 +474,19 @@ func startCaptureClients(
 	}
 
 	require.NotEmpty(t, clients, "no relevant nodes created")
+
+	// The nodes joined on SaaS before the capture's policy, which need not
+	// define their tags; a key whose tag the policy lacks is refused.
+	policyJSON := convertCapturePolicy(t, c)
+
+	changed, err := srv.State().SetPolicy(policyJSON)
+	require.NoError(t, err, "failed to set policy")
+
+	if changed {
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+	}
 
 	// Determine which routes each node should advertise. If the golden
 	// topology has explicit routable_ips, use those. Otherwise infer

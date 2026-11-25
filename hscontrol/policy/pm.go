@@ -48,6 +48,11 @@ type PolicyManager interface {
 	// TagExists reports whether the given tag is defined in the policy.
 	TagExists(tag string) bool
 
+	// UndefinedTag returns the first of tags the policy does not define.
+	// Without a policy it returns none: such a server has always taken
+	// tagged keys.
+	UndefinedTag(tags []string) (string, bool)
+
 	// TagOwnedByTags reports whether a credential holding ownerTags may apply
 	// tag: true if tag is one of ownerTags, or tag's tagOwners list one of
 	// them (one hop). Authorises the tags an OAuth access token may set on the

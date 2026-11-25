@@ -1269,8 +1269,9 @@ func TestTaggedPAKReauthSameKeyPreservesTags(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
-	// tag:admin must be permitted for the admin SetNodeTags call.
-	_, err = s.SetPolicy([]byte(`{"tagOwners":{"tag:admin":["admin@"]}}`))
+	// tag:admin must be permitted for the admin SetNodeTags call, and the
+	// key's tag:orig defined for the key to register.
+	_, err = s.SetPolicy([]byte(`{"tagOwners":{"tag:admin":["admin@"],"tag:orig":[]}}`))
 	require.NoError(t, err)
 
 	// Reusable tagged key (the shape used by the admin-override integration
