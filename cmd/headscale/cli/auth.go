@@ -47,7 +47,7 @@ var authRegisterCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		node := resp.JSON200.Node
@@ -72,7 +72,7 @@ var authApproveCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200, "Auth request approved")
@@ -91,7 +91,7 @@ var authRejectCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200, "Auth request rejected")

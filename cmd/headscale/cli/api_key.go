@@ -51,7 +51,7 @@ var listAPIKeys = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		apiKeys := resp.JSON200.ApiKeys
@@ -104,7 +104,7 @@ If you lose a key, create a new one and revoke (expire) the old one.`,
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200.ApiKey, resp.JSON200.ApiKey)
@@ -154,7 +154,7 @@ var expireAPIKeyCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200, "Key expired")
@@ -187,7 +187,7 @@ var deleteAPIKeyCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200, "Key deleted")
@@ -209,7 +209,7 @@ func apiKeyPrefixForID(
 	}
 
 	if resp.StatusCode() != http.StatusOK {
-		return "", apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		return "", apiError(resp.StatusCode(), resp.JSONDefault)
 	}
 
 	idStr := strconv.FormatUint(id, util.Base10)

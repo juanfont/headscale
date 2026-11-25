@@ -52,7 +52,7 @@ var listPreAuthKeys = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		preAuthKeys := resp.JSON200.PreAuthKeys
@@ -134,7 +134,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		preAuthKey := resp.JSON200.PreAuthKey
@@ -173,7 +173,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200, "Key expired")
@@ -200,7 +200,7 @@ var deletePreAuthKeyCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200, "Key deleted")

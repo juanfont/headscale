@@ -116,7 +116,7 @@ func lookupUser(
 	}
 
 	if resp.StatusCode() != http.StatusOK {
-		return "", nil, apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		return "", nil, apiError(resp.StatusCode(), resp.JSONDefault)
 	}
 
 	users := resp.JSON200.Users
@@ -208,7 +208,7 @@ var createUserCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), cmp.Or(resp.ApplicationproblemJSON409, resp.ApplicationproblemJSONDefault))
+			return apiError(resp.StatusCode(), cmp.Or(resp.JSON409, resp.JSONDefault))
 		}
 
 		return printOutput(cmd, resp.JSON200.User, "User created")
@@ -238,7 +238,7 @@ var destroyUserCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		return printOutput(cmd, resp.JSON200, "User destroyed")
@@ -273,7 +273,7 @@ var listUsersCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			return apiError(resp.StatusCode(), resp.JSONDefault)
 		}
 
 		users := resp.JSON200.Users
@@ -316,7 +316,7 @@ var renameUserCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), cmp.Or(resp.ApplicationproblemJSON409, resp.ApplicationproblemJSONDefault))
+			return apiError(resp.StatusCode(), cmp.Or(resp.JSON409, resp.JSONDefault))
 		}
 
 		return printOutput(cmd, resp.JSON200.User, "User renamed")

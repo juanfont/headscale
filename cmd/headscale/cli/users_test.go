@@ -249,9 +249,9 @@ func TestUserConflictShowsDetail(t *testing.T) {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/problem+json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"title":"Conflict","status":409,"detail":"user already exists"}`))
+		_, _ = w.Write([]byte(`{"code":6,"message":"user already exists","details":[]}`))
 	}))
 
 	for _, args := range [][]string{

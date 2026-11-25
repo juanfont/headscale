@@ -42,38 +42,14 @@ var (
 	errResponseStatus   = errors.New("unexpected response status")
 )
 
-// apiError turns a non-2xx response into an error, surfacing the server's
-// RFC7807 problem detail. detail holds the operation context and errors[] the
-// wrapped cause (e.g. "name is too long"); both are joined so the server's
-// message text is not lost.
-func apiError(statusCode int, problem *clientv1.ErrorModel) error {
-	if problem == nil {
+// apiError turns a non-2xx response into an error carrying the server's
+// message from the v1 error body, a google.rpc.Status.
+func apiError(statusCode int, status *clientv1.Status) error {
+	if status == nil || status.Message == "" {
 		return fmt.Errorf("%w: %d %s", errResponseStatus, statusCode, http.StatusText(statusCode))
 	}
 
-	parts := make([]string, 0, 2)
-
-	if problem.Detail != nil && *problem.Detail != "" {
-		parts = append(parts, *problem.Detail)
-	}
-
-	if problem.Errors != nil {
-		for _, e := range *problem.Errors {
-			if e.Message != nil && *e.Message != "" {
-				parts = append(parts, *e.Message)
-			}
-		}
-	}
-
-	if len(parts) == 0 && problem.Title != nil && *problem.Title != "" {
-		parts = append(parts, *problem.Title)
-	}
-
-	if len(parts) == 0 {
-		return fmt.Errorf("%w: %d %s", errResponseStatus, statusCode, http.StatusText(statusCode))
-	}
-
-	return fmt.Errorf("%w: %s", errResponseStatus, strings.Join(parts, ": "))
+	return fmt.Errorf("%w: %s", errResponseStatus, status.Message)
 }
 
 // mustMarkRequired marks the named flags as required, panicking on an unknown

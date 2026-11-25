@@ -112,7 +112,7 @@ var getPolicy = &cobra.Command{
 				}
 
 				if resp.StatusCode() != http.StatusOK {
-					return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+					return apiError(resp.StatusCode(), resp.JSONDefault)
 				}
 
 				policyData = resp.JSON200.Policy
@@ -175,7 +175,7 @@ var setPolicy = &cobra.Command{
 				}
 
 				if resp.StatusCode() != http.StatusOK {
-					return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+					return apiError(resp.StatusCode(), resp.JSONDefault)
 				}
 
 				return nil
