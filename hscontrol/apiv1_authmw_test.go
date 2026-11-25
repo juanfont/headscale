@@ -5,10 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+	"unicode"
 
+	"github.com/danielgtaylor/huma/v2"
+	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -197,4 +203,150 @@ func TestAPIV1QueryAsGateway(t *testing.T) {
 	apiKeys, err := h.app.state.ListAPIKeys()
 	require.NoError(t, err)
 	assert.Len(t, apiKeys, 1, "no API key may be deleted")
+}
+
+// TestAPIV1RequestForms pins every v1 operation that takes a body or a query
+// against how 0.29's grpc-gateway decoded a request (v2.29.0, the generated
+// headscale.pb.gw.go at v0.29.7): a missing body read as an empty message, a
+// body decoded as JSON whatever its Content-Type, a form POST to a GET path
+// served as the GET (mux.go, isPathLengthFallback), a repeated or unparsable
+// query value refused. Each row is either the 0.29 answer or a refusal named
+// here; IDs name nothing, so a handler that ran would answer 404 and a 400 or
+// 415 with the framework's words was refused before any write.
+func TestAPIV1RequestForms(t *testing.T) {
+	h := newAPIV1Harness(t)
+	_, api := apiv1.Handler(apiv1.Backend{})
+
+	// The gateway read no body as an empty request; these take that as 0.29
+	// did. Every other body is required, a refusal kept on purpose: an empty
+	// SetApprovedRoutes cleared the node's routes (SetTags refused no tags).
+	optionalBody := map[string]int{
+		"checkPolicy": http.StatusOK,       // an empty policy passes
+		"expireNode":  http.StatusNotFound, // the bare call, on no node
+	}
+
+	param := regexp.MustCompile(`\{[^}]+\}`)
+
+	type form struct {
+		name        string
+		method      string
+		path        string
+		contentType string
+		body        string
+		wantStatus  int
+		wantText    string
+	}
+
+	var forms []form
+
+	for path, item := range api.OpenAPI().Paths {
+		concrete := param.ReplaceAllString(path, "99999")
+
+		for method, op := range map[string]*huma.Operation{
+			http.MethodGet: item.Get, http.MethodPost: item.Post,
+			http.MethodPut: item.Put, http.MethodDelete: item.Delete,
+		} {
+			if op == nil {
+				continue
+			}
+
+			if op.RequestBody != nil {
+				if want, ok := optionalBody[op.OperationID]; ok {
+					forms = append(forms, form{op.OperationID + " no body", method, concrete, "application/json", "", want, ""})
+				} else {
+					forms = append(forms, form{op.OperationID + " no body", method, concrete, "application/json", "", http.StatusBadRequest, "request body is required"})
+				}
+
+				// Refused on purpose: curl -d sends this type.
+				forms = append(forms, form{op.OperationID + " form type", method, concrete, "application/x-www-form-urlencoded", "{}", http.StatusUnsupportedMediaType, "unknown content type"})
+			}
+
+			if method == http.MethodGet && item.Post == nil {
+				// Refused on purpose: 0.29 served it as the GET, a read.
+				forms = append(forms, form{op.OperationID + " form POST", http.MethodPost, concrete, "application/x-www-form-urlencoded", "", http.StatusNotImplemented, "Method Not Allowed"})
+			}
+
+			for _, p := range op.Parameters {
+				// The gateway parsed a query only where the request had query
+				// fields.
+				parsesQuery := slices.ContainsFunc(op.Parameters, func(q *huma.Param) bool { return q.In == "query" })
+
+				if parsesQuery && p.In == "path" && snakeCase(p.Name) != p.Name {
+					// Filtered out as the path's by either name; only the
+					// JSON name with a dotted key reached the parser.
+					forms = append(forms,
+						form{op.OperationID + " " + p.Name + " path, dotted", method, concrete + "?" + p.Name + ".x=1", "", "", http.StatusBadRequest, "is not a message"},
+						form{op.OperationID + " " + p.Name + " path, proto name dotted", method, concrete + "?" + snakeCase(p.Name) + ".x=1", "", "", 0, ""},
+					)
+				}
+
+				if p.In != "query" {
+					continue
+				}
+
+				if p.Schema.Format == "date-time" {
+					// A Timestamp is a message: its fields are keys.
+					forms = append(forms, form{op.OperationID + " " + p.Name + " dotted", method, concrete + "?" + p.Name + ".seconds=1", "", "", 0, ""})
+				} else {
+					forms = append(forms, form{op.OperationID + " " + p.Name + " dotted", method, concrete + "?" + p.Name + ".x=1", "", "", http.StatusBadRequest, "is not a message"})
+				}
+
+				forms = append(forms, form{op.OperationID + " " + p.Name + " bracketed", method, concrete + "?" + p.Name + "[x]=1", "", "", http.StatusBadRequest, ""})
+
+				forms = append(forms, form{op.OperationID + " " + p.Name + " twice", method, concrete + "?" + p.Name + "=1&" + p.Name + "=2", "", "", http.StatusBadRequest, "too many values"})
+
+				if p.Schema.Type != huma.TypeString || p.Schema.Format != "" {
+					forms = append(forms, form{op.OperationID + " " + p.Name + " empty", method, concrete + "?" + p.Name + "=", "", "", http.StatusBadRequest, "parsing field"})
+				}
+			}
+		}
+	}
+
+	require.NotEmpty(t, forms)
+
+	for _, f := range forms {
+		t.Run(f.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(context.Background(), f.method, f.path, strings.NewReader(f.body))
+			if f.contentType != "" {
+				req.Header.Set("Content-Type", f.contentType)
+			}
+
+			rec := httptest.NewRecorder()
+			h.huma.ServeHTTP(rec, req)
+
+			// 0: the key is read as 0.29 read it, ignored or as the
+			// handler's own: the answer is the one without the query.
+			if f.wantStatus == 0 {
+				base, _, _ := strings.Cut(f.path, "?")
+				want := httptest.NewRecorder()
+				h.huma.ServeHTTP(want, httptest.NewRequestWithContext(context.Background(), f.method, base, strings.NewReader(f.body)))
+
+				assert.Equal(t, want.Code, rec.Code, "body: %s", rec.Body.String())
+				assert.Equal(t, want.Body.String(), rec.Body.String())
+
+				return
+			}
+
+			assert.Equal(t, f.wantStatus, rec.Code, "body: %s", rec.Body.String())
+			assert.Contains(t, rec.Body.String(), f.wantText)
+		})
+	}
+}
+
+// snakeCase is the proto name protoc derived a JSON name from: nodeId from
+// node_id.
+func snakeCase(s string) string {
+	var b strings.Builder
+
+	for _, r := range s {
+		if unicode.IsUpper(r) {
+			b.WriteByte('_')
+
+			r = unicode.ToLower(r)
+		}
+
+		b.WriteRune(r)
+	}
+
+	return b.String()
 }
