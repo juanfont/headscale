@@ -13,7 +13,7 @@ import (
 	"tailscale.com/tailcfg/peercap"
 )
 
-func TestOverlapsPrefixesMatchesIPSet(t *testing.T) {
+func TestRapidOverlapsPrefixesMatchesIPSet(t *testing.T) {
 	t.Parallel()
 
 	prefixGen := rapid.Custom(func(rt *rapid.T) netip.Prefix {

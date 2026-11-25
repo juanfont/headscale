@@ -1841,7 +1841,7 @@ func checkAdjacencyMatchesFullBuild(t fatalfer, store *NodeStore, pol string, us
 	}
 }
 
-// Policy shapes shared by TestNodeStoreAdjacencyMatchesFullBuild and the
+// Policy shapes shared by TestRapidNodeStoreAdjacencyMatchesFullBuild and the
 // NodeStore write benchmarks below: a global ACL, autogroup:self, and a
 // via grant. hscontrol/policy/v2/policy_test.go keeps its own copy since
 // test packages can't share one.
@@ -1862,14 +1862,14 @@ const (
 		"grants": [{"src": ["u2@"], "dst": ["10.33.0.0/24"], "ip": ["*"], "via": ["tag:router"]}]}`
 )
 
-// TestNodeStoreAdjacencyMatchesFullBuild drives random node mutations
+// TestRapidNodeStoreAdjacencyMatchesFullBuild drives random node mutations
 // through a real [NodeStore] wired to a real [policyv2.PolicyManager] and
 // checks, after every step, that the resulting adjacency — including
 // whatever [NodeStore] served from its reused-peers path — matches a
 // fresh [policyv2.PolicyManager.BuildPeerMap] over the same nodes. This is
 // the safety net for later NodeStore/policy changes: divergence here is a
 // real bug in the shipped reuse path.
-func TestNodeStoreAdjacencyMatchesFullBuild(t *testing.T) {
+func TestRapidNodeStoreAdjacencyMatchesFullBuild(t *testing.T) {
 	users := []types.User{
 		{ID: 1, Name: "u1"},
 		{ID: 2, Name: "u2"},
