@@ -748,57 +748,15 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			r.api(t, step.Name, i, a)
 
 		case "join":
-			// The probe joins with its routes, as `tailscale up
-			// --advertise-routes` does. An update sent after the join can
-			// be overtaken by the stream's first request, which has none.
-			hi := &tailcfg.Hostinfo{
-				BackendLogID: "servertest-" + a.Node,
-				Hostname:     a.Hostname,
-				RequestTags:  requestTags(a, nil),
-			}
-			if len(a.Routes) > 0 {
-				hi.RoutableIPs = prefixes(t, a.Routes)
-			}
-
-			r.hostinfo[a.Node] = hi
-
-			opts := []servertest.ClientOption{servertest.WithUser(r.admin)}
-			if r.memState[a.Node] {
-				opts = append(opts, servertest.WithLoginFlags(controlclient.LoginEphemeral))
-			}
-
-			if r.deltaUpdates {
-				opts = append(opts, servertest.WithDeltaUpdates())
-			}
-
-			if r.paths {
-				hi.NetInfo = &tailcfg.NetInfo{PreferredDERP: 1}
-
-				opts = append(opts, servertest.WithEndpoints(tailcfg.Endpoint{
-					Addr: netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), uint16(41641+len(r.clients))), //nolint:gosec // a handful of clients
-					Type: tailcfg.EndpointExplicitConf,
-				}))
-			}
-
-			opts = append(opts, servertest.WithHostinfo(hi.Clone()))
-
+			var approve func(string) error
 			if r.interactive != nil && r.interactive(step, a) {
-				opts = append(opts, servertest.WithInteractiveLogin(r.approver(ctx, t, a.Key)))
-			} else {
-				require.Contains(t, r.keys, a.Key, "%s: join with unknown key", step.Name)
-				opts = append(opts, servertest.WithAuthKey(r.keys[a.Key]))
+				approve = r.approver(ctx, t, a.Key)
 			}
 
-			cl, err := servertest.TryNewClient(t, r.srv, a.Node, opts...)
-			r.clients[a.Node] = cl
-
+			err := r.join(t, step, a, approve)
 			if err != nil {
 				refused[a.Node] = err
-
-				continue
 			}
-
-			r.remember(a.Node)
 
 		case "relogin", "restart":
 			if a.Kind == "restart" && a.Key == "" {
@@ -863,6 +821,9 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 				r.srv.App.Change(changes...)
 			}
 
+		case "token":
+			// An OAuth client's token; the keys it mints go to State.
+
 		case "wait", "barrier":
 			// SaaS settle time, and the probe's wait for SaaS to show the
 			// step's outcome; consumers hold their checks instead. The test
@@ -876,6 +837,65 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 	}
 
 	return refused
+}
+
+// join replays a join, the step's action a, as an interactive login approve
+// completes when it is set, and returns the error of a join headscale
+// refused.
+func (r *stepReplay) join(t *testing.T, step testcapture.Step, a testcapture.Action, approve func(string) error) error {
+	t.Helper()
+
+	// The probe joins with its routes, as `tailscale up
+	// --advertise-routes` does. An update sent after the join can
+	// be overtaken by the stream's first request, which has none.
+	hi := &tailcfg.Hostinfo{
+		BackendLogID: "servertest-" + a.Node,
+		Hostname:     a.Hostname,
+		RequestTags:  requestTags(a, nil),
+	}
+	if len(a.Routes) > 0 {
+		hi.RoutableIPs = prefixes(t, a.Routes)
+	}
+
+	r.hostinfo[a.Node] = hi
+
+	opts := []servertest.ClientOption{servertest.WithUser(r.admin)}
+	if r.memState[a.Node] {
+		opts = append(opts, servertest.WithLoginFlags(controlclient.LoginEphemeral))
+	}
+
+	if r.deltaUpdates {
+		opts = append(opts, servertest.WithDeltaUpdates())
+	}
+
+	if r.paths {
+		hi.NetInfo = &tailcfg.NetInfo{PreferredDERP: 1}
+
+		opts = append(opts, servertest.WithEndpoints(tailcfg.Endpoint{
+			Addr: netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), uint16(41641+len(r.clients))), //nolint:gosec // a handful of clients
+			Type: tailcfg.EndpointExplicitConf,
+		}))
+	}
+
+	opts = append(opts, servertest.WithHostinfo(hi.Clone()))
+
+	if approve != nil {
+		opts = append(opts, servertest.WithInteractiveLogin(approve))
+	} else {
+		require.Contains(t, r.keys, a.Key, "%s: join with unknown key", step.Name)
+		opts = append(opts, servertest.WithAuthKey(r.keys[a.Key]))
+	}
+
+	cl, err := servertest.TryNewClient(t, r.srv, a.Node, opts...)
+	r.clients[a.Node] = cl
+
+	if err != nil {
+		return err
+	}
+
+	r.remember(a.Node)
+
+	return nil
 }
 
 // relogin replays a login on a node's current login: `tailscale up`, or a
@@ -1106,29 +1126,46 @@ func (r *stepReplay) api(t *testing.T, stepName string, i int, a testcapture.Act
 					} `json:"create"`
 				} `json:"devices"`
 			} `json:"capabilities"`
-			ExpirySeconds int `json:"expirySeconds"`
+			ExpirySeconds int    `json:"expirySeconds"`
+			KeyType       string `json:"keyType"`
 		}
 		require.NoError(t, json.Unmarshal(a.Body, &body), "%s: key body", stepName)
 
-		// The admin mints as the tailnet owner; a user's own key mints as
-		// that user.
-		user := r.admin
-		if name, ok := strings.CutPrefix(a.Principal, "user:"); ok {
-			user, ok = r.users[name]
-			require.True(t, ok, "%s: mint as unknown %s", stepName, a.Principal)
+		// An OAuth client's keys record no user, so the replay needs no
+		// client.
+		if body.KeyType == "client" {
+			return
 		}
 
 		create := body.Capabilities.Devices.Create
 		expiry := time.Now().Add(time.Duration(body.ExpirySeconds) * time.Second)
-		uid := types.UserID(user.ID)
 
-		pak, err := r.srv.State().CreatePreAuthKey(&uid, create.Reusable, create.Ephemeral, &expiry, create.Tags)
+		var (
+			pak *types.PreAuthKeyNew
+			err error
+		)
+
+		// The admin mints as the tailnet owner; a user's own key mints as
+		// that user, and an OAuth client's token as nobody.
+		user := r.admin
+		if strings.HasPrefix(a.Principal, "token:") {
+			pak, err = r.srv.State().CreateTokenPreAuthKey(nil, create.Reusable, create.Ephemeral, &expiry, create.Tags)
+		} else {
+			if name, ok := strings.CutPrefix(a.Principal, "user:"); ok {
+				user, ok = r.users[name]
+				require.True(t, ok, "%s: mint as unknown %s", stepName, a.Principal)
+			}
+
+			uid := types.UserID(user.ID)
+			pak, err = r.srv.State().CreatePreAuthKey(&uid, create.Reusable, create.Ephemeral, &expiry, create.Tags)
+			r.keyUsers[a.Key] = user
+		}
+
 		require.NoError(t, err, "%s: mint %s", stepName, a.Key)
 
 		r.keys[a.Key] = pak.Key
 		r.keyIDs[a.Key] = pak.ID
 		r.keyTags[a.Key] = create.Tags
-		r.keyUsers[a.Key] = user
 
 		var minted struct {
 			Expires time.Time `json:"expires"`
