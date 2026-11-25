@@ -55,7 +55,8 @@ type AuthApproveOutputBody = map[string]interface{}
 
 // AuthApproveRequestBody defines model for AuthApproveRequestBody.
 type AuthApproveRequestBody struct {
-	AuthId *string `json:"authId,omitempty"`
+	AuthId               *string                `json:"authId,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // AuthRegisterOutputBody defines model for AuthRegisterOutputBody.
@@ -65,8 +66,9 @@ type AuthRegisterOutputBody struct {
 
 // AuthRegisterRequestBody defines model for AuthRegisterRequestBody.
 type AuthRegisterRequestBody struct {
-	AuthId *string `json:"authId,omitempty"`
-	User   *string `json:"user,omitempty"`
+	AuthId               *string                `json:"authId,omitempty"`
+	User                 *string                `json:"user,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // AuthRejectOutputBody defines model for AuthRejectOutputBody.
@@ -74,7 +76,8 @@ type AuthRejectOutputBody = map[string]interface{}
 
 // AuthRejectRequestBody defines model for AuthRejectRequestBody.
 type AuthRejectRequestBody struct {
-	AuthId *string `json:"authId,omitempty"`
+	AuthId               *string                `json:"authId,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // BackfillNodeIPsOutputBody defines model for BackfillNodeIPsOutputBody.
@@ -92,32 +95,36 @@ type CreateApiKeyOutputBody struct {
 
 // CreateApiKeyRequestBody defines model for CreateApiKeyRequestBody.
 type CreateApiKeyRequestBody struct {
-	Expiration *time.Time `json:"expiration,omitempty"`
+	Expiration           *time.Time             `json:"expiration,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // CreatePreAuthKeyRequestBody defines model for CreatePreAuthKeyRequestBody.
 type CreatePreAuthKeyRequestBody struct {
-	AclTags    *[]string  `json:"aclTags,omitempty"`
-	Ephemeral  *bool      `json:"ephemeral,omitempty"`
-	Expiration *time.Time `json:"expiration,omitempty"`
-	Reusable   *bool      `json:"reusable,omitempty"`
-	User       *string    `json:"user,omitempty"`
+	AclTags              *[]string              `json:"aclTags,omitempty"`
+	Ephemeral            *bool                  `json:"ephemeral,omitempty"`
+	Expiration           *time.Time             `json:"expiration,omitempty"`
+	Reusable             *bool                  `json:"reusable,omitempty"`
+	User                 *string                `json:"user,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // CreateUserRequestBody defines model for CreateUserRequestBody.
 type CreateUserRequestBody struct {
-	DisplayName *string `json:"displayName,omitempty"`
-	Email       *string `json:"email,omitempty"`
-	Name        *string `json:"name,omitempty"`
-	PictureUrl  *string `json:"pictureUrl,omitempty"`
+	DisplayName          *string                `json:"displayName,omitempty"`
+	Email                *string                `json:"email,omitempty"`
+	Name                 *string                `json:"name,omitempty"`
+	PictureUrl           *string                `json:"pictureUrl,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // DebugCreateNodeRequestBody defines model for DebugCreateNodeRequestBody.
 type DebugCreateNodeRequestBody struct {
-	Key    *string   `json:"key,omitempty"`
-	Name   *string   `json:"name,omitempty"`
-	Routes *[]string `json:"routes,omitempty"`
-	User   *string   `json:"user,omitempty"`
+	Key                  *string                `json:"key,omitempty"`
+	Name                 *string                `json:"name,omitempty"`
+	Routes               *[]string              `json:"routes,omitempty"`
+	User                 *string                `json:"user,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // DeleteApiKeyOutputBody defines model for DeleteApiKeyOutputBody.
@@ -137,14 +144,16 @@ type ExpireApiKeyOutputBody = map[string]interface{}
 
 // ExpireApiKeyRequestBody defines model for ExpireApiKeyRequestBody.
 type ExpireApiKeyRequestBody struct {
-	Id     *string `json:"id,omitempty"`
-	Prefix *string `json:"prefix,omitempty"`
+	Id                   *string                `json:"id,omitempty"`
+	Prefix               *string                `json:"prefix,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // ExpireNodeRequestBody defines model for ExpireNodeRequestBody.
 type ExpireNodeRequestBody struct {
-	DisableExpiry *bool      `json:"disableExpiry,omitempty"`
-	Expiry        *time.Time `json:"expiry,omitempty"`
+	DisableExpiry        *bool                  `json:"disableExpiry,omitempty"`
+	Expiry               *time.Time             `json:"expiry,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // ExpirePreAuthKeyOutputBody defines model for ExpirePreAuthKeyOutputBody.
@@ -152,7 +161,8 @@ type ExpirePreAuthKeyOutputBody = map[string]interface{}
 
 // ExpirePreAuthKeyRequestBody defines model for ExpirePreAuthKeyRequestBody.
 type ExpirePreAuthKeyRequestBody struct {
-	Id *string `json:"id,omitempty"`
+	Id                   *string                `json:"id,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // HealthResponseBody defines model for HealthResponseBody.
@@ -226,7 +236,8 @@ type NodePreAuthKey struct {
 
 // PolicyRequestBody defines model for PolicyRequestBody.
 type PolicyRequestBody struct {
-	Policy *string `json:"policy,omitempty"`
+	Policy               *string                `json:"policy,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // PolicyResponseBody defines model for PolicyResponseBody.
@@ -255,12 +266,14 @@ type PreAuthKeyOutputBody struct {
 
 // SetApprovedRoutesRequestBody defines model for SetApprovedRoutesRequestBody.
 type SetApprovedRoutesRequestBody struct {
-	Routes *[]string `json:"routes,omitempty"`
+	Routes               *[]string              `json:"routes,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // SetTagsRequestBody defines model for SetTagsRequestBody.
 type SetTagsRequestBody struct {
-	Tags *[]string `json:"tags,omitempty"`
+	Tags                 *[]string              `json:"tags,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // Status defines model for Status.
@@ -372,6 +385,1085 @@ type ExpirePreAuthKeyJSONRequestBody = ExpirePreAuthKeyRequestBody
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = CreateUserRequestBody
+
+// Getter for additional properties for AuthApproveRequestBody. Returns the specified
+// element and whether it was found
+func (a AuthApproveRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AuthApproveRequestBody
+func (a *AuthApproveRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AuthApproveRequestBody to handle AdditionalProperties
+func (a *AuthApproveRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["authId"]; found {
+		err = json.Unmarshal(raw, &a.AuthId)
+		if err != nil {
+			return fmt.Errorf("error reading 'authId': %w", err)
+		}
+		delete(object, "authId")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AuthApproveRequestBody to handle AdditionalProperties
+func (a AuthApproveRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.AuthId != nil {
+		object["authId"], err = json.Marshal(a.AuthId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'authId': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AuthRegisterRequestBody. Returns the specified
+// element and whether it was found
+func (a AuthRegisterRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AuthRegisterRequestBody
+func (a *AuthRegisterRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AuthRegisterRequestBody to handle AdditionalProperties
+func (a *AuthRegisterRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["authId"]; found {
+		err = json.Unmarshal(raw, &a.AuthId)
+		if err != nil {
+			return fmt.Errorf("error reading 'authId': %w", err)
+		}
+		delete(object, "authId")
+	}
+
+	if raw, found := object["user"]; found {
+		err = json.Unmarshal(raw, &a.User)
+		if err != nil {
+			return fmt.Errorf("error reading 'user': %w", err)
+		}
+		delete(object, "user")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AuthRegisterRequestBody to handle AdditionalProperties
+func (a AuthRegisterRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.AuthId != nil {
+		object["authId"], err = json.Marshal(a.AuthId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'authId': %w", err)
+		}
+	}
+
+	if a.User != nil {
+		object["user"], err = json.Marshal(a.User)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'user': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AuthRejectRequestBody. Returns the specified
+// element and whether it was found
+func (a AuthRejectRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AuthRejectRequestBody
+func (a *AuthRejectRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AuthRejectRequestBody to handle AdditionalProperties
+func (a *AuthRejectRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["authId"]; found {
+		err = json.Unmarshal(raw, &a.AuthId)
+		if err != nil {
+			return fmt.Errorf("error reading 'authId': %w", err)
+		}
+		delete(object, "authId")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AuthRejectRequestBody to handle AdditionalProperties
+func (a AuthRejectRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.AuthId != nil {
+		object["authId"], err = json.Marshal(a.AuthId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'authId': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for CreateApiKeyRequestBody. Returns the specified
+// element and whether it was found
+func (a CreateApiKeyRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for CreateApiKeyRequestBody
+func (a *CreateApiKeyRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for CreateApiKeyRequestBody to handle AdditionalProperties
+func (a *CreateApiKeyRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["expiration"]; found {
+		err = json.Unmarshal(raw, &a.Expiration)
+		if err != nil {
+			return fmt.Errorf("error reading 'expiration': %w", err)
+		}
+		delete(object, "expiration")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for CreateApiKeyRequestBody to handle AdditionalProperties
+func (a CreateApiKeyRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Expiration != nil {
+		object["expiration"], err = json.Marshal(a.Expiration)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'expiration': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for CreatePreAuthKeyRequestBody. Returns the specified
+// element and whether it was found
+func (a CreatePreAuthKeyRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for CreatePreAuthKeyRequestBody
+func (a *CreatePreAuthKeyRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for CreatePreAuthKeyRequestBody to handle AdditionalProperties
+func (a *CreatePreAuthKeyRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["aclTags"]; found {
+		err = json.Unmarshal(raw, &a.AclTags)
+		if err != nil {
+			return fmt.Errorf("error reading 'aclTags': %w", err)
+		}
+		delete(object, "aclTags")
+	}
+
+	if raw, found := object["ephemeral"]; found {
+		err = json.Unmarshal(raw, &a.Ephemeral)
+		if err != nil {
+			return fmt.Errorf("error reading 'ephemeral': %w", err)
+		}
+		delete(object, "ephemeral")
+	}
+
+	if raw, found := object["expiration"]; found {
+		err = json.Unmarshal(raw, &a.Expiration)
+		if err != nil {
+			return fmt.Errorf("error reading 'expiration': %w", err)
+		}
+		delete(object, "expiration")
+	}
+
+	if raw, found := object["reusable"]; found {
+		err = json.Unmarshal(raw, &a.Reusable)
+		if err != nil {
+			return fmt.Errorf("error reading 'reusable': %w", err)
+		}
+		delete(object, "reusable")
+	}
+
+	if raw, found := object["user"]; found {
+		err = json.Unmarshal(raw, &a.User)
+		if err != nil {
+			return fmt.Errorf("error reading 'user': %w", err)
+		}
+		delete(object, "user")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for CreatePreAuthKeyRequestBody to handle AdditionalProperties
+func (a CreatePreAuthKeyRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.AclTags != nil {
+		object["aclTags"], err = json.Marshal(a.AclTags)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'aclTags': %w", err)
+		}
+	}
+
+	if a.Ephemeral != nil {
+		object["ephemeral"], err = json.Marshal(a.Ephemeral)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'ephemeral': %w", err)
+		}
+	}
+
+	if a.Expiration != nil {
+		object["expiration"], err = json.Marshal(a.Expiration)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'expiration': %w", err)
+		}
+	}
+
+	if a.Reusable != nil {
+		object["reusable"], err = json.Marshal(a.Reusable)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'reusable': %w", err)
+		}
+	}
+
+	if a.User != nil {
+		object["user"], err = json.Marshal(a.User)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'user': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for CreateUserRequestBody. Returns the specified
+// element and whether it was found
+func (a CreateUserRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for CreateUserRequestBody
+func (a *CreateUserRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for CreateUserRequestBody to handle AdditionalProperties
+func (a *CreateUserRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["displayName"]; found {
+		err = json.Unmarshal(raw, &a.DisplayName)
+		if err != nil {
+			return fmt.Errorf("error reading 'displayName': %w", err)
+		}
+		delete(object, "displayName")
+	}
+
+	if raw, found := object["email"]; found {
+		err = json.Unmarshal(raw, &a.Email)
+		if err != nil {
+			return fmt.Errorf("error reading 'email': %w", err)
+		}
+		delete(object, "email")
+	}
+
+	if raw, found := object["name"]; found {
+		err = json.Unmarshal(raw, &a.Name)
+		if err != nil {
+			return fmt.Errorf("error reading 'name': %w", err)
+		}
+		delete(object, "name")
+	}
+
+	if raw, found := object["pictureUrl"]; found {
+		err = json.Unmarshal(raw, &a.PictureUrl)
+		if err != nil {
+			return fmt.Errorf("error reading 'pictureUrl': %w", err)
+		}
+		delete(object, "pictureUrl")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for CreateUserRequestBody to handle AdditionalProperties
+func (a CreateUserRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.DisplayName != nil {
+		object["displayName"], err = json.Marshal(a.DisplayName)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'displayName': %w", err)
+		}
+	}
+
+	if a.Email != nil {
+		object["email"], err = json.Marshal(a.Email)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'email': %w", err)
+		}
+	}
+
+	if a.Name != nil {
+		object["name"], err = json.Marshal(a.Name)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'name': %w", err)
+		}
+	}
+
+	if a.PictureUrl != nil {
+		object["pictureUrl"], err = json.Marshal(a.PictureUrl)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'pictureUrl': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for DebugCreateNodeRequestBody. Returns the specified
+// element and whether it was found
+func (a DebugCreateNodeRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for DebugCreateNodeRequestBody
+func (a *DebugCreateNodeRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for DebugCreateNodeRequestBody to handle AdditionalProperties
+func (a *DebugCreateNodeRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["key"]; found {
+		err = json.Unmarshal(raw, &a.Key)
+		if err != nil {
+			return fmt.Errorf("error reading 'key': %w", err)
+		}
+		delete(object, "key")
+	}
+
+	if raw, found := object["name"]; found {
+		err = json.Unmarshal(raw, &a.Name)
+		if err != nil {
+			return fmt.Errorf("error reading 'name': %w", err)
+		}
+		delete(object, "name")
+	}
+
+	if raw, found := object["routes"]; found {
+		err = json.Unmarshal(raw, &a.Routes)
+		if err != nil {
+			return fmt.Errorf("error reading 'routes': %w", err)
+		}
+		delete(object, "routes")
+	}
+
+	if raw, found := object["user"]; found {
+		err = json.Unmarshal(raw, &a.User)
+		if err != nil {
+			return fmt.Errorf("error reading 'user': %w", err)
+		}
+		delete(object, "user")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for DebugCreateNodeRequestBody to handle AdditionalProperties
+func (a DebugCreateNodeRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Key != nil {
+		object["key"], err = json.Marshal(a.Key)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'key': %w", err)
+		}
+	}
+
+	if a.Name != nil {
+		object["name"], err = json.Marshal(a.Name)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'name': %w", err)
+		}
+	}
+
+	if a.Routes != nil {
+		object["routes"], err = json.Marshal(a.Routes)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'routes': %w", err)
+		}
+	}
+
+	if a.User != nil {
+		object["user"], err = json.Marshal(a.User)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'user': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for ExpireApiKeyRequestBody. Returns the specified
+// element and whether it was found
+func (a ExpireApiKeyRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for ExpireApiKeyRequestBody
+func (a *ExpireApiKeyRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for ExpireApiKeyRequestBody to handle AdditionalProperties
+func (a *ExpireApiKeyRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["prefix"]; found {
+		err = json.Unmarshal(raw, &a.Prefix)
+		if err != nil {
+			return fmt.Errorf("error reading 'prefix': %w", err)
+		}
+		delete(object, "prefix")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for ExpireApiKeyRequestBody to handle AdditionalProperties
+func (a ExpireApiKeyRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Id != nil {
+		object["id"], err = json.Marshal(a.Id)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'id': %w", err)
+		}
+	}
+
+	if a.Prefix != nil {
+		object["prefix"], err = json.Marshal(a.Prefix)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'prefix': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for ExpireNodeRequestBody. Returns the specified
+// element and whether it was found
+func (a ExpireNodeRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for ExpireNodeRequestBody
+func (a *ExpireNodeRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for ExpireNodeRequestBody to handle AdditionalProperties
+func (a *ExpireNodeRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["disableExpiry"]; found {
+		err = json.Unmarshal(raw, &a.DisableExpiry)
+		if err != nil {
+			return fmt.Errorf("error reading 'disableExpiry': %w", err)
+		}
+		delete(object, "disableExpiry")
+	}
+
+	if raw, found := object["expiry"]; found {
+		err = json.Unmarshal(raw, &a.Expiry)
+		if err != nil {
+			return fmt.Errorf("error reading 'expiry': %w", err)
+		}
+		delete(object, "expiry")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for ExpireNodeRequestBody to handle AdditionalProperties
+func (a ExpireNodeRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.DisableExpiry != nil {
+		object["disableExpiry"], err = json.Marshal(a.DisableExpiry)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'disableExpiry': %w", err)
+		}
+	}
+
+	if a.Expiry != nil {
+		object["expiry"], err = json.Marshal(a.Expiry)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'expiry': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for ExpirePreAuthKeyRequestBody. Returns the specified
+// element and whether it was found
+func (a ExpirePreAuthKeyRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for ExpirePreAuthKeyRequestBody
+func (a *ExpirePreAuthKeyRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for ExpirePreAuthKeyRequestBody to handle AdditionalProperties
+func (a *ExpirePreAuthKeyRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for ExpirePreAuthKeyRequestBody to handle AdditionalProperties
+func (a ExpirePreAuthKeyRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Id != nil {
+		object["id"], err = json.Marshal(a.Id)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'id': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for PolicyRequestBody. Returns the specified
+// element and whether it was found
+func (a PolicyRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for PolicyRequestBody
+func (a *PolicyRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for PolicyRequestBody to handle AdditionalProperties
+func (a *PolicyRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["policy"]; found {
+		err = json.Unmarshal(raw, &a.Policy)
+		if err != nil {
+			return fmt.Errorf("error reading 'policy': %w", err)
+		}
+		delete(object, "policy")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for PolicyRequestBody to handle AdditionalProperties
+func (a PolicyRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Policy != nil {
+		object["policy"], err = json.Marshal(a.Policy)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'policy': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for SetApprovedRoutesRequestBody. Returns the specified
+// element and whether it was found
+func (a SetApprovedRoutesRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for SetApprovedRoutesRequestBody
+func (a *SetApprovedRoutesRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for SetApprovedRoutesRequestBody to handle AdditionalProperties
+func (a *SetApprovedRoutesRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["routes"]; found {
+		err = json.Unmarshal(raw, &a.Routes)
+		if err != nil {
+			return fmt.Errorf("error reading 'routes': %w", err)
+		}
+		delete(object, "routes")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for SetApprovedRoutesRequestBody to handle AdditionalProperties
+func (a SetApprovedRoutesRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Routes != nil {
+		object["routes"], err = json.Marshal(a.Routes)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'routes': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for SetTagsRequestBody. Returns the specified
+// element and whether it was found
+func (a SetTagsRequestBody) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for SetTagsRequestBody
+func (a *SetTagsRequestBody) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for SetTagsRequestBody to handle AdditionalProperties
+func (a *SetTagsRequestBody) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["tags"]; found {
+		err = json.Unmarshal(raw, &a.Tags)
+		if err != nil {
+			return fmt.Errorf("error reading 'tags': %w", err)
+		}
+		delete(object, "tags")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for SetTagsRequestBody to handle AdditionalProperties
+func (a SetTagsRequestBody) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Tags != nil {
+		object["tags"], err = json.Marshal(a.Tags)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'tags': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
