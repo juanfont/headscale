@@ -382,7 +382,7 @@ func TestAPIV1NodeExpire(t *testing.T) {
 			// The body the CLI sends, and the body against the query.
 			{name: "body expiry", body: `{"expiry":"2030-01-02T00:00:00Z"}`, status: http.StatusOK, want: set, at: at("2030-01-02T00:00:00Z")},
 			{name: "body disableExpiry", body: `{"disableExpiry":true}`, status: http.StatusOK, want: off},
-			{name: "body proto name", body: `{"disable_expiry":true}`, status: http.StatusUnprocessableEntity, want: keep},
+			{name: "body proto name", body: `{"disable_expiry":true}`, status: http.StatusBadRequest, want: keep},
 			{name: "same expiry in both", query: "expiry=2030-01-02T00:00:00Z", body: `{"expiry":"2030-01-02T00:00:00Z"}`, status: http.StatusOK, want: set, at: at("2030-01-02T00:00:00Z")},
 			{name: "different expiry in both", query: "expiry=2030-01-02T00:00:00Z", body: `{"expiry":"2040-01-02T00:00:00Z"}`, status: http.StatusBadRequest, want: keep},
 			{name: "query expiry and body disableExpiry", query: "expiry=2030-01-02T00:00:00Z", body: `{"disableExpiry":true}`, status: http.StatusBadRequest, want: keep},
@@ -578,11 +578,11 @@ func TestAPIV1NodeSetApprovedRoutes(t *testing.T) {
 					Available []string `json:"availableRoutes"`
 					Approved  []string `json:"approvedRoutes"`
 				} `json:"node"`
-				Detail string `json:"detail"`
+				Message string `json:"message"`
 			}
 			require.NoErrorf(t, json.Unmarshal(res.body, &body), "body: %s", res.body)
 
-			return routeCall{res.status, body.Node.Available, body.Node.Approved, body.Detail}
+			return routeCall{res.status, body.Node.Available, body.Node.Approved, body.Message}
 		})
 	})
 }

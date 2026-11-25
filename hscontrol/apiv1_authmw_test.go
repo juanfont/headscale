@@ -86,9 +86,10 @@ func TestAPIV1DocsArePublic(t *testing.T) {
 	}
 }
 
-// TestAPIV1Unauthorized401 pins the 401 body: RFC 7807 JSON containing
-// "Unauthorized", under 100 bytes and leaking no data, as the integration
-// auth-bypass tests require.
+// TestAPIV1Unauthorized401 pins the 401 body: plain "Unauthorized", as 0.29's
+// httpAuthenticationMiddleware wrote it before the request reached the
+// gateway. headscale-admin matches the text; the integration auth-bypass tests
+// require it small and free of data.
 func TestAPIV1Unauthorized401(t *testing.T) {
 	app := createTestApp(t)
 	handler := app.HTTPHandler()
@@ -100,14 +101,8 @@ func TestAPIV1Unauthorized401(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
-
-	body := rec.Body.Bytes()
-	assert.Contains(t, string(body), "Unauthorized")
-	assert.Lessf(t, len(body), 100, "401 body must stay small (no data leak): %s", body)
-
-	var problem map[string]any
-	require.NoError(t, json.Unmarshal(body, &problem), "401 body must be JSON: %s", body)
-	assert.NotContains(t, problem, "users")
+	assert.Equal(t, "text/plain; charset=utf-8", rec.Header().Get("Content-Type"))
+	assert.Equal(t, "Unauthorized", rec.Body.String())
 }
 
 // TestAPIV1QueryAsGateway: 0.29's grpc-gateway refused a query parameter given
