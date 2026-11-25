@@ -75,6 +75,11 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'mic92/hestia@v3.1.0'
         - 'nixos/nix-installer-action@v1.0.0'
+    '.github/workflows/soak.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'actions/upload-artifact@v7.0.2'
+        - 'mic92/hestia@v3.1.0'
+        - 'nixos/nix-installer-action@v1.0.0'
     '.github/workflows/stale.yml':
         - 'actions/stale@v11.0.0'
     '.github/workflows/support-request.yml':

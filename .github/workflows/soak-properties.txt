@@ -1,0 +1,59 @@
+# Properties the nightly soak (soak.yml) runs, by test name, without
+# packages so a package move needs no edit here. Each must report exactly one
+# pass: missing, skipped or doubled fails the soak. A test whose name matches
+# Rapid or Propert must be listed, here or below with "-" and the reason it is
+# not soaked. A subtest may skip only if listed as "~Test/sub reason"; a
+# property must also log Rapid's "OK, passed N tests" with N > 0.
+TestHAProberProperty
+TestPrimaryRoutesProperty
+TestRapidAliasLifetime
+TestRapidBuildPeerMapMatchesPrefixReference
+TestRapidCanAccessRoutesMatchesReference
+TestRapidColumnDeclarations
+TestRapidDispatch
+TestRapidDurationBoundary
+TestRapidDurationSum
+TestRapidEmptyListCatalogue
+TestRapidFieldDeclarations
+TestRapidFilterCatalogue
+TestRapidFloatWidths
+TestRapidGrantsInvariants
+TestRapidGrantsMatchesOracle
+TestRapidIntegerColumn
+TestRapidIntegerWidths
+TestRapidLateFields
+TestRapidLeafOptionPlacement
+TestRapidListPrefix
+TestRapidMaskingWrites
+TestRapidMatcherRouteRangesMatchPrefixes
+TestRapidNestedScope
+TestRapidNodeColumnProjection
+TestRapidNodeFieldValues
+TestRapidNodeQuery
+TestRapidNodeStoreAdjacencyMatchesFullBuild
+TestRapidNodeWireTime
+TestRapidOverlapsPrefixesMatchesIPSet
+TestRapidPageProblem
+TestRapidPageWalk
+TestRapidRawListRows
+TestRapidReaderMatch
+TestRapidReaderWhitespace
+TestRapidRelativeTimeFilter
+TestRapidSetNodesCachedResultsMatchFresh
+TestRapidSiblingDeclarations
+TestRapidUserCollection
+TestRapidUserErrorCount
+TestRapidUserFieldTypes
+TestRapidUserIdentityTransfer
+TestRapidUserListJSONArray
+TestRapidUserLookupForms
+TestRapidUserProfilePatch
+TestRapidUserQuery
+TestRapidUserRenames
+TestRapidUserWorkflow
+TestRapidVersionOrder
+TestSuperScopeProperties
+
+-TestRapidChecks          checks how the count is chosen, with fixed counts
+-TestBatcherRapidReconnection  not a property: "rapid" means fast
+-TestAPIv2OAuth_UnknownPropertiesIgnored  not a property: JSON properties

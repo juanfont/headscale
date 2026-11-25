@@ -1,0 +1,280 @@
+name: Nightly Soak
+
+# The property tests (pgregory.net/rapid) and fuzz targets run with a small
+# budget in every other job so CI stays fast; here they get a long one.
+# Properties are named in soak-properties.txt and fuzz targets found by name,
+# never by package path, so a moved package stays in the soak; a property
+# that does not pass exactly once, or a fuzz count under the floor, keeps
+# "moved away" or "skipped" from reading as "passed".
+on:
+  schedule:
+    # Off-peak (UTC), away from gc.yml and version-bump.yml.
+    - cron: "41 1 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-soak
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: nix develop --fallback --command bash -e {0}
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  discover:
+    # Schedules do not fire in forks; a manual run there is refused too, so
+    # the issue below only ever exists upstream.
+    if: github.repository == 'juanfont/headscale'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      fuzz: ${{ steps.list.outputs.fuzz }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: NixOS/nix-installer-action@v1.0.0
+      - uses: Mic92/hestia@v3.1.0
+
+      - name: Check the property list and find the fuzz targets
+        id: list
+        env:
+          # Below this the soak lost fuzz targets, not found none failing.
+          MIN_FUZZ: "7"
+        # -run '^$' keeps TestMain checks that need a full run from firing.
+        run: |
+          go test -list '^(Test|Fuzz)' -run '^$' ./... > tests.txt
+          list=.github/workflows/soak-properties.txt
+          grep -v '^[#~-]' "$list" | awk 'NF { print $1 }' | sort > soaked.txt
+          grep '^-' "$list" | awk '{ print substr($1, 2) }' | sort > excluded.txt
+          grep '^Test' tests.txt | sort > listed.txt
+
+          bad=0
+          if [ ! -s soaked.txt ]; then
+            echo "::error::soak-properties.txt selects no property"
+            bad=1
+          fi
+          missing=$(comm -23 soaked.txt <(sort -u listed.txt))
+          doubled=$(comm -12 soaked.txt <(uniq -d listed.txt))
+          unlisted=$(grep -E 'Rapid|Propert' listed.txt | sort -u | comm -23 - soaked.txt | comm -23 - excluded.txt)
+          if [ -n "$missing" ]; then
+            echo "::error::properties in soak-properties.txt that no package has: $missing"
+            bad=1
+          fi
+          if [ -n "$doubled" ]; then
+            echo "::error::properties whose name more than one package has: $doubled"
+            bad=1
+          fi
+          if [ -n "$unlisted" ]; then
+            echo "::error::tests named like properties missing from soak-properties.txt: $unlisted"
+            bad=1
+          fi
+
+          fuzz=$(awk '/^Fuzz/ { n[++c] = $1; next } /^ok/ { for (i = 1; i <= c; i++) printf "{\"pkg\":\"%s\",\"target\":\"%s\"}\n", $2, n[i]; c = 0 }' tests.txt | jq -cs .)
+          count=$(jq length <<<"$fuzz")
+          echo "fuzz targets: $count (floor $MIN_FUZZ)"
+          jq -r '.[] | .pkg + " " + .target' <<<"$fuzz"
+          if (( count < MIN_FUZZ )); then
+            echo "::error::fewer fuzz targets than the floor; a rename or move dropped some"
+            bad=1
+          fi
+
+          if (( bad )); then
+            exit 1
+          fi
+          echo "fuzz=$fuzz" >> "$GITHUB_OUTPUT"
+
+  properties:
+    needs: discover
+    runs-on: ubuntu-latest
+    # The test step's own limit leaves time to collect and upload.
+    timeout-minutes: 165
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: NixOS/nix-installer-action@v1.0.0
+      - uses: Mic92/hestia@v3.1.0
+
+      # Rapid stops a property early, as passed, when the -timeout deadline
+      # of its package nears, so the count is a ceiling and the timeout the
+      # budget. TestHAProberProperty skips under CI: a check takes ~20 s and
+      # each keeps its server's files until the test ends, so it runs beside
+      # the rest with CI unset and a smaller budget of its own.
+      - name: Run the properties
+        timeout-minutes: 135
+        env:
+          RAPID_CHECKS: "1000"
+          HA: TestHAProberProperty
+        run: |
+          list=.github/workflows/soak-properties.txt
+          grep -v '^[#~-]' "$list" | awk 'NF { print $1 }' > soaked.txt
+          grep '^~' "$list" | awk '{ print substr($1, 2) }' > allowed-skips.txt
+          rest=$(grep -vx "$HA" soaked.txt | paste -sd '|')
+          if [ -z "$rest" ]; then
+            echo "::error::soak-properties.txt selects no property"
+            exit 1
+          fi
+          run="^($rest)\$"
+
+          : > ha.json
+          ha=
+          if grep -qx "$HA" soaked.txt; then
+            env -u CI -u GITHUB_RUN_ID RAPID_CHECKS=100 go test -json -count=1 -timeout=30m -run "^$HA\$" ./... > ha.json 2>&1 &
+            ha=$!
+          fi
+          set +e
+          go test -json -count=1 -timeout=120m -run "$run" ./... > rest.json 2>&1
+          status=$?
+          if [ -n "$ha" ]; then
+            wait "$ha" || status=1
+          fi
+          set -e
+          cat rest.json ha.json > properties.json
+
+          jq -Rrj 'fromjson? | .Output // empty' properties.json > properties.log
+          grep -E '^(ok|FAIL|--- (FAIL|SKIP))|\[rapid\]|To reproduce' properties.log || true
+          if (( status )); then
+            exit "$status"
+          fi
+
+          # Green is not enough: a property passes go test when it, or one of
+          # its subtests, skipped, or when Rapid ran no check. Each must pass
+          # once, skip no subtest not allowed in the list, and log a Rapid
+          # "OK, passed N tests" with N > 0.
+          jq -Rr 'fromjson? | select(.Test) | .Test as $t |
+            if .Action == "output" then (.Output | capture("\\[rapid\\] OK, passed (?<n>[0-9]+) tests")? | "\($t) rapid \(.n)")
+            elif .Action == "pass" or .Action == "fail" or .Action == "skip" then "\($t) \(.Action)"
+            else empty end' properties.json > outcomes.txt
+          awk 'FILENAME == ARGV[1] { want[$1]; next }
+            FILENAME == ARGV[2] { allow[$1]; next }
+            {
+              split($1, p, "/"); top = p[1]
+              if (!(top in want)) next
+              if ($2 == "rapid") { draws[top] += $3; next }
+              if ($1 == top) got[top] = got[top] " " $2
+              else if ($2 == "skip" && !($1 in allow)) { printf "::error::%s: skipped\n", $1; bad = 1 }
+            }
+            END {
+              for (t in want) {
+                r = (t in got) ? got[t] : " no result"
+                if (r != " pass") { printf "::error::%s:%s\n", t, r; bad = 1 }
+                else if (draws[t] < 1) { printf "::error::%s: passed with no Rapid check run\n", t; bad = 1 }
+              }
+              exit bad
+            }' soaked.txt allowed-skips.txt outcomes.txt
+
+      # Each failure prints "To reproduce, specify -run=... -rapid.failfile=...
+      # (or -rapid.seed=...)"; the fail files are the input to replay.
+      # .gitignore hides testdata/rapid/, so no --exclude-standard.
+      - name: Collect fail files
+        if: ${{ !success() }}
+        shell: bash
+        run: |
+          mkdir -p soak
+          # Each on its own: after a step timeout only the partial streams exist.
+          for f in properties.log properties.json rest.json ha.json; do
+            if [ -f "$f" ]; then cp "$f" soak/; fi
+          done
+          git ls-files -z --others -- ':(glob)**/testdata/rapid/**' | xargs -0 -r cp --parents -t soak
+
+      - uses: actions/upload-artifact@v7.0.2
+        if: ${{ !success() }}
+        with:
+          name: properties
+          path: soak/
+
+  fuzz:
+    needs: discover
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.fuzz) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: NixOS/nix-installer-action@v1.0.0
+      - uses: Mic92/hestia@v3.1.0
+
+      - name: Fuzz
+        timeout-minutes: 25
+        env:
+          PKG: ${{ matrix.pkg }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -o pipefail
+          go test -run '^$' -fuzz "^${TARGET}\$" -fuzztime=10m "$PKG" 2>&1 | tee fuzz.log
+
+      # A failing input lands in the package's testdata/fuzz/<target>/;
+      # committed there, it becomes a seed every go test replays.
+      - name: Collect the failing input
+        if: ${{ !success() }}
+        shell: bash
+        run: |
+          mkdir -p soak
+          if [ -f fuzz.log ]; then cp fuzz.log soak/; fi
+          git ls-files -z --others -- ':(glob)**/testdata/fuzz/**' | xargs -0 -r cp --parents -t soak
+
+      - uses: actions/upload-artifact@v7.0.2
+        if: ${{ !success() }}
+        with:
+          name: fuzz-${{ strategy.job-index }}-${{ matrix.target }}
+          path: soak/
+
+  report:
+    needs: [discover, properties, fuzz]
+    # Only the schedule reports: a manual run has a person watching it.
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # One open issue at a time: the first failure opens it, which notifies;
+      # later ones only rewrite its body, which does not. Closing it rearms.
+      # Only an issue this workflow's bot opened and marked is ever edited.
+      - name: Open or update the soak issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: Nightly soak is failing
+          MARKER: "<!-- headscale-nightly-soak -->"
+        run: |
+          howto=$(cat <<'EOF'
+          The run's artifacts hold the logs and, if the run produced them, each
+          Rapid fail file and each failing fuzz input. `properties.log` is the
+          readable output of the properties; anything go test printed outside
+          its JSON, such as a build error, is only in `properties.json`.
+          Replay a property with the command its log prints
+          (`-run=... -rapid.failfile=...` or `-rapid.seed=...`); put a fuzz input
+          under the package's `testdata/fuzz/<target>/` and run
+          `go test -run <target>`. Close this issue once the soak passes again;
+          the next failure opens a new one.
+          EOF
+          )
+          body="$MARKER
+          The nightly soak failed on $(date -u +%F) at $GITHUB_SHA: $RUN_URL
+
+          $howto"
+          # Every page: a list cut at N would miss the issue and open another.
+          number=$(gh api --paginate "repos/$GH_REPO/issues?state=open&per_page=100" \
+            --jq '.[] | select(.pull_request == null and .user.type == "Bot" and .user.login == "github-actions[bot]" and ((.body // "") | startswith(env.MARKER))) | .number' |
+            awk 'NR == 1')
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi
