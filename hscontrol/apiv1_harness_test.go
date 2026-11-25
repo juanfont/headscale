@@ -170,8 +170,7 @@ func (h *apiV1Harness) callHuma(method, path string, body []byte) httpResult {
 
 // assertParity asserts the Huma response matches the golden: equal status, and
 // for success an equal JSON body (timestamps neutralised). Error bodies are not
-// compared — the shape deliberately deviates from legacy
-// ({code,message,details} vs Huma RFC7807).
+// compared; TestAPIV1ErrorBody pins their shape.
 func (h *apiV1Harness) assertParity(t *testing.T, method, path string, body []byte) httpResult {
 	t.Helper()
 

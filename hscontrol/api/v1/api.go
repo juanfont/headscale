@@ -63,14 +63,27 @@ func NewAPI(router chi.Router, backend Backend) huma.API {
 		},
 	}
 
+	// Errors keep the 0.29 body; see Status.
+	config.Transformers = append(config.Transformers, grpcStatusTransformer)
+	config.OnAddOperation = append(config.OnAddOperation, documentStatus)
+
+	router.NotFound(routingError(http.StatusNotFound, http.StatusNotFound, codeNotFound))
+	router.MethodNotAllowed(routingError(http.StatusMethodNotAllowed, http.StatusNotImplemented, codeUnimplemented))
+
 	api := humachi.New(router, config)
+	api.UseMiddleware(statusMiddleware)
 
 	// Must run before register: Huma snapshots the middleware chain at operation
 	// registration, so a middleware added afterwards would silently never run.
-	api.UseMiddleware(authMiddleware(api, backend))
+	api.UseMiddleware(authMiddleware(backend))
 	api.UseMiddleware(queryMiddleware(api))
 
 	register(api, backend)
+
+	// Status replaced Huma's error model in every operation.
+	schemas := api.OpenAPI().Components.Schemas.Map()
+	delete(schemas, "ErrorModel")
+	delete(schemas, "ErrorDetail")
 
 	return api
 }
@@ -134,7 +147,7 @@ func WithLocalTrust(next http.Handler) http.Handler {
 // Locally-trusted requests and operations without declared security pass
 // through. b.State is nil only during spec emission, where no request is
 // served, so it is never dereferenced there.
-func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Context)) {
+func authMiddleware(b Backend) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if ctx.Context().Value(localTrustKey{}) != nil {
 			next(ctx)
@@ -150,14 +163,14 @@ func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Contex
 
 		token, ok := strings.CutPrefix(ctx.Header("Authorization"), "Bearer ")
 		if !ok {
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "Unauthorized")
+			writeUnauthorized(ctx)
 
 			return
 		}
 
 		valid, err := b.State.ValidateAPIKey(token)
 		if err != nil || !valid {
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "Unauthorized")
+			writeUnauthorized(ctx)
 
 			return
 		}
