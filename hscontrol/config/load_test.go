@@ -4501,6 +4501,15 @@ func FuzzLoad(f *testing.F) {
 		}
 	}
 
+	// Values that loaded into the zero prefix: a mapping and a date.
+	for _, file := range []string{
+		"trusted_proxies: [10.0.0.0/8, {a: }]\n",
+		"trusted_proxies: [10.0.0.0/8, 2026-11-08]\n",
+		"prefixes:\n  v4: 2026-11-08\n",
+	} {
+		f.Add([]byte(file))
+	}
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := filepath.Join(t.TempDir(), "config.yaml")
 		require.NoError(t, os.WriteFile(path, data, 0o600))
@@ -4628,4 +4637,43 @@ func TestMapKeyCollision(t *testing.T) {
 			requireHidden(t, err, "marker")
 		})
 	}
+}
+
+// TestTextFieldTakesOneValue: a field read from text, such as a CIDR, takes
+// a string, or a number or bool as its text. Anything else YAML makes of a
+// value - a mapping (a word ending in a colon), a list, a date - is refused,
+// not decoded into the zero value; null leaves the field unset.
+func TestTextFieldTakesOneValue(t *testing.T) {
+	for _, tt := range []struct{ value, want string }{
+		{"{a: }", "takes one value, not a list or a mapping"},
+		{"[1]", "takes one value, not a list or a mapping"},
+		{"2026-11-08", "takes text, not a date"},
+		{"2026-11-08T10:00:00Z", "takes text, not a date"},
+		{"2026-11-08 10:00:00", "takes text, not a date"},
+		{"5", "is not a valid CIDR"},
+		{"1.5", "is not a valid CIDR"},
+		{".inf", "is not a valid CIDR"},
+		{"0x10", "is not a valid CIDR"},
+		{"true", "is not a valid CIDR"},
+		{"!!str 5", "is not a valid CIDR"},
+		{"!!binary aGVsbG8=", "is not a valid CIDR"},
+	} {
+		for field, file := range map[string]string{
+			"trusted_proxies": "trusted_proxies: [10.0.0.0/8, " + tt.value + "]\n",
+			"prefixes.v4":     "prefixes:\n  v4: " + tt.value + "\n",
+		} {
+			_, err := Load(writeConfig(t, file), true, nil)
+			require.ErrorContains(t, err, field+" "+tt.want, file)
+		}
+	}
+
+	for _, value := range []string{"{a: }", "2026-11-08"} {
+		_, err := Load(writeConfig(t, "log:\n  level: "+value+"\n"), true, nil)
+		require.ErrorContains(t, err, "log.level takes", value)
+	}
+
+	l, err := Load(writeConfig(t, "trusted_proxies: [10.0.0.0/8, null]\nprefixes:\n  v4: ~\n"), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}, l.Config.TrustedProxies)
+	require.Equal(t, Default().Prefixes.V4, l.Config.Prefixes.V4)
 }
