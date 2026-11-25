@@ -1232,12 +1232,47 @@ var (
 	prefixPtrType       = reflect.TypeFor[*netip.Prefix]()
 )
 
+// readsText reports whether a field of type t is read from text, by
+// TextUnmarshaler.
+func readsText(t reflect.Type) bool {
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
+	return reflect.PointerTo(t).Implements(textUnmarshalerType)
+}
+
+// textOnly is the refusal of a value that is not text for a field read
+// from text, by what YAML made of it.
+func textOnly(from reflect.Value) *types.ConfigError {
+	switch {
+	case from.Kind() == reflect.Map || from.Kind() == reflect.Slice:
+		return &types.ConfigError{
+			Reason: "takes one value, not a list or a mapping",
+			Hint:   "write the value as text; YAML reads a word ending in a colon as a mapping",
+		}
+	case from.Type() == reflect.TypeFor[time.Time]():
+		return &types.ConfigError{
+			Reason: "takes text, not a date",
+			Hint:   "quote the value; unquoted, YAML reads it as a date",
+		}
+	}
+
+	return &types.ConfigError{Reason: "takes text, not " + from.Type().String(), Hint: "quote the value"}
+}
+
 // scalarHook converts a value as written into what its field's type takes,
 // before mapstructure and TextUnmarshaler see it. A string is the form
 // variables take, so it may stand for a number, bool, list or map.
 func scalarHook(from, to reflect.Value) (any, error) {
 	data := from.Interface()
 	s, isString := data.(string)
+
+	// A number or a bool written for a field read from text is that text;
+	// a file mode keeps its own rule below.
+	if text, ok := util.ScalarText(from); ok && !isString && readsText(to.Type()) && to.Type() != fileModeType {
+		data, s, isString = text, text, true
+	}
 
 	switch t := to.Type(); {
 	case t == durationType:
@@ -1251,6 +1286,12 @@ func scalarHook(from, to reflect.Value) (any, error) {
 			Hint:    `quote the value, e.g. "0770"; unquoted, YAML reads 0770 as the number 504`,
 			Cause:   util.ErrInvalidFileMode,
 		}
+	case !isString && data != nil && readsText(t):
+		// A field read from text takes a string, or a number or bool as its
+		// text above; anything else would reach mapstructure, which decodes
+		// it into the type's struct, whose fields are unexported: the zero
+		// value, with no error.
+		return nil, textOnly(from)
 	case t == prefixPtrType && isString && s == "":
 		// Unset. Typed: the next hook reads its type.
 		return (*netip.Prefix)(nil), nil
