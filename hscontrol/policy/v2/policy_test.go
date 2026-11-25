@@ -4944,3 +4944,23 @@ func TestAmbiguousUserKeepsOtherGroupMembers(t *testing.T) {
 	_, err = pm.SetPolicy(pol)
 	require.ErrorIs(t, err, ErrMultipleUsersFound)
 }
+
+// TestUndefinedTag holds a server with no policy to the tagged keys it has
+// always taken.
+func TestUndefinedTag(t *testing.T) {
+	none, err := NewPolicyManager(nil, nil, types.Nodes{}.ViewSlice())
+	require.NoError(t, err)
+
+	_, undefined := none.UndefinedTag([]string{"tag:any"})
+	require.False(t, undefined, "no policy defines no tag and refuses none")
+
+	pm, err := NewPolicyManager([]byte(`{"tagOwners": {"tag:kept": []}}`), nil, types.Nodes{}.ViewSlice())
+	require.NoError(t, err)
+
+	_, undefined = pm.UndefinedTag([]string{"tag:kept"})
+	require.False(t, undefined)
+
+	tag, undefined := pm.UndefinedTag([]string{"tag:kept", "tag:gone"})
+	require.True(t, undefined)
+	require.Equal(t, "tag:gone", tag)
+}

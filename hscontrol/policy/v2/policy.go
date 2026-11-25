@@ -1526,6 +1526,29 @@ func (pm *PolicyManager) TagExists(tag string) bool {
 	return exists
 }
 
+// UndefinedTag returns the first of tags the policy does not define; none
+// without a policy.
+func (pm *PolicyManager) UndefinedTag(tags []string) (string, bool) {
+	if pm == nil {
+		return "", false
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.pol == nil {
+		return "", false
+	}
+
+	for _, tag := range tags {
+		if _, ok := pm.pol.TagOwners[Tag(tag)]; !ok {
+			return tag, true
+		}
+	}
+
+	return "", false
+}
+
 func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool {
 	if pm == nil {
 		return false
