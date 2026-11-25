@@ -1259,7 +1259,7 @@ func TestCanAccessRoutesExitNeedsInternet(t *testing.T) {
 	}
 }
 
-func TestCanAccessRoutesMatchesReference(t *testing.T) {
+func TestRapidCanAccessRoutesMatchesReference(t *testing.T) {
 	prefixStrings := []string{
 		"100.64.0.1/32", "100.64.0.2/32", "100.64.0.0/24",
 		"10.0.0.0/24", "10.0.1.0/24", "10.0.0.0/8", "192.168.0.0/16",

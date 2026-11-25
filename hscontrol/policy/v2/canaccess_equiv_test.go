@@ -37,7 +37,7 @@ func TestRouteRanges(t *testing.T) {
 	require.Empty(t, types.RouteRanges([]netip.Prefix{{}}))
 }
 
-func TestMatcherRouteRangesMatchPrefixes(t *testing.T) {
+func TestRapidMatcherRouteRangesMatchPrefixes(t *testing.T) {
 	prefixStrings := []string{
 		"10.0.0.0/32", "10.0.0.1/32", "10.0.0.3/32", "10.0.0.0/24",
 		"10.0.2.0/24", "10.0.0.7/24", "192.168.0.0/16", "100.64.0.1/32",
@@ -76,7 +76,7 @@ func TestMatcherRouteRangesMatchPrefixes(t *testing.T) {
 	})
 }
 
-func TestBuildPeerMapMatchesPrefixReference(t *testing.T) {
+func TestRapidBuildPeerMapMatchesPrefixReference(t *testing.T) {
 	users := []types.User{
 		{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}, {ID: 3, Name: "u3"},
 	}

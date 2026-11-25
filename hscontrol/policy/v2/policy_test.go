@@ -3917,12 +3917,12 @@ func TestSetNodesRetriesAfterFailedRecompile(t *testing.T) {
 	require.Equal(t, gen+1, pm.NodesGeneration())
 }
 
-// TestSetNodesCachedResultsMatchFresh drives random node writes through
+// TestRapidSetNodesCachedResultsMatchFresh drives random node writes through
 // one PolicyManager, reading every node between writes so its caches
 // fill, and checks each read against a PolicyManager built fresh from the
 // same nodes. A cache entry that a write should have dropped shows up as
 // a difference.
-func TestSetNodesCachedResultsMatchFresh(t *testing.T) {
+func TestRapidSetNodesCachedResultsMatchFresh(t *testing.T) {
 	users := types.Users{{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}, {ID: 3, Name: "u3"}}
 
 	policies := []struct {

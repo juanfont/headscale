@@ -22,9 +22,9 @@ func scopeGen() *rapid.Generator[Scope] {
 	})
 }
 
-// TestGrantsMatchesOracle fuzzes Grants against the independent oracle over random
+// TestRapidGrantsMatchesOracle fuzzes Grants against the independent oracle over random
 // granted-sets and want-scopes (vocabulary + junk).
-func TestGrantsMatchesOracle(t *testing.T) {
+func TestRapidGrantsMatchesOracle(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		granted := rapid.SliceOfN(scopeGen(), 0, 6).Draw(rt, "granted")
 		want := scopeGen().Draw(rt, "want")
@@ -35,9 +35,9 @@ func TestGrantsMatchesOracle(t *testing.T) {
 	})
 }
 
-// TestGrantsInvariants asserts the algebraic properties of the grant relation hold
+// TestRapidGrantsInvariants asserts the algebraic properties of the grant relation hold
 // for arbitrary inputs.
-func TestGrantsInvariants(t *testing.T) {
+func TestRapidGrantsInvariants(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		granted := rapid.SliceOfN(scopeGen(), 0, 6).Draw(rt, "granted")
 		want := scopeGen().Draw(rt, "want")
