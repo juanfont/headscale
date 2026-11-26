@@ -33,10 +33,23 @@ func Run(t *Tree, argv []string, env Env) int {
 	// Text of the server is made visible where it enters a sentence or a
 	// cell. stderr and the Done text pass once more through a filter that
 	// keeps line breaks, tabs and backslashes, so a sentence that forgets
-	// can at worst break a line, never drive the terminal.
+	// can at worst break a line, never drive the terminal. Both streams
+	// write a credential as its kind (credential.go).
 	if env.Stderr != nil {
-		env.Stderr = visible{env.Stderr}
+		errOut := &masking{w: visible{env.Stderr}, cred: t.cred()}
+		defer func() { _ = errOut.Flush() }()
+
+		env.Stderr = errOut
 	}
+
+	// JSON is the server's data, not the CLI's sentence: it is written past
+	// the rule.
+	raw := env.Stdout
+
+	out := &masking{w: env.Stdout, cred: t.cred()}
+	defer func() { _ = out.Flush() }()
+
+	env.Stdout = out
 
 	var tab strings.Builder
 	if t.parser.Serve(&tab, argv) {
@@ -45,7 +58,7 @@ func Run(t *Tree, argv []string, env Env) int {
 		return 0
 	}
 
-	err := t.run(argv, env)
+	err := t.run(argv, env, raw)
 
 	switch {
 	case err == nil:
@@ -70,8 +83,9 @@ func (t *Tree) sentence(err error) string {
 	return err.Error()
 }
 
-// run is the builder: the steps of every command, in one order.
-func (t *Tree) run(argv []string, env Env) error {
+// run is the builder: the steps of every command, in one order. raw is
+// stdout as it is, for the JSON of a result.
+func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
 	line, step, err := t.check(argv)
 	if err != nil {
 		return err
@@ -107,7 +121,7 @@ func (t *Tree) run(argv []string, env Env) error {
 
 	// A value that the parser takes as any word is checked before any call.
 	if l.valid != nil {
-		err := l.valid(line)
+		err := l.valid(line, t.cred())
 		if err != nil {
 			return err
 		}
@@ -130,7 +144,9 @@ func (t *Tree) run(argv []string, env Env) error {
 		),
 		stdin:    env.Stdin,
 		stdout:   env.Stdout,
+		raw:      raw,
 		stderr:   env.Stderr,
+		program:  t.name,
 		Environ:  env.Environ,
 		terminal: env.Terminal,
 		screen:   env.StdoutTerminal,
@@ -304,6 +320,13 @@ func getenv(environ []string, name string) string {
 	return ""
 }
 
+// ErrNotRead is what a Run returns, with the zero result, when its change
+// is made and the object to print cannot be read: text prints Done alone,
+// and -o json nothing. Any other zero result is a fault of the command.
+var ErrNotRead = errors.New(
+	"the change is made, and the object to print cannot be read",
+)
+
 // errNotAnswer is a Run of a server command that returns a value no answer
 // of the server holds: one it made or changed. -o json prints an answer as
 // it came and never encodes one again, so this is a fault of the command,
@@ -350,7 +373,7 @@ func printOne[Out any](
 	case err != nil:
 		return err
 	case c.json:
-		return writeJSON(c.stdout, raw)
+		return writeJSON(c.raw, raw)
 	}
 
 	if text := done(); text != "" {
@@ -396,7 +419,7 @@ func printList[Row any](
 	}
 
 	return writeJSON(
-		c.stdout,
+		c.raw,
 		append(append([]byte("["), bytes.Join(raws, []byte(","))...), ']'),
 	)
 }

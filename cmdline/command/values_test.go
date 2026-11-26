@@ -44,17 +44,24 @@ func TestExpiry(t *testing.T) {
 		node.UnmarshalText([]byte("0s")),
 		"a duration from now is longer than 0",
 	)
+	require.EqualError(
+		t,
+		node.UnmarshalText([]byte("300y")),
+		"a duration from now is at most 292y; a later time is written as a date, such as 2999-08-27",
+	)
+	require.NoError(t, node.UnmarshalText([]byte("292y")))
+	require.Equal(t, now.Add(292*365*24*time.Hour), node.At(now))
 
-	var key Expiry[timeOnly]
+	var key Expiry[NoWords]
 	require.EqualError(
 		t,
 		key.UnmarshalText([]byte("never")),
 		"it is a time, a date or a duration such as 90d",
 	)
+	require.EqualError(
+		t,
+		key.UnmarshalText([]byte("now")),
+		"it is a time, a date or a duration such as 90d",
+	)
 	require.NoError(t, key.UnmarshalText([]byte("1h")))
 }
-
-// timeOnly is an expiry that takes no word, as a key's does.
-type timeOnly struct{}
-
-func (timeOnly) Words() []string { return nil }

@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/juanfont/headscale/cmdline"
 	"github.com/juanfont/headscale/cmdline/table"
@@ -43,19 +46,24 @@ type leaf struct {
 	info      []table.ColumnInfo
 	checkList func(line *cmdline.Line, command string) (int, error)
 	// noRows is what a list with no rows says on a terminal; filter is an
-	// example of --filter for its help.
-	noRows, filter string
+	// example of --filter for its help; only is the filter that --all
+	// removes, "" for a list that hides nothing.
+	noRows, filter, only string
 	// set is a command that changes the fields its Opt flags name, so a
 	// line gives at least one of them: NeedsChange.
 	set bool
 	// force is a command that can ask, and so takes --force.
 	force bool
+	// secret is a command that prints a secret once: Spec.Secret.
+	secret bool
+	// end is the delete of a credential, made by NewEnd.
+	end bool
 	// hint follows a wrong argument count or an empty list argument;
 	// emptyList follows the sentence of an empty list argument.
 	hint      func(args []string) string
 	emptyList string
 	// valid checks the line, read but not looked up, before any call.
-	valid func(*cmdline.Line) error
+	valid func(*cmdline.Line, *Credentials) error
 	// session is the S of its spec, the session it runs with.
 	session reflect.Type
 	// target is the type of the command's target: the first argument that
@@ -201,12 +209,15 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	l.check = func(p *program) error { return checkSpec(p, s) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
+	l.secret = s.Secret != nil
+	l.end = s.End
+
 	l.hint = s.Hint
 	l.emptyList = s.EmptyList
 	l.target, _ = targetType(reflect.TypeFor[In]())
 
 	if s.Valid != nil {
-		l.valid = func(line *cmdline.Line) error {
+		l.valid = func(line *cmdline.Line, _ *Credentials) error {
 			in, _ := cmdline.Get[In](line)
 
 			return s.Valid(in)
@@ -224,6 +235,8 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 
 				in, out, err := runGuarded(c, s, in)
 
+				notRead := errors.Is(err, ErrNotRead)
+
 				done := func() string {
 					if s.Done == nil {
 						return ""
@@ -232,8 +245,39 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 					return s.Done(in, out, c.Now())
 				}
 
-				if err != nil {
+				switch {
+				case err != nil && !notRead && s.Secret != nil:
+					return c.lostAnswer(
+						c.fields(c.about(err, in), reflect.TypeFor[In]()),
+					)
+				case err != nil && !notRead:
 					return c.fields(c.about(err, in), reflect.TypeFor[In]())
+				case s.Secret != nil:
+					// A closed pipe on stdout or stderr kills a Go process at the
+					// write, the credential made and its revoke never said;
+					// ignored, the write fails, and printSecret says it. Other
+					// commands keep ending quietly, as `list | head` should, also
+					// a later Run in the same process: the signal is taken for
+					// this write only (Notify and Stop; an Ignore cannot be undone
+					// by Reset), and one the process ignored already stays so.
+					if !signal.Ignored(syscall.SIGPIPE) {
+						pipe := make(chan os.Signal, 1)
+						signal.Notify(pipe, syscall.SIGPIPE)
+
+						defer signal.Stop(pipe)
+					}
+
+					return printSecret(c.run, out, s.Secret(out), done)
+				}
+
+				// The change is made and there is no object: JSON has nothing
+				// to print.
+				if notRead {
+					if c.json {
+						return nil
+					}
+
+					return writeText(c.stdout, done())
 				}
 
 				return printOne(c.run, out, s.Columns, s.Blocks, done)
@@ -245,7 +289,7 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 }
 
 // checkSpec reports what is wrong with a spec, for the tree to name.
-func checkSpec[S, In, Out any](_ *program, s Spec[S, In, Out]) error {
+func checkSpec[S, In, Out any](p *program, s Spec[S, In, Out]) error {
 	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
 
 	var errs []error
@@ -260,6 +304,15 @@ func checkSpec[S, In, Out any](_ *program, s Spec[S, In, Out]) error {
 	case s.Columns != nil && s.Done != nil:
 		errs = append(errs, errBoth)
 	}
+
+	errs = append(
+		errs,
+		p.checkSecret(
+			reflect.TypeFor[Out](),
+			s.Secret != nil,
+			s.Done != nil,
+			s.Columns != nil,
+		)...)
 
 	if s.Blocks != nil && s.Columns == nil {
 		errs = append(errs, errBlocks)
@@ -284,10 +337,13 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 	)
 	l.output = true
 	l.list = true
-	l.info = s.Columns.Info()
+	l.info = onlyInfo(s.Columns, s.Only)
 	l.noRows = s.NoRows
+	l.only = s.Only
 	l.filter = filterExample(s.Example)
-	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
+	l.checkList = func(line *cmdline.Line, command string) (int, error) {
+		return listCheck(s.Columns, s.Only, line, command)
+	}
 	l.session = reflect.TypeFor[S]()
 	l.check = func(p *program) error {
 		var errs []error
@@ -323,6 +379,9 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 			}
 		}
 
+		errs = append(errs, checkOnly(s.Columns, s.Only, s.Long)...)
+		errs = append(errs, p.checkRows(reflect.TypeFor[Row]())...)
+
 		return errors.Join(append(errs, s.Columns.Check())...)
 	}
 	l.cmd = func(flags []any) cmdline.Node {
@@ -334,11 +393,14 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 			Run: func(ctx context.Context, in In) error {
 				c := ctxOf[S](ctx)
 				f, _ := cmdline.Get[listFlags](c.line)
+				all, _ := cmdline.Get[allFlags](c.line)
 
 				conds, err := filters(c.run, ctx, s.Columns, f)
 				if err != nil {
 					return err
 				}
+
+				cols, only := applyOnly(s.Columns, s.Only, all.All, conds)
 
 				rows, err := s.Run(c, in)
 				if err != nil {
@@ -350,7 +412,17 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 					return err
 				}
 
-				return printList(c.run, rows, s.Columns.Pick(f.words()), s.NoRows)
+				shown, err := listOf(c.run, s.Columns, rows, only, "")
+				if err != nil {
+					return err
+				}
+
+				return printList(
+					c.run,
+					shown,
+					cols.Pick(f.words()),
+					moreRows(s.NoRows, len(rows)-len(shown)),
+				)
 			},
 		}
 	}
@@ -398,6 +470,10 @@ func (l *leaf) flags() []any {
 
 	if l.list {
 		f = append(f, listFlags{})
+	}
+
+	if l.only != "" {
+		f = append(f, allFlags{})
 	}
 
 	switch {
@@ -457,7 +533,9 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 
 	var errs []error
 
-	opts := make([]cmdline.Option, 0, len(p.Entities))
+	// An owner is no entity, so it has no candidates and no read; it has a
+	// lookup all the same.
+	opts := slices.Clone(p.Readers)
 
 	for _, e := range p.Entities {
 		t.entities[e.t] = e
@@ -504,6 +582,8 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 				)
 			}
 
+			errs = append(errs, secretEnds(path, n.Commands)...)
+
 			return g
 		case *leaf:
 			for _, f := range [][2]string{{"Name", n.name}, {"Short", n.short}, {"Long", n.long}} {
@@ -536,6 +616,10 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 				bad("%v", err)
 			}
 
+			if n.name == "delete" && revokable(n.target) && !n.end {
+				bad("%v", errNotEnd)
+			}
+
 			if n.name == "delete" && !n.force {
 				bad("%v", errNoAsk)
 			}
@@ -566,6 +650,8 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 		root.Commands = append(root.Commands, build([]string{nameOf(n)}, n))
 	}
 
+	errs = append(errs, secretEnds(nil, nodes)...)
+
 	parser, err := cmdline.New(root, opts...)
 	if err != nil {
 		return nil, errors.Join(append(errs, err)...)
@@ -591,6 +677,9 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 
 	return t, nil
 }
+
+// cred is the rule at the edge of the tree's program.
+func (t *Tree) cred() *Credentials { return &t.prog.Credentials }
 
 // checkFlags holds the flag rules over the whole tree: every flag has a
 // help text, and a short letter has one meaning.
@@ -743,6 +832,18 @@ func (t *Tree) Reached(argv []string) string {
 	line, _ := t.parser.Parse(argv)
 
 	return strings.Join(line.Command.Path, " ")
+}
+
+// Refuse makes Build refuse n, a command, with err when err is not nil: a
+// check of a constructor of the program, such as one that makes a kind of
+// delete.
+func Refuse(n Node, err error) Node {
+	if l, ok := n.(*leaf); ok && err != nil {
+		check := l.check
+		l.check = func(p *program) error { return errors.Join(check(p), err) }
+	}
+
+	return n
 }
 
 // checkTarget reports what the target of n lacks for the guard of its

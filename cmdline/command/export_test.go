@@ -2,10 +2,14 @@ package command
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/juanfont/headscale/cmdline"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -96,7 +100,16 @@ type testS = any
 // session.
 func testProgram() Program[testS] {
 	return Program[testS]{
-		Version:   func(context.Context) string { return "headscale version test" },
+		Version: func(context.Context) string { return "headscale version test" },
+		Credentials: Credentials{
+			Prefix: "hskey-",
+			Kinds:  []string{"auth", "api", "authreq", "client", "oauthtok", "reg"},
+			Fronts: types.SecretFronts(),
+		},
+		OpenFields: map[reflect.Type]string{
+			reflect.TypeFor[clientv0.HealthMessage](): "Details",
+		},
+		MayBeMade: func(err error) bool { _, ok := errors.AsType[*madeError](err); return ok },
 		Aliases:   []string{"ls", "rm", "approve"},
 		ConfigEnv: "HEADSCALE_CONFIG",
 		Server:    "a running headscale",
@@ -111,4 +124,18 @@ func testBuild(name, short string, nodes ...Node) (*Tree, error) {
 	p.Name, p.Short = name, short
 
 	return Build(p, nodes...)
+}
+
+// masked is s as the test program's edge writes it.
+func masked(s string) string {
+	cr := testProgram().Credentials
+
+	return cr.masked(s)
+}
+
+// testCred is the rule at the edge of the test program.
+func testCred() *Credentials {
+	cr := testProgram().Credentials
+
+	return &cr
 }

@@ -56,6 +56,12 @@ type NowNever struct{}
 
 func (NowNever) Words() []string { return []string{"now", "never"} }
 
+// NoWords are the words of an expiry that takes a time alone, such as a
+// key's: never and now are words it refuses, as any other word.
+type NoWords struct{}
+
+func (NoWords) Words() []string { return nil }
+
 // Expiry is the value of an expiry flag, read by the one time parser of
 // the CLI: a time, a date at midnight UTC, a duration from now, or one of
 // the words of W. The command declares with W what it takes: a node takes
@@ -83,6 +89,8 @@ func (e *Expiry[W]) UnmarshalText(b []byte) error {
 	d, t, ahead, err := table.ReadTime(s)
 
 	switch {
+	case errors.Is(err, table.ErrTooLong):
+		return err
 	case err != nil:
 		//nolint:err113 // the words are W's
 		return errors.New(

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"time"
+
+	"github.com/juanfont/headscale/cmdline"
 )
 
 // Program is what a program built on this package gives the builder: its
@@ -46,11 +48,22 @@ type Program[S any] struct {
 	// Fields names, in err, the flags and arguments of the input type in
 	// that filled the fields of the body the server refused.
 	Fields func(err error, in reflect.Type) error
+	// MayBeMade reports whether err leaves a change unknown: a write sent
+	// and not answered, or answered with what cannot be read.
+	MayBeMade func(err error) bool
 
-	// Entities are the types of target a lookup finds.
+	// Entities are the types of target a lookup finds, and Readers the
+	// other values read once the line is right, such as an owner.
 	Entities []Entity
+	Readers  []cmdline.Option
 	// Owner is the ID of the user word names, for a filter owner=<user>.
 	Owner func(ctx context.Context, word string) (string, error)
+
+	// Credentials is the rule at the edge (credential.go).
+	Credentials Credentials
+	// OpenFields are the fields that hold an interface and no secret, by
+	// the struct that has them (secret.go).
+	OpenFields map[reflect.Type]string
 
 	// Aliases are the aliases a command may have.
 	Aliases []string
@@ -77,8 +90,9 @@ func erase[S any](p Program[S]) program {
 		Name: p.Name, Short: p.Short, Version: p.Version,
 		Sentence: p.Sentence,
 		Refusal:  p.Refusal, Precondition: p.Precondition,
-		About: p.About, Fields: p.Fields,
-		Entities: p.Entities, Owner: p.Owner,
+		About: p.About, Fields: p.Fields, MayBeMade: p.MayBeMade,
+		Entities: p.Entities, Readers: p.Readers, Owner: p.Owner,
+		Credentials: p.Credentials, OpenFields: p.OpenFields,
 		Aliases: p.Aliases, ConfigEnv: p.ConfigEnv,
 		Server:      p.Server,
 		sessionType: reflect.TypeFor[S](),
