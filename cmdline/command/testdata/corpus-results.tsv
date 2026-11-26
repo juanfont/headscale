@@ -1,0 +1,487 @@
+# 485 cases: up 343, ours 123, neither 19
+# id	verdict	answer
+cobracmd-001	ours	unknown-command [] "one"
+cobracmd-002	up	run nodes routes set ["one" "two"]
+cobracmd-003	ours	help
+cobracmd-004	up	unknown-command [] "unknown"
+cobracmd-005	up	run serve []
+cobracmd-006	up	run nodes routes set ["one" "two"]
+cobracmd-007	ours	unknown-command [] "serv"
+cobracmd-008	ours	unknown-command [nodes routes] "appr"
+cobracmd-009	up	run grp grp ["one"]
+cobracmd-010	up	run grp grp ["grp"]
+cobracmd-011	up	run run ["one" "two"] string=["abc"]
+cobracmd-012	ours	unknown-flag [run] "sabc"
+cobracmd-013	ours	unknown-flag [auth keys create] "e24h"
+cobracmd-014	up	unknown-flag [nodes list] "version"
+cobracmd-015	ours	unknown-flag [] "expiry"
+cobracmd-016	ours	unknown-flag [] "expiry"
+cobracmd-017	up	run nodes list [] config=["nodes"]
+cobracmd-018	up	run nodes list [] config=["/x"]
+cobracmd-019	up	run nodes list [] config=["/x"]
+cobracmd-020	neither	bad-value [nodes routes set] "routes"
+cobracmd-021	up	run nodes routes set ["12" "r"] config=["/x"] output=["json"]
+cobracmd-022	ours	unknown-command [] "one"
+cobracmd-023	ours	unknown-command [] "help"
+cobracmd-024	ours	unknown-command [] "help"
+cobracmd-025	up	help
+cobracmd-026	up	help nodes list
+cobracmd-027	up	help nodes
+cobracmd-028	ours	unknown-command [] "arg1"
+cobracmd-029	ours	unknown-flag [nodes list] "version"
+cobracmd-030	up	unknown-flag [nodes list] "version"
+cobracmd-031	ours	unknown-flag [] "v"
+cobracmd-032	up	unknown-command [] "NODES"
+cobracmd-033	up	unknown-command [nodes] "LS"
+cobracmd-034	up	run nodes list [] config=["ok"] list-columns=["true"] output=["json"]
+cobracmd-035	up	run check config []
+cobracmd-036	up	unknown-flag [] "expiry"
+cobracmd-037	up	unknown-flag [nodes list] "version"
+cobracmd-038	up	run auth keys create ["a"]
+cobracmd-039	up	run nodes delete ["12"]
+cobracmd-040	up	unknown-command [nodes routes] "appr"
+cobracmd-041	up	run users delete ["users"]
+cobracmd-042	up	run nodes list [] config=["nodes"]
+cobracmd-043	up	run nodes list [] config=["nodes"]
+cobracmd-044	up	missing-value [nodes list] "config"
+cobracmd-045	up	run nodes list [] config=["-o"]
+cobracmd-046	up	run nodes list [] config=["nodes"] output=["json"]
+cobracmd-047	up	missing-value [nodes list] "output"
+cobracmd-048	up	run nodes list [] config=["nodes"] output=["json"]
+cobracmd-049	up	run nodes list [] config=["nodes"] output=["json"]
+cobracmd-050	up	unknown-flag [] "bogus"
+cobracmd-051	up	unknown-flag [nodes list] "bogus"
+cobracmd-052	up	unknown-flag [nodes list] "bogus"
+cobracmd-053	up	unknown-flag [] "bogus"
+cobracmd-054	up	unknown-flag [] "bogus"
+cobracmd-055	up	unknown-flag [nodes list] "bogus"
+cobracmd-056	up	unknown-flag [nodes list] "bogus"
+cobracmd-057	up	unknown-flag [] "bogus"
+cobracmd-058	up	unknown-flag [] "bogus"
+cobracmd-059	up	unknown-flag [nodes list] "bogus"
+cobracmd-060	up	unknown-flag [nodes list] "bogus"
+cobracmd-061	up	unknown-flag [] "bogus"
+cobracmd-062	up	help
+cobracmd-063	up	help
+cobracmd-064	up	unknown-command [] "illegal"
+cobracmd-065	ours	arg-count [nodes list]
+cobracmd-066	up	run nodes routes set ["legal" "args"]
+cobracmd-067	ours	unknown-command [] "legal"
+cobracmd-068	ours	unknown-command [] "somearg"
+cobracmd-069	ours	unknown-command [nodes] "somearg"
+cobracomp-001	ours	[api auth check completion nodes policy serve users version] files=false nospace=false
+cobracomp-002	up	[serve] files=false nospace=false
+cobracomp-003	ours	[rm] files=false nospace=false
+cobracomp-004	neither	[delete list routes set] files=false nospace=false
+cobracomp-005	up	[delete list routes set] files=false nospace=false
+cobracomp-006	up	[delete list routes set] files=false nospace=false
+cobracomp-007	up	[api auth check completion nodes policy serve users version] files=false nospace=false
+cobracomp-008	up	[delete list routes set] files=false nospace=false
+cobracomp-009	up	[bash fish powershell zsh] files=false nospace=false
+cobracomp-010	up	[fish] files=false nospace=false
+cobracomp-011	ours	[] files=false nospace=false
+cobracomp-012	up	[] files=false nospace=false
+cobracomp-013	up	[one two] files=false nospace=false
+cobracomp-014	up	[two] files=false nospace=false
+cobracomp-015	up	[] files=false nospace=false
+cobracomp-016	up	[one two] files=false nospace=false
+cobracomp-017	up	[two] files=false nospace=false
+cobracomp-018	up	[] files=false nospace=false
+cobracomp-019	up	[] files=false nospace=false
+cobracomp-020	ours	[--config --help --output --version] files=false nospace=false
+cobracomp-021	up	[--config] files=false nospace=false
+cobracomp-022	ours	[--columns --config --filter --help --list-columns --output --sort] files=false nospace=false
+cobracomp-023	up	[--columns --config --filter --help --list-columns --output] files=false nospace=false
+cobracomp-024	up	[--columns --config --filter --help --output] files=false nospace=false
+cobracomp-025	up	[--columns --config --filter --help --list-columns --output --sort] files=false nospace=false
+cobracomp-026	up	[--config --help --name --output] files=false nospace=false
+cobracomp-027	up	[] files=false nospace=false
+cobracomp-028	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false
+cobracomp-029	up	[json] files=false nospace=false
+cobracomp-030	up	[json] files=false nospace=false
+cobracomp-031	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false
+cobracomp-032	up	[id ip] files=false nospace=false
+cobracomp-033	up	[--help] files=false nospace=false
+cobracomp-034	up	[] files=false nospace=false
+cobracomp-035	up	[] files=true nospace=false
+cobracomp-036	up	[bash fish powershell zsh] files=false nospace=false
+cobracomp-037	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-038	up	[bash] files=false nospace=false
+cobracomp-039	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-040	up	[] files=false nospace=false
+cobracomp-041	up	[json] files=false nospace=false
+cobracomp-042	up	[set] files=false nospace=false
+cobracomp-043	up	[list] files=false nospace=false
+cobracomp-044	up	[approve] files=false nospace=false
+cobracomp-045	up	[api auth check completion nodes policy serve users version] files=false nospace=false
+cobracomp-046	up	[delete list routes set] files=false nospace=false
+cobracomp-047	up	[] files=false nospace=false
+cobracomp-048	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-049	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-050	neither	[1-123 11-123 service] files=false nospace=false
+cobracomp-051	ours	[] files=false nospace=false
+cobracomp-052	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-053	ours	[--config --help --output --version] files=false nospace=false
+cobracomp-054	ours	[api auth check completion nodes policy serve users version] files=false nospace=false
+cobracomp-055	ours	[api auth check completion nodes policy serve users version] files=false nospace=false
+cobracomp-056	ours	[api auth check completion nodes policy serve users version] files=false nospace=false
+cobracomp-057	ours	[bash fish powershell zsh] files=false nospace=false
+cobracomp-058	ours	[bash fish powershell zsh] files=false nospace=false
+cobracomp-059	up	[] files=false nospace=false
+cobracomp-060	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-061	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-062	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-063	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-064	up	[1-123 11-123 service] files=false nospace=false
+cobracomp-065	neither	[] files=true nospace=false
+cobracomp-066	neither	[] files=true nospace=false
+cobracomp-067	ours	[] files=false nospace=false
+goflag-001	ours	unknown-flag [run] "string"
+goflag-002	up	run run [] string=["22"]
+goflag-003	up	run run ["extra"] bool=["true"]
+goflag-004	up	run run [] filter=["1" "2" "3"]
+goflag-005	ours	run run ["barg"] bool=["true"] verbose=["true"]
+goflag-006	ours	unknown-flag [run] "help"
+goflag-007	up	unknown-flag [run] "undefined"
+goflag-008	up	unknown-flag [run] "bool"
+goflag-009	up	unknown-flag [run] ""
+goflag-010	up	run run ["-"]
+goflag-011	up	run run ["x"]
+goflag-012	ours	unknown-flag [auth keys create] "description"
+issues-001	up	run nodes set ["n1"] expiry=[""]
+issues-002	up	run nodes set ["n1"] name=[""]
+issues-003	up	run nodes set ["n1"] expiry=["1h"] name=[""]
+issues-004	up	unknown-flag [nodes list] "output"
+issues-005	ours	unknown-flag [nodes list] "columns"
+issues-006	neither	unknown-flag [nodes delete] " h"
+issues-007	ours	run auth keys create ["u1"] description=["--reusable"]
+issues-008	ours	arg-count [api keys create]
+issues-009	ours	arg-count [nodes delete]
+issues-010	ours	unknown-flag [nodes set] "exp"
+issues-011	ours	unknown-flag [nodes delete] "1"
+issues-012	up	run nodes delete ["-1"]
+issues-013	up	run auth keys create ["u1"] description=["line1\nline2"]
+issues-014	ours	run nodes delete ["n1"] force=["true"]
+issues-015	up	unknown-flag [nodes list] "bogus"
+issues-016	up	run run ["/"] bool=["true"]
+issues-017	up	flag-repeated [nodes set] "name"
+issues-018	ours	unknown-flag [nodes list] "output"
+issues-019	up	run run [] bool=["false"]
+issues-020	up	run nodes set ["n1"] expiry=["1h"]
+issues-021	up	run nodes set ["n1"] expiry=["-1h"]
+issues-022	up	run nodes routes set ["n1" "--force"] output=["json"]
+issues-023	neither	unknown-command [] "--"
+issues-024	up	run policy set ["-"]
+issues-025	up	unknown-command [nodes] "-"
+issues-026	up	run nodes routes set ["-" "10.0.0.0/8"]
+issues-027	up	unknown-flag [] "bogus"
+issues-028	up	unknown-command [nodes] "lst"
+issues-029	up	run nodes list [] output=["json"]
+issues-030	up	unknown-flag [] "name"
+issues-031	ours	unknown-flag [] "list-columns"
+issues-032	up	[] files=false nospace=false
+issues-033	neither	[api auth check completion nodes policy serve users version] files=false nospace=false
+issues-034	up	[--name] files=false nospace=false
+issues-035	up	[] files=false nospace=false
+issues-036	up	run auth keys create ["u1"] description=["- watsupohello"]
+issues-037	up	run nodes list [] config=["nodes"] output=["json"]
+issues-038	up	run nodes list [] config=["nodes"]
+issues-039	up	[api auth check completion nodes policy serve users version] files=false nospace=false
+issues-040	up	run nodes set ["n1"] name=["abc def"]
+issues-041	neither	run check config ["—-help"]
+issues-042	up	help nodes list
+issues-043	up	help
+issues-044	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false
+issues-045	up	run auth keys create ["u1"] description=["myApp --startup-args=a, b, c"]
+issues-046	up	unknown-command [nodes] "li"
+issues-047	ours	unknown-command [nodes] "lis"
+issues-048	up	unknown-command [] "NODES"
+issues-049	up	[approve] files=false nospace=false
+issues-050	up	[list] files=false nospace=false
+issues-051	up	[--config --help --output --version] files=false nospace=false
+issues-052	up	[id,expiry id,hostname id,id id,ip id,last-seen id,name id,online id,owner id,version] files=false nospace=true
+issues-053	ours	[] files=false nospace=false
+issues-054	ours	[] files=false nospace=false
+issues-055	ours	unknown-flag [run] "bs"
+issues-056	up	missing-value [nodes set] "name"
+issues-057	up	run nodes list [] sort=["-last-seen"]
+issues-058	ours	unknown-flag [nodes delete] "no-force"
+issues-059	ours	arg-count [nodes list]
+issues-060	neither	bad-value [nodes routes set] "routes"
+issues-061	up	run nodes routes set ["" "10.0.0.0/8"] output=["json"]
+issues-062	up	unknown-flag [nodes list] "version"
+issues-063	up	run nodes delete ["n1"] force=["true"] output=["json"]
+issues-064	up	[--sort] files=false nospace=false
+issues-065	up	[--columns --config --filter --help --list-columns --output --sort] files=false nospace=false
+issues-066	up	run nodes list [] config=["/etc/h.yaml"]
+others-001	up	run nodes routes set ["10" "r"]
+others-002	up	run run ["1" "2" "3"] bool=["true"]
+others-003	up	run nodes routes set ["n" "r"] config=["moo"]
+others-004	up	run nodes delete ["n"] force=["true"]
+others-005	up	run nodes delete ["n"] force=["false"]
+others-006	ours	unknown-flag [nodes delete] "no-force"
+others-007	ours	unknown-flag [nodes delete] "no-force"
+others-008	ours	unknown-flag [run] "shello"
+others-009	up	run api keys create [] user=["hello"]
+others-010	ours	flag-repeated [nodes list] "sort"
+others-011	up	run nodes list [] filter=["id,name" "ip,owner"]
+others-012	up	run nodes list [] config=["p"]
+others-013	up	run check config ["-"]
+others-014	up	run nodes set ["n"] name=["-"]
+others-015	up	run nodes set ["n"] name=["wtf"]
+others-016	up	run nodes set ["n"] name=["value"]
+others-017	up	run nodes set ["n"] name=[""]
+others-018	up	run nodes set ["n"] name=[""]
+others-019	up	run run [] file=["-foo"]
+others-020	up	run run [] file=["-foo"]
+others-021	up	run run [] file=["-oo"]
+others-022	ours	run nodes set ["n"] name=["-foo"]
+others-023	up	run nodes list [] filter=["-id" "-name"]
+others-024	ours	run run ["x"] file=["--"]
+others-025	ours	run run [] string=["xxx"]
+others-026	up	run run ["ls" "-lart"]
+others-027	up	unknown-flag [nodes list] "break"
+others-028	up	run test [] aflag=["true"]
+others-029	up	run test ["arg1" "arg2"] kflag=["true"]
+others-030	up	run test [] gflag=["true"]
+others-031	ours	unknown-flag [test] "ak"
+others-032	ours	unknown-flag [test] "ag"
+others-033	ours	unknown-flag [test] "kg"
+others-034	ours	unknown-flag [test] "akg"
+others-035	up	unknown-flag [test] "akg"
+others-036	up	unknown-flag [test] "invalid"
+others-037	ours	unknown-flag [test] "akg"
+others-038	up	unknown-flag [test] "invalid"
+others-039	ours	unknown-flag [test] "akg"
+others-040	ours	unknown-flag [test] "akgi"
+others-041	up	run test [] ijk=["ivalue"]
+others-042	up	run test ["arg1"] ijk=["ivalue"]
+others-043	up	missing-value [test] "ijk"
+others-044	ours	unknown-flag [test] "ia"
+others-045	ours	unknown-flag [test] "ia"
+others-046	ours	unknown-flag [test] "aik"
+others-047	ours	unknown-flag [test] "ai"
+others-048	up	run run ["a" "--notaflag"] file=["x"]
+others-049	up	run run ["a" "-"]
+others-050	up	run run ["-" "foo" "bar"]
+others-051	up	run run ["-" "foo"] file=["x"]
+others-052	up	run run ["-" "--file" "leftover"]
+others-053	up	run run [" - " "foo"]
+others-054	up	unknown-flag [run] "undefined"
+others-055	up	run run ["  padded  " "\ttabbed\t"]
+others-056	up	run run ["operand"] file=[" hello "]
+others-057	up	run run ["operand"] file=["\t"]
+others-058	up	run run ["operand"] file=["line\n"]
+others-059	up	run run ["operand"] file=["space\u00a0"]
+others-060	up	run run ["operand"] file=["a=b "]
+others-061	up	run run ["operand"] file=[" hello "]
+others-062	up	run run ["operand"] file=[" hello "]
+others-063	ours	run run ["\t --file" " hello " "operand"]
+others-064	up	run nodes delete ["n"] force=["true"]
+others-065	up	bad-value [nodes delete] "force"
+others-066	up	bad-value [nodes delete] "force"
+others-067	up	run run ["a" "b"]
+others-068	ours	unknown-flag [test] "as"
+others-069	up	run test [] aflag=["true"] bflag=["true"]
+others-070	ours	unknown-flag [test] "ab"
+others-071	ours	unknown-flag [test] "ba"
+others-072	up	missing-value [nodes set] "expiry"
+others-073	up	unknown-flag [nodes list] "version"
+others-074	ours	unknown-flag [test] "as"
+others-075	ours	unknown-flag [test] "abs"
+others-076	ours	unknown-flag [nodes list] "filter"
+others-077	up	unknown-command [] "foo"
+others-078	ours	unknown-flag [] "undefined"
+others-079	ours	unknown-flag [] "undefined"
+others-080	ours	unknown-flag [nodes list] "undefined"
+others-081	up	unknown-flag [nodes list] "undefined"
+others-082	up	run nodes list [] filter=["id" "name" "ip"]
+others-083	up	run nodes list [] config=["hello"] output=["json"]
+others-084	ours	flag-repeated [nodes list] "config"
+others-085	up	run nodes list [] filter=["id" "name"] sort=["id"]
+others-086	up	flag-repeated [nodes set] "name"
+others-087	up	flag-repeated [auth keys create] "tags"
+others-088	up	flag-repeated [nodes delete] "force"
+others-089	ours	unknown-command [nodes] "li"
+others-090	up	run nodes list []
+others-091	ours	unknown-flag [nodes set] "name"
+others-092	up	run run ["a1" "a2" "a3"] file=["x"]
+others-093	up	run run ["x"] file=["--"]
+others-094	up	run run [] file=["x"]
+others-095	up	run run ["x" "--file=value"]
+others-096	up	run run ["x"] file=["value"]
+others-097	up	run run ["x"] bool=["true"]
+others-098	up	run run ["x"] bool=["false"]
+others-099	up	run run ["x" "--bool=true"]
+others-100	up	run run ["x"] bool=["true"]
+others-101	up	run auth keys create ["o"] tags=["tag:ci,tag:prod"]
+others-102	up	run auth keys create ["o"] tags=["tag:ci"]
+others-103	up	run run ["hello" "" "world"]
+others-104	up	run run ["" "hello"]
+others-105	up	run run ["hello" "  " "world"]
+others-106	up	run run ["" "arg2" "arg3"] file=["something"]
+others-107	up	run run ["" "arg2"] file=["something"]
+others-108	up	run run ["positional"] file=[""]
+others-109	up	run run ["file"] file=["flagvalue"]
+others-110	ours	bad-value [nodes delete] "force"
+others-111	ours	unknown-flag [run] "10"
+others-112	up	run run ["arg1" "arg2"] bool=["true"] file=["value"]
+others-113	ours	unknown-flag [nodes delete] "no-force"
+others-114	ours	unknown-flag [test] "ab"
+others-115	up	run nodes list [] filter=["id,name,ip" "owner" "online"]
+others-116	up	[delete list routes set] files=false nospace=false
+others-117	up	[--config --expiry --help --name --output] files=false nospace=false
+others-118	up	[--columns --config --filter --help --list-columns --output --sort] files=false nospace=false
+others-119	up	[] files=false nospace=false
+others-120	up	[] files=false nospace=false
+others-121	up	[--list-columns] files=false nospace=false
+others-122	up	[--help] files=false nospace=false
+others-123	neither	[api auth check completion nodes policy serve users version] files=false nospace=false
+others-124	up	[] files=false nospace=false
+others-125	up	[--version] files=false nospace=false
+others-126	up	[--config] files=false nospace=false
+others-127	up	[--config] files=false nospace=false
+others-128	up	[] files=false nospace=false
+others-129	up	run nodes delete ["n"] force=["true"]
+others-130	ours	run run ["true"] bool=["true"]
+others-131	ours	run run [] bool=["true"]
+others-132	up	run run [] bool=["true"]
+others-133	up	run run ["false"] bool=["true"]
+others-134	ours	run run ["false"] bool=["true"]
+others-135	up	help run
+others-136	up	help run
+others-137	ours	unknown-flag [nodes delete] "force"
+others-138	ours	unknown-flag [nodes delete] "force"
+others-139	up	run test [] bflag=["true"] str=["foo"]
+others-140	ours	run test [] str=["xxx"]
+others-141	ours	unknown-flag [test] "str"
+others-142	up	run test [] str=["-b"]
+others-143	up	run test [] aflag=["true"] bflag=["true"] kflag=["true"]
+others-144	ours	unknown-flag [test] "ab"
+others-145	ours	unknown-flag [test] "ab"
+others-146	ours	unknown-flag [test] "absfoo"
+others-147	ours	unknown-flag [test] "aks"
+others-148	ours	run test ["true" "false" "true"] aflag=["true"] bflag=["true"] kflag=["true"]
+others-149	up	help test
+others-150	ours	run test ["true" "true"] aflag=["true"] kflag=["true"]
+others-151	up	run test [] aflag=["true"] bflag=["false"]
+others-152	up	run test ["false"] aflag=["true"]
+others-153	ours	run test ["true" "true"] aflag=["true"] bflag=["true"]
+others-154	up	run test [] aflag=["true"] bflag=["false"]
+others-155	up	run nodes delete ["hello world"] config=["x"] force=["true"]
+others-156	ours	run run ["x"] file=[""]
+others-157	ours	run run ["-" "x"]
+others-158	up	[users] files=false nospace=false
+others-159	up	[--config --help --output --version] files=false nospace=false
+others-160	up	[--config --help --output --version] files=false nospace=false
+others-161	ours	[] files=false nospace=false
+others-162	up	[--version] files=false nospace=false
+others-163	up	[--config --filter --help --list-columns --output --sort] files=false nospace=false
+others-164	up	[] files=false nospace=false
+others-165	up	[--sort] files=false nospace=false
+others-166	up	[] files=false nospace=false
+others-167	neither	[] files=false nospace=false
+others-168	neither	[] files=false nospace=false
+others-169	neither	[] files=false nospace=false
+others-170	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false
+others-171	up	[online owner] files=false nospace=false
+others-172	neither	[] files=false nospace=false
+others-173	up	[hostname] files=false nospace=false
+others-174	up	[bash fish powershell zsh] files=false nospace=false
+others-175	up	[fish] files=false nospace=false
+others-176	up	run nodes delete ["hello"]
+others-177	up	run nodes delete ["hello"]
+others-178	up	unknown-flag [nodes delete] "unknown"
+others-179	up	run nodes delete ["hello"] config=["x"]
+others-180	up	run nodes delete ["hello"] config=["x"]
+others-181	up	run nodes delete ["hello"] config=["conv: "]
+others-182	up	run nodes delete ["hello"] config=["conv: "] force=["true"]
+others-183	up	unknown-command [nodes] "nodes"
+others-184	up	run run ["--bool" "--verbose"]
+others-185	up	help
+others-186	up	help
+others-187	neither	bad-value [nodes list] "filter"
+others-188	up	[api auth check completion nodes policy serve users version] files=false nospace=false
+others-189	ours	[nodes] files=false nospace=false
+others-190	up	[nodes] files=false nospace=false
+others-191	up	[--config --dry-run --force --help --output] files=false nospace=false
+others-192	up	[--config --expiry --help --output --tags] files=false nospace=false
+others-193	up	[--config --help --output --reusable --tags] files=false nospace=false
+others-194	up	[--config --help --output] files=false nospace=false
+others-195	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=false
+others-196	ours	[] files=false nospace=false
+others-197	neither	[] files=false nospace=false
+others-198	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=true
+others-199	up	[expiry hostname id ip last-seen name online owner version] files=false nospace=true
+others-200	up	[] files=true nospace=false
+others-201	up	missing-value [run] "file"
+others-202	up	missing-value [run] "file"
+others-203	up	unknown-flag [run] "+"
+others-204	ours	unknown-flag [run] "b;"
+others-205	ours	unknown-flag [run] "bo"
+others-206	up	unknown-flag [nodes list] "co"
+others-207	ours	unknown-flag [run] "bv"
+others-208	up	unknown-flag [run] "q"
+others-209	up	run run [] bool=["true"] file=["x"] verbose=["true"]
+others-210	up	unknown-flag [run] "nosuch"
+others-211	up	bad-value [run] "verbose"
+others-212	ours	run run [] verbose=["true"]
+others-213	up	missing-value [run] "file"
+others-214	up	run run ["left" "right"] bool=["true"] file=["one"] string=["two"] verbose=["true"]
+others-215	up	run run ["first" "second" "third"] bool=["true"] string=["-dashed"]
+others-216	ours	unknown-flag [run] "fi"
+others-217	up	unknown-flag [run] "x"
+others-218	ours	run run ["word"] bool=["true"] verbose=["true"]
+others-219	up	run run ["two" "four"] file=["three"] string=["one"]
+others-220	up	unknown-flag [nodes set] "name"
+others-221	ours	unknown-flag [run] "bvs"
+others-222	ours	unknown-flag [run] "salpha"
+others-223	ours	run run ["a"] bool=["true"]
+others-224	up	run run ["x"] file=["--"]
+others-225	up	run run ["-b" "x"]
+others-226	ours	flag-repeated [run] "file"
+pflag-001	up	run run [] bool=["true"]
+pflag-002	up	run run [] bool=["true"]
+pflag-003	up	run run [] bool=["false"]
+pflag-004	up	run run [] string=["24"]
+pflag-005	up	run run [] string=["hello"]
+pflag-006	up	run run [] string=["-8"]
+pflag-007	up	run run ["one-extra-argument"] bool=["true"]
+pflag-008	up	unknown-flag [run] "unknown"
+pflag-009	up	bad-value [run] "bool"
+pflag-010	up	missing-value [run] "string"
+pflag-011	ours	unknown-flag [run] "bv"
+pflag-012	ours	unknown-flag [run] "bs"
+pflag-013	up	run run [] bool=["true"]
+pflag-014	up	run run [] string=["ee"]
+pflag-015	up	run run [] bool=["false"]
+pflag-016	ours	unknown-flag [run] "bv"
+pflag-017	up	run run ["extra"] bool=["true"] string=["hello"]
+pflag-018	ours	unknown-flag [run] "bs"
+pflag-019	up	run run [] file=["something"]
+pflag-020	up	run run ["--i-look-like-a-flag"] bool=["true"]
+pflag-021	ours	unknown-flag [run] "ukn"
+pflag-022	ours	unknown-flag [run] "bs"
+pflag-023	up	run run [] bool=["true"] verbose=["false"]
+pflag-024	up	run run [] filter=["1" "2" "3"]
+pflag-025	ours	unknown-flag [run] "s2"
+pflag-026	up	run nodes delete ["12"] config=["/x"] force=["true"]
+pflag-027	up	help run
+pflag-028	ours	run run ["break"] bool=["true"] verbose=["true"]
+pflag-029	up	run run ["ls" "-b"]
+pflag-030	up	run run []
+pflag-031	up	run run [] bool=["true"]
+pflag-032	up	run run [] bool=["true"]
+pflag-033	up	run run [] bool=["true"]
+pflag-034	up	run run ["maybe"] bool=["true"]
+pflag-035	up	run run [] bool=["false"]
+pflag-036	up	run run ["x"]
+pflag-037	up	bad-value [run] "bool"
+pflag-038	up	run run ["true"] bool=["true"]
+pflag-039	up	run run [] list=["one,two,4,3"]
+pflag-040	ours	flag-repeated [run] "list"
+pflag-041	neither	bad-value [run] "list"
+pflag-042	neither	bad-value [run] "filter"
+pflag-043	up	run run [] filter=["one" "two"]
+pflag-044	up	run run [] filter=["one,two" "\"three\"" "\"four,five\",six" "seven eight"]
+pflag-045	up	run run [] filter=["][]-[" "[a-z]" "[a-z]+"]
