@@ -157,7 +157,8 @@ func TestCredentialAtTheEdge(t *testing.T) {
 				return NoOutput{}, fmt.Errorf("no thing matches %q.", in.Word)
 			},
 		}),
-		// An auth request is named by its secret, which its field takes.
+		// A problem's object that a server names by a secret: an auth
+		// request has a sentence of its own, so a user stands in for it.
 		New(Spec[testS, requestIn, NoOutput]{
 			Name:    "gone",
 			Short:   "Gone",
@@ -167,7 +168,7 @@ func TestCredentialAtTheEdge(t *testing.T) {
 			Run: func(_ Ctx[testS], in requestIn) (NoOutput, error) {
 				//nolint:err113 // the sentence of a problem whose object is the ID
 				return NoOutput{}, errors.New(
-					"Auth request " + string(in.ID) + " no longer exists.",
+					"User " + string(in.ID) + " no longer exists.",
 				)
 			},
 		}),
@@ -249,7 +250,7 @@ func TestCredentialAtTheEdge(t *testing.T) {
 	)
 	require.Equal(
 		t,
-		"Error: Auth request hskey-authreq-*** no longer exists.\n",
+		"Error: User hskey-authreq-*** no longer exists.\n",
 		stderr.String(),
 	)
 }
@@ -346,4 +347,23 @@ func TestInputRule(t *testing.T) {
 		Run:     noop[wrongIn, NoOutput],
 	}))
 	require.ErrorContains(t, err, "run: <id> "+errCredentialKind.Error())
+}
+
+// TestRepeats: a word is found in any case, and in JSON behind escapes,
+// which a reader of -o json decodes.
+func TestRepeats(t *testing.T) {
+	t.Parallel()
+
+	const w = "hskey-authreq-0123"
+
+	for p, want := range map[string]bool{
+		`x hskey-authreq-0123 y`:              true,
+		`HSKEY-AUTHREQ-0123`:                  true,
+		`{"a": "hskey\u002dauthreq-0123"}`:    true,
+		`{"hskey\u002dauthreq\u002d0123": 1}`: true,
+		`{"a": "hskey-authreq-0124"}`:         false,
+		`hskey\u002dauthreq-0123`:             false,
+	} {
+		require.Equal(t, want, repeats([]byte(p), w), p)
+	}
 }
