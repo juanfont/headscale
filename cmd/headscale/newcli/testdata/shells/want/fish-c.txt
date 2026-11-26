@@ -1,5 +1,6 @@
 LINE: headscale |
   api	Authentication towards the headscale API
+  auth	Authentication of nodes to headscale
   completion	Print the completion script of a shell
   debug	A health check and test tools
   nodes	Manage nodes
@@ -65,6 +66,7 @@ LINE: headscale version -o json --|
   --help	Show this help
 LINE: headscale -c -o |
   api	Authentication towards the headscale API
+  auth	Authentication of nodes to headscale
   completion	Print the completion script of a shell
   debug	A health check and test tools
   nodes	Manage nodes
@@ -74,6 +76,7 @@ LINE: headscale -c x ve|
   version	Print the version
 LINE: headscale nodez |
   api	Authentication towards the headscale API
+  auth	Authentication of nodes to headscale
   completion	Print the completion script of a shell
   debug	A health check and test tools
   nodes	Manage nodes
@@ -126,6 +129,7 @@ LINE: headscale -h ve|
   version	Print the version
 LINE: headscale --version |
   api	Authentication towards the headscale API
+  auth	Authentication of nodes to headscale
   completion	Print the completion script of a shell
   debug	A health check and test tools
   nodes	Manage nodes

@@ -1,5 +1,5 @@
 LINE: headscale |
-LISTED: [headscale <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale ]
+LISTED: [headscale <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale ]
 FINAL: [headscale ]
 
 LINE: headscale ve|
@@ -87,7 +87,7 @@ LISTED: [headscale version -o json --<BEL> / --config  -- Config file / --help  
 FINAL: [headscale version -o json --]
 
 LINE: headscale -c -o |
-LISTED: [headscale -c -o <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale -c -o ]
+LISTED: [headscale -c -o <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale -c -o ]
 FINAL: [headscale -c -o ]
 
 LINE: headscale -c x ve|
@@ -95,7 +95,7 @@ LISTED: [headscale -c x version ]
 FINAL: [headscale -c x version]
 
 LINE: headscale nodez |
-LISTED: [headscale nodez <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale nodez ]
+LISTED: [headscale nodez <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale nodez ]
 FINAL: [headscale nodez ]
 
 LINE: headscale versoin --|
@@ -143,7 +143,7 @@ LISTED: [headscale -h version ]
 FINAL: [headscale -h version]
 
 LINE: headscale --version |
-LISTED: [headscale --version <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale --version ]
+LISTED: [headscale --version <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale --version ]
 FINAL: [headscale --version ]
 
 LINE: headscale no|
