@@ -1,0 +1,93 @@
+LINE: headscale |
+  api	Authentication towards the headscale API
+  completion	Print the completion script of a shell
+  debug	A health check and test tools
+  version	Print the version
+LINE: headscale ve|
+  version	Print the version
+LINE: headscale api |
+  whoami	Show who the server sees calling
+LINE: headscale debug h|
+  health	Check that the server is healthy
+LINE: headscale completion |
+  bash
+  fish
+  powershell
+  zsh
+LINE: headscale completion z|
+  zsh
+LINE: headscale completion bash |
+  (none)
+LINE: headscale -|
+  --config	Config file
+  --help	Show this help
+  --output	Output format: json (the API object)
+  --version	Print the version line
+LINE: headscale version -|
+  --config	Config file
+  --help	Show this help
+  --output	Output format: json
+LINE: headscale version --|
+  --config	Config file
+  --help	Show this help
+  --output	Output format: json
+LINE: headscale version -c|
+  -c	Config file
+LINE: headscale api whoami --|
+  --config	Config file
+  --help	Show this help
+  --output	Output format: json (the API object)
+LINE: headscale -o |
+  json
+LINE: headscale -o=|
+  -o=json
+LINE: headscale --output=j|
+  --output=json
+LINE: headscale debug health -o |
+  json
+LINE: headscale version --output=|
+  --output=json
+LINE: headscale -c |
+  config.yaml
+  policy.hujson
+LINE: headscale --config=|
+  --config=config.yaml
+  --config=policy.hujson
+LINE: headscale version --config |
+  config.yaml
+  policy.hujson
+LINE: headscale -o json -c x debug health --|
+  --help	Show this help
+LINE: headscale version -o json --|
+  --config	Config file
+  --help	Show this help
+LINE: headscale -c -o |
+  api	Authentication towards the headscale API
+  completion	Print the completion script of a shell
+  debug	A health check and test tools
+  version	Print the version
+LINE: headscale -c x ve|
+  version	Print the version
+LINE: headscale nodez |
+  api	Authentication towards the headscale API
+  completion	Print the completion script of a shell
+  debug	A health check and test tools
+  version	Print the version
+LINE: headscale versoin --|
+  --config	Config file
+  --help	Show this help
+  --output	Output format: json (the API object)
+  --version	Print the version line
+LINE: headscale version --bogus --|
+  --config	Config file
+  --help	Show this help
+  --output	Output format: json
+LINE: headscale completion bash -c|
+  (none)
+LINE: headscale -h ve|
+  version	Print the version
+LINE: headscale --version |
+  api	Authentication towards the headscale API
+  completion	Print the completion script of a shell
+  debug	A health check and test tools
+  version	Print the version

@@ -1,0 +1,119 @@
+LINE: headscale |
+LISTED: [$ headscale $ headscale $ headscale ]
+FINAL: [headscale ]
+
+LINE: headscale ve|
+LISTED: [$ headscale $ headscale version $ headscale version ]
+FINAL: [headscale version ]
+
+LINE: headscale api |
+LISTED: [$ headscale $ headscale api $ headscale api whoami $ headscale api whoami ]
+FINAL: [headscale api whoami ]
+
+LINE: headscale debug h|
+LISTED: [$ headscale $ headscale debug $ headscale debug health $ headscale debug health ]
+FINAL: [headscale debug health ]
+
+LINE: headscale completion |
+LISTED: [$ headscale $ headscale completion $ headscale completion $ headscale completion ]
+FINAL: [headscale completion ]
+
+LINE: headscale completion z|
+LISTED: [$ headscale $ headscale completion $ headscale completion zsh $ headscale completion zsh ]
+FINAL: [headscale completion zsh ]
+
+LINE: headscale completion bash |
+LISTED: [$ headscale $ headscale completion $ headscale completion bash $ headscale completion bash $ headscale completion bash $ headscale completion bash $ headscale completion bash ]
+FINAL: [headscale completion bash ]
+
+LINE: headscale -|
+LISTED: [$ headscale $ headscale --$ headscale --]
+FINAL: [headscale --]
+
+LINE: headscale version -|
+LISTED: [$ headscale $ headscale version $ headscale version --$ headscale version --]
+FINAL: [headscale version --]
+
+LINE: headscale version --|
+LISTED: [$ headscale $ headscale version $ headscale version --$ headscale version --]
+FINAL: [headscale version --]
+
+LINE: headscale version -c|
+LISTED: [$ headscale $ headscale version $ headscale version -c $ headscale version -c ]
+FINAL: [headscale version -c ]
+
+LINE: headscale api whoami --|
+LISTED: [$ headscale $ headscale api $ headscale api whoami $ headscale api whoami --$ headscale api whoami --]
+FINAL: [headscale api whoami --]
+
+LINE: headscale -o |
+LISTED: [$ headscale $ headscale -o $ headscale -o json $ headscale -o json ]
+FINAL: [headscale -o json ]
+
+LINE: headscale -o=|
+LISTED: [$ headscale $ headscale -o=json $ headscale -o=json ]
+FINAL: [headscale -o=json ]
+
+LINE: headscale --output=j|
+LISTED: [$ headscale $ headscale --output=json $ headscale --output=json ]
+FINAL: [headscale --output=json ]
+
+LINE: headscale debug health -o |
+LISTED: [$ headscale $ headscale debug $ headscale debug health $ headscale debug health -o $ headscale debug health -o json $ headscale debug health -o json ]
+FINAL: [headscale debug health -o json ]
+
+LINE: headscale version --output=|
+LISTED: [$ headscale $ headscale version $ headscale version --output=json $ headscale version --output=json ]
+FINAL: [headscale version --output=json ]
+
+LINE: headscale -c |
+LISTED: [$ headscale $ headscale -c $ headscale -c $ headscale -c ]
+FINAL: [headscale -c ]
+
+LINE: headscale --config=|
+LISTED: [$ headscale $ headscale --config=$ headscale --config=$ headscale --config=]
+FINAL: [headscale --config=]
+
+LINE: headscale version --config |
+LISTED: [$ headscale $ headscale version $ headscale version --config $ headscale version --config $ headscale version --config ]
+FINAL: [headscale version --config ]
+
+LINE: headscale -o json -c x debug health --|
+LISTED: [$ headscale $ headscale -o $ headscale -o json $ headscale -o json -c $ headscale -o json -c x $ headscale -o json -c x debug $ headscale -o json -c x debug health $ headscale -o json -c x debug health --help $ headscale -o json -c x debug health --help ]
+FINAL: [headscale -o json -c x debug health --help ]
+
+LINE: headscale version -o json --|
+LISTED: [$ headscale $ headscale version $ headscale version -o $ headscale version -o json $ headscale version -o json --$ headscale version -o json --]
+FINAL: [headscale version -o json --]
+
+LINE: headscale -c -o |
+LISTED: [$ headscale $ headscale -c $ headscale -c -o $ headscale -c -o $ headscale -c -o ]
+FINAL: [headscale -c -o ]
+
+LINE: headscale -c x ve|
+LISTED: [$ headscale $ headscale -c $ headscale -c x $ headscale -c x version $ headscale -c x version ]
+FINAL: [headscale -c x version ]
+
+LINE: headscale nodez |
+LISTED: [$ headscale $ headscale nodez $ headscale nodez $ headscale nodez ]
+FINAL: [headscale nodez ]
+
+LINE: headscale versoin --|
+LISTED: [$ headscale $ headscale versoin $ headscale versoin --$ headscale versoin --]
+FINAL: [headscale versoin --]
+
+LINE: headscale version --bogus --|
+LISTED: [$ headscale $ headscale version $ headscale version --bogus $ headscale version --bogus --$ headscale version --bogus --]
+FINAL: [headscale version --bogus --]
+
+LINE: headscale completion bash -c|
+LISTED: [$ headscale $ headscale completion $ headscale completion bash $ headscale completion bash -c$ headscale completion bash -c$ headscale completion bash -c$ headscale completion bash -c]
+FINAL: [headscale completion bash -c]
+
+LINE: headscale -h ve|
+LISTED: [$ headscale $ headscale -h $ headscale -h version $ headscale -h version ]
+FINAL: [headscale -h version ]
+
+LINE: headscale --version |
+LISTED: [$ headscale $ headscale --version $ headscale --version $ headscale --version ]
+FINAL: [headscale --version ]

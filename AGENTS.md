@@ -69,6 +69,16 @@ zizmor, `golangci-lint --new-from-rev=HEAD~1`, vendor hash). Never skip them
   its own line above a statement golines may split: a trailing one moves to
   the statement's last line and stops covering the line it was for.
 
+- **CLI layers.** `cmdline` (the parser) ← `cmdline/command` and
+  `cmdline/table` (generic: no Headscale import but `cmdline/...`, held by
+  `TestImportsNoProgram`) ← `cmd/headscale/newcli/command` (Headscale's binding:
+  the session, problem sentences, lookups, the `Program`) ←
+  `cmd/headscale/newcli` (the commands). Commands call the generated v0 client
+  directly; what anyone needs on top of it is generated into
+  `gen/client/headscale/v0` from the templates in `cmd/gen-openapi/` (paging,
+  `Result`/`Err`, decoding held to `client/shape`), and `client.New` builds
+  it with the transport (version check, timeout, unix socket).
+
 - **zerolog**: prefer single-line chains. When building an event
   incrementally, reassign it (`e = e.Str("k", v)`); otherwise the field is
   silently dropped.

@@ -1,0 +1,154 @@
+# headscale: 76 rows: pass 5 waits 71
+# model: 76 rows: fails 2 pass 74
+headscale	C01	waits	serve, check, nodes, users, auth, policy
+headscale	C02	waits	nodes
+headscale	C03	waits	nodes, nodes list, nodes delete, nodes set, nodes routes
+headscale	C04	waits	nodes routes, nodes routes set
+headscale	C05	waits	nodes routes
+headscale	C06	waits	auth keys, auth keys create
+headscale	C07	waits	nodes, nodes list
+headscale	C08	waits	nodes list
+headscale	C09	waits	users delete
+headscale	C10	waits	auth keys create
+headscale	C11	waits	nodes list
+headscale	C12	waits	nodes list
+headscale	C13	waits	nodes list
+headscale	C14	waits	nodes list
+headscale	C15	pass
+headscale	C16	waits	policy set
+headscale	C17	waits	check config
+headscale	C18	waits	nodes list
+headscale	C19	waits	nodes list
+headscale	C20	waits	nodes list
+headscale	N01	waits	nodes, nodes list, nodes delete, nodes set, nodes routes
+headscale	N02	waits	nodes, nodes list
+headscale	N03	waits	nodes, nodes routes
+headscale	N04	waits	users, users delete
+headscale	N05	waits	nodes routes, nodes routes set
+headscale	N06	waits	nodes, nodes list
+headscale	N07	waits	nodes delete
+headscale	N08	waits	nodes delete
+headscale	N09	waits	nodes list
+headscale	N10	pass
+headscale	N11	waits	nodes delete
+headscale	N12	waits	check config
+headscale	N13	waits	check config
+headscale	N14	waits	policy set
+headscale	N15	waits	check config
+headscale	N16	pass
+headscale	N17	waits	serve
+headscale	N18	pass
+headscale	N19	waits	auth keys create
+headscale	N20	waits	auth keys create
+headscale	N21	waits	nodes routes set
+headscale	Q01	pass
+headscale	Q02	waits	nodes list
+headscale	Q03	waits	nodes list
+headscale	Q04	waits	nodes set
+headscale	Q05	waits	auth keys create
+headscale	Q06	waits	nodes, nodes list, nodes delete, nodes routes
+headscale	Q07	waits	nodes list
+headscale	Q08	waits	nodes list
+headscale	Q09	waits	nodes list
+headscale	Q10	waits	nodes list
+headscale	Q11	waits	nodes list
+headscale	Q12	waits	nodes, serve
+headscale	Q13	waits	nodes list
+headscale	Q14	waits	nodes, nodes list, nodes delete
+headscale	Q15	waits	nodes
+headscale	Q16	waits	nodes list
+headscale	Q17	waits	nodes list
+headscale	Q18	waits	nodes list
+headscale	Q19	waits	nodes list
+headscale	Q20	waits	serve
+headscale	Q21	waits	nodes
+headscale	Q22	waits	nodes list
+headscale	Q23	waits	nodes routes set
+headscale	Q24	waits	nodes list
+headscale	Q25	waits	nodes delete
+headscale	Q26	waits	auth keys create
+headscale	Q27	waits	nodes delete
+headscale	Q28	waits	nodes
+headscale	Q29	waits	nodes
+headscale	Q30	waits	nodes list
+headscale	Q31	waits	nodes list
+headscale	Q32	waits	nodes list
+headscale	Q33	waits	nodes list
+headscale	Q34	waits	auth keys create
+headscale	Q35	waits	nodes list
+model	C01	pass
+model	C02	pass
+model	C03	pass
+model	C04	pass
+model	C05	pass
+model	C06	pass
+model	C07	pass
+model	C08	pass
+model	C09	pass
+model	C10	pass
+model	C11	pass
+model	C12	pass
+model	C13	pass
+model	C14	pass
+model	C15	pass
+model	C16	pass
+model	C17	pass
+model	C18	pass
+model	C19	pass
+model	C20	pass
+model	N01	pass
+model	N02	pass
+model	N03	pass
+model	N04	pass
+model	N05	pass
+model	N06	pass
+model	N07	pass
+model	N08	pass
+model	N09	pass
+model	N10	pass
+model	N11	pass
+model	N12	pass
+model	N13	pass
+model	N14	pass
+model	N15	pass
+model	N16	pass
+model	N17	pass
+model	N18	pass
+model	N19	pass
+model	N20	pass
+model	N21	pass
+model	Q01	pass
+model	Q02	pass
+model	Q03	pass
+model	Q04	pass
+model	Q05	pass
+model	Q06	pass
+model	Q07	fails	"--columns\tColumns to show\n--sort\tColumn to sort by\n--filter\tRows to keep\n--list-columns\tList the columns\n--output\tOutput format: json (the API object)\n--config\tConfig file\n--help\tShow this help\n:4\n"
+model	Q08	fails	"-o\tOutput format: json (the API object)\n:4\n"
+model	Q09	pass
+model	Q10	pass
+model	Q11	pass
+model	Q12	pass
+model	Q13	pass
+model	Q14	pass
+model	Q15	pass
+model	Q16	pass
+model	Q17	pass
+model	Q18	pass
+model	Q19	pass
+model	Q20	pass
+model	Q21	pass
+model	Q22	pass
+model	Q23	pass
+model	Q24	pass
+model	Q25	pass
+model	Q26	pass
+model	Q27	pass
+model	Q28	pass
+model	Q29	pass
+model	Q30	pass
+model	Q31	pass
+model	Q32	pass
+model	Q33	pass
+model	Q34	pass
+model	Q35	pass
