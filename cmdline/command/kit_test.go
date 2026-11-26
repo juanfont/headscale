@@ -2141,6 +2141,8 @@ var beyondKit = []string{
 	"api oauth-clients list",
 	"api oauth-clients get",
 	"api oauth-clients delete",
+	"policy get",
+	"policy reload",
 }
 
 func TestKitKnowsHeadscale(t *testing.T) {

@@ -108,10 +108,14 @@ type fixture struct {
 	changes int
 }
 
-func newFixture(tb testing.TB, clients bool) *fixture {
+func newFixture(
+	tb testing.TB,
+	clients bool,
+	server ...servertest.ServerOption,
+) *fixture {
 	tb.Helper()
 
-	return newFixtureAt(tb, clients, nil)
+	return newFixtureAt(tb, clients, nil, server...)
 }
 
 // newFixtureAt is newFixture with its clock as clock makes it of the wall
@@ -301,44 +305,51 @@ func runCases(t *testing.T, setup func(testing.TB, *fixture), cases []cliCase) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			require.False(
-				t,
-				tc.stdout != "" && tc.want != nil,
-				"a case sets stdout or want, not both",
-			)
-
-			f := newFixtureAt(t, tc.clients, tc.clock, tc.server...)
-			if setup != nil {
-				setup(t, f)
-			}
-
-			if tc.setup != nil {
-				tc.setup(t, f)
-			}
-
-			r := f.run(t, tc)
-			ran.add(tc, f)
-
-			want := f.expand(tc.stdout)
-			if tc.want != nil {
-				want = tc.want(t, f, r)
-			}
-
-			if diff := cmp.Diff(want, r.stdout); diff != "" {
-				t.Errorf("stdout (-want +got):\n%s", diff)
-			}
-
-			if diff := cmp.Diff(f.expand(tc.stderr), r.stderr); diff != "" {
-				t.Errorf("stderr (-want +got):\n%s", diff)
-			}
-
-			require.Equal(t, tc.code, r.code, "exit code")
-
-			if tc.check != nil {
-				tc.check(t, f, r)
-			}
+			runCase(t, setup, tc)
 		})
+	}
+}
+
+// runCase runs one case of runCases; a test that sets the working
+// directory runs its cases with it, one after the other.
+func runCase(t *testing.T, setup func(testing.TB, *fixture), tc cliCase) {
+	t.Helper()
+
+	require.False(
+		t,
+		tc.stdout != "" && tc.want != nil,
+		"a case sets stdout or want, not both",
+	)
+
+	f := newFixtureAt(t, tc.clients, tc.clock, tc.server...)
+	if setup != nil {
+		setup(t, f)
+	}
+
+	if tc.setup != nil {
+		tc.setup(t, f)
+	}
+
+	r := f.run(t, tc)
+	ran.add(tc, f)
+
+	want := f.expand(tc.stdout)
+	if tc.want != nil {
+		want = tc.want(t, f, r)
+	}
+
+	if diff := cmp.Diff(want, r.stdout); diff != "" {
+		t.Errorf("stdout (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff(f.expand(tc.stderr), r.stderr); diff != "" {
+		t.Errorf("stderr (-want +got):\n%s", diff)
+	}
+
+	require.Equal(t, tc.code, r.code, "exit code")
+
+	if tc.check != nil {
+		tc.check(t, f, r)
 	}
 }
 
@@ -505,6 +516,26 @@ func (r *ranCases) add(tc cliCase, f *fixture) {
 // or an alias that no case ran fails the run. It walks only a whole run,
 // since -run leaves cases out.
 func TestMain(m *testing.M) {
+	if line, ok := os.LookupEnv(childLine); ok {
+		os.Exit(child(line))
+	}
+
+	if _, ok := os.LookupEnv(holdDB); ok {
+		os.Exit(hold())
+	}
+
+	// A check of a property here runs CLI processes against a server: the
+	// default run makes a few, and the soak gives the count itself.
+	flag.Parse()
+
+	given := false
+
+	flag.Visit(func(f *flag.Flag) { given = given || f.Name == "rapid.checks" })
+
+	if n, ok := defaultChecks(given, os.LookupEnv); ok {
+		_ = flag.Set("rapid.checks", n)
+	}
+
 	code := m.Run()
 
 	if code == 0 && flag.Lookup("test.run").Value.String() == "" &&
@@ -520,6 +551,17 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+// defaultChecks is the number of checks a property of this package makes
+// when the run gives none: Rapid reads RAPID_CHECKS as the default of
+// -rapid.checks, and the flag over it, so either one, 0 included, is kept.
+func defaultChecks(flagGiven bool, env func(string) (string, bool)) (string, bool) {
+	if _, ok := env("RAPID_CHECKS"); ok || flagGiven {
+		return "", false
+	}
+
+	return "10", true
 }
 
 // untested lists each example that no case runs with exit 0, and each
@@ -575,9 +617,15 @@ func untested(tree *command.Tree, cases []ranCase) []string {
 }
 
 // exampleWords are the names of the variables an example sets before
-// `headscale`, and its words after it, up to a pipe.
+// `headscale`, and its words after it, up to a pipe or a redirect. A
+// command a pipe feeds is the example; a case gives what it reads as stdin.
 func exampleWords(e string) ([]string, []string) {
+	if _, fed, ok := strings.Cut(e, "| headscale "); ok {
+		e = "headscale " + fed
+	}
+
 	e, _, _ = strings.Cut(e, " |")
+	e, _, _ = strings.Cut(e, " >")
 
 	var env []string
 
@@ -609,6 +657,7 @@ func TestUntested(t *testing.T) {
 		Example: []string{
 			"headscale extra",
 			"HEADSCALE_CLI_ADDRESS=hs.example.com headscale extra | cat",
+			"make | headscale extra > out",
 		},
 		Run: func(command.Ctx, command.NoInput) (command.NoOutput, error) { return command.NoOutput{}, nil },
 	})
@@ -626,10 +675,15 @@ func TestUntested(t *testing.T) {
 			cases: []ranCase{ok("extra"), ok("extra", "HEADSCALE_CLI_ADDRESS")},
 		},
 		{
+			name:  "a pipe into the command and a redirect of it",
+			cases: []ranCase{ok("extra", "HEADSCALE_CLI_ADDRESS")},
+		},
+		{
 			name: "a command with no case",
 			want: []string{
 				`example "headscale extra" has no case that passes`,
 				`example "HEADSCALE_CLI_ADDRESS=hs.example.com headscale extra | cat" has no case that passes`,
+				`example "make | headscale extra > out" has no case that passes`,
 			},
 		},
 		{
@@ -638,6 +692,7 @@ func TestUntested(t *testing.T) {
 			want: []string{
 				`example "headscale extra" has no case that passes`,
 				`example "HEADSCALE_CLI_ADDRESS=hs.example.com headscale extra | cat" has no case that passes`,
+				`example "make | headscale extra > out" has no case that passes`,
 			},
 		},
 		{
@@ -724,6 +779,28 @@ func TestImports(t *testing.T) {
 		for _, imp := range f.Imports {
 			if why, ok := banned[imp.Path.Value]; ok {
 				t.Errorf("%s imports %s: %s", name, imp.Path.Value, why)
+			}
+
+			// The database bypass is the one way past the server, and only
+			// the policy commands take it.
+			server := strings.HasPrefix(
+				imp.Path.Value,
+				`"github.com/juanfont/headscale/hscontrol/`,
+			) &&
+				!slices.Contains(
+					[]string{
+						`"github.com/juanfont/headscale/hscontrol/config"`,
+						`"github.com/juanfont/headscale/hscontrol/types"`,
+					},
+					imp.Path.Value,
+				)
+			if server &&
+				(name != "policy.go" || imp.Path.Value != `"github.com/juanfont/headscale/hscontrol/offline"`) {
+				t.Errorf(
+					"%s imports %s: a command reaches the server through command.API; only policy.go opens a stopped server's database, through offline",
+					name,
+					imp.Path.Value,
+				)
 			}
 		}
 
@@ -923,6 +1000,9 @@ Server commands (talk to a running headscale):
   api oauth-clients get <client>   Show one OAuth client
   api oauth-clients create <scopes>   Create an OAuth client
   api oauth-clients delete <client>   Revoke an OAuth client (alias: rm)
+  policy get   Print the policy
+  policy set <file>   Replace the policy
+  policy reload   Read the policy again from where it is kept
 
 Debug:
 

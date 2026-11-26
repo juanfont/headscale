@@ -1,4 +1,4 @@
-# headscale: 206 rows: pass 190 seen 3 waits 13
+# headscale: 206 rows: pass 191 seen 3 waits 12
 # model: 206 rows: pass 203 seen 3
 headscale	T01	pass
 headscale	T02	pass
@@ -69,7 +69,7 @@ headscale	F16	pass
 headscale	F17	pass
 headscale	F18	pass
 headscale	F19	pass
-headscale	F20	waits	policy set
+headscale	F20	pass
 headscale	F21	pass
 headscale	F22	pass
 headscale	F23	pass
