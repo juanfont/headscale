@@ -110,6 +110,8 @@ var viaCompatTests = []struct {
 	{"grant-via-internet-one-family-exit", "the internet via an exit node approved for IPv4 only"},
 	{"grant-via-internet-exit-is-source", "the internet via tag:exit with the exit nodes among the sources"},
 	{"grant-app-destination-repeated", "capability grant naming the wildcard twice"},
+	{"grant-via-reach-a", "a public prefix via tag:exit"},
+	{"grant-via-public-prefix-exit-routes", "a public prefix via tag:router, held by a router and an exit node"},
 }
 
 // routesMapCompatTests lists routes captures replayed through the mapper.
