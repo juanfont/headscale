@@ -106,6 +106,7 @@ var viaCompatTests = []struct {
 	{"via-grant-v107", "two via grants from one source through one router"},
 	{"via-grant-v108", "a grant and an ACL with the same sources and IPProto"},
 	{"grant-app-wildcard-destination", "capability grant from members to the wildcard"},
+	{"grant-app-destination-repeated", "capability grant naming the wildcard twice"},
 }
 
 // routesMapCompatTests lists routes captures replayed through the mapper.

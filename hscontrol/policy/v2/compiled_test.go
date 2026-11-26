@@ -69,9 +69,14 @@ func (pol *Policy) compileOtherDestsReference(
 			}
 
 			prefixes := ips.Prefixes()
-
 			if _, wildcard := dst.(Asterix); wildcard {
 				prefixes = append(prefixes, approvedSubnetPrefixes(nodes)...)
+			}
+
+			if slices.ContainsFunc(capGrants, func(cg tailcfg.CapGrant) bool {
+				return slices.Equal(cg.Dsts, prefixes)
+			}) {
+				continue
 			}
 
 			capGrants = append(capGrants, tailcfg.CapGrant{
