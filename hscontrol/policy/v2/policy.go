@@ -839,14 +839,15 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	// Precompute each node's route ranges and exit-node status once; the
 	// O(n^2) pair scans below would otherwise recompute them for every pair.
 	type nodeRoutes struct {
-		subnet []netipx.IPRange
-		isExit bool
+		subnet, loneExit []netipx.IPRange
+		isExit           bool
 	}
 
 	routeInfo := make(map[types.NodeID]nodeRoutes, nodes.Len())
 	for _, n := range nodes.All() {
 		routeInfo[n.ID()] = nodeRoutes{
 			subnet: types.RouteRanges(n.SubnetRoutes()), isExit: n.IsExitNode(),
+			loneExit: loneExitRanges(n),
 		}
 	}
 
@@ -930,8 +931,13 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 					continue
 				}
 
-				addCapSourceOnExit(ret, ids[i], ids[j], capSrc[i], routeInfo[ids[j]].isExit)
-				addCapSourceOnExit(ret, ids[j], ids[i], capSrc[j], routeInfo[ids[i]].isExit)
+				if capSrc[j] && routeInfo[ids[i]].isExit {
+					ret[ids[i]] = append(ret[ids[i]], ids[j])
+				}
+
+				if capSrc[i] && routeInfo[ids[j]].isExit {
+					ret[ids[j]] = append(ret[ids[j]], ids[i])
+				}
 			}
 		}
 
@@ -1004,25 +1010,52 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 				continue
 			}
 
-			addCapSourceOnExit(ret, nodeI.ID(), nodeJ.ID(), capSrc[nodeI.ID()], riJ.isExit)
-			addCapSourceOnExit(ret, nodeJ.ID(), nodeI.ID(), capSrc[nodeJ.ID()], riI.isExit)
+			if (capSrc[nodeJ.ID()] && riI.isExit) ||
+				loneExitSource(viaSrcs[nodeI.ID()], riJ.loneExit) {
+				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
+			}
+
+			if (capSrc[nodeI.ID()] && riJ.isExit) ||
+				loneExitSource(viaSrcs[nodeJ.ID()], riI.loneExit) {
+				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
+			}
 		}
 	}
 
 	return ret
 }
 
-// addCapSourceOnExit lists src on exit, and only there, when src is the
-// source of a capability to the internet. SaaS does this: the capability
-// carries no traffic, so src gets no exit route and does not list exit.
-func addCapSourceOnExit(
-	ret map[types.NodeID][]types.NodeID,
-	src, exit types.NodeID,
-	srcHasCap, isExit bool,
-) {
-	if srcHasCap && isExit {
-		ret[exit] = append(ret[exit], src)
+// Two things make a node list another that does not list it back, as on
+// SaaS. An exit node lists the source of a capability to the internet: the
+// capability carries no traffic, so the source gets no exit route.
+// [loneExitSource] is the other.
+
+// loneExitRanges returns node's exit route when it is approved for one
+// address family only. SaaS offers it to no one as an exit route, see
+// [types.Node.OfferedExitRoutes], and reads it as a route over the sources
+// it covers.
+func loneExitRanges(node types.NodeView) []netipx.IPRange {
+	if len(node.OfferedExitRoutes()) > 0 {
+		return nil
 	}
+
+	return types.RouteRanges(node.ExitRoutes())
+}
+
+// loneExitSource reports whether lone, a peer's [loneExitRanges], covers a
+// source of a via grant the viewer serves, see [viaSources]. The viewer
+// lists such a peer; the peer, no source by its own reckoning, does not list
+// the viewer. SaaS does so under via grants
+// (grant-via-internet-one-family-exit, -bare, -untagged); a rule without
+// via lists no such peer.
+func loneExitSource(via []matcher.Match, lone []netipx.IPRange) bool {
+	if len(lone) == 0 {
+		return false
+	}
+
+	return slices.ContainsFunc(via, func(m matcher.Match) bool {
+		return m.SrcsOverlapsRanges(lone)
+	})
 }
 
 // isViaSource reports whether node, or a subnet it routes, is a source of one

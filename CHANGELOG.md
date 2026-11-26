@@ -277,7 +277,7 @@ maps each one to its replacement.
 - Exit routes need access to an internet address. Private-only rules no longer offer exit routes. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - A router approved for the address of another user's device gets that user's `autogroup:self` rule for it, and the two are peers, as on Tailscale SaaS. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - An `app` grant to `*` gives its sources the approved subnet routes, as on Tailscale SaaS. [#3757](https://github.com/juanfont/headscale/pull/3757)
-- A node approved for only one of `0.0.0.0/0` and `::/0` is not offered as an exit node, as on Tailscale SaaS. Approve both. [#3757](https://github.com/juanfont/headscale/pull/3757)
+- A node approved for only one of `0.0.0.0/0` and `::/0` is not offered as an exit node, as on Tailscale SaaS. Approve both. The routers of a `via` grant list it as a peer when the route covers a source of the grant. It does not list them. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - A `via` grant to `autogroup:internet` steers subnet routes to public prefixes too: sources get them only from routers with the `via` tag, as on Tailscale SaaS. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - An approved exit route covers the `dst` of a `via` grant: an exit node with the `via` tag gets the grant's rule, and for a public `dst` its sources get the exit routes, as on Tailscale SaaS. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - A node approved for a route over the address of a `via` router is no longer its peer for that alone. [#3757](https://github.com/juanfont/headscale/pull/3757)

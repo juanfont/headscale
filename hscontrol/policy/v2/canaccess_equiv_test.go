@@ -207,6 +207,16 @@ func peerMapPrefixReference(
 			if linkedByEitherPolicy || sameUser(a.View(), b.View()) {
 				peers[a.ID] = append(peers[a.ID], b.ID)
 				peers[b.ID] = append(peers[b.ID], a.ID)
+
+				continue
+			}
+
+			if listsOnlyReference(pm, a.View(), b.View()) {
+				peers[a.ID] = append(peers[a.ID], b.ID)
+			}
+
+			if listsOnlyReference(pm, b.View(), a.View()) {
+				peers[b.ID] = append(peers[b.ID], a.ID)
 			}
 		}
 	}

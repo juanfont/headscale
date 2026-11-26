@@ -83,11 +83,30 @@ func buildPeerMapPairScan(pm *PolicyManager, nodes views.Slice[types.NodeView]) 
 			if linked || sameUser(nodeI, nodeJ) {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
+
+				continue
+			}
+
+			if listsOnlyReference(pm, nodeI, nodeJ) {
+				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
+			}
+
+			if listsOnlyReference(pm, nodeJ, nodeI) {
+				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
 			}
 		}
 	}
 
 	return ret
+}
+
+// listsOnlyReference reports whether viewer lists peer without being listed
+// back, in a policy with autogroup:self or via grants.
+func listsOnlyReference(
+	pm *PolicyManager,
+	viewer, peer types.NodeView,
+) bool {
+	return loneExitSource(viaSources(pm.compiledGrants, viewer), loneExitRanges(peer))
 }
 
 var (
