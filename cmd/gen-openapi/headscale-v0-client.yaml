@@ -1,0 +1,29 @@
+# oapi-codegen settings for the v0 client, read by `make client`.
+# nullable-type lets it send and read an explicit null. always-prefix-enum-values names every enum
+# constant after its type; without it a constant is renamed when a later
+# enum gains the same value.
+package: clientv0
+generate:
+  models: true
+  client: true
+# DecodeResponse (headscale-v0-types.tmpl) reads an answer by the exact
+# member names, which encoding/json matches regardless of case.
+additional-imports:
+  - alias: jsonv2
+    package: github.com/go-json-experiment/json
+  - alias: jsonv1
+    package: github.com/go-json-experiment/json/v1
+  - alias: jsontext
+    package: github.com/go-json-experiment/json/jsontext
+  # The shape of an answer, which every success is held to (exactJSON).
+  - package: github.com/juanfont/headscale/client/shape
+output: gen/client/headscale/v0/client.gen.go
+output-options:
+  user-templates:
+    typedef.tmpl: cmd/gen-openapi/headscale-v0-types.tmpl
+    # oapi-codegen v2.8.2's own, with the Parse functions reading a body
+    # through DecodeResponse, so the public client holds 002's exact names.
+    client-with-responses.tmpl: cmd/gen-openapi/headscale-v0-client-with-responses.tmpl
+  nullable-type: true
+compatibility:
+  always-prefix-enum-values: true

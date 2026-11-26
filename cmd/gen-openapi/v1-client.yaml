@@ -1,0 +1,6 @@
+# oapi-codegen settings for the legacy v1 client, read by `make client`.
+package: clientv1
+generate:
+  models: true
+  client: true
+output: gen/client/v1/client.gen.go

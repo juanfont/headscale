@@ -1,0 +1,162 @@
+{{range .Types}}
+{{ .DocComment }}
+type {{.TypeName}} {{if .IsAlias }}={{end}} {{.Schema.TypeDecl}}
+{{end}}
+
+// DecodeResponse preserves case-sensitive wire names, including inside nullable values.
+func DecodeResponse(raw []byte, out any) error {
+	return jsonv2.Unmarshal(raw, out, responseOptions)
+}
+
+// exactJSON is the decoder of the generated Parse functions: the json in
+// their bodies, read by DecodeResponse. A success is held to the shape of
+// its type first (shape.Check), so no caller reads a member the document
+// requires and the server left out as its zero value; its error is an
+// *AnswerError. A refusal is no error of the client: its typed problem
+// is set after, as Result reads it (problemIn). page is the answer of a
+// paged list (pageFault).
+type exactJSON struct {
+	rsp  *http.Response
+	page bool
+}
+
+func (j exactJSON) Unmarshal(raw []byte, out any) error {
+	err := DecodeResponse(raw, out)
+	if j.rsp.StatusCode/100 != 2 {
+		return nil
+	}
+	// The shape says what is missing before the decoder says a kind, and
+	// a fault of a page's rows comes before one of its token.
+	err = cmp.Or(shape.Check(raw, out), err)
+	if err != nil && j.page {
+		err = pageFault(raw, out, err)
+	}
+	if err != nil {
+		return &AnswerError{Response: j.rsp, Body: raw, Err: err}
+	}
+	return nil
+}
+
+// pageFault is err, the fault of raw, a page, said in the order every way
+// to read a page says it: its shape and its rows before its token. Only a
+// page whose nextPageToken is at fault, null or not a string, can hide a
+// fault of its rows; for any other err is said as it came. The bytes are
+// read as they came and nothing is made of them: pageFault only chooses
+// between the faults the reads of them find.
+func pageFault(raw []byte, out any, err error) error {
+	if !tokenAtFault(raw) {
+		return err
+	}
+	return cmp.Or(rowsFault(raw, out), err)
+}
+
+// tokenAtFault reports whether the page raw holds a nextPageToken that is
+// null, or not a string.
+func tokenAtFault(raw []byte) bool {
+	var members map[string]json.RawMessage
+	if json.Unmarshal(raw, &members) != nil {
+		return false
+	}
+	token, ok := members["nextPageToken"]
+	if !ok {
+		return false
+	}
+	var s string
+	return json.Unmarshal(token, &s) != nil || string(bytes.TrimSpace(token)) == "null"
+}
+
+// rowsFault is the fault of raw, a page, but for its nextPageToken: the
+// same bytes held to the shape of out's type and decoded into it, the token
+// taken as any value (pageOptions); nil when that is right.
+func rowsFault(raw []byte, out any) error {
+	p := reflect.New(reflect.TypeOf(out).Elem()).Interface()
+	return cmp.Or(shape.CheckWithout(raw, p, "nextPageToken"), jsonv2.Unmarshal(raw, p, pageOptions))
+}
+
+type decodedKey struct{}
+
+// WithDecoded is ctx with decoded, which every XWithResponse call made
+// with it, and every walk of Pages and All, tells each success it reads:
+// the value, a pointer to the type the document gives it, and the bytes it
+// was read from, so that a caller can keep what the server sent, members
+// its type does not know included. A Parse function, which has no ctx,
+// tells nothing; a nil decoded tells nothing.
+func WithDecoded(ctx context.Context, decoded func(v any, raw []byte)) context.Context {
+	return context.WithValue(ctx, decodedKey{}, decoded)
+}
+
+var responseOptions = jsonv2.JoinOptions(
+	jsonv1.DefaultOptionsV1(),
+	jsonv2.MatchCaseInsensitiveNames(false),
+	jsonv2.WithUnmarshalers(jsonv2.JoinUnmarshalers(
+		anyNumber(),
+		{{- range .Types}}{{template "response-children" .Schema}}{{end}}
+	)),
+)
+
+// pageOptions are responseOptions that take any value for a *string: in
+// an answer only nextPageToken is one (TestOnlyTokenIsOptionalText), so a
+// page is read for its rows whatever its token holds.
+var pageOptions = jsonv2.JoinOptions(
+	jsonv1.DefaultOptionsV1(),
+	jsonv2.MatchCaseInsensitiveNames(false),
+	jsonv2.WithUnmarshalers(jsonv2.JoinUnmarshalers(
+		jsonv2.UnmarshalFromFunc(func(d *jsontext.Decoder, _ **string) error { return d.SkipValue() }),
+		anyNumber(),
+		{{- range .Types}}{{template "response-children" .Schema}}{{end}}
+	)),
+)
+
+// anyNumber reads a number in a place the document leaves open (an any)
+// as it is written, a json.Number, so that one no float64 holds is still
+// read.
+func anyNumber() *jsonv2.Unmarshalers {
+	return jsonv2.UnmarshalFromFunc(func(d *jsontext.Decoder, v *any) error {
+		if d.PeekKind() != '0' {
+			return errors.ErrUnsupported
+		}
+
+		tok, err := d.ReadToken()
+		if err != nil {
+			return err
+		}
+
+		*v = json.Number(tok.String())
+
+		return nil
+	})
+}
+
+func nullableResponse[T any]() *jsonv2.Unmarshalers {
+	return jsonv2.UnmarshalFromFunc(func(d *jsontext.Decoder, n *nullable.Nullable[T]) error {
+		if kind := d.PeekKind(); kind != '{' && kind != '[' {
+			return errors.ErrUnsupported
+		}
+		var value T
+		if err := jsonv2.UnmarshalDecode(d, &value); err != nil {
+			return err
+		}
+		n.Set(value)
+		return nil
+	})
+}
+
+{{- define "response-children"}}
+{{- range .Properties}}
+{{- if .Nullable}}{{template "response-composite" .Schema}}{{end}}
+{{- template "response-children" .Schema}}
+{{- end}}
+{{- with .ArrayType}}
+{{- if and .OAPISchema (.OAPISchema.Type.Includes "null")}}{{template "response-composite" .}}{{end}}
+{{- template "response-children" .}}
+{{- end}}
+{{- with .AdditionalPropertiesType}}
+{{- if and .OAPISchema (.OAPISchema.Type.Includes "null")}}{{template "response-composite" .}}{{end}}
+{{- template "response-children" .}}
+{{- end}}
+{{- end}}
+
+{{- define "response-composite"}}
+{{- if or (not .OAPISchema) (.OAPISchema.Type.Permits "object") (.OAPISchema.Type.Permits "array")}}
+		nullableResponse[{{.TypeDecl}}](),
+{{- end}}{{- end}}

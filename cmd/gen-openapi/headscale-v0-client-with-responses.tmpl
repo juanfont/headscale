@@ -1,0 +1,598 @@
+// ClientWithResponses builds on ClientInterface to offer response payloads
+type ClientWithResponses struct {
+    ClientInterface
+}
+
+// NewClientWithResponses creates a new ClientWithResponses, which wraps
+// Client with return type handling
+func NewClientWithResponses(server string, opts ...ClientOption) (*ClientWithResponses, error) {
+    client, err := NewClient(server, opts...)
+    if err != nil {
+        return nil, err
+    }
+    return &ClientWithResponses{client}, nil
+}
+
+{{$clientTypeName := opts.OutputOptions.ClientTypeName -}}
+
+// WithBaseURL overrides the baseURL.
+func WithBaseURL(baseURL string) ClientOption {
+	return func(c *{{ $clientTypeName }}) error {
+		newBaseURL, err := url.Parse(baseURL)
+		if err != nil {
+			return err
+		}
+		c.Server = newBaseURL.String()
+		return nil
+	}
+}
+
+// ClientWithResponsesInterface is the interface specification for the client with responses above.
+type ClientWithResponsesInterface interface {
+{{range . -}}
+{{$hasParams := .RequiresParamObject -}}
+{{$pathParams := .PathParams -}}
+{{$opid := .OperationId -}}
+{{$parent := . }}
+{{$opidSuffix := ""}}
+{{- if .HasBody -}}
+{{- $opidSuffix = "WithBody" -}}
+{{- end -}}
+{{$deprecationComment := .DeprecationComment -}}
+    {{ if .HasBody }}
+        {{ .GenerateFunctionComment $opid "WithBodyWithResponse" true }}
+    {{ else }}
+        {{ .GenerateFunctionComment $opid "WithResponse" true }}
+    {{ end -}}
+    {{with $deprecationComment}}//
+    {{.}}
+    {{end -}}{{$opid}}{{if .HasBody}}WithBody{{end}}WithResponse(ctx context.Context{{genParamArgs .PathParams}}{{if .RequiresParamObject}}, params *{{$opid}}Params{{end}}{{if .HasBody}}, contentType string, body io.Reader{{end}}, reqEditors... RequestEditorFn) (*{{genResponseTypeName $opid}}, error)
+{{range .Bodies}}
+    {{if .IsSupportedByClient -}}
+        {{ .GenerateFunctionComment $opid $parent (printf "%sWithResponse" .Suffix) true }}
+        {{with $deprecationComment}}//
+        {{.}}
+        {{end -}}{{$opid}}{{.Suffix}}WithResponse(ctx context.Context{{genParamArgs $pathParams}}{{if $hasParams}}, params *{{$opid}}Params{{end}}, body {{$opid}}{{.NameTag}}RequestBody, reqEditors... RequestEditorFn) (*{{genResponseTypeName $opid}}, error)
+    {{end -}}
+{{end}}{{/* range .Bodies */}}
+{{end}}{{/* range . $opid := .OperationId */}}
+}
+
+{{range .}}{{$opid := .OperationId}}{{$op := .}}
+{{$responseTypeDefinitions := getResponseTypeDefinitions .}}
+{{$headerResponses := responsesWithHeaders .Responses}}
+{{- range $headerResponses}}
+// {{genResponseTypeName $opid | ucFirst}}{{.StatusCode | ucFirst}}Headers the declared response headers of an HTTP {{.StatusCode}} response for {{$opid}}
+type {{genResponseTypeName $opid | ucFirst}}{{.StatusCode | ucFirst}}Headers struct {
+    {{range .Headers -}}
+        {{with .DeprecationComment}}{{.}}
+        {{end -}}{{.GoName}} {{.GoTypeDef}}
+    {{end -}}
+}
+{{end}}
+type {{genResponseTypeName $opid | ucFirst}} struct {
+    Body         []byte
+	HTTPResponse *http.Response
+    {{- range $responseTypeDefinitions}}
+    // {{.TypeName}} the response for an HTTP {{ .ResponseName }} `{{ .ContentTypeName }}` response
+    {{.TypeName}} *{{.Schema.TypeDecl}}
+    {{- end}}
+    {{- range $headerResponses}}
+    // Headers{{.StatusCode | ucFirst}} the parsed response headers for an HTTP {{.StatusCode}} response
+    Headers{{.StatusCode | ucFirst}} *{{genResponseTypeName $opid | ucFirst}}{{.StatusCode | ucFirst}}Headers
+    {{- end}}
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *{{genResponseTypeName $opid | ucFirst}}) decodedSuccess() (any, []byte) {
+    {{- $told := false}}
+    {{- range $responseTypeDefinitions}}{{if and (not $told) (eq (slice .ResponseName 0 1) "2") (eq .ContentTypeName "application/json")}}{{$told = true}}
+    if r.{{.TypeName}} != nil {
+        return r.{{.TypeName}}, r.Body
+    }
+    {{- end}}{{end}}
+    return nil, nil
+}
+
+{{ if not opts.OutputOptions.SkipResponseBodyGetters }}
+{{- range $responseTypeDefinitions}}
+  // Get{{.TypeName}} returns the response for an HTTP {{ .ResponseName }} `{{ .ContentTypeName }}` response
+  func (r {{genResponseTypeName $opid | ucFirst}}) Get{{.TypeName}}() *{{.Schema.TypeDecl}} {
+      return r.{{.TypeName}}
+  }
+{{- end}}
+
+// GetBody returns the raw response body bytes
+func (r {{genResponseTypeName $opid | ucFirst}}) GetBody() []byte {
+    return r.Body
+}
+{{end}}
+
+// Status returns HTTPResponse.Status
+func (r {{genResponseTypeName $opid | ucFirst}}) Status() string {
+    if r.HTTPResponse != nil {
+        return r.HTTPResponse.Status
+    }
+    return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r {{genResponseTypeName $opid | ucFirst}}) StatusCode() int {
+    if r.HTTPResponse != nil {
+        return r.HTTPResponse.StatusCode
+    }
+    return 0
+}
+
+{{ if opts.OutputOptions.ClientResponseBytesFunction }}
+// Bytes is a convenience method to retrieve the raw bytes from the HTTP response
+func (r {{genResponseTypeName $opid | ucFirst}}) Bytes() []byte {
+    return r.Body
+}
+{{end}}
+
+{{ if not opts.OutputOptions.SkipClientResponseContentType }}
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r {{genResponseTypeName $opid | ucFirst}}) ContentType() string {
+    if r.HTTPResponse != nil {
+        return r.HTTPResponse.Header.Get("Content-Type")
+    }
+    return ""
+}
+{{end}}
+
+{{end}}
+
+
+{{range .}}
+{{$opid := .OperationId -}}
+{{$parent := . }}
+{{$opidSuffix := ""}}
+{{- if .HasBody -}}
+{{- $opidSuffix = "WithBody" -}}
+{{- end -}}
+{{$deprecationComment := .DeprecationComment -}}
+{{/* Generate client methods (with responses)*/}}
+
+{{ if .HasBody }}
+    {{ .GenerateFunctionComment $opid "WithBodyWithResponse" true }}
+{{ else }}
+    {{ .GenerateFunctionComment $opid "WithResponse" true }}
+{{ end -}}
+{{with $deprecationComment}}//
+{{.}}
+{{end -}}func (c *ClientWithResponses) {{$opid}}{{if .HasBody}}WithBody{{end}}WithResponse(ctx context.Context{{genParamArgs .PathParams}}{{if .RequiresParamObject}}, params *{{$opid}}Params{{end}}{{if .HasBody}}, contentType string, body io.Reader{{end}}, reqEditors... RequestEditorFn) (*{{genResponseTypeName $opid}}, error){
+    rsp, err := c.{{$opid}}{{if .HasBody}}WithBody{{end}}(ctx{{genParamNames .PathParams}}{{if .RequiresParamObject}}, params{{end}}{{if .HasBody}}, contentType, body{{end}}, reqEditors...)
+    if err != nil {
+        return nil, err
+    }
+    r, err := Parse{{genResponseTypeName $opid | ucFirst}}(rsp)
+    return told(ctx, r, err)
+}
+
+{{$hasParams := .RequiresParamObject -}}
+{{$pathParams := .PathParams -}}
+{{$bodyRequired := .BodyRequired -}}
+{{range .Bodies}}
+{{if .IsSupportedByClient -}}
+{{ .GenerateFunctionComment $opid $parent (printf "%sWithResponse" .Suffix) true }}
+{{with $deprecationComment}}{{.}}
+{{end -}}func (c *ClientWithResponses) {{$opid}}{{.Suffix}}WithResponse(ctx context.Context{{genParamArgs $pathParams}}{{if $hasParams}}, params *{{$opid}}Params{{end}}, body {{$opid}}{{.NameTag}}RequestBody, reqEditors... RequestEditorFn) (*{{genResponseTypeName $opid}}, error) {
+    rsp, err := c.{{$opid}}{{.Suffix}}(ctx{{genParamNames $pathParams}}{{if $hasParams}}, params{{end}}, body, reqEditors...)
+    if err != nil {
+        return nil, err
+    }
+    r, err := Parse{{genResponseTypeName $opid | ucFirst}}(rsp)
+    return told(ctx, r, err)
+}
+{{end}}
+{{end}}
+
+{{end}}{{/* operations */}}
+
+{{/* Generate parse functions for responses*/}}
+{{range .}}{{$opid := .OperationId}}
+
+// Parse{{genResponseTypeName $opid | ucFirst}} parses an HTTP response from a {{$opid}}WithResponse call
+func Parse{{genResponseTypeName $opid | ucFirst}}(rsp *http.Response) (*{{genResponseTypeName $opid}}, error) {
+    bodyBytes, err := io.ReadAll(rsp.Body)
+    defer func() { _ = rsp.Body.Close() }()
+    if err != nil {
+        return nil, err
+    }
+
+    response := {{genResponsePayload $opid}}
+
+    // json reads the body by the exact member names (DecodeResponse): it
+    // shadows encoding/json for the unmarshal generated below.
+    {{- $paged := false}}{{range .QueryParams}}{{if eq .ParamName "pageToken"}}{{$paged = true}}{{end}}{{end}}
+    json := exactJSON{rsp: rsp, page: {{$paged}}}
+    _ = json
+
+    {{genResponseUnmarshal .}}
+    {{- /* oapi-codegen picks the decoder by a case-sensitive look at the
+    Content-Type; every success of v0 but a 204 is JSON, whatever a proxy
+    made of its type, so a documented JSON success is read whatever it says. */}}
+    {{- range getResponseTypeDefinitions .}}{{if and (eq (slice .ResponseName 0 1) "2") (eq .ContentTypeName "application/json")}}
+    if rsp.StatusCode == {{.ResponseName}} && response.{{.TypeName}} == nil {
+        var dest {{.Schema.TypeDecl}}
+        if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+            return nil, err
+        }
+        response.{{.TypeName}} = &dest
+    }
+    {{- end}}{{end}}
+    {{- /* A refusal's typed problem is set as Result and Err read one: a
+    body that is a problem with a code, whatever its media type says; any
+    other leaves it nil. */}}
+    {{- range getResponseTypeDefinitions .}}{{if and (ne (slice .ResponseName 0 1) "2") (eq .Schema.TypeDecl "Problem")}}
+    if rsp.StatusCode == {{.ResponseName}} {
+        response.{{.TypeName}} = problemIn(bodyBytes)
+    }
+    {{- end}}{{end}}
+    {{- /* Bind declared response headers into the typed Headers<StatusCode>
+    fields. Binding is lenient: an absent header (even a required one) leaves
+    the field at its zero value rather than failing the parse, mirroring the
+    body unmarshal's tolerance of spec-violating servers. A present header
+    that fails to bind to its declared type is an error. */ -}}
+    {{$headerResponses := responsesWithHeaders .Responses}}
+    {{- if $headerResponses}}
+    switch {
+    {{- range $headerResponses}}
+    case {{getConditionOfResponseName "rsp.StatusCode" .StatusCode}}:
+        var headers {{genResponseTypeName $opid | ucFirst}}{{.StatusCode | ucFirst}}Headers
+        {{- range .Headers}}
+        if values := rsp.Header.Values({{.Name | toGoString}}); len(values) > 0 {
+            var value {{.Schema.TypeDecl}}
+            if err := runtime.BindStyledParameterWithOptions("simple", {{.Name | toGoString}}, values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: {{.Required}}, Type: "{{.SchemaType}}", Format: "{{.SchemaFormat}}"}); err != nil {
+                return nil, err
+            }
+            {{- if .IsNullable}}
+            headers.{{.GoName}}.Set(value)
+            {{- else if .IsOptional}}
+            headers.{{.GoName}} = &value
+            {{- else}}
+            headers.{{.GoName}} = value
+            {{- end}}
+        }
+        {{- end}}
+        response.Headers{{.StatusCode | ucFirst}} = &headers
+    {{- end}}
+    }
+    {{- end}}
+
+    return response, nil
+}
+{{end}}{{/* range . $opid := .OperationId */}}
+
+{{/* What the v0 client adds to oapi-codegen's own: Result or Err on every
+     answer, the errors they return, and paging. Each is derived from the
+     document's shape, with no x- extension. */}}
+
+// ResponseError is an answer that is not a success: its status, and the
+// problem when the body is one.
+type ResponseError struct {
+	Response *http.Response
+	Body     []byte
+	// Problem is the problem the body holds; nil for a body that is none,
+	// such as the page of a proxy.
+	Problem *Problem
+}
+
+func (e *ResponseError) Error() string {
+	if e.Problem != nil {
+		return fmt.Sprintf("%s: %s", e.Response.Status, e.Problem.Code)
+	}
+	return e.Response.Status
+}
+
+// AnswerError is an answer the client cannot read. Err says why:
+// ErrStatus, ErrContentType, a *shape.Error, or what the decoder said.
+type AnswerError struct {
+	Response *http.Response
+	Body     []byte
+	// Want are the statuses of success the document names for the
+	// operation, with ErrStatus.
+	Want []int
+	Err  error
+}
+
+func (e *AnswerError) Error() string {
+	return fmt.Sprintf("reading the %s answer: %v", e.Response.Status, e.Err)
+}
+
+func (e *AnswerError) Unwrap() error { return e.Err }
+
+var (
+	// ErrStatus is a success with a status the document does not name for
+	// the operation.
+	ErrStatus = errors.New("a status of success the operation does not answer")
+	// ErrContentType is a success whose Content-Type is none the document
+	// gives the operation.
+	ErrContentType = errors.New("the body is not of the content type the operation answers")
+)
+
+// problemIn is the problem body holds: one that reads by the exact member
+// names and has a code; nil for any other body, such as the page of a
+// proxy. Result, Err and the typed problem of a Parse function all read a
+// refusal so.
+func problemIn(body []byte) *Problem {
+	var p Problem
+	if DecodeResponse(body, &p) != nil || p.Code == "" {
+		return nil
+	}
+	return &p
+}
+
+// told is r, the answer of a call made with ctx, having told the decoded
+// function of ctx (WithDecoded) its success.
+func told[R interface{ decodedSuccess() (any, []byte) }](ctx context.Context, r R, err error) (R, error) {
+	if err != nil {
+		return r, err
+	}
+	if f, ok := ctx.Value(decodedKey{}).(func(any, []byte)); ok && f != nil {
+		if v, raw := r.decodedSuccess(); v != nil {
+			f(v, raw)
+		}
+	}
+	return r, nil
+}
+
+// answerOf is nil for an answer whose status is one of want; any other
+// answer as an error.
+func answerOf(rsp *http.Response, body []byte, want []int) error {
+	switch {
+	case rsp.StatusCode/100 != 2:
+		return &ResponseError{Response: rsp, Body: body, Problem: problemIn(body)}
+	case !slices.Contains(want, rsp.StatusCode):
+		return &AnswerError{Response: rsp, Body: body, Want: want, Err: ErrStatus}
+	}
+	return nil
+}
+
+{{range .}}{{$opid := .OperationId}}
+{{- $want := ""}}{{range .Responses}}{{if eq (slice .StatusCode 0 1) "2"}}{{$want = printf "%s%s, " $want .StatusCode}}{{end}}{{end}}
+{{- $done := false}}
+{{- range getResponseTypeDefinitions .}}{{if and (not $done) (eq (slice .ResponseName 0 1) "2") (eq .ContentTypeName "application/json")}}{{$done = true}}
+// Result is the {{.ResponseName}} answer of {{$opid}}, or the answer as an error:
+// a *ResponseError, or an *AnswerError.
+func (r *{{genResponseTypeName $opid}}) Result() (*{{.Schema.TypeDecl}}, error) {
+	if r.{{.TypeName}} != nil {
+		return r.{{.TypeName}}, nil
+	}
+	if err := answerOf(r.HTTPResponse, r.Body, []int{ {{$want}} }); err != nil {
+		return nil, err
+	}
+	// A documented success is always read by Parse; this is one made by
+	// hand.
+	return nil, &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrStatus}
+}
+{{end}}{{end}}
+{{- if not $done}}
+{{- $types := ""}}{{range .Responses}}{{if eq (slice .StatusCode 0 1) "2"}}{{range .Contents}}{{$types = printf "%s%q, " $types .ContentType}}{{end}}{{end}}{{end}}
+// Err is nil for a success of {{$opid}}, else the answer as an error: a
+// *ResponseError, or an *AnswerError.
+func (r *{{genResponseTypeName $opid}}) Err() error {
+	if err := answerOf(r.HTTPResponse, r.Body, []int{ {{$want}} }); err != nil {
+		return err
+	}
+	{{- if $types}}
+	if kind, _, err := mime.ParseMediaType(r.HTTPResponse.Header.Get("Content-Type")); err != nil || !slices.Contains([]string{ {{$types}} }, kind) {
+		return &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrContentType}
+	}
+	{{- end}}
+	return nil
+}
+{{end}}{{end}}
+
+// Got is the result of a call whose answer has Result, as a value:
+// Got(c.GetNodeWithResponse(ctx, id)).
+func Got[R interface{ Result() (*T, error) }, T any](r R, err error) (T, error) {
+	var zero T
+	if err != nil {
+		return zero, err
+	}
+	v, err := r.Result()
+	if err != nil {
+		return zero, err
+	}
+	return *v, nil
+}
+
+// Done is the error of a call whose answer has Err: Done(c.DeleteNodeWithResponse(ctx, id, nil)).
+func Done[R interface{ Err() error }](r R, err error) error {
+	if err != nil {
+		return err
+	}
+	return r.Err()
+}
+
+{{/* Paging: every operation that takes pageToken and answers 200 with an
+     object of nextPageToken and one array of $ref rows gets Pages and All. */}}
+{{range .}}{{$opid := .OperationId}}
+{{- $paged := false}}{{range .QueryParams}}{{if eq .ParamName "pageToken"}}{{$paged = true}}{{end}}{{end}}
+{{- if $paged}}
+{{- $page := ""}}{{$field := ""}}{{$row := ""}}
+{{- range getResponseTypeDefinitions .}}{{if and (eq .ResponseName "200") (eq .ContentTypeName "application/json")}}
+{{- $page = .Schema.GoType}}
+{{- range $k, $v := .Schema.OAPISchema.Properties}}{{if and (ne $k "nextPageToken") $v.Value.Items}}{{$field = ucFirst $k}}{{$row = schemaNameToTypeName (slice $v.Value.Items.Ref 21)}}{{end}}{{end}}
+{{- end}}{{end}}
+{{- if or (eq $page "") (eq $row "")}}
+PAGING_SHAPE_UNKNOWN_{{$opid}}
+{{- else}}
+// {{$opid}}Pages walks {{$opid}} from the page params names (the first,
+// when params has no PageToken) to the last, the page whose nextPageToken
+// is absent: every page as the client read it, Body included. A page is
+// yielded only once it is read whole, its token too: a nextPageToken that
+// is null, empty, not a string, or one the walk was at before is the
+// server's fault, and ends the walk with that error. Any error ends it as
+// a *PageError naming the token of the page it asked for. It never starts
+// over: the rows of the pages before were yielded.
+func (c *ClientWithResponses) {{$opid}}Pages(ctx context.Context, params *{{$opid}}Params, reqEditors ...RequestEditorFn) iter.Seq2[*{{genResponseTypeName $opid}}, error] {
+	return func(yield func(*{{genResponseTypeName $opid}}, error) bool) {
+		var p {{$opid}}Params
+		if params != nil {
+			p = *params
+		}
+		w := walkFrom(p.PageToken)
+		for {
+			resp, err := c.{{$opid}}WithResponse(ctx, &p, reqEditors...)
+			if err == nil {
+				_, err = resp.Result()
+			}
+			var next *string
+			if err == nil {
+				next, err = w.next(resp.Body)
+			}
+			if err != nil {
+				yield(nil, &PageError{Token: w.token, Err: tokenKind[{{$page}}](err)})
+				return
+			}
+			if !yield(resp, nil) || next == nil {
+				return
+			}
+			p.PageToken = next
+		}
+	}
+}
+
+// {{$opid}}All is every {{$row}} of {{$opid}}, from the first page, whatever
+// PageToken params holds. A token the server refuses (invalid_page_token,
+// as after a restart) starts the walk over, once.
+func (c *ClientWithResponses) {{$opid}}All(ctx context.Context, params *{{$opid}}Params, reqEditors ...RequestEditorFn) ([]{{$row}}, error) {
+	var p {{$opid}}Params
+	if params != nil {
+		p = *params
+	}
+	p.PageToken = nil
+	return collect(func(yield func([]{{$row}}, error) bool) {
+		for resp, err := range c.{{$opid}}Pages(ctx, &p, reqEditors...) {
+			var rows []{{$row}}
+			if err == nil {
+				rows = resp.JSON200.{{$field}}
+			}
+			if !yield(rows, err) {
+				return
+			}
+		}
+	})
+}
+{{end}}{{end}}{{end}}
+
+// PageError is an error of a walk of a list: Token is the token of the
+// page it asked for, "" for the first.
+type PageError struct {
+	Token string
+	Err   error
+}
+
+func (e *PageError) Error() string { return "reading a page of the list: " + e.Err.Error() }
+
+func (e *PageError) Unwrap() error { return e.Err }
+
+var (
+	// ErrEmptyPageToken, ErrRepeatedPageToken and ErrPageTokenNotString
+	// are a nextPageToken that is the server's fault: null or empty, one
+	// the walk was at before, which would never end it, and one that is not
+	// a string.
+	ErrEmptyPageToken     = errors.New("the server sent an empty nextPageToken")
+	ErrRepeatedPageToken  = errors.New("the server sent a nextPageToken it had sent before")
+	ErrPageTokenNotString = errors.New("the server sent a nextPageToken that is not a string")
+)
+
+// walk is where a walk of a list is: the token of the page it asks for, ""
+// for the first, and every token it was at.
+type walk struct {
+	token string
+	seen  map[string]bool
+}
+
+func walkFrom(start *string) *walk {
+	w := &walk{seen: map[string]bool{}}
+	if start != nil {
+		w.token = *start
+		w.seen[*start] = true
+	}
+	return w
+}
+
+// next is the token of the page after the one whose body is page, as the
+// document has it: an absent member ends the list; a present one is a
+// string, not empty and new to the walk.
+func (w *walk) next(page []byte) (*string, error) {
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(page, &members); err != nil {
+		return nil, err
+	}
+	raw, ok := members["nextPageToken"]
+	if !ok {
+		return nil, nil
+	}
+	var token string
+	switch {
+	case string(bytes.TrimSpace(raw)) == "null":
+		return nil, ErrEmptyPageToken
+	case json.Unmarshal(raw, &token) != nil:
+		return nil, ErrPageTokenNotString
+	case token == "":
+		return nil, ErrEmptyPageToken
+	case w.seen[token]:
+		return nil, ErrRepeatedPageToken
+	}
+	w.seen[token] = true
+	w.token = token
+	return &token, nil
+}
+
+// tokenKind is err, the error of a page, said as the walk says a token
+// when the page is right but for its nextPageToken: null is
+// ErrEmptyPageToken, and a token that is not a string ErrPageTokenNotString,
+// which the shape and the decoder would say in their own words. The faults
+// of a page are said in one order: its status (an undocumented one is the
+// error, whatever the body), then its shape and its rows, then its token.
+func tokenKind[Page any](err error) error {
+	ae, ok := errors.AsType[*AnswerError](err)
+	if !ok || ae.Response.StatusCode/100 != 2 || errors.Is(ae.Err, ErrStatus) {
+		return err
+	}
+	// Only a token at fault is said anew; a page that does not read, or
+	// any other fault, stays the error it came as.
+	_, terr := (&walk{seen: map[string]bool{}}).next(ae.Body)
+	if !errors.Is(terr, ErrEmptyPageToken) && !errors.Is(terr, ErrPageTokenNotString) {
+		return err
+	}
+	// A fault of a row comes before one of the token, and the read of the
+	// page said it already (pageFault).
+	if rowsFault(ae.Body, new(Page)) != nil {
+		return err
+	}
+	if errors.Is(terr, ErrPageTokenNotString) {
+		return &AnswerError{Response: ae.Response, Body: ae.Body, Err: ErrPageTokenNotString}
+	}
+	return terr
+}
+
+// collect gathers the rows of a walk, and walks again from the first page
+// once when the server refuses a token.
+func collect[Row any](pages iter.Seq2[[]Row, error]) ([]Row, error) {
+	for try := 0; ; try++ {
+		var rows []Row
+		var err error
+		for got, e := range pages {
+			if e != nil {
+				err = e
+				break
+			}
+			rows = append(rows, got...)
+		}
+		var re *ResponseError
+		if try == 0 && errors.As(err, &re) && re.Problem != nil && string(re.Problem.Code) == "invalid_page_token" {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return rows, nil
+	}
+}
