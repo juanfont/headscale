@@ -71,6 +71,24 @@ func TestProblemSentence(t *testing.T) {
 			clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "node", Id: "12", Name: "mynode"})},
 			"Node 12 (mynode) no longer exists.",
 		},
+		{"tags required", clientv0.Problem{Code: clientv0.ProblemCodeTagsRequired}, "the tag list is empty. A tagged node needs at least one tag."},
+		{
+			"tags not permitted names them, escaped",
+			clientv0.Problem{Code: clientv0.ProblemCodeTagsNotPermitted, Details: map[string]any{"tags": []any{"tag:serverr", "tag:x\nError: fake"}}},
+			"these tags are not in the policy: tag:serverr, " + `tag:x\x0aError: fake`,
+		},
+		{"expiry in past", clientv0.Problem{Code: clientv0.ProblemCodeExpiryInPast}, "the expiry is in the past."},
+		{"update refused: not connected", refusal("notConnected", ""), "Node 12 (mynode) is not connected."},
+		{"update refused: updates not allowed", refusal("updatesNotAllowed", ""), `Node 12 (mynode) does not allow remote updates. Run "tailscale set --auto-update" on it.`},
+		{"update refused: the client's text, escaped", refusal("clientRefused", "not supported\nError: fake"), `Node 12 (mynode) refused the update: not supported\x0aError: fake`},
+		{"update refused: the client sent no text", refusal("clientRefused", ""), "Node 12 (mynode) refused the update."},
+		{"update refused: timeout", refusal("timeout", ""), "Node 12 (mynode) did not answer in time."},
+		{"update refused: a reason this build does not know", refusal("new\nreason", ""), `Node 12 (mynode) did not start the update (new\x0areason).`},
+		{
+			"forbidden by the rule on tags",
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_must_own_tags"}},
+			"this credential may not do that.\nAn OAuth access token gives and takes only tags it holds or owns, and only on a node whose tags are all its own; an API key may give any tag of the policy.",
+		},
 		{"not found with no object", clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Title: "Not found"}, "Not found (not_found)."},
 		{
 			"unhealthy lists the reasons",
@@ -161,6 +179,17 @@ func TestFlagsOf(t *testing.T) {
 		"  <name>: a\n  --display-name: b\n  --picture-url: c\n  body.other: d\n  query.pageSize: e",
 		sentence(flagsFor[in](fmt.Errorf("wrapped: %w", p))))
 	require.Equal(t, errBroken, flagsFor[in](errBroken))
+}
+
+// refusal is an update_refused of Node 12 (mynode) for reason.
+func refusal(reason, clientError string) clientv0.Problem {
+	return clientv0.Problem{
+		Code: clientv0.ProblemCodeUpdateRefused,
+		Object: nullable.NewNullableWithValue(
+			clientv0.ProblemObject{Kind: "node", Id: "12", Name: "mynode"},
+		),
+		Details: map[string]any{"reason": reason, "clientError": clientError},
+	}
 }
 
 // flagsFor is flagsOf of the input type In.

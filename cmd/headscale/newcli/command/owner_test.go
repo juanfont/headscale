@@ -12,8 +12,47 @@ import (
 
 	"github.com/juanfont/headscale/cmdline/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
+	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/require"
 )
+
+// TestOwned: an owner reads as every message writes it.
+func TestOwned(t *testing.T) {
+	t.Parallel()
+
+	user := clientv0.Owner{
+		User: nullable.NewNullableWithValue(
+			clientv0.OwnerUser{Id: "3", LoginName: "alice"},
+		),
+	}
+	tags := clientv0.Owner{
+		Tags: []string{"tag:ci", "tag:b\nx"},
+		User: nullable.NewNullNullable[clientv0.OwnerUser](),
+	}
+
+	require.Equal(
+		t,
+		"owned by User 3 (alice)",
+		Owned(nullable.NewNullableWithValue(user)),
+	)
+	require.Equal(
+		t,
+		`tagged tag:ci, tag:b\x0ax`,
+		Owned(nullable.NewNullableWithValue(tags)),
+	)
+	require.Equal(t, "with no owner", Owned(nullable.NewNullNullable[clientv0.Owner]()))
+
+	name, tagged := OwnerName(nullable.NewNullableWithValue(user))
+	require.Equal(t, "User 3 (alice)", name)
+	require.False(t, tagged)
+
+	name, tagged = OwnerName(nullable.NewNullableWithValue(tags))
+	require.Equal(t, `tag:ci, tag:b\x0ax`, name)
+	require.True(t, tagged)
+
+	name, _ = OwnerName(nullable.NewNullNullable[clientv0.Owner]())
+	require.Empty(t, name)
+}
 
 type owned struct {
 	ID    string         `json:"id"`

@@ -15,24 +15,33 @@ import (
 
 // Entity is one type of target: the word that a sentence names
 // it by, the lookup that finds it by a word, the columns of the candidates
-// an ambiguous word lists, and how a message names one.
+// an ambiguous word lists, how a message names one, and the read of one by
+// its ID. A type whose JSON has a revision needs the read: after a write the
+// server refused because the target changed, the builder reads the target
+// again and runs the command once more.
 type Entity struct {
 	t      reflect.Type
 	kind   string
 	lookup cmdline.Option
 	check  func() error
 	name   func(v any) string
+	read   readByID
 }
 
-// EntityOf is the entity of type T; the compiler holds that find, the
-// candidates and name are all of T.
+// readByID reads one entity again by its ID.
+type readByID func(ctx context.Context, id string) (any, error)
+
+// EntityOf is the entity of type T. read is nil for a type with no
+// revision; the compiler holds that find, the candidates, name and read
+// are all of T.
 func EntityOf[T any](
 	kind string,
 	find func(ctx context.Context, word string) (T, error),
 	cands table.Columns[T],
 	name func(T) string,
+	read func(ctx context.Context, id string) (T, error),
 ) Entity {
-	return Entity{
+	e := Entity{
 		t:      reflect.TypeFor[T](),
 		kind:   kind,
 		lookup: cmdline.LateReader(find),
@@ -40,6 +49,12 @@ func EntityOf[T any](
 		//nolint:forcetypeassert // the builder passes only a T
 		name: func(v any) string { return name(v.(T)) },
 	}
+
+	if read != nil {
+		e.read = func(ctx context.Context, id string) (any, error) { return read(ctx, id) }
+	}
+
+	return e
 }
 
 // EmptyWord is an empty target: it names nothing, so a lookup refuses it
@@ -55,9 +70,10 @@ func EmptyWord(
 // once however many fields it matches in; more than one is an error that
 // lists them, with the default columns of cols, and each other column of
 // cols that word equals in a candidate, so the list says why it matched.
+// The errors quote said, the word as the person typed it.
 func Resolve[T any](
 	rows []T,
-	word, kind string,
+	word, said, kind string,
 	cols table.Columns[T],
 	id func(T) string,
 	fields func(T) []string,
@@ -81,14 +97,14 @@ func Resolve[T any](
 		return matches[0], nil
 	case 0:
 		return zero, &LookupError{
-			Text: "no " + kind + " matches " + strconv.Quote(word) + ".",
+			Text: "no " + kind + " matches " + strconv.Quote(said) + ".",
 		}
 	}
 
 	var b bytes.Buffer
 
 	// The candidates show no time, so no clock is needed.
-	_ = table.Render(&b, matches, cols.Showing(matches, word), time.Time{})
+	_ = table.Render(&b, matches, cols.Showing(matches, word), time.Time{}, nil)
 
 	var list strings.Builder
 
@@ -98,7 +114,7 @@ func Resolve[T any](
 
 	return zero, &LookupError{
 		Text: strconv.Quote(
-			word,
+			said,
 		) + " matches " + strconv.Itoa(
 			len(matches),
 		) + " " + kind + "s. Use the ID to select one:\n\n" +
@@ -109,7 +125,11 @@ func Resolve[T any](
 	}
 }
 
-// LookupError is a word that names no entity, or more than one.
-type LookupError struct{ Text string }
+// LookupError is a word that names no entity, or more than one. Hinted is
+// a word of another kind, which the command's hint follows.
+type LookupError struct {
+	Text   string
+	Hinted bool
+}
 
 func (e *LookupError) Error() string { return e.Text }

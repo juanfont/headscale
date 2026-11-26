@@ -1,36 +1,36 @@
-# headscale: 76 rows: pass 5 waits 71
+# headscale: 76 rows: fails 2 pass 55 waits 19
 # model: 76 rows: fails 2 pass 74
-headscale	C01	waits	serve, check, nodes, auth, policy
-headscale	C02	waits	nodes
-headscale	C03	waits	nodes, nodes list, nodes delete, nodes set, nodes routes
-headscale	C04	waits	nodes routes, nodes routes set
-headscale	C05	waits	nodes routes
+headscale	C01	waits	serve, check, auth, policy
+headscale	C02	pass
+headscale	C03	pass
+headscale	C04	pass
+headscale	C05	pass
 headscale	C06	waits	auth keys, auth keys create
-headscale	C07	waits	nodes, nodes list
-headscale	C08	waits	nodes list
+headscale	C07	pass
+headscale	C08	pass
 headscale	C09	waits	users delete
 headscale	C10	waits	auth keys create
-headscale	C11	waits	nodes list
-headscale	C12	waits	nodes list
-headscale	C13	waits	nodes list
-headscale	C14	waits	nodes list
+headscale	C11	pass
+headscale	C12	pass
+headscale	C13	pass
+headscale	C14	pass
 headscale	C15	pass
 headscale	C16	waits	policy set
 headscale	C17	waits	check config
-headscale	C18	waits	nodes list
-headscale	C19	waits	nodes list
-headscale	C20	waits	nodes list
-headscale	N01	waits	nodes, nodes list, nodes delete, nodes set, nodes routes
-headscale	N02	waits	nodes, nodes list
-headscale	N03	waits	nodes, nodes routes
+headscale	C18	pass
+headscale	C19	pass
+headscale	C20	pass
+headscale	N01	pass
+headscale	N02	pass
+headscale	N03	pass
 headscale	N04	waits	users delete
-headscale	N05	waits	nodes routes, nodes routes set
-headscale	N06	waits	nodes, nodes list
-headscale	N07	waits	nodes delete
-headscale	N08	waits	nodes delete
-headscale	N09	waits	nodes list
+headscale	N05	pass
+headscale	N06	pass
+headscale	N07	pass
+headscale	N08	pass
+headscale	N09	pass
 headscale	N10	pass
-headscale	N11	waits	nodes delete
+headscale	N11	pass
 headscale	N12	waits	check config
 headscale	N13	waits	check config
 headscale	N14	waits	policy set
@@ -40,42 +40,42 @@ headscale	N17	waits	serve
 headscale	N18	pass
 headscale	N19	waits	auth keys create
 headscale	N20	waits	auth keys create
-headscale	N21	waits	nodes routes set
+headscale	N21	pass
 headscale	Q01	pass
-headscale	Q02	waits	nodes list
-headscale	Q03	waits	nodes list
-headscale	Q04	waits	nodes set
+headscale	Q02	pass
+headscale	Q03	pass
+headscale	Q04	pass
 headscale	Q05	waits	auth keys create
-headscale	Q06	waits	nodes, nodes list, nodes delete, nodes routes
-headscale	Q07	waits	nodes list
-headscale	Q08	waits	nodes list
-headscale	Q09	waits	nodes list
-headscale	Q10	waits	nodes list
-headscale	Q11	waits	nodes list
-headscale	Q12	waits	nodes, serve
-headscale	Q13	waits	nodes list
-headscale	Q14	waits	nodes, nodes list, nodes delete
-headscale	Q15	waits	nodes
-headscale	Q16	waits	nodes list
-headscale	Q17	waits	nodes list
-headscale	Q18	waits	nodes list
-headscale	Q19	waits	nodes list
+headscale	Q06	pass
+headscale	Q07	fails	"--columns\tColumns to show: a list, or +name and -name to change the default\n--list-columns\tList the columns, the API field behind each, and exit\n--filter\tKeep the rows that match; may be repeated\n--sort\tColumn to sort by; -name sorts in reverse\n--output\tOutput format: json (the API object)\n--config\tConfig file\n--help\tShow this help\n:4\n"
+headscale	Q08	fails	"-o\tOutput format: json (the API object)\n:4\n"
+headscale	Q09	pass
+headscale	Q10	pass
+headscale	Q11	pass
+headscale	Q12	waits	serve
+headscale	Q13	pass
+headscale	Q14	pass
+headscale	Q15	pass
+headscale	Q16	pass
+headscale	Q17	pass
+headscale	Q18	pass
+headscale	Q19	pass
 headscale	Q20	waits	serve
-headscale	Q21	waits	nodes
-headscale	Q22	waits	nodes list
-headscale	Q23	waits	nodes routes set
-headscale	Q24	waits	nodes list
-headscale	Q25	waits	nodes delete
+headscale	Q21	pass
+headscale	Q22	pass
+headscale	Q23	pass
+headscale	Q24	pass
+headscale	Q25	pass
 headscale	Q26	waits	auth keys create
-headscale	Q27	waits	nodes delete
-headscale	Q28	waits	nodes
-headscale	Q29	waits	nodes
-headscale	Q30	waits	nodes list
-headscale	Q31	waits	nodes list
-headscale	Q32	waits	nodes list
-headscale	Q33	waits	nodes list
+headscale	Q27	pass
+headscale	Q28	pass
+headscale	Q29	pass
+headscale	Q30	pass
+headscale	Q31	pass
+headscale	Q32	pass
+headscale	Q33	pass
 headscale	Q34	waits	auth keys create
-headscale	Q35	waits	nodes list
+headscale	Q35	pass
 model	C01	pass
 model	C02	pass
 model	C03	pass

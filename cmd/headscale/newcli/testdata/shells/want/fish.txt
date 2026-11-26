@@ -145,3 +145,127 @@ FINAL: [headscale -h version ]
 LINE: headscale --version |
 LISTED: [$ headscale $ headscale --version $ headscale --version $ headscale --version ]
 FINAL: [headscale --version ]
+
+LINE: headscale no|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes ]
+FINAL: [headscale nodes ]
+
+LINE: headscale nodes |
+LISTED: [$ headscale $ headscale nodes $ headscale nodes $ headscale nodes ]
+FINAL: [headscale nodes ]
+
+LINE: headscale nodes routes ap|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes routes $ headscale nodes routes approve $ headscale nodes routes approve ]
+FINAL: [headscale nodes routes approve ]
+
+LINE: headscale -c x no|
+LISTED: [$ headscale $ headscale -c $ headscale -c x $ headscale -c x nodes $ headscale -c x nodes ]
+FINAL: [headscale -c x nodes ]
+
+LINE: headscale nodes list --|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --$ headscale nodes list --]
+FINAL: [headscale nodes list --]
+
+LINE: headscale nodes list -o |
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list -o $ headscale nodes list -o json $ headscale nodes list -o json ]
+FINAL: [headscale nodes list -o json ]
+
+LINE: headscale nodes list --columns |
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --columns $ headscale nodes list --columns $ headscale nodes list --columns ]
+FINAL: [headscale nodes list --columns ]
+
+LINE: headscale nodes list --columns id,na|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --columns $ headscale nodes list --columns id,name$ headscale nodes list --columns id,name]
+FINAL: [headscale nodes list --columns id,name]
+
+LINE: headscale nodes list --columns=id,na|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --columns=id,name$ headscale nodes list --columns=id,name]
+FINAL: [headscale nodes list --columns=id,name]
+
+LINE: headscale nodes list --columns id,|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --columns $ headscale nodes list --columns id,$ headscale nodes list --columns id,]
+FINAL: [headscale nodes list --columns id,]
+
+LINE: headscale nodes list --sort la|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --sort $ headscale nodes list --sort last-seen $ headscale nodes list --sort last-seen ]
+FINAL: [headscale nodes list --sort last-seen ]
+
+LINE: headscale nodes list --sort -la|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --sort $ headscale nodes list --sort -last-seen $ headscale nodes list --sort -last-seen ]
+FINAL: [headscale nodes list --sort -last-seen ]
+
+LINE: headscale nodes list --filter=ow|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --filter=owner$ headscale nodes list --filter=owner]
+FINAL: [headscale nodes list --filter=owner]
+
+LINE: headscale nodes list |
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list $ headscale nodes list $ headscale nodes list $ headscale nodes list ]
+FINAL: [headscale nodes list ]
+
+LINE: headscale nodes delete |
+LISTED: [$ headscale $ headscale nodes $ headscale nodes delete $ headscale nodes delete $ headscale nodes delete $ headscale nodes delete $ headscale nodes delete ]
+FINAL: [headscale nodes delete ]
+
+LINE: headscale nodes rm --f|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes rm $ headscale nodes rm --force $ headscale nodes rm --force ]
+FINAL: [headscale nodes rm --force ]
+
+LINE: headscale nodes list -o=|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list -o=json $ headscale nodes list -o=json ]
+FINAL: [headscale nodes list -o=json ]
+
+LINE: headscale nodes list --config |
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --config $ headscale nodes list --config $ headscale nodes list --config ]
+FINAL: [headscale nodes list --config ]
+
+LINE: headscale nodes list --config=|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --config=$ headscale nodes list --config=$ headscale nodes list --config=]
+FINAL: [headscale nodes list --config=]
+
+LINE: headscale nodes set 12 --name |
+LISTED: [$ headscale $ headscale nodes $ headscale nodes set $ headscale nodes set 12 $ headscale nodes set 12 --name $ headscale nodes set 12 --name $ headscale nodes set 12 --name $ headscale nodes set 12 --name $ headscale nodes set 12 --name ]
+FINAL: [headscale nodes set 12 --name ]
+
+LINE: headscale nodes routes |
+LISTED: [$ headscale $ headscale nodes $ headscale nodes routes $ headscale nodes routes $ headscale nodes routes ]
+FINAL: [headscale nodes routes ]
+
+LINE: headscale nodes list --s|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --sort $ headscale nodes list --sort ]
+FINAL: [headscale nodes list --sort ]
+
+LINE: headscale nodes list -|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --$ headscale nodes list --]
+FINAL: [headscale nodes list --]
+
+LINE: headscale nodes list -c|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list -c $ headscale nodes list -c ]
+FINAL: [headscale nodes list -c ]
+
+LINE: headscale nodes list --bogus --l|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --bogus $ headscale nodes list --bogus --list-columns $ headscale nodes list --bogus --list-columns ]
+FINAL: [headscale nodes list --bogus --list-columns ]
+
+LINE: headscale nodes list --sort id --s|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --sort $ headscale nodes list --sort id $ headscale nodes list --sort id --s$ headscale nodes list --sort id --s$ headscale nodes list --sort id --s$ headscale nodes list --sort id --s]
+FINAL: [headscale nodes list --sort id --s]
+
+LINE: headscale nodes list --filter id --f|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --filter $ headscale nodes list --filter id $ headscale nodes list --filter id --filter $ headscale nodes list --filter id --filter ]
+FINAL: [headscale nodes list --filter id --filter ]
+
+LINE: headscale nodes delete o |
+LISTED: [$ headscale $ headscale nodes $ headscale nodes delete $ headscale nodes delete o $ headscale nodes delete o $ headscale nodes delete o $ headscale nodes delete o $ headscale nodes delete o ]
+FINAL: [headscale nodes delete o ]
+
+LINE: headscale nodes routes set 12 -- --|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes routes $ headscale nodes routes set $ headscale nodes routes set 12 $ headscale nodes routes set 12 -- $ headscale nodes routes set 12 -- --$ headscale nodes routes set 12 -- --$ headscale nodes routes set 12 -- --$ headscale nodes routes set 12 -- --]
+FINAL: [headscale nodes routes set 12 -- --]
+
+LINE: headscale nodes list --filter -ow|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --filter $ headscale nodes list --filter -ow$ headscale nodes list --filter -ow$ headscale nodes list --filter -ow$ headscale nodes list --filter -ow]
+FINAL: [headscale nodes list --filter -ow]
+
+LINE: headscale nodes list --columns id,-ho|
+LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --columns $ headscale nodes list --columns id,-hostname$ headscale nodes list --columns id,-hostname]
+FINAL: [headscale nodes list --columns id,-hostname]

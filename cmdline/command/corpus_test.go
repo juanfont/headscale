@@ -53,8 +53,9 @@ type (
 	works      struct{}
 )
 
-// nodeRow is a node as the kit's nodes list shows it, with 001's columns,
-// so its list flags are the builder's.
+// nodeRow is a node as the corpus's nodes list shows it: a stand-in for
+// the corpus and the fuzz targets, which cannot import Headscale's tree.
+// The kit runs on Headscale's own nodes list (KitModel).
 type nodeRow struct {
 	ID        string         `json:"id"`
 	Name      string         `json:"name"`
@@ -108,8 +109,7 @@ func (works) Words() []string      { return []string{"works"} }
 // The kit's tree: the hard cases of the CLI proposal, twelve commands.
 type (
 	nodesDeleteIn struct {
-		Node  string `arg:"node"`
-		Force bool   `flag:"force" help:"Do not ask"`
+		Node string `arg:"node"`
 	}
 	nodesSetIn struct {
 		Node   string      `arg:"node"`
@@ -123,7 +123,6 @@ type (
 	usersDeleteIn struct {
 		User      string `arg:"user"`
 		WithNodes bool   `flag:"with-nodes" help:"Delete the nodes of the user too"`
-		Force     bool   `flag:"force"      help:"Do not ask"`
 	}
 	authKeysCreateIn struct {
 		Owner       string           `arg:"owner"`
@@ -139,7 +138,6 @@ type (
 	policySetIn struct {
 		File   Path `arg:"file"`
 		DryRun bool `flag:"dry-run" help:"Check the policy, do not set it"`
-		Force  bool `flag:"force"   help:"Do not ask"`
 	}
 	checkConfigIn struct {
 		File Opt[Path] `arg:"file"`
@@ -204,6 +202,20 @@ func cmd[In any](name, short string, server, config bool, aliases ...string) Nod
 	})
 }
 
+// asking is a server command of a test tree that can ask, so it takes the
+// builder's --force; like cmd it is never run.
+func asking[In any](name, short string, aliases ...string) Node {
+	return New(Spec[testS, In, NoOutput]{
+		Name:    name,
+		Short:   short,
+		Long:    short + ".",
+		Example: []string{name},
+		Aliases: aliases,
+		Confirm: func(Ctx[testS], In) (Prompt, error) { return Prompt{}, nil },
+		Run:     func(Ctx[testS], In) (NoOutput, error) { return NoOutput{}, errNotRun },
+	})
+}
+
 // list is a list of a test tree, with the builder's list flags; like cmd
 // it is never run.
 func list[In, R any](
@@ -227,9 +239,9 @@ func group(name, short string, nodes ...Node) Group {
 	return Group{Name: name, Short: short, Commands: nodes}
 }
 
-// testTrees are the trees of the corpus by name; "" is the kit's tree.
-var testTrees = map[string][]Node{
-	"": {
+// kitTree is the kit's tree of twelve commands, with the nodes list given.
+func kitTree(nodesList Node) []Node {
+	return []Node{
 		cmd[NoInput]("serve", "Run the control server", false, true),
 		cmd[NoInput]("version", "Print the version", true, true),
 		group(
@@ -244,8 +256,8 @@ var testTrees = map[string][]Node{
 			false,
 		),
 		group("nodes", "Manage nodes",
-			list[NoInput]("list", "List the nodes", nodeColumns, "ls"),
-			cmd[nodesDeleteIn]("delete", "Delete a node", true, true, "rm"),
+			nodesList,
+			asking[nodesDeleteIn]("delete", "Delete a node", "rm"),
 			cmd[nodesSetIn]("set", "Change the name or expiry of a node", true, true),
 			group(
 				"routes",
@@ -262,7 +274,7 @@ var testTrees = map[string][]Node{
 		group(
 			"users",
 			"Manage users",
-			cmd[usersDeleteIn]("delete", "Delete a user", true, true, "rm"),
+			asking[usersDeleteIn]("delete", "Delete a user", "rm"),
 		),
 		group(
 			"auth",
@@ -285,9 +297,15 @@ var testTrees = map[string][]Node{
 		group(
 			"policy",
 			"Manage the policy",
-			cmd[policySetIn]("set", "Replace the policy", true, true),
+			asking[policySetIn]("set", "Replace the policy"),
 		),
-	},
+	}
+}
+
+// testTrees are the trees of the corpus by name; "" is the kit's tree with
+// the stand-in nodes list.
+var testTrees = map[string][]Node{
+	"": kitTree(list[NoInput]("list", "List the nodes", nodeColumns, "ls")),
 	"pf": {
 		cmd[pfIn]("run", "Run", true, true, "r", "go"),
 		group("grp", "A group",
@@ -300,6 +318,9 @@ var testTrees = map[string][]Node{
 	"others": {cmd[othersIn]("test", "Test", false, false)},
 }
 
+// corpusAliases are the aliases the trees of the corpus may use.
+func corpusAliases() []string { return []string{"ls", "rm", "approve", "r", "go", "s", "sub2"} }
+
 // corpusTree builds a tree of the corpus.
 func corpusTree(tb testing.TB, name string) *Tree {
 	tb.Helper()
@@ -307,7 +328,7 @@ func corpusTree(tb testing.TB, name string) *Tree {
 	t, err := build(
 		"headscale",
 		"Headscale control server",
-		[]string{"ls", "rm", "approve", "r", "go", "s", "sub2"},
+		corpusAliases(),
 		nil,
 		testTrees[name]...)
 	require.NoError(tb, err)
@@ -810,11 +831,11 @@ func TestCorpus(t *testing.T) { //nolint:tparallel // the cases are counted in o
 	}
 }
 
-// The lists of the test trees are the builder's, with its list flags; the
-// trees still declare --force as a plain field, because the builder has no
-// prompt yet. The day a spec gets one, this fails, so that the trees take
-// the builder's --force.
-func TestBuilderLacksPrompt(t *testing.T) {
+// The lists of the test trees are the builder's, with its list flags, and
+// a command that asks takes the builder's --force: no input struct of a
+// test tree declares its own. A new field of a spec fails here, so that the
+// trees are checked against it.
+func TestTestTreesUseTheBuilder(t *testing.T) {
 	t.Parallel()
 
 	tree, err := testBuild("prog", "Prog",
@@ -834,6 +855,7 @@ func TestBuilderLacksPrompt(t *testing.T) {
 			Example: []string{"prog delete a"},
 			Run:     noop[getIn, NoOutput],
 			Done:    func(getIn, NoOutput, time.Time) string { return "" },
+			Confirm: func(Ctx[testS], getIn) (Prompt, error) { return Prompt{}, nil },
 		}),
 	)
 	require.NoError(t, err)
@@ -865,10 +887,22 @@ func TestBuilderLacksPrompt(t *testing.T) {
 	)
 	require.ElementsMatch(
 		t,
-		[]string{"count", "output", "config", "help"},
+		[]string{"count", "output", "config", "force", "help"},
 		names(1),
-		"the builder gives a command a flag of its own: if it is --force, make testTrees use it in place of their own field, and update this test",
+		"the builder gives a command that asks a flag of its own",
 	)
+
+	for _, in := range []reflect.Type{reflect.TypeFor[nodesDeleteIn](), reflect.TypeFor[usersDeleteIn](), reflect.TypeFor[policySetIn]()} {
+		for f := range in.Fields() {
+			require.NotEqual(
+				t,
+				"force",
+				f.Tag.Get("flag"),
+				"%s declares --force: the builder gives it to a command with Confirm",
+				in.Name(),
+			)
+		}
+	}
 
 	fields := func(typ reflect.Type) []string {
 		var out []string
@@ -891,6 +925,11 @@ func TestBuilderLacksPrompt(t *testing.T) {
 		"ReadsConfig",
 		"NeedsChange",
 		"Columns",
+		"Blocks",
+		"Confirm",
+		"Hint",
+		"EmptyList",
+		"Valid",
 		"NoRows",
 		"Run",
 		"Done",
@@ -901,7 +940,7 @@ func TestBuilderLacksPrompt(t *testing.T) {
 			t,
 			known,
 			fields(typ),
-			"%s has a new field: if it is the prompt (and --force), make testTrees use it in place of their own field; then add it here",
+			"%s has a new field: if the test trees need it, give it to them; then add it here",
 			typ.Name(),
 		)
 	}

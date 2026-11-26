@@ -181,13 +181,15 @@ type tokenRule struct {
 	name string
 	// why is the detail of the problem and the text on the page.
 	why string
-	// refuses reports whether the rule refuses the input of the call.
+	// refuses reports whether the rule refuses the input of the call. A
+	// rule that reads the resource leaves it nil, and its handler checks
+	// it once the resource is found.
 	refuses func(in any) bool
 }
 
 // tokenRules is every rule. The page of codes lists them, and register
 // refuses a rule that is not here.
-var tokenRules = []*tokenRule{&tokenCannotChangeUserNameOrEmail}
+var tokenRules = []*tokenRule{&tokenCannotChangeUserNameOrEmail, &tokenMustOwnTags}
 
 // ruleRefusal is the problem of the first rule of a that refuses in, when
 // the caller is an OAuth access token.
@@ -198,7 +200,7 @@ func ruleRefusal(ctx context.Context, a access, in any) *Problem {
 	}
 
 	for _, r := range a.rules {
-		if r.refuses(in) {
+		if r.refuses != nil && r.refuses(in) {
 			return ruleForbidden(r)
 		}
 	}

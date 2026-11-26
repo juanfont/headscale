@@ -3883,7 +3883,7 @@ func compatView(cfg *types.Config) compatConfig {
 		},
 		LogTail:    compatLogTailConfig(cfg.LogTail),
 		Taildrop:   compatTaildropConfig(cfg.Taildrop),
-		AutoUpdate: compatAutoUpdateConfig(cfg.AutoUpdate),
+		AutoUpdate: compatAutoUpdateConfig{Enabled: cfg.AutoUpdate.Enabled},
 		CLI: compatCLIConfig{
 			Address:  cfg.CLI.Address,
 			Timeout:  cfg.CLI.Timeout,

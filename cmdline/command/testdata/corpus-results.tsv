@@ -199,7 +199,7 @@ issues-048	up	unknown-command [] "NODES"
 issues-049	up	[approve] files=false nospace=false
 issues-050	up	[list] files=false nospace=false
 issues-051	up	[--config --help --output --version] files=false nospace=false
-issues-052	up	[id,expiry id,hostname id,id id,ip id,last-seen id,name id,online id,owner id,version] files=false nospace=true
+issues-052	up	[id,expiry id,hostname id,ip id,last-seen id,name id,online id,owner id,version] files=false nospace=true
 issues-053	ours	[] files=false nospace=false
 issues-054	ours	[] files=false nospace=false
 issues-055	ours	unknown-flag [run] "bs"

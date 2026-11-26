@@ -3088,6 +3088,7 @@ The tailnet-wide default for client auto-updates.
     ```yaml
     auto_update:
       enabled: false
+      check_versions: true
     ```
 
 ### `auto_update.enabled` { #auto_update.enabled data-toc-label="enabled" }
@@ -3115,6 +3116,33 @@ Makes auto-update the default for clients that have not chosen locally. Clients 
 
     ```nix
     services.headscale.settings.auto_update.enabled = true;
+    ```
+
+### `auto_update.check_versions` { #auto_update.check_versions data-toc-label="check_versions" }
+
+- **Type:** [boolean](#type-boolean)
+- **Default:** `true`
+- **Env:** `HEADSCALE_AUTO_UPDATE_CHECK_VERSIONS`
+
+Reads the newest stable Tailscale client from https://pkgs.tailscale.com/stable/?mode=json at start and every six hours, for the `updateAvailable` of a node in the API. Set it to false for a server that must not call out, or that cannot reach the internet; `updateAvailable` is then always false. [`disable_check_updates`](#disable_check_updates) is about Headscale's own version and does not change it.
+
+=== "YAML"
+
+    ```yaml
+    auto_update:
+      check_versions: false
+    ```
+
+=== "Environment"
+
+    ```shell
+    export HEADSCALE_AUTO_UPDATE_CHECK_VERSIONS=false
+    ```
+
+=== "NixOS"
+
+    ```nix
+    services.headscale.settings.auto_update.check_versions = false;
     ```
 
 ## `tailsql` { #tailsql data-toc-label="tailsql" }

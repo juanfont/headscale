@@ -7,9 +7,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// credentialsDDLSQLite matches schema.sql byte-for-byte (the squibble digest is
-// the SQLite source of truth). Only revoked legacy rows may lack a hash, and
-// every stored hash format ($sha256$, $argon2id$, bcrypt $2a$) starts with '$'.
+// credentialsDDLSQLite is the table as 202609231200-create-credentials made
+// it, and stays so: a committed migration never changes, so a later column
+// comes by its own migration (schema.sql, the SQLite source of truth for the
+// squibble digest, holds the table as the last one leaves it). Only revoked
+// legacy rows may lack a hash, and every stored hash format ($sha256$,
+// $argon2id$, bcrypt $2a$) starts with '$'.
 // TODO(kradalby): in 0.31, with the credentials migration, tighten
 // chk_credentials_hash to hash NOT NULL (needs a migration clearing the
 // hashless revoked rows).

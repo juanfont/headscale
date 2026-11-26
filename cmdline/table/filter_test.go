@@ -577,18 +577,22 @@ func TestSort(t *testing.T) {
 	t.Parallel()
 
 	for key, want := range map[string][]string{
-		"id":         {"9", "12", "13"},
-		"-id":        {"13", "12", "9"},
-		"name":       {"13", "9", "12"},
-		"count":      {"12", "13", "9"},
-		"-count":     {"9", "12", "13"},
-		"online":     {"13", "12", "9"},
-		"last-seen":  {"9", "13", "12"},
-		"expiry":     {"13", "9", "12"},
-		"version":    {"9", "13", "12"}, // unknown does not read, so it comes first
+		"id":        {"9", "12", "13"},
+		"-id":       {"13", "12", "9"},
+		"name":      {"13", "9", "12"},
+		"count":     {"12", "13", "9"},
+		"-count":    {"9", "12", "13"},
+		"online":    {"13", "12", "9"},
+		"last-seen": {"9", "13", "12"},
+		// A row with no value comes last both ways: a null time, a version
+		// that does not read, an empty list.
+		"expiry":     {"9", "12", "13"},
+		"-expiry":    {"12", "9", "13"},
+		"version":    {"13", "12", "9"},
 		"-version":   {"12", "13", "9"},
 		"owner":      {"12", "9", "13"},
-		"ip":         {"9", "12", "13"},
+		"ip":         {"12", "13", "9"},
+		"-ip":        {"13", "12", "9"},
 		"-last-seen": {"12", "13", "9"},
 	} {
 		rs := listRows()
@@ -664,4 +668,37 @@ func TestClosest(t *testing.T) {
 	require.Empty(t, Closest("policy", names))
 	require.Equal(t, 0, distance("", ""))
 	require.Equal(t, 3, distance("abc", ""))
+}
+
+// TestMatchFold: a route column matches exit as it shows it, and each
+// prefix as it is.
+func TestMatchFold(t *testing.T) {
+	t.Parallel()
+
+	cs := Columns[row]{
+		{Name: "routes", Field: "enabledRoutes", Fold: Exit(), Default: true},
+	}
+	gateway := row{Routes: []string{"10.0.0.0/8", "0.0.0.0/0", "::/0"}}
+	half := row{Routes: []string{"0.0.0.0/0"}}
+
+	for _, tt := range []struct {
+		filter      string
+		gateway, hf bool
+	}{
+		{"routes=exit", true, false},
+		{"routes:exi", true, false},
+		{"routes=0.0.0.0/0", true, true},
+		{"routes=10.0.0.0/8", true, false},
+	} {
+		f, err := cs.ParseFilter(tt.filter)
+		require.NoError(t, err)
+
+		got, err := f.Match(gateway, now)
+		require.NoError(t, err)
+		require.Equal(t, tt.gateway, got, tt.filter)
+
+		got, err = f.Match(half, now)
+		require.NoError(t, err)
+		require.Equal(t, tt.hf, got, tt.filter)
+	}
 }

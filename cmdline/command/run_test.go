@@ -2,8 +2,11 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"io"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +86,51 @@ func TestReuseListColumns(t *testing.T) {
 		stderr.String(),
 	)
 	require.Equal(t, "ID\n2\n", stdout.String())
+}
+
+// TestReuseSheetColumns: the columns of a sheet changed after the build do
+// not change what it shows.
+func TestReuseSheetColumns(t *testing.T) {
+	t.Parallel()
+
+	s := spec()
+	s.Columns = slices.Clone(itemColumns)
+	s.Run = func(Ctx[testS], NoInput) (item, error) { return item{ID: "1", Name: "apple"}, nil }
+	tree, err := testBuild("prog", "Items", New(s))
+	require.NoError(t, err)
+
+	show := func() string {
+		var stdout, stderr bytes.Buffer
+
+		require.Equal(
+			t,
+			0,
+			Run(tree, []string{"get"}, Env{Stdout: &stdout, Stderr: &stderr}),
+			stderr.String(),
+		)
+
+		return stdout.String()
+	}
+
+	before := show()
+	s.Columns[1].Field = "id"
+
+	require.Equal(t, before, show())
+}
+
+// TestReuseFold: the fold of a column changed after the build does not
+// change what the list shows.
+func TestReuseFold(t *testing.T) {
+	t.Parallel()
+
+	fold := map[string][]string{"both": {"1", "2"}}
+	declared := slices.Clone(itemColumns)
+	declared[0].Fold = fold
+	cols := cloneColumns(declared)
+	fold["both"][0] = "x"
+	fold["other"] = nil
+
+	require.Equal(t, map[string][]string{"both": {"1", "2"}}, cols[0].Fold)
 }
 
 var errBroken = errors.New("it broke")
@@ -360,4 +408,233 @@ func TestVisibleText(t *testing.T) {
 	_, err := visible{&b}.Write([]byte("Error: \x1b[2J\u202e \\\\x\n\tnext\n"))
 	require.NoError(t, err)
 	require.Equal(t, `Error: \x1b[2J\u202e \\x`+"\n\tnext\n", b.String())
+}
+
+// TestPrompt: a command with Confirm asks on stderr and goes on only on y
+// or yes; no is "Aborted." and exit 1, no terminal is an error that names
+// --force, and --force or a Prompt with no question asks nothing.
+func TestPrompt(t *testing.T) {
+	t.Parallel()
+
+	ask := true
+	tree, err := testBuild("prog", "A program", New(Spec[testS, getIn, NoOutput]{
+		Name:    "delete",
+		Short:   "Delete an item",
+		Long:    "Delete an item.",
+		Example: []string{"prog delete apple"},
+		Local:   true,
+		Confirm: func(_ Ctx[testS], in getIn) (Prompt, error) {
+			if !ask || in.Name == "pear" {
+				return Prompt{}, nil
+			}
+
+			return Prompt{
+				Question: "Delete Item 1 (" + in.Name + ")?",
+				Action:   "delete Item 1 (" + in.Name + ")",
+			}, nil
+		},
+		Run:  func(Ctx[testS], getIn) (NoOutput, error) { return NoOutput{}, nil },
+		Done: func(in getIn, _ NoOutput, _ time.Time) string { return "Item 1 (" + in.Name + ") deleted." },
+	}))
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		name, args, stdin string
+		terminal          bool
+		stdout, stderr    string
+		code              int
+	}{
+		{name: "yes", args: "delete apple", stdin: "y\n", terminal: true, stdout: "Item 1 (apple) deleted.\n", stderr: "Delete Item 1 (apple)? [y/N] "},
+		{name: "yes in words", args: "delete apple", stdin: " YES \n", terminal: true, stdout: "Item 1 (apple) deleted.\n", stderr: "Delete Item 1 (apple)? [y/N] "},
+		{name: "no", args: "delete apple", stdin: "n\n", terminal: true, stderr: "Delete Item 1 (apple)? [y/N] Aborted.\n", code: 1},
+		{name: "enter is no", args: "delete apple", stdin: "\n", terminal: true, stderr: "Delete Item 1 (apple)? [y/N] Aborted.\n", code: 1},
+		{name: "no answer is no", args: "delete apple", terminal: true, stderr: "Delete Item 1 (apple)? [y/N] Aborted.\n", code: 1},
+		{
+			name: "no terminal", args: "delete apple", stdin: "y\n",
+			stderr: "Error: confirmation needed, but there is no terminal.\nRun again with --force to delete Item 1 (apple).\n", code: 1,
+		},
+		{name: "--force asks nothing", args: "delete apple --force", stdout: "Item 1 (apple) deleted.\n"},
+		{name: "--force=false asks", args: "delete --force=false apple", stdin: "y\n", terminal: true, stdout: "Item 1 (apple) deleted.\n", stderr: "Delete Item 1 (apple)? [y/N] "},
+		{name: "a prompt with no question asks nothing", args: "delete pear", stdout: "Item 1 (pear) deleted.\n"},
+		{name: "--force where nothing is asked", args: "delete pear --force", stdout: "Item 1 (pear) deleted.\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var stdout, stderr bytes.Buffer
+
+			code := Run(
+				tree,
+				strings.Fields(tt.args),
+				Env{
+					Stdin:    strings.NewReader(tt.stdin),
+					Stdout:   &stdout,
+					Stderr:   &stderr,
+					Terminal: tt.terminal,
+				},
+			)
+			require.Equal(t, tt.stdout, stdout.String())
+			require.Equal(t, tt.stderr, stderr.String())
+			require.Equal(t, tt.code, code)
+		})
+	}
+}
+
+// TestConfirmUnseen: a question that cannot be written to stderr is not
+// answered by what stdin holds: nothing runs.
+func TestConfirmUnseen(t *testing.T) {
+	t.Parallel()
+
+	ran := false
+	tree, err := testBuild("prog", "A program", New(Spec[testS, NoInput, NoOutput]{
+		Name:    "delete",
+		Short:   "S",
+		Long:    "S.",
+		Example: []string{"prog delete"},
+		Local:   true,
+		Confirm: func(Ctx[testS], NoInput) (Prompt, error) {
+			return Prompt{Question: "Delete it?", Action: "delete it"}, nil
+		},
+		Run:  func(Ctx[testS], NoInput) (NoOutput, error) { ran = true; return NoOutput{}, nil },
+		Done: func(NoInput, NoOutput, time.Time) string { return "deleted" },
+	}))
+	require.NoError(t, err)
+
+	var stdout bytes.Buffer
+
+	code := Run(
+		tree,
+		[]string{"delete"},
+		Env{
+			Stdin:    strings.NewReader("y\n"),
+			Stdout:   &stdout,
+			Stderr:   fullWriter{},
+			Terminal: true,
+		},
+	)
+	require.Equal(t, 1, code)
+	require.False(t, ran)
+	require.Empty(t, stdout.String())
+}
+
+// TestValid: Valid refuses a line before any call or lookup, with its own
+// sentence; a line it takes runs.
+func TestValid(t *testing.T) {
+	t.Parallel()
+
+	ran := false
+	tree, err := testBuild("prog", "A program", New(Spec[testS, getIn, NoOutput]{
+		Name:    "get",
+		Short:   "Get",
+		Long:    "Get.",
+		Example: []string{"prog get a"},
+		Local:   true,
+		Valid: func(in getIn) error {
+			if in.Name != "a" {
+				//nolint:err113 // a sentence of the test
+				return errors.New(strconv.Quote(in.Name) + " is not a.")
+			}
+
+			return nil
+		},
+		Run: func(Ctx[testS], getIn) (NoOutput, error) { ran = true; return NoOutput{}, nil },
+	}))
+	require.NoError(t, err)
+
+	var stderr bytes.Buffer
+
+	require.Equal(
+		t,
+		1,
+		Run(tree, []string{"get", "b"}, Env{Stdout: io.Discard, Stderr: &stderr}),
+	)
+	require.Equal(t, "Error: \"b\" is not a.\n", stderr.String())
+	require.False(t, ran)
+
+	require.Equal(
+		t,
+		0,
+		Run(tree, []string{"get", "a"}, Env{Stdout: io.Discard, Stderr: io.Discard}),
+	)
+	require.True(t, ran)
+}
+
+// refusedError is a refusal of the server, as the test program reads one.
+type refusedError struct{}
+
+func (refusedError) Error() string { return "refused" }
+
+// TestAbout: a refusal of the server is told what the command knows of
+// it (Program.About): the target as its lookup read it, the word it was
+// typed as, and the expiry the command sent; any other error is not.
+func TestAbout(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Node   guarded               `arg:"node"`
+		Expiry Opt[Expiry[NowNever]] `flag:"expiry" help:"x"`
+	}
+
+	now := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+
+	type told struct {
+		target Object
+		expiry time.Time
+	}
+
+	for _, tt := range []struct {
+		line string
+		err  error
+		want []told
+	}{
+		{"set mynode", refusedError{}, []told{{Object{"node", "12", "mynode"}, time.Time{}}}},
+		{"set mynode --expiry 2024-01-01", refusedError{}, []told{{Object{"node", "12", "mynode"}, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+		{"set mynode", errBroken, nil},
+	} {
+		var got []told
+
+		p := testProgram()
+		p.Name, p.Short = "prog", "A program"
+		p.Refusal = func(err error) string {
+			if errors.As(err, new(refusedError)) {
+				return "refused"
+			}
+
+			return ""
+		}
+		p.About = func(_ error, target Object, expiry time.Time) {
+			got = append(got, told{target, expiry})
+		}
+		p.Entities = []Entity{EntityOf(
+			"node",
+			func(context.Context, string) (guarded, error) {
+				return guarded{ID: "12", Name: "mynode", Revision: "r1"}, nil
+			},
+			nil,
+			func(g guarded) string { return g.Name },
+			func(context.Context, string) (guarded, error) { return guarded{}, nil },
+		)}
+
+		tree, err := Build(p, New(Spec[testS, in, NoOutput]{
+			Name:    "set",
+			Short:   "S",
+			Long:    "S.",
+			Example: []string{"prog set mynode"},
+			Local:   true,
+			Run:     func(Ctx[testS], in) (NoOutput, error) { return NoOutput{}, tt.err },
+			Done:    func(in, NoOutput, time.Time) string { return "" },
+		}))
+		require.NoError(t, err)
+
+		Run(
+			tree,
+			strings.Fields(tt.line),
+			Env{
+				Stdout: io.Discard,
+				Stderr: io.Discard,
+				Now:    func() time.Time { return now },
+			},
+		)
+		require.Equal(t, tt.want, got, tt.line)
+	}
 }

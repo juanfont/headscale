@@ -8,7 +8,9 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
+	lib "github.com/juanfont/headscale/cmdline/command"
 	"github.com/juanfont/headscale/cmdline/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 )
@@ -20,6 +22,12 @@ import (
 // table.Visible, so it cannot end the line and forge the next.
 type ProblemError struct {
 	Problem clientv0.Problem
+
+	// What the builder knows of the command that the problem answers, for
+	// the sentences that the problem alone cannot write: the target as the
+	// command read it, and the expiry it sent, zero when none.
+	target clientv0.ProblemObject
+	expiry time.Time
 }
 
 // sentence is the text of err. A problem of the server, a server that
@@ -51,6 +59,46 @@ func sentence(err error) string {
 	return err.Error()
 }
 
+// problemIn is the problem err holds.
+func problemIn(
+	err error,
+) (*ProblemError, bool) {
+	return errors.AsType[*ProblemError](err)
+}
+
+// refusalCode is the code of the problem err holds; "" for none.
+func refusalCode(err error) string {
+	p, ok := problemIn(err)
+	if !ok {
+		return ""
+	}
+
+	return string(p.Problem.Code)
+}
+
+// about gives the problem err holds what the builder knows of the
+// command it answers.
+func about(err error, target lib.Object, expiry time.Time) {
+	p, ok := problemIn(err)
+	if !ok {
+		return
+	}
+
+	p.target = clientv0.ProblemObject{
+		Kind: clientv0.ProblemObjectKind(target.Kind),
+		Id:   target.ID,
+		Name: target.Name,
+	}
+	p.expiry = expiry
+}
+
+// faultAfterWriteError is a server fault, 5xx, that answered a write: what
+// failed may have come after the change, as a read after a commit or a
+// proxy that gave up waiting, so the change may have been made.
+type faultAfterWriteError struct{ error }
+
+func (e *faultAfterWriteError) Unwrap() error { return e.error }
+
 func problemOf(status int, body json.RawMessage) error {
 	var p clientv0.Problem
 
@@ -74,7 +122,7 @@ func (e *ProblemError) Error() string {
 	case clientv0.ProblemCodeNotFound:
 		o, err := p.Object.Get()
 		if err == nil {
-			return table.Entity(string(o.Kind), o.Id, o.Name) + " no longer exists."
+			return e.entity(o) + " no longer exists."
 		}
 	case clientv0.ProblemCodeNameTaken:
 		if s, ok := taken(p, "name"); ok {
@@ -84,7 +132,7 @@ func (e *ProblemError) Error() string {
 		if s, ok := taken(p, "email"); ok {
 			return s
 		}
-	case preconditionFailed:
+	case clientv0.ProblemCodePreconditionFailed:
 		o, err := p.Object.Get()
 		if err == nil {
 			return table.Entity(
@@ -101,6 +149,32 @@ func (e *ProblemError) Error() string {
 				o.Id,
 				o.Name,
 			) + " is managed by OIDC and cannot be edited here."
+		}
+	case clientv0.ProblemCodeTagsRequired:
+		return "the tag list is empty. A tagged node needs at least one tag."
+	case clientv0.ProblemCodeTagsNotPermitted:
+		return "these tags are not in the policy: " + strings.Join(
+			texts(p.Details["tags"]),
+			", ",
+		)
+	case clientv0.ProblemCodeExpiryInPast:
+		if e.expiry.IsZero() {
+			return "the expiry is in the past."
+		}
+
+		s := e.expiry.UTC().Format("2006-01-02 15:04 UTC") + " is in the past."
+		if e.target.Kind == "node" {
+			s += "\nTo expire the node now: headscale nodes expire " + table.Visible(
+				e.target.Id,
+				"",
+			)
+		}
+
+		return s
+	case clientv0.ProblemCodeUpdateRefused:
+		o, err := p.Object.Get()
+		if err == nil {
+			return refused(table.Entity(string(o.Kind), o.Id, o.Name), p.Details)
 		}
 	case clientv0.ProblemCodeUnhealthy:
 		return "the server is not healthy:" + messages(p.Details["reasons"])
@@ -133,6 +207,17 @@ func (e *ProblemError) Error() string {
 
 	// A code this build does not know.
 	return table.Visible(p.Title, "") + " (" + table.Visible(string(p.Code), "") + ")."
+}
+
+// entity names o as messages do. The server names no object that is gone,
+// so an object with no name that is the command's target has the name the
+// command read.
+func (e *ProblemError) entity(o clientv0.ProblemObject) string {
+	if o.Name == "" && o.Kind == e.target.Kind && o.Id == e.target.Id {
+		o.Name = e.target.Name
+	}
+
+	return table.Entity(string(o.Kind), o.Id, o.Name)
 }
 
 // flagsOf names, in each entry of an invalid_field problem, the flag or the
@@ -183,28 +268,52 @@ func flagsOf(err error, t reflect.Type) error {
 	return err
 }
 
-// preconditionFailed is a write whose If-Match no longer matches: the
-// target changed after the CLI read it. v0 has no write that takes
-// If-Match yet, so the code is not in the client.
-const preconditionFailed clientv0.ProblemCode = "precondition_failed"
+// refused is the sentence of update_refused, one for each reason.
+func refused(node string, details map[string]any) string {
+	reason, _ := details["reason"].(string)
+	text, _ := details["clientError"].(string)
+
+	switch reason {
+	case "notConnected":
+		return node + " is not connected."
+	case "updatesNotAllowed":
+		return node + ` does not allow remote updates. Run "tailscale set --auto-update" on it.`
+	case "clientRefused":
+		if text == "" {
+			return node + " refused the update."
+		}
+
+		return node + " refused the update: " + table.Visible(text, "")
+	case "timeout":
+		return node + " did not answer in time."
+	}
+
+	return node + " did not start the update (" + table.Visible(reason, "") + ")."
+}
+
+// texts are the entries of a list of the details, each made visible.
+func texts(v any) []string {
+	list, _ := v.([]any)
+
+	out := make([]string, 0, len(list))
+	for _, s := range list {
+		out = append(out, table.Visible(fmt.Sprint(s), ""))
+	}
+
+	return out
+}
 
 // forbidden names what the credential lacks, when the problem says it.
 func forbidden(details map[string]any) string {
-	var scopes []string
-
-	if list, ok := details["scopes"].([]any); ok {
-		for _, s := range list {
-			scopes = append(scopes, table.Visible(fmt.Sprint(s), ""))
-		}
-	}
+	scopes := texts(details["scopes"])
 
 	rule, _ := details["rule"].(string)
 
 	switch {
 	case len(scopes) > 0:
 		return "\nIt lacks the scope " + strings.Join(scopes, ", ") + "."
-	case tokenRules[rule] != "":
-		return "\n" + tokenRules[rule]
+	case tokenRule(rule) != "":
+		return "\n" + tokenRule(rule)
 	case rule != "":
 		return "\nA token rule refuses it: " + table.Visible(rule, "") + "."
 	}
@@ -212,12 +321,18 @@ func forbidden(details map[string]any) string {
 	return ""
 }
 
-// tokenRules are the sentences of the token rules the server names in
-// forbidden's details.rule; a rule this build does not know prints its word.
-//
-//nolint:gosec // rule words and sentences, not credentials
-var tokenRules = map[string]string{
-	"token_cannot_change_user_name_or_email": "An OAuth access token cannot change the name or the email of a user; an API key can.",
+// tokenRule is the sentence of a token rule the server names in
+// forbidden's details.rule; "" for a rule this build does not know, which
+// prints its word.
+func tokenRule(rule string) string {
+	switch rule {
+	case "token_cannot_change_user_name_or_email":
+		return "An OAuth access token cannot change the name or the email of a user; an API key can."
+	case "token_must_own_tags":
+		return "An OAuth access token gives and takes only tags it holds or owns, and only on a node whose tags are all its own; an API key may give any tag of the policy."
+	}
+
+	return ""
 }
 
 // taken is the sentence of name_taken or email_taken, whose details hold

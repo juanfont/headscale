@@ -56,6 +56,11 @@ type Credential struct {
 	// lists those without all=true.
 	CreatedByToken bool `gorm:"default:false"`
 
+	// CreatedByUserID is the user who made the credential, apart from UserID,
+	// which is the owner of a user's key. Nil when unknown: the credential is
+	// older than the column, or that user was deleted.
+	CreatedByUserID *uint `gorm:"column:created_by_user_id"`
+
 	CreatedAt  *time.Time
 	Expiration *time.Time
 	Revoked    *time.Time

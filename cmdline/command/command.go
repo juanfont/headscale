@@ -8,11 +8,12 @@
 // order, for every command: it reads the line, shows help, checks the
 // argument count, makes the session the program calls its server with (S),
 // runs the command, turns an error into the program's sentence and prints
-// the result. What is the program's own, its session and its server's
-// errors, is a [Program].
+// the result. What is the program's own, its session, its server's errors,
+// its credentials, is a [Program].
 package command
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"os"
@@ -54,9 +55,29 @@ type Spec[S, In, Out any] struct {
 	// a set: a line that gives none of them is refused before any call.
 	NeedsChange bool
 
-	// Columns show Out as a sheet.
+	// Columns show Out as a sheet; Blocks follow its lines.
 	Columns table.Columns[Out]
-	// Run is the one function that does the work.
+	Blocks  table.Blocks[Out]
+	// Confirm is the question asked before Run, for a command whose change
+	// cannot be undone; a Prompt with no Question asks nothing this time. A
+	// command with Confirm takes --force, which answers yes. It runs again
+	// after the server refused the guard the builder stored, on the target
+	// as it is then, also under --force, so a question made from a call to
+	// the server is made anew.
+	Confirm func(c Ctx[S], in In) (Prompt, error)
+	// Hint is a line of what to do after a wrong argument count, an empty
+	// list argument, or a word of another kind than its lookup takes, such
+	// as a tag for a user, from the arguments as typed; "" adds nothing.
+	Hint func(args []string) string
+	// EmptyList is why an empty list argument is refused, said after "the
+	// tag list is empty.", so the CLI's refusal reads as the server's.
+	EmptyList string
+	// Valid checks a value that the parser takes as any word, such as a
+	// route, once the line is read and before any call or lookup; its error
+	// is the sentence. The lookups have not run, so it sees no entity.
+	Valid func(in In) error
+	// Run is the one function that does the work. A Run whose change is
+	// made and whose object to print cannot be read returns ErrNotRead.
 	Run func(c Ctx[S], in In) (Out, error)
 	// Done is the text printed in place of Out, when not -o json. now is
 	// the time the command runs at, for a relative time.
@@ -81,6 +102,17 @@ type ListSpec[S, In, Row any] struct {
 	// NoRows is what a terminal shows when no row is left: "No users.".
 	NoRows string
 	Run    func(c Ctx[S], in In) ([]Row, error)
+}
+
+// Prompt is what a command asks: the Question, to which the builder adds
+// " [y/N]", and the Action that --force would take, for the error when no
+// terminal can answer: "delete Node 12 (mynode)". Warning, when there is
+// one, is a sentence that follows both; the builder reads it only when a
+// person will read it, after --force, so it may cost a call.
+type Prompt struct {
+	Question string
+	Action   string
+	Warning  func() string
 }
 
 // NoInput is the input of a command that takes nothing.
@@ -109,7 +141,7 @@ type Ctx[S any] struct {
 // run is what a run keeps, whatever its session.
 type run struct {
 	// ConfigFile is what --config or the program's ConfigEnv names; "" for
-	// none.
+	// none, and for a run that reads no config.
 	ConfigFile string
 
 	// Environ is the environment, for a command that reads the config.
@@ -122,14 +154,20 @@ type run struct {
 	stdout   io.Writer
 	stderr   io.Writer
 	terminal bool
-	// screen is a stdout that is a terminal.
+	// screen is a stdout that is a terminal; width is its width in cells,
+	// 0 when unknown, and colour whether a table is drawn in colour.
 	screen bool
+	width  int
+	colour bool
+	// answers reads the replies to prompts from stdin.
+	answers *bufio.Reader
 	// line is the command line, for the flags the builder adds.
 	line *cmdline.Line
 
 	json bool
 	now  func() time.Time
-	// tree is the tree that runs, for its program.
+	// tree is the tree that runs, for the pages generated from it, and its
+	// program.
 	tree *Tree
 	// api is the session, Ctx.API; server says the line talks to a server.
 	api    any
@@ -147,8 +185,8 @@ func (c *run) Note(line string) {
 	}
 }
 
-// Stderr is stderr: a warning written to it is read also with -o json,
-// unlike a Note, for what a script must see too.
+// Stderr is stderr past no rule but the edge's: a warning written to it is
+// read also with -o json, unlike a Note, for what a script must see too.
 func (c *run) Stderr() io.Writer { return c.stderr }
 
 // Now is the time the command runs at.
@@ -164,12 +202,18 @@ type Env struct {
 	// Terminal reports whether stdin is a terminal, which a prompt needs.
 	Terminal bool
 	// StdoutTerminal reports whether stdout is a terminal: an empty list
-	// then says so in words.
+	// then says so in words, and a table is drawn in colour, unless
+	// NO_COLOR is set, and cut to Width.
 	StdoutTerminal bool
+	// Width is the width of the terminal in cells; 0 cuts nothing.
+	Width int
+	// StderrWidth is the width of stderr's terminal, which the list under a
+	// question is cut to, so a question still fits when stdout is a file.
+	StderrWidth int
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
-	// Context is the context of the run; nil is context.Background(). The
-	// program's session reads what it put there.
+	// Context ends a command that runs until it is stopped, such as serve,
+	// as a signal does; nil is context.Background(). A test stops it so.
 	Context context.Context //nolint:containedctx // the run's own, by design
 }
 
@@ -181,6 +225,17 @@ func terminal(f *os.File) bool {
 
 // OSEnv is the Env of the process.
 func OSEnv() Env {
+	// No terminal, or one that cannot say, is 0, which cuts nothing.
+	width := func(f *os.File) int {
+		//nolint:gosec // a file descriptor fits an int
+		w, _, err := term.GetSize(int(f.Fd()))
+		if err != nil {
+			return 0
+		}
+
+		return w
+	}
+
 	return Env{
 		Stdin:          os.Stdin,
 		Stdout:         os.Stdout,
@@ -188,5 +243,7 @@ func OSEnv() Env {
 		Environ:        os.Environ(),
 		Terminal:       terminal(os.Stdin),
 		StdoutTerminal: terminal(os.Stdout),
+		Width:          width(os.Stdout),
+		StderrWidth:    width(os.Stderr),
 	}
 }

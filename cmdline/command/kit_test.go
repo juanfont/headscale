@@ -1896,7 +1896,7 @@ func judge(tb testing.TB, id string, class Class, ok bool, answer, msg string) s
 func kits(tb testing.TB) map[string]kit {
 	tb.Helper()
 
-	model := command.KitModel(tb)
+	model := command.KitModel(tb, newcli.Tree())
 
 	return map[string]kit{
 		"headscale": {real: newcli.Tree(), model: model},
@@ -2117,12 +2117,20 @@ var beyondKit = []string{
 	"users get",
 	"users create",
 	"users set",
+	"nodes get",
+	"nodes expire",
+	"nodes update-client",
+	"nodes routes list",
+	"nodes routes clear",
+	"nodes tags",
+	"nodes tags list",
+	"nodes tags set",
 }
 
 func TestKitKnowsHeadscale(t *testing.T) {
 	t.Parallel()
 
-	model := command.KitModel(t)
+	model := command.KitModel(t, newcli.Tree())
 	paths := command.Paths(newcli.Tree())
 
 	for _, p := range paths {
@@ -2202,7 +2210,7 @@ func TestShellLines(t *testing.T) {
 	b, err := os.ReadFile("../../cmd/headscale/newcli/testdata/shells/lines.txt")
 	require.NoError(t, err)
 
-	hs, model := newcli.Tree(), command.KitModel(t)
+	hs, model := newcli.Tree(), command.KitModel(t, newcli.Tree())
 	n := 0
 
 	for row := range strings.Lines(string(b)) {

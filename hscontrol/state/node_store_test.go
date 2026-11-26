@@ -2,15 +2,18 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"weak"
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
@@ -28,7 +31,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 	tests := []struct {
 		name      string
 		setupFunc func() (map[types.NodeID]types.Node, PeersFunc)
-		validate  func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot)
+		validate  func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot)
 	}{
 		{
 			name: "empty nodes",
@@ -40,7 +43,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, peersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Empty(t, snapshot.nodesByID)
 				assert.Empty(t, snapshot.allNodes)
 				assert.Empty(t, snapshot.peersByNode)
@@ -56,7 +59,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, allowAllPeersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 1)
 				assert.Len(t, snapshot.allNodes, 1)
 				assert.Len(t, snapshot.peersByNode, 1)
@@ -79,7 +82,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, allowAllPeersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 2)
 				assert.Len(t, snapshot.allNodes, 2)
 				assert.Len(t, snapshot.peersByNode, 2)
@@ -104,7 +107,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, allowAllPeersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 3)
 				assert.Len(t, snapshot.allNodes, 3)
 				assert.Len(t, snapshot.peersByNode, 3)
@@ -133,7 +136,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, peersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot *Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 4)
 				assert.Len(t, snapshot.allNodes, 4)
 				assert.Len(t, snapshot.peersByNode, 4)
@@ -1539,7 +1542,7 @@ func BenchmarkSnapshotPayloadDense(b *testing.B) {
 		b.ResetTimer()
 
 		for b.Loop() {
-			next := snapshotFromNodes(nodes, allowAllPeersFunc, &previous, true, true)
+			next := snapshotFromNodes(nodes, allowAllPeersFunc, previous, true, true)
 			previous = next
 		}
 	})
@@ -1965,7 +1968,7 @@ var nodeFieldImpact = map[string]string{
 	"MachineKey": "payload", "NodeKey": "payload", "DiscoKey": "payload",
 	"Endpoints": "payload", "Hostname": "payload", "GivenName": "payload",
 	"LastControlAddress": "payload",
-	"RegisterMethod":     "payload", "AuthKeyID": "payload", "AuthKey": "payload",
+	"RegisterMethod":     "payload", "AuthKeyID": "payload", "AuthKey": "payload", "CreatedByUserID": "payload",
 	"Ephemeral": "payload",
 	"Expiry":    "election", "KeyExpiryDisabled": "election", "LastSeen": "payload", "CreatedAt": "payload",
 	"UpdatedAt": "payload", "DeletedAt": "payload",
@@ -2755,4 +2758,253 @@ func TestDeleteNodeReturnsPeersOfReplacedSnapshot(t *testing.T) {
 
 	assert.Equal(t, []types.NodeID{4}, store.DeleteNode(2))
 	assert.Empty(t, store.DeleteNode(42), "an unknown node has no peers")
+}
+
+var errStale = errors.New("stale")
+
+// TestNodeStoreGuardedWrites holds UpdateNodeIf and the claimed delete: a
+// check or a revision that refuses writes nothing, a name another node holds
+// is refused unless asked to bump, and a missing or claimed node is
+// ErrNodeNotFound.
+func TestNodeStoreGuardedWrites(t *testing.T) {
+	a, b := createTestNode(1, 1, "alice", "a"), createTestNode(2, 1, "alice", "b")
+	store := NewNodeStore(types.Nodes{&a, &b}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	_, err := store.UpdateNodeIf(1, "", false, func(n *types.Node) error {
+		n.GivenName = "changed"
+
+		return errStale
+	})
+	require.ErrorIs(t, err, errStale)
+
+	got, _ := store.GetNode(1)
+	assert.Equal(t, "a", got.GivenName(), "a refused update writes nothing")
+
+	ran := false
+	_, err = store.UpdateNodeIf(1, "0000000000000000", false, func(*types.Node) error {
+		ran = true
+
+		return nil
+	})
+	require.ErrorIs(t, err, ErrNodeRevisionChanged)
+	assert.False(t, ran, "an old revision does not run the update")
+
+	_, err = store.UpdateNodeIf(1, got.Revision(), false, func(n *types.Node) error {
+		n.GivenName = "b"
+
+		return nil
+	})
+	require.ErrorIs(t, err, ErrGivenNameTaken)
+
+	nv, err := store.UpdateNodeIf(1, got.Revision(), true, func(n *types.Node) error {
+		n.GivenName = "b"
+
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "b-1", nv.GivenName(), "bumped when asked")
+
+	_, err = store.UpdateNodeIf(9, "", false, func(*types.Node) error { return nil })
+	require.ErrorIs(t, err, ErrNodeNotFound)
+
+	_, err = store.BeginDeleteIf(2, "0000000000000000")
+	require.ErrorIs(t, err, ErrNodeRevisionChanged)
+
+	two, _ := store.GetNode(2)
+
+	claimed, err := store.BeginDeleteIf(2, two.Revision())
+	require.NoError(t, err)
+	assert.Equal(t, types.NodeID(2), claimed.ID())
+
+	_, err = store.BeginDeleteIf(2, "")
+	require.ErrorIs(t, err, ErrNodeNotFound, "claimed once")
+
+	_, err = store.UpdateNodeIf(2, "", false, func(*types.Node) error { return nil })
+	require.ErrorIs(t, err, ErrNodeNotFound, "an admin write to a claimed node")
+
+	_, err = store.SetGivenName(2, "renamed")
+	require.ErrorIs(t, err, ErrNodeNotFound, "a rename of a claimed node")
+
+	// What the node reports about itself still lands.
+	store.UpdateNode(2, func(n *types.Node) { n.Hostname = "reported" })
+
+	store.CancelDelete(2)
+
+	back, ok := store.GetNode(2)
+	require.True(t, ok)
+	assert.Equal(t, "reported", back.Hostname())
+	assert.Equal(t, "b", back.GivenName(), "given back with its name")
+
+	_, err = store.UpdateNodeIf(2, "", false, func(*types.Node) error { return nil })
+	require.NoError(t, err, "given back, it takes writes again")
+
+	_, err = store.BeginDeleteIf(2, "")
+	require.NoError(t, err)
+	assert.Equal(t, []types.NodeID{1}, store.DeleteNode(2))
+
+	_, err = store.BeginDeleteIf(2, "")
+	require.ErrorIs(t, err, ErrNodeNotFound)
+}
+
+// TestNodeStoreUpdateIfDeletedInBatch: a guarded update that a delete later
+// in its batch removed is not a success with nothing in it.
+func TestNodeStoreUpdateIfDeletedInBatch(t *testing.T) {
+	a := createTestNode(1, 1, "alice", "a")
+	store := NewNodeStore(types.Nodes{&a}, allowAllPeersFunc, 2, time.Hour)
+
+	store.Start()
+	defer store.Stop()
+
+	errs := make(chan error, 1)
+
+	go func() {
+		_, err := store.UpdateNodeIf(1, "", false, func(*types.Node) error { return nil })
+		errs <- err
+	}()
+
+	// The batch of two runs once both are in, the update first.
+	waitHeldByWriter(t)
+	store.DeleteNode(1)
+
+	require.ErrorIs(t, <-errs, ErrNodeNotFound)
+}
+
+// TestNodeStoreClaimRemovedInBatch: a delete's claim that another delete's
+// removal follows in the same batch is ErrNodeNotFound, never a node that
+// is not there with no error.
+func TestNodeStoreClaimRemovedInBatch(t *testing.T) {
+	a := createTestNode(1, 1, "alice", "a")
+	store := NewNodeStore(types.Nodes{&a}, allowAllPeersFunc, 2, time.Hour)
+
+	store.Start()
+	defer store.Stop()
+
+	errs := make(chan error, 1)
+
+	go func() {
+		nv, err := store.BeginDeleteIf(1, "")
+		if err == nil && !nv.Valid() {
+			err = errors.New("no error and no node") //nolint:err113 // the fault itself
+		}
+
+		errs <- err
+	}()
+
+	// The batch of two runs once both are in, the claim first.
+	waitHeldByWriter(t)
+	store.DeleteNode(1)
+
+	// A claim after the removal is held in TestNodeStoreGuardedWrites.
+	require.ErrorIs(t, <-errs, ErrNodeNotFound)
+}
+
+// waitHeldByWriter waits until a guarded write is queued in the writer's
+// batch, waiting for its result.
+func waitHeldByWriter(t *testing.T) {
+	t.Helper()
+
+	buf := make([]byte, 1<<20)
+
+	require.Eventually(t, func() bool {
+		for g := range strings.SplitSeq(string(buf[:runtime.Stack(buf, true)]), "\n\n") {
+			if strings.Contains(g, "[chan receive") && strings.Contains(g, "(*NodeStore).writeIf(") {
+				return true
+			}
+		}
+
+		return false
+	}, 5*time.Second, time.Millisecond)
+}
+
+func TestWriteIfLabel(t *testing.T) {
+	assert.Equal(t, "update", writeIfLabel(work{op: updateIf}), "an unguarded write keeps its label")
+	assert.Equal(t, "update_if", writeIfLabel(work{op: updateIf, revision: "r"}))
+	assert.Equal(t, "delete_if", writeIfLabel(work{op: beginDelIf}))
+	assert.Equal(t, "delete_cancel", writeIfLabel(work{op: cancelDel}), "a failed delete counts once under delete_if")
+}
+
+// TestSnapshotReadsOneMoment: a snapshot keeps its nodes and primaries
+// while later writes publish new ones, and lists its nodes in ID order.
+func TestSnapshotReadsOneMoment(t *testing.T) {
+	route := netip.MustParsePrefix("10.0.0.0/8")
+
+	nodes := make(types.Nodes, 0, 3)
+
+	for _, id := range []types.NodeID{3, 1, 2} {
+		n := createTestNode(id, 1, "alice", "n"+id.String())
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+		n.ApprovedRoutes = []netip.Prefix{route}
+		n.IsOnline = new(true)
+		nodes = append(nodes, &n)
+	}
+
+	store := NewNodeStore(nodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	idx := store.Index()
+	snap := idx.Snapshot
+
+	ids := func(nvs []types.NodeView) []types.NodeID {
+		out := make([]types.NodeID, 0, len(nvs))
+		for _, nv := range nvs {
+			out = append(out, nv.ID())
+		}
+
+		return out
+	}
+
+	require.Equal(t, []types.NodeID{1, 2, 3}, ids(idx.NodesAfter(0)))
+	require.Equal(t, []types.NodeID{2, 3}, ids(idx.NodesAfter(1)))
+	require.Empty(t, idx.NodesAfter(3))
+	require.Same(t, idx, store.Index(), "one snapshot, one index")
+
+	primary, ok := store.PrimaryRouteFor(route)
+	require.True(t, ok)
+	require.Equal(t, []netip.Prefix{route}, snap.PrimaryRoutesForNode(primary))
+
+	store.UpdateNode(primary, func(n *types.Node) { n.IsOnline = new(false) })
+	store.UpdateNode(1, func(n *types.Node) { n.GivenName = "renamed" })
+
+	require.NotEqual(t, primary, func() types.NodeID { id, _ := store.PrimaryRouteFor(route); return id }(), "the primary moved")
+	require.Equal(t, []netip.Prefix{route}, snap.PrimaryRoutesForNode(primary), "the old snapshot keeps its primary")
+
+	old, ok := snap.Node(1)
+	require.True(t, ok)
+	require.Equal(t, "n1", old.GivenName())
+
+	require.NotSame(t, idx, store.Index(), "a new snapshot, a new index")
+	require.Equal(t, "n1", idx.NodesAfter(0)[0].GivenName(), "the old index keeps its moment")
+
+	store.UpdateNode(2, func(n *types.Node) { n.Tags = []string{"tag:b", "tag:a"} })
+	store.UpdateNode(3, func(n *types.Node) { n.Tags = []string{"tag:a"} })
+
+	idx = store.Index()
+	require.Equal(t, []string{"tag:a", "tag:b"}, idx.Tags())
+	require.Equal(t, []types.NodeID{2, 3}, ids(idx.NodesWithTag("tag:a")))
+}
+
+// TestIndexDoesNotPinOldSnapshot: once a list's snapshot is replaced and
+// nobody reads it, it and its index can be collected; the store keeps no
+// index of a snapshot that is not current.
+func TestIndexDoesNotPinOldSnapshot(t *testing.T) {
+	a := createTestNode(1, 1, "alice", "a")
+	store := NewNodeStore(types.Nodes{&a}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	old := weak.Make(store.Index().Snapshot)
+
+	store.UpdateNode(1, func(n *types.Node) { n.GivenName = "renamed" })
+
+	require.Eventually(t, func() bool {
+		runtime.GC()
+
+		return old.Value() == nil
+	}, 5*time.Second, 10*time.Millisecond)
 }

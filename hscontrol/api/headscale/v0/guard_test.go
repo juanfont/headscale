@@ -365,9 +365,9 @@ func TestGuardFails(t *testing.T) {
 	register(
 		api,
 		huma.Operation{
-			OperationID: "listNodes",
+			OperationID: "listGadgets",
 			Method:      http.MethodGet,
-			Path:        Prefix + "/nodes",
+			Path:        Prefix + "/gadgets",
 		},
 		anyCredential,
 		nil,
@@ -378,9 +378,9 @@ func TestGuardFails(t *testing.T) {
 	register(
 		api,
 		huma.Operation{
-			OperationID: "listTags",
+			OperationID: "listLabels",
 			Method:      http.MethodGet,
-			Path:        Prefix + "/tags",
+			Path:        Prefix + "/labels",
 		},
 		needs(scope.DevicesCoreRead),
 		nil,
@@ -468,9 +468,9 @@ func TestGuardFails(t *testing.T) {
 		"InnerStruct.items: a list must be nullable",
 		"HEAD " + Prefix + "/things: declares no access",
 		"GET " + Prefix + "/noid: operation ID \"\" is not explicit",
-		"GET " + Prefix + "/nodes: only getVersion is public",
-		"GET " + Prefix + "/tags 200: a list must be nullable",
-		"GET " + Prefix + "/tags 200: a list is an object, never a bare array",
+		"GET " + Prefix + "/gadgets: only getVersion is public",
+		"GET " + Prefix + "/labels 200: a list must be nullable",
+		"GET " + Prefix + "/labels 200: a list is an object, never a bare array",
 		"GET " + Prefix + "/things: a list takes pageSize",
 		"GET " + Prefix + "/things: a list takes pageToken",
 		"GET " + Prefix + "/things: a list declares invalid_page_token",
@@ -629,13 +629,22 @@ func a(err error) {
 // scopes and its operations: the guard and the document both read the
 // operation's declaration, so only a list of its own catches a wrong one.
 var scopes002 = map[string]string{
-	"getVersion": "none",
-	"getMe":      "any",
-	"getHealth":  "any",
-	"listUsers":  "users:read",
-	"getUser":    "users:read",
-	"createUser": "users",
-	"updateUser": "users",
+	"getVersion":       "none",
+	"getMe":            "any",
+	"getHealth":        "any",
+	"listUsers":        "users:read",
+	"getUser":          "users:read",
+	"createUser":       "users",
+	"updateUser":       "users",
+	"listNodes":        "devices:core:read",
+	"getNode":          "devices:core:read",
+	"updateNode":       "devices:core",
+	"deleteNode":       "devices:core",
+	"expireNode":       "devices:core",
+	"updateNodeClient": "devices:core",
+	"setNodeTags":      "devices:core",
+	"setNodeRoutes":    "devices:routes devices:core:read",
+	"listTags":         "devices:core:read",
 }
 
 func TestScopesAre002s(t *testing.T) {

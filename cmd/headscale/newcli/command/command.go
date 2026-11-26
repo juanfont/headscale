@@ -1,8 +1,8 @@
 // Package command is Headscale's binding of the command library
 // cmdline/command: the session its commands call the server with (API),
-// the sentences of the server's problems, the lookups of its entities, and
-// the program that ties them to the library. The commands themselves are
-// package newcli.
+// the sentences of the server's problems, the lookups of its entities,
+// the delete of a credential, and the program that ties them to the
+// library. The commands themselves are package cli.
 package command
 
 import (
@@ -24,17 +24,20 @@ type (
 	Spec[In, Out any]     = lib.Spec[*API, In, Out]
 	ListSpec[In, Row any] = lib.ListSpec[*API, In, Row]
 
-	Node           = lib.Node
-	Group          = lib.Group
-	Tree           = lib.Tree
-	Command        = lib.Command
-	NoInput        = lib.NoInput
-	NoOutput       = lib.NoOutput
-	Opt[T any]     = lib.Opt[T]
-	Path           = lib.Path
-	OneOf[W Words] = lib.OneOf[W]
-	Words          = lib.Words
-	Shells         = lib.Shells
+	Node            = lib.Node
+	Group           = lib.Group
+	Tree            = lib.Tree
+	Command         = lib.Command
+	Prompt          = lib.Prompt
+	NoInput         = lib.NoInput
+	NoOutput        = lib.NoOutput
+	Opt[T any]      = lib.Opt[T]
+	Path            = lib.Path
+	OneOf[W Words]  = lib.OneOf[W]
+	Words           = lib.Words
+	Shells          = lib.Shells
+	NowNever        = lib.NowNever
+	Expiry[W Words] = lib.Expiry[W]
 )
 
 // New makes the command of a spec.
@@ -57,12 +60,15 @@ type Env struct {
 	Environ []string
 	// Terminal reports whether stdin is a terminal, which a prompt needs.
 	Terminal bool
-	// StdoutTerminal reports whether stdout is a terminal: an empty list
-	// then says so in words.
+	// StdoutTerminal reports whether stdout is a terminal; Width is its
+	// width in cells, 0 cuts nothing; StderrWidth is stderr's.
 	StdoutTerminal bool
+	Width          int
+	StderrWidth    int
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
-	// Context is the context of the run; nil is context.Background().
+	// Context ends a command that runs until it is stopped, such as serve,
+	// as a signal does; nil is context.Background().
 	Context context.Context //nolint:containedctx // the run's own, by design
 
 	// PageSize is the rows of one page of a list walk; 0 is 1000, the most
@@ -74,6 +80,10 @@ type Env struct {
 	// Answered, when set, is told every answer of the server as it came, so
 	// a test compares -o json with what the server sent in that run.
 	Answered func(req *http.Request, body []byte)
+	// Sent, when set, is told every request as it leaves for the server,
+	// before any answer, with its headers: GET /version before a first
+	// write, and a request that gets no answer, too.
+	Sent func(req *http.Request)
 	// Version is the build the run is; nil is this binary's. A test sets
 	// it to run as a release.
 	Version *types.VersionInfo
@@ -93,6 +103,8 @@ func OSEnv() Env {
 		Environ:        o.Environ,
 		Terminal:       o.Terminal,
 		StdoutTerminal: o.StdoutTerminal,
+		Width:          o.Width,
+		StderrWidth:    o.StderrWidth,
 	}
 }
 
@@ -143,6 +155,8 @@ func Run(t *Tree, argv []string, env Env) int {
 		Environ:        env.Environ,
 		Terminal:       env.Terminal,
 		StdoutTerminal: env.StdoutTerminal,
+		Width:          env.Width,
+		StderrWidth:    env.StderrWidth,
 		Now:            env.Now,
 		Context:        runContext(ctx, &env),
 	})
@@ -168,16 +182,13 @@ func program(name, short string) lib.Program[*API] {
 		Sentence: sentence,
 		Answer:   func(a *API, v any) (json.RawMessage, bool) { return a.answerOf(v) },
 		Target:   func(a *API) string { return a.target },
-		Fields:   flagsOf,
 
-		Entities: []lib.Entity{
-			lib.EntityOf(
-				"user",
-				findUser,
-				userCandidates(),
-				func(u clientv0.User) string { return u.LoginName },
-			),
-		},
+		Refusal:      refusalCode,
+		Precondition: string(clientv0.ProblemCodePreconditionFailed),
+		About:        about,
+		Fields:       flagsOf,
+
+		Entities: entities(),
 		Owner: func(ctx context.Context, word string) (string, error) {
 			u, err := findUser(ctx, word)
 

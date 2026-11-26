@@ -7,6 +7,7 @@ require (
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/chasefleming/elem-go v0.37.0
+	github.com/clipperhouse/displaywidth v0.11.0
 	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/creachadair/command v0.2.13

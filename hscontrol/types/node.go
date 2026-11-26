@@ -1,6 +1,9 @@
 package types
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -165,6 +168,13 @@ type Node struct {
 	User   *User `gorm:"constraint:OnDelete:CASCADE;"`
 
 	RegisterMethod string
+
+	// CreatedByUserID is the user whose key or login last registered the
+	// node in place, as Tailscale keeps a device's user: the maker of a tagged
+	// node's key, or the user who took the node back. An admin's tag change
+	// keeps it. Nil when unknown: the node is older than the column, its key
+	// was an OAuth client's, or that user was deleted.
+	CreatedByUserID *uint `gorm:"column:created_by_user_id"`
 
 	// Tags is the definitive owner for tagged nodes.
 	// When non-empty, the node is "tagged" and tags define its identity.
@@ -1170,6 +1180,58 @@ func (nv NodeView) KeyExpiry() (time.Time, bool) {
 	}
 
 	return nv.Expiry().GetOk()
+}
+
+// Revision is a short opaque text that changes when what an admin decides
+// about the node changes: its owner, tags, approved routes, name or key
+// expiry. Nothing the node reports, nor its online state, moves it, so a
+// write guarded by it fails only on a real conflict. It is computed, never
+// stored; the expiry is [NodeView.KeyExpiry], what clients are sent.
+func (nv NodeView) Revision() string {
+	if !nv.Valid() {
+		return ""
+	}
+
+	h := sha256.New()
+	field := func(s string) {
+		_ = binary.Write(h, binary.BigEndian, uint64(len(s)))
+		h.Write([]byte(s))
+	}
+
+	if uid := nv.UserID(); uid.Valid() && !nv.IsTagged() {
+		field(strconv.FormatUint(uint64(uid.Get()), util.Base10))
+	} else {
+		field("")
+	}
+
+	tags := nv.Tags().AsSlice()
+	slices.Sort(tags)
+	field(strings.Join(tags, ","))
+
+	routes := nv.ApprovedRoutes().AsSlice()
+	slices.SortFunc(routes, netip.Prefix.Compare)
+
+	rs := make([]string, len(routes))
+	for i, r := range routes {
+		rs[i] = r.String()
+	}
+
+	field(strings.Join(rs, ","))
+	field(nv.GivenName())
+
+	// PostgreSQL keeps microseconds; a finer time would not survive a
+	// restart, and the revision with it.
+	if exp, ok := nv.KeyExpiry(); ok {
+		exp = exp.Truncate(time.Microsecond)
+		field(strconv.FormatInt(exp.Unix(), util.Base10) + "." + strconv.Itoa(exp.Nanosecond()))
+	} else {
+		field("")
+	}
+
+	// The switch is shown even with no time stored.
+	field(strconv.FormatBool(nv.KeyExpiryDisabled()))
+
+	return hex.EncodeToString(h.Sum(nil)[:8])
 }
 
 // Online reports the node's last known connectivity.

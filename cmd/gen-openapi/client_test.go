@@ -309,20 +309,20 @@ func TestPagesResume(t *testing.T) {
 func TestMediaType(t *testing.T) {
 	t.Parallel()
 
-	nulled := `{"users":null}`
+	nulled := `{"nodes":null}`
 
 	for _, kind := range []string{"application/json", "APPLICATION/JSON", "Application/Json; charset=utf-8", "text/plain"} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := answeringAs(t, kind, nulled).ListUsersWithResponse(t.Context(), nil)
+			_, err := answeringAs(t, kind, nulled).ListNodesWithResponse(t.Context(), nil)
 
 			var se *shape.Error
 
 			require.ErrorAs(t, err, &se, "WithResponse")
-			require.Equal(t, "its users is null", se.Why)
+			require.Equal(t, "its nodes is null", se.Why)
 
-			resp, err := answeringAs(t, kind, `{"users":[]}`).ListUsersWithResponse(t.Context(), nil)
+			resp, err := answeringAs(t, kind, `{"nodes":[]}`).ListNodesWithResponse(t.Context(), nil)
 			require.NoError(t, err)
 			require.NotNil(t, resp.JSON200, "the typed answer")
 		})
@@ -456,34 +456,6 @@ func TestStrict(t *testing.T) {
 
 	require.ErrorAs(t, err, &re)
 	require.Equal(t, clientv0.ProblemCodeNotFound, re.Problem.Code)
-}
-
-// TestResult: a success with a status the operation does not answer is an
-// *AnswerError with ErrStatus and the statuses it does; an answer that is
-// not a problem is a *ResponseError with no Problem.
-func TestResult(t *testing.T) {
-	t.Parallel()
-
-	_, err := clientv0.Got(answering(t, http.StatusCreated, user("1")).GetUserWithResponse(t.Context(), "1"))
-
-	var ae *clientv0.AnswerError
-
-	require.ErrorAs(t, err, &ae)
-	require.ErrorIs(t, err, clientv0.ErrStatus)
-	require.Equal(t, []int{200}, ae.Want)
-
-	// A success whose Content-Type is not JSON is read all the same.
-	u, err := clientv0.Got(answeringAs(t, "text/plain", user("1")).GetUserWithResponse(t.Context(), "1"))
-	require.NoError(t, err)
-	require.Equal(t, "u1", u.Name)
-
-	_, err = clientv0.Got(answering(t, http.StatusBadGateway, `<html>`).GetUserWithResponse(t.Context(), "1"))
-
-	var re *clientv0.ResponseError
-
-	require.ErrorAs(t, err, &re)
-	require.Nil(t, re.Problem)
-	require.Equal(t, http.StatusBadGateway, re.Response.StatusCode)
 }
 
 // doer answers every request with status, kind and body, built by hand as

@@ -11,8 +11,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
+	"maps"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -48,10 +49,36 @@ type Column[R any] struct {
 	Kind Kind
 	// Ahead is a time that looks forward from now, such as an expiry: a
 	// duration in a filter is then the time left, not the age.
-	Ahead   bool
+	Ahead bool
+	// List is how a terminal shows a list; a pipe and a sheet always show
+	// it inline.
+	List Layout
+	// Fold shows the entries of a list that are all one value of the map as
+	// its key, in a cell and in a filter: [Exit].
+	Fold map[string][]string
+	// Invalid, on a time column, is a row whose null time is not "never"
+	// but a stored time the API cannot send: the cell says "invalid", and
+	// no filter on the time finds the row.
+	Invalid func(row R) bool
 	Default bool
 	Help    string
 }
+
+// Layout is how a terminal shows a list in a cell.
+type Layout int
+
+const (
+	// Inline joins the entries with commas on one line.
+	Inline Layout = iota
+	// Stacked shows one entry per line.
+	Stacked
+	// Cut shows as many entries as fit, then "… (+K)".
+	Cut
+)
+
+// Exit is the fold of a route column: the word exit for the two prefixes
+// of an exit node. A function, so no caller can change it for another.
+func Exit() map[string][]string { return map[string][]string{"exit": {"0.0.0.0/0", "::/0"}} }
 
 // Columns is the declaration of one row type.
 type Columns[R any] []Column[R]
@@ -65,6 +92,12 @@ var (
 	errAhead        = errors.New("is no time, so it cannot look ahead")
 	errSayKind      = errors.New(
 		"is named like an ID or a version: say its Kind, which may be text",
+	)
+	errNoList  = errors.New("is no list, so it has no List layout and no Fold")
+	errInvalid = errors.New("is no time, so it has no Invalid")
+	errNoMap   = errors.New("is no map with text keys")
+	errPath    = errors.New(
+		"is no path: write keys with dots, and a map key as name[\"key\"]",
 	)
 )
 
@@ -118,6 +151,14 @@ func (cs Columns[R]) Check() error {
 		if c.Ahead && c.kind(t) != Time {
 			errs = append(errs, fmt.Errorf("column %q %w", c.Name, errAhead))
 		}
+
+		if (c.List != Inline || c.Fold != nil) && c.kind(t) != List {
+			errs = append(errs, fmt.Errorf("column %q %w", c.Name, errNoList))
+		}
+
+		if c.Invalid != nil && c.kind(t) != Time {
+			errs = append(errs, fmt.Errorf("column %q %w", c.Name, errInvalid))
+		}
 	}
 
 	return errors.Join(errs...)
@@ -126,7 +167,12 @@ func (cs Columns[R]) Check() error {
 // namedLikeKind is a key that reads as an ID or a version: authKeyId,
 // clientVersion.
 func namedLikeKind(field string) bool {
-	key := field[strings.LastIndex(field, ".")+1:]
+	ss, _ := steps(field)
+	if len(ss) == 0 || ss[len(ss)-1].keyed {
+		return false
+	}
+
+	key := ss[len(ss)-1].name
 
 	return strings.HasSuffix(key, "Id") || strings.HasSuffix(key, "ID") ||
 		strings.EqualFold(key, "version") ||
@@ -165,124 +211,8 @@ func (c Column[R]) kind(t reflect.Type) Kind {
 	return ""
 }
 
-// Render writes rows as a table of shown, for a pipe: no colour, no
-// truncation, one line per row. [Columns.Pick] chooses the columns.
-func Render[R any](w io.Writer, rows []R, shown Columns[R], now time.Time) error {
-	lines := make([][]string, 0, len(rows)+1)
-
-	header := make([]string, len(shown))
-	for i, c := range shown {
-		header[i] = c.header()
-	}
-
-	lines = append(lines, header)
-
-	for _, r := range rows {
-		line := make([]string, len(shown))
-		for i, c := range shown {
-			line[i] = c.cell(r, now, false)
-		}
-
-		lines = append(lines, line)
-	}
-
-	return aligned(w, lines)
-}
-
-// aligned writes lines of cells in columns: each as wide as its widest
-// cell on the screen, two spaces apart. The last cell of a line is not
-// padded, nor is a cell that only empty cells follow, so a line ends in
-// what its cells hold.
-func aligned(w io.Writer, lines [][]string) error {
-	var widths []int
-
-	for _, line := range lines {
-		for i, cell := range line {
-			if i == len(widths) {
-				widths = append(widths, 0)
-			}
-
-			widths[i] = max(widths[i], width(cell))
-		}
-	}
-
-	var b strings.Builder
-
-	for _, line := range lines {
-		last := len(line) - 1
-		for last > 0 && line[last] == "" {
-			last--
-		}
-
-		for i, cell := range line[:last+1] {
-			b.WriteString(cell)
-
-			if i < last {
-				b.WriteString(strings.Repeat(" ", widths[i]-width(cell)+2))
-			}
-		}
-
-		b.WriteByte('\n')
-	}
-
-	_, err := io.WriteString(w, b.String())
-
-	return err
-}
-
-// width is the cells s takes on a terminal: two for the wide characters of
-// East Asian scripts and for emoji, none for a mark that joins the one
-// before it. The ranges are those of wcwidth that a table of names meets.
-func width(s string) int {
-	n := 0
-
-	for _, r := range s {
-		switch {
-		case unicode.In(r, unicode.Mn, unicode.Me) || r == 0x200d || r >= 0xfe00 && r <= 0xfe0f:
-		case r >= 0x1100 && r <= 0x115f,
-			r >= 0x2e80 && r <= 0xa4cf && r != 0x303f,
-			r >= 0xac00 && r <= 0xd7a3,
-			r >= 0xf900 &&
-				r <= 0xfaff,
-			r >= 0xfe30 && r <= 0xfe4f,
-			r >= 0xff00 && r <= 0xff60,
-			r >= 0xffe0 && r <= 0xffe6,
-			r >= 0x1f300 &&
-				r <= 0x1f6ff,
-			r >= 0x1f900 && r <= 0x1faff,
-			r >= 0x20000 && r <= 0x3fffd:
-			n += 2
-		default:
-			n++
-		}
-	}
-
-	return n
-}
-
-// Sheet writes one object, one "Label: value" line for every column, also
-// for a null field.
-func Sheet[R any](w io.Writer, row R, cols Columns[R], now time.Time) error {
-	width := 0
-	for _, c := range cols {
-		width = max(width, len(c.label())+1)
-	}
-
-	for _, c := range cols {
-		_, err := fmt.Fprintf(
-			w,
-			"%-*s%s\n",
-			width+2,
-			c.label()+":",
-			c.cell(row, now, true),
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
+// Heading is the header of the column in a table.
+func (c Column[R]) Heading() string { return c.header() }
 
 func (c Column[R]) header() string {
 	if c.Header != "" {
@@ -290,31 +220,6 @@ func (c Column[R]) header() string {
 	}
 
 	return strings.ToUpper(strings.ReplaceAll(c.Name, "-", " "))
-}
-
-// upper are the words that a sheet label keeps in upper case: "public-ip"
-// is "Public IP".
-var upper = map[string]bool{
-	"id":  true,
-	"ip":  true,
-	"os":  true,
-	"api": true,
-	"dns": true,
-	"url": true,
-}
-
-// label is the name of the column as a sheet labels its line.
-func (c Column[R]) label() string {
-	words := strings.Split(c.Name, "-")
-	for i, w := range words {
-		if upper[w] {
-			words[i] = strings.ToUpper(w)
-		}
-	}
-
-	s := strings.Join(words, " ")
-
-	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // cell is the text of the column for row. A null field is "never" for a
@@ -327,7 +232,11 @@ func (c Column[R]) text(row R, now time.Time, sheet bool) string {
 	v, ok := field(reflect.ValueOf(row), c.Field)
 	if !ok {
 		t, _ := fieldType(reflect.TypeFor[R](), c.Field)
-		if c.kind(t) == Time {
+
+		switch {
+		case c.kind(t) == Time && c.invalid(row):
+			return "invalid"
+		case c.kind(t) == Time:
 			return "never"
 		}
 
@@ -356,7 +265,7 @@ func (c Column[R]) text(row R, now time.Time, sheet bool) string {
 
 		return Ago(t, now)
 	case List:
-		entries := items(v)
+		entries := c.entries(v)
 		if len(entries) == 0 && sheet {
 			return "-"
 		}
@@ -367,6 +276,38 @@ func (c Column[R]) text(row R, now time.Time, sheet bool) string {
 	default:
 		return fmt.Sprint(v.Interface())
 	}
+}
+
+// invalid is a row whose null time the column says is invalid.
+func (c Column[R]) invalid(row R) bool { return c.Invalid != nil && c.Invalid(row) }
+
+// entries are the entries of a list as a cell shows them: the entries of a
+// Fold word as that word, after the others.
+func (c Column[R]) entries(v reflect.Value) []string { return Folded(items(v), c.Fold) }
+
+// Folded is entries with the entries of a word of fold shown as that word,
+// after the other entries, when all of them are there: a message says
+// "10.0.0.0/8, exit" as a table does, whatever order the server sorts.
+func Folded(entries []string, fold map[string][]string) []string {
+	out := slices.Clone(entries)
+
+	for _, word := range slices.Sorted(maps.Keys(fold)) {
+		all := fold[word]
+		if !slices.ContainsFunc(
+			all,
+			func(e string) bool { return !slices.Contains(out, e) },
+		) {
+			out = append(
+				slices.DeleteFunc(
+					out,
+					func(e string) bool { return slices.Contains(all, e) },
+				),
+				word,
+			)
+		}
+	}
+
+	return out
 }
 
 // ownerCell shows a user by its login name in a table, and as an entity in a
@@ -541,24 +482,88 @@ func When(t, now time.Time) string {
 	return Ago(t, now) + " (" + t.UTC().Format("2006-01-02 15:04 UTC") + ")"
 }
 
-// field reads the value at the dotted JSON path of v. ok is false for a
-// null on the way: a nil pointer, or a nullable that holds no value.
+// field reads the value at the JSON path of v. ok is false for a null on
+// the way: a nil pointer, a nullable that holds no value, or a map that has
+// no such key.
 func field(v reflect.Value, path string) (reflect.Value, bool) {
-	for name := range strings.SplitSeq(path, ".") {
+	ss, err := steps(path)
+	if err != nil {
+		return reflect.Value{}, false
+	}
+
+	for _, st := range ss {
 		var ok bool
 		if v, ok = present(v); !ok || v.Kind() != reflect.Struct {
 			return reflect.Value{}, false
 		}
 
-		i := jsonIndex(v.Type(), name)
+		i := jsonIndex(v.Type(), st.name)
 		if i < 0 {
 			return reflect.Value{}, false
 		}
 
 		v = v.Field(i)
+
+		if st.keyed {
+			if v, ok = present(v); !ok || v.Kind() != reflect.Map {
+				return reflect.Value{}, false
+			}
+
+			v = v.MapIndex(reflect.ValueOf(st.key).Convert(v.Type().Key()))
+		}
 	}
 
 	return present(v)
+}
+
+// step is one key of a path: the JSON key of a field, and the key into
+// the map it holds when keyed.
+type step struct {
+	name, key string
+	keyed     bool
+}
+
+// steps reads a path: JSON keys joined by dots, each of which may index a
+// map with a quoted key, as attributes["ip:publicAddress"].
+func steps(path string) ([]step, error) {
+	var out []step
+
+	for rest := path; ; {
+		end := strings.IndexAny(rest, ".[")
+		if end < 0 {
+			end = len(rest)
+		}
+
+		st := step{name: rest[:end]}
+		rest = rest[end:]
+
+		if strings.HasPrefix(rest, "[") {
+			q, err := strconv.QuotedPrefix(rest[1:])
+			if err != nil || !strings.HasPrefix(rest[1+len(q):], "]") {
+				return nil, errPath
+			}
+
+			st.key, _ = strconv.Unquote(q)
+			st.keyed = true
+			rest = rest[len(q)+2:]
+		}
+
+		if st.name == "" {
+			return nil, errPath
+		}
+
+		out = append(out, st)
+
+		if rest == "" {
+			return out, nil
+		}
+
+		if rest[0] != '.' {
+			return nil, errPath
+		}
+
+		rest = rest[1:]
+	}
 }
 
 // present follows pointers and the nullable values of the generated client
@@ -586,25 +591,39 @@ func isNullable(t reflect.Type) bool {
 	return t.Kind() == reflect.Map && t.Key().Kind() == reflect.Bool
 }
 
-// fieldType is the type at the dotted JSON path of t, through pointers and
-// nullables.
+// fieldType is the type at the JSON path of t, through pointers,
+// nullables and map keys.
 func fieldType(t reflect.Type, path string) (reflect.Type, error) {
 	if path == "" {
 		return nil, errUnknownField
 	}
 
-	for name := range strings.SplitSeq(path, ".") {
+	ss, err := steps(path)
+	if err != nil {
+		return nil, fmt.Errorf("%q %w", path, err)
+	}
+
+	for _, st := range ss {
 		t = elem(t)
 		if t.Kind() != reflect.Struct {
 			return nil, fmt.Errorf("%w %q: %v is no object", errUnknownField, path, t)
 		}
 
-		i := jsonIndex(t, name)
+		i := jsonIndex(t, st.name)
 		if i < 0 {
 			return nil, fmt.Errorf("%w %q in %s", errUnknownField, path, t)
 		}
 
 		t = t.Field(i).Type
+
+		if st.keyed {
+			t = elem(t)
+			if t.Kind() != reflect.Map || t.Key().Kind() != reflect.String {
+				return nil, fmt.Errorf("field %q: %v %w", path, t, errNoMap)
+			}
+
+			t = t.Elem()
+		}
 	}
 
 	return elem(t), nil

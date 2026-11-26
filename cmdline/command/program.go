@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"time"
 )
 
 // Program is what a program built on this package gives the builder: its
 // name, the session its commands call a server with (S, as Ctx.API), and
-// how it reads that server's errors and objects. The builder
+// how it reads that server's errors, credentials and objects. The builder
 // does the rest, the same for every program.
 type Program[S any] struct {
 	// Name is the program as a command line starts with it; Short is the
@@ -34,9 +35,18 @@ type Program[S any] struct {
 	// <Target>".
 	Target func(s S) string
 
+	// Refusal is the code of err when it is a refusal of the server; "" for
+	// any other error. Precondition is the code that refuses an If-Match.
+	Refusal      func(err error) string
+	Precondition string
+	// About gives err, a refusal, what the command knows of it: the
+	// target as the command read it, and the expiry it sent, zero when
+	// none.
+	About func(err error, target Object, expiry time.Time)
 	// Fields names, in err, the flags and arguments of the input type in
 	// that filled the fields of the body the server refused.
 	Fields func(err error, in reflect.Type) error
+
 	// Entities are the types of target a lookup finds.
 	Entities []Entity
 	// Owner is the ID of the user word names, for a filter owner=<user>.
@@ -65,9 +75,12 @@ type program struct {
 func erase[S any](p Program[S]) program {
 	e := program{
 		Name: p.Name, Short: p.Short, Version: p.Version,
-		Sentence: p.Sentence, Fields: p.Fields,
+		Sentence: p.Sentence,
+		Refusal:  p.Refusal, Precondition: p.Precondition,
+		About: p.About, Fields: p.Fields,
 		Entities: p.Entities, Owner: p.Owner,
-		Aliases: p.Aliases, ConfigEnv: p.ConfigEnv, Server: p.Server,
+		Aliases: p.Aliases, ConfigEnv: p.ConfigEnv,
+		Server:      p.Server,
 		sessionType: reflect.TypeFor[S](),
 	}
 
@@ -110,3 +123,6 @@ func erase[S any](p Program[S]) program {
 
 	return e
 }
+
+// Object is the target of a command as a sentence names it.
+type Object struct{ Kind, ID, Name string }

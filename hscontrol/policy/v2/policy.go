@@ -1519,6 +1519,29 @@ func (pm *PolicyManager) userMatchesOwner(user types.UserView, owner Owner) bool
 	}
 }
 
+// PolicyTags returns every tag in tagOwners, sorted. A nil manager has
+// none.
+func (pm *PolicyManager) PolicyTags() []string {
+	if pm == nil {
+		return []string{}
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	out := []string{}
+
+	if pm.pol != nil {
+		for tag := range pm.pol.TagOwners {
+			out = append(out, string(tag))
+		}
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
 // TagExists reports whether the given tag is defined in the policy.
 func (pm *PolicyManager) TagExists(tag string) bool {
 	if pm == nil {

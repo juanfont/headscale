@@ -100,6 +100,7 @@ type Headscale struct {
 	// socket: /api/v1 is the legacy API, /api/v2 the Tailscale API and
 	// /api/headscale/v0 Headscale's own.
 	apisOnce                              sync.Once
+	connectedSeen                         func() time.Time // nil is the wall clock; set only by tests
 	legacyAPI, tailscaleAPI, headscaleAPI http.Handler
 
 	DERPServer *derpServer.DERPServer
@@ -334,6 +335,10 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 		go h.refreshDERPMap(ctx)
 	}
 
+	if h.cfg.AutoUpdate.CheckVersions {
+		go h.refreshClientVersions(ctx)
+	}
+
 	var extraRecordsUpdate <-chan []tailcfg.DNSRecord
 	if h.extraRecordMan != nil {
 		extraRecordsUpdate = h.extraRecordMan.UpdateCh()
@@ -440,6 +445,34 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 		case <-haHealthChan:
 			haProber.ProbeOnce(ctx, h.Change)
+		}
+	}
+}
+
+// clientVersionsInterval is how often the newest Tailscale clients are read.
+const clientVersionsInterval = 6 * time.Hour
+
+// refreshClientVersions reads the newest stable Tailscale clients now and
+// every clientVersionsInterval until ctx ends. A failed read keeps the last
+// list.
+func (h *Headscale) refreshClientVersions(ctx context.Context) {
+	client := &http.Client{Timeout: time.Minute}
+
+	ticker := time.NewTicker(clientVersionsInterval)
+	defer ticker.Stop()
+
+	for {
+		v, err := state.FetchClientVersions(ctx, client, state.ClientVersionsURL)
+		if err != nil {
+			log.Warn().Err(err).Msg("reading the newest Tailscale client versions")
+		} else {
+			h.state.SetClientVersions(v)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 		}
 	}
 }
@@ -1426,9 +1459,11 @@ func (h *Headscale) apiHandlers() (http.Handler, http.Handler, http.Handler) {
 		})
 
 		h.headscaleAPI = apiv0.Handler(apiv0.Backend{
-			State:  h.state,
-			Change: h.Change,
-			Cfg:    h.cfg,
+			State:         h.state,
+			Change:        h.Change,
+			Cfg:           h.cfg,
+			Connected:     h.isConnected,
+			ConnectedSeen: h.connectedSeen,
 		})
 	})
 
@@ -1471,6 +1506,16 @@ func (h *Headscale) SetServerURLForTest(tb testing.TB, url string) {
 	tb.Helper()
 
 	h.cfg.ServerURL = url
+}
+
+// SetConnectedSeenForTest sets the last seen that API v0 reports for a
+// connected node, so the minute a test expects is the one the server
+// prints. Nothing else follows it. It must come before the first
+// HTTPHandler or SocketHandler.
+func (h *Headscale) SetConnectedSeenForTest(tb testing.TB, now func() time.Time) {
+	tb.Helper()
+
+	h.connectedSeen = now
 }
 
 // StartBatcherForTest initialises and starts the map response batcher.

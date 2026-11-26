@@ -2,6 +2,7 @@ package newcli
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/command"
@@ -31,7 +32,8 @@ A container healthcheck relies on the exit code.
 
 A warning is something an admin should know that does not stop the
 server, such as a node whose stored data is not valid. Each warning is
-printed on stderr, and the command still exits 0, so a healthcheck does not
+printed on stderr, a warning about nodes with the nodes list command that
+shows them, and the command still exits 0, so a healthcheck does not
 restart the server over one.
 
 With -o json the command prints the answer of GET /health, warnings
@@ -53,6 +55,16 @@ included, and writes no warning on stderr.`,
 
 		for _, w := range h.Warnings {
 			c.Note("warning: " + table.Visible(w.Message, ""))
+
+			// A check of one node is a code that nodes list has in problems.
+			if code := string(w.Code); strings.HasPrefix(code, "node_") {
+				c.Note(
+					"  To see them: headscale nodes list --filter problems=" + table.Visible(
+						code,
+						"",
+					),
+				)
+			}
 		}
 
 		return h, nil

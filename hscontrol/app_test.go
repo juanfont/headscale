@@ -298,6 +298,7 @@ func validConfig(t *testing.T) types.Config {
 
 	cfg := config.Default()
 	cfg.ServerURL = "http://localhost:8080"
+	cfg.AutoUpdate.CheckVersions = false
 	cfg.Noise.PrivateKeyPath = filepath.Join(dir, "noise_private.key")
 	cfg.Database.Type = types.DatabaseSqlite
 	cfg.Database.Sqlite.Path = filepath.Join(dir, "headscale_test.db")

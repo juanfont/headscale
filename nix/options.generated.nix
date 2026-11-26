@@ -977,6 +977,14 @@ in
       '';
       example = true;
     };
+    check_versions = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Reads the newest stable Tailscale client from https://pkgs.tailscale.com/stable/?mode=json at start and every six hours, for the `updateAvailable` of a node in the API. Set it to false for a server that must not call out, or that cannot reach the internet; `updateAvailable` is then always false. `disable_check_updates` is about Headscale's own version and does not change it.
+      '';
+      example = false;
+    };
   };
   tailsql = {
     enabled = lib.mkOption {

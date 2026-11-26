@@ -230,6 +230,15 @@ func (v NodeView) UserID() views.ValuePointer[uint] { return views.ValuePointerO
 func (v NodeView) User() UserView         { return v.ж.User.View() }
 func (v NodeView) RegisterMethod() string { return v.ж.RegisterMethod }
 
+// CreatedByUserID is the user whose key or login last registered the
+// node in place, as Tailscale keeps a device's user: the maker of a tagged
+// node's key, or the user who took the node back. An admin's tag change
+// keeps it. Nil when unknown: the node is older than the column, its key
+// was an OAuth client's, or that user was deleted.
+func (v NodeView) CreatedByUserID() views.ValuePointer[uint] {
+	return views.ValuePointerOf(v.ж.CreatedByUserID)
+}
+
 // Tags is the definitive owner for tagged nodes.
 // When non-empty, the node is "tagged" and tags define its identity.
 // Empty for user-owned nodes.
@@ -336,6 +345,7 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	UserID             *uint
 	User               *User
 	RegisterMethod     string
+	CreatedByUserID    *uint
 	Tags               Strings
 	AuthKeyID          *uint64
 	AuthKey            *Credential
@@ -577,6 +587,14 @@ func (v CredentialView) ClientID() string { return v.ж.ClientID }
 // CreatedByToken marks a pre-auth key an OAuth access token made: a token
 // lists those without all=true.
 func (v CredentialView) CreatedByToken() bool { return v.ж.CreatedByToken }
+
+// CreatedByUserID is the user who made the credential, apart from UserID,
+// which is the owner of a user's key. Nil when unknown: the credential is
+// older than the column, or that user was deleted.
+func (v CredentialView) CreatedByUserID() views.ValuePointer[uint] {
+	return views.ValuePointerOf(v.ж.CreatedByUserID)
+}
+
 func (v CredentialView) CreatedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.CreatedAt)
 }
@@ -591,22 +609,23 @@ func (v CredentialView) Revoked() views.ValuePointer[time.Time] {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _CredentialViewNeedsRegeneration = Credential(struct {
-	ID             uint64
-	Kind           CredentialKind
-	Identifier     string
-	Hash           []byte
-	UserID         *uint
-	User           *User
-	Description    string
-	Scopes         []string
-	Tags           []string
-	Reusable       bool
-	Ephemeral      bool
-	Used           bool
-	LastSeen       *time.Time
-	ClientID       string
-	CreatedByToken bool
-	CreatedAt      *time.Time
-	Expiration     *time.Time
-	Revoked        *time.Time
+	ID              uint64
+	Kind            CredentialKind
+	Identifier      string
+	Hash            []byte
+	UserID          *uint
+	User            *User
+	Description     string
+	Scopes          []string
+	Tags            []string
+	Reusable        bool
+	Ephemeral       bool
+	Used            bool
+	LastSeen        *time.Time
+	ClientID        string
+	CreatedByToken  bool
+	CreatedByUserID *uint
+	CreatedAt       *time.Time
+	Expiration      *time.Time
+	Revoked         *time.Time
 }{})
