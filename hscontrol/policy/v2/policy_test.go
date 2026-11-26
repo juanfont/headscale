@@ -3122,6 +3122,42 @@ func TestSelfSiblingsListCoveredDevices(t *testing.T) {
 	}
 }
 
+// TestRouterSelfRulesCostFollowsCover holds a router's autogroup:self
+// rules to what its routes cover: with a route over no device, computing its
+// filter costs the same in a tailnet ten times the size.
+func TestRouterSelfRulesCostFollowsCover(t *testing.T) {
+	const self = `{"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}]}`
+
+	allocs := map[int]float64{}
+
+	for _, n := range []int{100, 1000} {
+		users, nodes := benchNodes(n)
+
+		router := node("lan-router", "100.127.0.1", "fd7a:115c:a1e0::ff:1", users[1])
+		router.ID = types.NodeID(n + 1) //nolint:gosec // small
+		lan := []netip.Prefix{mp("10.250.0.0/24")}
+		router.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: lan}
+		router.ApprovedRoutes = lan
+		nodes = append(nodes, router)
+
+		pm, err := NewPolicyManager([]byte(self), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		rv := router.View()
+		rules, err := pm.FilterForNode(rv)
+		require.NoError(t, err)
+		require.NotEmpty(t, rules)
+
+		allocs[n] = testing.AllocsPerRun(20, func() {
+			pm.filterRulesMap.Clear()
+			_, _ = pm.FilterForNode(rv)
+		})
+	}
+
+	t.Logf("allocations of a router's filter: %v", allocs)
+	assert.LessOrEqual(t, allocs[1000], allocs[100]+2, "a router's self rules cost the tailnet's size")
+}
+
 // Reproduction for #3160: ambiguous user@ used to silently drop rules.
 func TestNewPolicyManager_DuplicateUsername(t *testing.T) {
 	users := types.Users{

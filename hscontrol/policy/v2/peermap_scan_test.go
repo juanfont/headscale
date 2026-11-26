@@ -107,7 +107,7 @@ func listsOnlyReference(
 	nodes views.Slice[types.NodeView],
 	viewer, peer types.NodeView,
 ) bool {
-	return selfSourceOfSibling(siblingSelfSources(pm.compiledGrants, nodes, pm.userNodeIdx), viewer, peer) ||
+	return selfSourceOfSibling(siblingSelfSources(pm.compiledGrants, nodes, pm.userNodeIdx, pm.ownerIdx), viewer, peer) ||
 		loneExitSource(viaSources(pm.compiledGrants, viewer), loneExitRanges(peer))
 }
 
