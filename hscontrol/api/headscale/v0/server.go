@@ -9,6 +9,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/juanfont/headscale/hscontrol/config"
+	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
@@ -154,6 +156,47 @@ func registerServer(api huma.API, b Backend) {
 			DatabaseConnectivity: true,
 			Warnings:             healthWarnings(b),
 		}}, nil
+	})
+
+	registerConfig(api, b)
+}
+
+type (
+	getConfigInput struct {
+		Docs bool `default:"true" doc:"Put the documentation of each key above it, as comments." query:"docs"`
+	}
+	getConfigOutput struct {
+		ContentType string `header:"Content-Type" hidden:"true"`
+		Body        []byte
+	}
+)
+
+func registerConfig(api huma.API, b Backend) {
+	register(api, huma.Operation{
+		OperationID: "getConfig",
+		Method:      http.MethodGet,
+		Path:        Prefix + "/config",
+		Summary:     "The configuration the server runs with",
+		Description: "The configuration the server runs with, as a YAML configuration file. Its keys are the keys of the configuration file, so they follow the release of the server; the body has no schema. Each literal secret, and each setting of `dns.challenge.provider` but `name`, is `<redacted>`; `file:` references are kept as written, and the credentials in URLs are removed. The client-only `cli` section is left out.",
+		Tags:        []string{"Server"},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "OK",
+				// No schema: a typed one makes the generated client parse
+				// the document instead of returning it.
+				Content: map[string]*huma.MediaType{"application/yaml": {}},
+			},
+		},
+	}, needs(scope.All), nil, func(_ context.Context, in *getConfigInput) (*getConfigOutput, error) {
+		out, err := config.GenerateExample(
+			b.Cfg,
+			config.ExampleOptions{Docs: in.Docs, Redact: true, OmitClientOnly: true},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("rendering the configuration: %w", err)
+		}
+
+		return &getConfigOutput{ContentType: "application/yaml", Body: out}, nil
 	})
 }
 

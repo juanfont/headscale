@@ -759,6 +759,7 @@ var scopes002 = map[string]string{
 	"getPolicy":           "policy_file:read",
 	"setPolicy":           "policy_file",
 	"reloadPolicy":        "policy_file",
+	"getConfig":           "all",
 }
 
 func TestScopesAre002s(t *testing.T) {
