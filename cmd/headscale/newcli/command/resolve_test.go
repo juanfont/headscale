@@ -34,6 +34,7 @@ func TestResolve(t *testing.T) {
 		u, err := lib.Resolve(
 			rows,
 			word,
+			word,
 			"user",
 			userCandidates(),
 			func(u clientv0.User) string { return u.Id },
@@ -46,6 +47,7 @@ func TestResolve(t *testing.T) {
 	find := func(word string) (string, error) {
 		u, err := lib.Resolve(
 			users,
+			word,
 			word,
 			"user",
 			userCandidates(),
@@ -90,7 +92,6 @@ func TestResolve(t *testing.T) {
 		),
 		"sub-13",
 	)
-	//nolint:dupword // the provider and its identifier are two columns
 	require.EqualError(t, err, `"sub-13" matches 2 users. Use the ID to select one:
 
   ID  NAME    EMAIL  PROVIDER  PROVIDER ID
@@ -103,6 +104,7 @@ func TestResolve(t *testing.T) {
 	)
 	u, err := lib.Resolve(
 		both,
+		"x@y.z",
 		"x@y.z",
 		"user",
 		userCandidates(),

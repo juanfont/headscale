@@ -11,15 +11,18 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/cmdline"
 	lib "github.com/juanfont/headscale/cmdline/command"
 	"github.com/juanfont/headscale/cmdline/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,17 +46,6 @@ func noop[In, Out any](Ctx, In) (Out, error) {
 }
 
 var errBroken = errors.New("it broke")
-
-func words(line string) []string {
-	w := strings.Fields(line)
-	for i := range w {
-		if w[i] == "''" {
-			w[i] = ""
-		}
-	}
-
-	return w
-}
 
 // allowedAliases are Headscale's aliases.
 func allowedAliases() []string { return []string{"ls", "rm", "approve"} }
@@ -364,7 +356,7 @@ func TestLookupKeepsItsSentence(t *testing.T) {
 		}
 
 		return found{ID: word}, nil
-	}, nil, func(f found) string { return f.ID })
+	}, nil, func(f found) string { return f.ID }, nil)
 
 	tree, err := build(
 		"prog",
@@ -418,4 +410,343 @@ func TestSentence(t *testing.T) {
 		"listing: it broke",
 		sentence(fmt.Errorf("listing: %w", errBroken)),
 	)
+}
+
+// TestRetry: a write the server refuses because the target changed reads
+// the target again by its ID, asks again on what it read after a line that
+// says why, and writes once more with the new revision; a second refusal
+// is the sentence of the refusal. A target whose type has a revision and
+// no read is a tree that does not build.
+func TestRetry(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Node guarded `arg:"node"`
+	}
+
+	// server holds the node; each read of it bumps the revision this many
+	// times first, so the write after it is refused again.
+	type server struct {
+		mu       sync.Mutex
+		rev      int
+		bumps    int
+		gone     bool
+		seen     []string
+		prompted []string
+		// noRevision answers a read with no revision, as a broken server.
+		noRevision bool
+	}
+
+	start := func(t *testing.T, s *server) string {
+		t.Helper()
+
+		hs := httptest.NewServer(
+			versioned(func(w http.ResponseWriter, r *http.Request) {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+
+				s.seen = append(
+					s.seen,
+					r.Method+" "+r.URL.Path+" "+r.Header.Get("If-Match"),
+				)
+				w.Header().Set("Headscale-Version", "dev")
+
+				node := func() string { return fmt.Sprintf(`{"id": "12", "name": "web%d", "revision": "r%d"}`, s.rev, s.rev) }
+				if s.noRevision {
+					node = func() string { return fmt.Sprintf(`{"id": "12", "name": "web%d"}`, s.rev) }
+				}
+
+				switch {
+				case r.Method == http.MethodGet && s.gone:
+					w.WriteHeader(http.StatusNotFound)
+					_, _ = w.Write(
+						[]byte(
+							`{"code": "not_found", "status": 404, "title": "Not found", "object": {"kind": "node", "id": "12"}}`,
+						),
+					)
+				case r.Method == http.MethodGet:
+					_, _ = w.Write([]byte(node()))
+					s.rev += s.bumps
+				case r.Header.Get("If-Match") != fmt.Sprintf(`"r%d"`, s.rev):
+					w.WriteHeader(http.StatusPreconditionFailed)
+					_, _ = fmt.Fprintf(
+						w,
+						`{"code": "precondition_failed", "status": 412, "title": "Precondition failed", "object": {"kind": "node", "id": "12", "name": "web%d"}}`,
+						s.rev,
+					)
+				default:
+					_, _ = w.Write([]byte(node()))
+				}
+			}),
+		)
+		t.Cleanup(hs.Close)
+
+		return hs.URL
+	}
+
+	read := func(ctx context.Context, id string) (guarded, error) {
+		return callOf[guarded, anySuccess](
+			lib.CtxOf[*API](ctx).API,
+			func(cl *clientv0.Client) (*http.Response, error) {
+				req, err := http.NewRequestWithContext(
+					ctx,
+					http.MethodGet,
+					cl.Server+"nodes/"+id,
+					nil,
+				)
+				if err != nil {
+					return nil, err
+				}
+
+				return cl.Client.Do(req)
+			},
+		)
+	}
+
+	build := func(t *testing.T, s *server, reads bool) (*Tree, error) {
+		t.Helper()
+
+		find := func(_ context.Context, word string) (guarded, error) {
+			if word == "none" {
+				word = ""
+			}
+
+			return guarded{ID: "12", Name: "web0", Revision: word}, nil
+		}
+
+		e := lib.EntityOf(
+			"node",
+			find,
+			nil,
+			func(g guarded) string { return g.Name },
+			read,
+		)
+		if !reads {
+			e = lib.EntityOf(
+				"node",
+				find,
+				nil,
+				func(g guarded) string { return g.Name },
+				nil,
+			)
+		}
+
+		return build(
+			"prog",
+			"A program",
+			allowedAliases(),
+			[]lib.Entity{e},
+			New(Spec[in, guarded]{
+				Name:    "rename",
+				Short:   "S",
+				Long:    "S.",
+				Example: []string{"prog rename r1"},
+				Confirm: func(_ Ctx, in in) (Prompt, error) {
+					s.mu.Lock()
+					defer s.mu.Unlock()
+
+					s.prompted = append(s.prompted, in.Node.Name)
+
+					return Prompt{
+						Question: "Rename " + in.Node.Name + "?",
+						Action:   "rename it",
+					}, nil
+				},
+				Run: func(c Ctx, in in) (guarded, error) {
+					return callOf[guarded, anySuccess](
+						c.API,
+						func(cl *clientv0.Client) (*http.Response, error) {
+							req, err := http.NewRequestWithContext(
+								c,
+								http.MethodPatch,
+								cl.Server+"nodes/"+in.Node.ID,
+								nil,
+							)
+							if err != nil {
+								return nil, err
+							}
+
+							if rev := c.IfMatch(in.Node.ID); rev != nil {
+								req.Header.Set("If-Match", *rev)
+							}
+
+							return cl.Client.Do(req)
+						},
+					)
+				},
+				Done: func(in in, out guarded, _ time.Time) string { return "renamed " + in.Node.Name + " to " + out.Name },
+			}),
+		)
+	}
+
+	tree := func(t *testing.T, s *server) *Tree {
+		t.Helper()
+
+		tr, err := build(t, s, true)
+		require.NoError(t, err)
+
+		return tr
+	}
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	run := func(tree *Tree, url, args, stdin string) (string, string) {
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, strings.Fields(args), Env{
+			Stdin: strings.NewReader(
+				stdin,
+			),
+			Stdout:   &stdout,
+			Stderr:   &stderr,
+			Terminal: true,
+			Version:  &types.VersionInfo{Version: "dev"},
+			Environ: []string{
+				"HEADSCALE_CONFIG=" + file,
+				"HEADSCALE_CLI_ADDRESS=" + url,
+				"HEADSCALE_CLI_API_KEY=key",
+			},
+		})
+
+		return stdout.String(), stderr.String()
+	}
+
+	t.Run("changed once: read again, asked again, written", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2}
+		stdout, stderr := run(tree(t, s), start(t, s), "rename r1", "y\nyes\n")
+		require.Equal(
+			t,
+			"Rename web0? [y/N] Node 12 (web0) changed while the question was open.\nRename web2? [y/N] ",
+			stderr,
+		)
+		require.Equal(t, "renamed web2 to web2\n", stdout)
+		require.Equal(
+			t,
+			[]string{
+				"GET /api/headscale/v0/version ",
+				`PATCH /nodes/12 "r1"`,
+				"GET /nodes/12 ",
+				`PATCH /nodes/12 "r2"`,
+			},
+			s.seen,
+		)
+	})
+
+	t.Run("with --force it still reads again, and asks nothing", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2}
+		stdout, stderr := run(tree(t, s), start(t, s), "rename r1 --force", "")
+		require.Empty(t, stderr)
+		require.Equal(t, "renamed web2 to web2\n", stdout)
+		require.Equal(t, []string{"web0", "web2"}, s.prompted)
+		require.Len(t, s.seen, 4)
+	})
+
+	t.Run("no to the second question", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2}
+		stdout, stderr := run(tree(t, s), start(t, s), "rename r1", "y\nn\n")
+		require.Equal(
+			t,
+			"Rename web0? [y/N] Node 12 (web0) changed while the question was open.\nRename web2? [y/N] Aborted.\n",
+			stderr,
+		)
+		require.Empty(t, stdout)
+		require.Len(t, s.seen, 3, "no second write")
+	})
+
+	t.Run("it keeps changing", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2, bumps: 1}
+		stdout, stderr := run(tree(t, s), start(t, s), "rename r1 --force", "")
+		require.Equal(
+			t,
+			"Error: Node 12 (web4) changed while the command ran. Run it again.\n",
+			stderr,
+		)
+		require.Empty(t, stdout)
+		require.Len(t, s.seen, 4, "one retry, no more")
+	})
+
+	t.Run("a type with a revision and no read does not build", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := build(t, &server{}, false)
+		require.EqualError(
+			t,
+			err,
+			"rename: target command.guarded has a revision and no read: a write the server refuses because the target changed would not run again",
+		)
+	})
+}
+
+// TestAbout: a problem of the server gets what the command knows of it. A
+// target that is gone keeps the name the command read; an expiry in the
+// past is the time sent, with the way to expire a node now.
+func TestAbout(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Node   clientv0.Node         `arg:"node"`
+		Expiry Opt[Expiry[NowNever]] `flag:"expiry" help:"x"`
+	}
+
+	now := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	node := clientv0.Node{Id: "12", Name: "mynode"}
+
+	var e Expiry[NowNever]
+	require.NoError(t, e.UnmarshalText([]byte("2024-01-01")))
+
+	problem := func(code clientv0.ProblemCode, o clientv0.ProblemObject) error {
+		p := clientv0.Problem{Code: code, Title: "T"}
+		if o.Id != "" {
+			p.Object = nullable.NewNullableWithValue(o)
+		}
+
+		return fmt.Errorf("wrapped: %w", &ProblemError{Problem: p})
+	}
+
+	for _, tt := range []struct {
+		name string
+		err  error
+		in   in
+		want string
+	}{
+		{"a target that is gone has the name read", problem(clientv0.ProblemCodeNotFound, clientv0.ProblemObject{Kind: "node", Id: "12"}), in{Node: node}, "Node 12 (mynode) no longer exists."},
+		{"another object keeps no name", problem(clientv0.ProblemCodeNotFound, clientv0.ProblemObject{Kind: "node", Id: "13"}), in{Node: node}, "Node 13 no longer exists."},
+		{"the expiry sent", problem(clientv0.ProblemCodeExpiryInPast, clientv0.ProblemObject{}), in{Node: node, Expiry: cmdline.Some(e)}, "2024-01-01 00:00 UTC is in the past.\nTo expire the node now: headscale nodes expire 12"},
+		{"no expiry sent", problem(clientv0.ProblemCodeExpiryInPast, clientv0.ProblemObject{}), in{Node: node}, "the expiry is in the past."},
+		{"not a problem", errBroken, in{Node: node}, errBroken.Error()},
+	} {
+		// What the builder hands the program (lib's TestAbout holds it):
+		// the target as read, and the expiry sent.
+		var expiry time.Time
+		if e, ok := tt.in.Expiry.Get(); ok {
+			expiry = e.At(now)
+		}
+
+		about(
+			tt.err,
+			lib.Object{Kind: "node", ID: tt.in.Node.Id, Name: tt.in.Node.Name},
+			expiry,
+		)
+		require.Equal(t, tt.want, sentence(tt.err), tt.name)
+	}
+}
+
+func words(line string) []string {
+	w := strings.Fields(line)
+	for i := range w {
+		if w[i] == "''" {
+			w[i] = ""
+		}
+	}
+
+	return w
 }

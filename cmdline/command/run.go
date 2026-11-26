@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -45,8 +46,14 @@ func Run(t *Tree, argv []string, env Env) int {
 	}
 
 	err := t.run(argv, env)
-	if err == nil {
+
+	switch {
+	case err == nil:
 		return 0
+	case errors.Is(err, errAborted):
+		fmt.Fprintln(env.Stderr, "Aborted.")
+
+		return 1
 	}
 
 	fmt.Fprintf(env.Stderr, "Error: %s\n", t.sentence(err))
@@ -98,6 +105,19 @@ func (t *Tree) run(argv []string, env Env) error {
 	own, _ := cmdline.Get[ownOutputFlags](line)
 	file, _ := cmdline.Get[configFlags](line)
 
+	// A value that the parser takes as any word is checked before any call.
+	if l.valid != nil {
+		err := l.valid(line)
+		if err != nil {
+			return err
+		}
+	}
+
+	stdin := env.Stdin
+	if stdin == nil {
+		stdin = strings.NewReader("")
+	}
+
 	ctx := env.Context
 	if ctx == nil {
 		ctx = context.Background()
@@ -114,6 +134,9 @@ func (t *Tree) run(argv []string, env Env) error {
 		Environ:  env.Environ,
 		terminal: env.Terminal,
 		screen:   env.StdoutTerminal,
+		width:    env.Width,
+		colour:   env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
+		answers:  bufio.NewReader(stdin),
 		line:     line,
 		json:     output.Output != "" || own.Output != "",
 		now:      env.Now,
@@ -177,7 +200,7 @@ func (t *Tree) check(argv []string) (*cmdline.Line, step, error) {
 
 	err = t.mistake(line, ue)
 	if err != nil {
-		return line, stepRun, err
+		return line, stepRun, t.hinted(line, err)
 	}
 
 	help, _ := cmdline.Get[helpFlags](line)
@@ -192,12 +215,34 @@ func (t *Tree) check(argv []string) (*cmdline.Line, step, error) {
 	case l != nil && l.list && slices.ContainsFunc(line.Flags, func(g cmdline.Given) bool { return g.Name == "list-columns" && g.Value == "true" }):
 		return line, stepColumns, nil
 	case ue != nil:
-		return line, stepRun, countError(line)
+		return line, stepRun, t.hinted(line, countError(line))
 	case l != nil && l.set:
 		return line, stepRun, nothingToChange(line)
 	}
 
 	return line, stepRun, nil
+}
+
+// hinted is err with the command's hint, when err is a wrong argument count
+// or an empty list argument.
+func (t *Tree) hinted(line *cmdline.Line, err error) error {
+	l := t.leaves[strings.Join(line.Command.Path, " ")]
+	ue, ok := errors.AsType[*usageError](err)
+
+	if l == nil || l.hint == nil || !ok || ue.kind != cmdline.ArgCount && !ue.empty {
+		return err
+	}
+
+	if h := l.hint(line.Args); h != "" {
+		sep := "\n"
+		if ue.kind == cmdline.ArgCount {
+			sep = "\n\n"
+		}
+
+		ue.text += sep + h
+	}
+
+	return err
 }
 
 // nothingGiven is the builder's own kind: a set with none of the flags
@@ -288,6 +333,7 @@ func printOne[Out any](
 	c *run,
 	out Out,
 	cols table.Columns[Out],
+	blocks table.Blocks[Out],
 	done func() string,
 ) error {
 	if reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]() {
@@ -311,7 +357,7 @@ func printOne[Out any](
 		return writeText(c.stdout, text)
 	}
 
-	return table.Sheet(c.stdout, out, cols, c.Now())
+	return table.Sheet(c.stdout, out, cols, blocks, c.Now())
 }
 
 // printList prints the rows of a ListSpec: the array of their bodies as
@@ -337,14 +383,246 @@ func printList[Row any](
 	switch {
 	case !c.json && len(rows) == 0 && c.screen:
 		return writeText(c.stdout, noRows)
+	case !c.json && c.screen:
+		return table.Render(
+			c.stdout,
+			rows,
+			cols,
+			c.Now(),
+			&table.Screen{Width: c.width, Colour: c.colour},
+		)
 	case !c.json:
-		return table.Render(c.stdout, rows, cols, c.Now())
+		return table.Render(c.stdout, rows, cols, c.Now(), nil)
 	}
 
 	return writeJSON(
 		c.stdout,
 		append(append([]byte("["), bytes.Join(raws, []byte(","))...), ']'),
 	)
+}
+
+// errAborted is a question answered no: not done, and no error to explain.
+var errAborted = errors.New("aborted")
+
+// confirm asks p on stderr, after the line before when it is not "",
+// unless it asks nothing or --force answers it. Only y or yes goes on; with
+// no terminal to answer, nothing does. asked is a question that was shown.
+func (c *run) confirm(p Prompt, before string) (bool, error) {
+	force, _ := cmdline.Get[forceFlags](c.line)
+	if p.Question == "" || force.Force {
+		return false, nil
+	}
+
+	if !c.terminal {
+		//nolint:err113,staticcheck // a sentence of the CLI
+		return false, fmt.Errorf(
+			"confirmation needed, but there is no terminal.\nRun again with --force to %s.",
+			p.Action,
+		)
+	}
+
+	// A question nobody can see gets no answer, whatever stdin holds.
+	if before != "" {
+		_, err := io.WriteString(c.stderr, before+"\n")
+		if err != nil {
+			return false, err
+		}
+	}
+
+	_, err := io.WriteString(c.stderr, p.Question+" [y/N] ")
+	if err != nil {
+		return false, err
+	}
+
+	reply, _ := c.answers.ReadString('\n')
+	if r := strings.ToLower(strings.TrimSpace(reply)); r == "y" || r == "yes" {
+		return true, nil
+	}
+
+	return true, errAborted
+}
+
+// runGuarded runs s on in: the question, when s has one, and Run, with the
+// guard the builder stores for the write. A write the server refuses
+// because its target changed runs once more on the target read again, and
+// the question is asked again, after a line that says why the same
+// question comes twice; a second refusal is the error. in is what the last
+// try ran on.
+func runGuarded[S, In, Out any](
+	c Ctx[S],
+	s Spec[S, In, Out],
+	in In,
+) (In, Out, error) {
+	asked := false
+
+	attempt := func(in In, again string) (Out, error) {
+		if c.server {
+			c.guard.Store(guardOf(in))
+		}
+
+		if s.Confirm != nil {
+			p, err := s.Confirm(c, in)
+			if err == nil {
+				if !asked {
+					again = ""
+				}
+
+				asked, err = c.confirm(p, again)
+			}
+
+			if err != nil {
+				var zero Out
+
+				return zero, c.errorOf(err)
+			}
+		}
+
+		out, err := s.Run(c, in)
+
+		return out, c.errorOf(err)
+	}
+
+	out, err := attempt(in, "")
+	if !c.changed(err) {
+		return in, out, err
+	}
+
+	again, ok, rerr := reread(c, in)
+
+	switch {
+	case rerr != nil:
+		return in, out, rerr
+	case !ok:
+		return in, out, err
+	}
+
+	out, err = attempt(again, c.named(in)+" changed while the question was open.")
+
+	return again, out, err
+}
+
+// changed is a write the server refused because its target changed after
+// the CLI read it: the program's Precondition.
+func (c *run) changed(err error) bool {
+	if err == nil || c.tree.prog.Refusal == nil {
+		return false
+	}
+
+	return c.tree.prog.Refusal(err) == c.tree.prog.Precondition
+}
+
+// fields names in err the flags and arguments of in that filled the body
+// fields the server refused (Program.Fields).
+func (c *run) fields(err error, in reflect.Type) error {
+	if err == nil || c.tree.prog.Fields == nil {
+		return err
+	}
+
+	return c.tree.prog.Fields(err, in)
+}
+
+// errorOf is err as the program says an error of its session.
+func (c *run) errorOf(err error) error { return c.tree.prog.Error(c.api, err) }
+
+// reread is in with its target read again by its ID: what a write runs on
+// after the server refused it because the target changed. ok is false
+// when the target's type has no read.
+func reread[S, In any](c Ctx[S], in In) (In, bool, error) {
+	e, ok := target(reflect.ValueOf(&in).Elem())
+	if !ok {
+		return in, false, nil
+	}
+
+	read := c.tree.entities[e.Type()].read
+	if read == nil {
+		return in, false, nil
+	}
+
+	got, err := read(c, jsonText(e, "id"))
+	if err != nil {
+		return in, true, c.errorOf(err)
+	}
+
+	e.Set(reflect.ValueOf(got))
+
+	return in, true, nil
+}
+
+// named is the target of in as a message names it; "" for none.
+func (c *run) named(in any) string {
+	o, ok := c.object(in)
+	if !ok {
+		return ""
+	}
+
+	return table.Entity(o.Kind, o.ID, o.Name)
+}
+
+// object is the target of in as a problem names an object.
+func (c *run) object(in any) (Object, bool) {
+	e, ok := target(reflect.ValueOf(in))
+	if !ok {
+		return Object{}, false
+	}
+
+	ent, ok := c.tree.entities[e.Type()]
+	if !ok {
+		return Object{}, false
+	}
+
+	return Object{
+		Kind: ent.kind,
+		ID:   jsonText(e, "id"),
+		Name: ent.name(e.Interface()),
+	}, true
+}
+
+// expiring is an [Expiry] of any words.
+type expiring interface {
+	At(now time.Time) time.Time
+	Word() string
+}
+
+// about gives a refusal of the server what the command knows of it: the
+// target as the command read it, the word it was typed as, and the expiry
+// the command sent (Program.About).
+func (c *run) about(err error, in any) error {
+	if err == nil || c.tree.prog.About == nil || c.tree.prog.Refusal == nil ||
+		c.tree.prog.Refusal(err) == "" {
+		return err
+	}
+
+	target, _ := c.object(in)
+
+	var expiry time.Time
+
+	defer func() { c.tree.prog.About(err, target, expiry) }()
+
+	v := reflect.ValueOf(in)
+	if v.Kind() != reflect.Struct {
+		return err
+	}
+
+	for _, f := range v.Fields() {
+		// An Opt flag: its value when given.
+		if get := f.MethodByName(
+			"Get",
+		); get.IsValid() && get.Type().NumOut() == 2 &&
+			get.Type().Out(1).Kind() == reflect.Bool {
+			out := get.Call(nil)
+			if !out[1].Bool() {
+				continue
+			}
+
+			f = out[0]
+		}
+
+		if e, ok := reflect.TypeAssert[expiring](f); ok && e.Word() == "" {
+			expiry = e.At(c.Now())
+		}
+	}
+
+	return err
 }
 
 // kept are what the last filter on stderr and the Done text keeps: the
@@ -401,6 +679,8 @@ type usageError struct {
 	// word is what the sentence names: the command word, the flag as
 	// typed, --flag or <arg>, or for a count what the command takes.
 	word string
+	// empty is an empty list argument, which a command's hint follows.
+	empty bool
 }
 
 func (e *usageError) Error() string { return e.text }
@@ -533,7 +813,19 @@ func (t *Tree) usage(e *cmdline.UsageError) error {
 			e.Value,
 		)
 	case errors.Is(e.Err, cmdline.ErrEmpty):
-		return usagef(e.Kind, e.Path, what, "the %s list is empty.", name)
+		text := "the " + name + " list is empty."
+		if l := t.leaves[strings.Join(e.Path, " ")]; l != nil && l.emptyList != "" &&
+			e.Arg != "" {
+			text += " " + l.emptyList
+		}
+
+		return &usageError{
+			text:  text,
+			kind:  e.Kind,
+			path:  e.Path,
+			word:  what,
+			empty: e.Arg != "",
+		}
 	case errors.Is(e.Err, cmdline.ErrEmptyItem):
 		return usagef(e.Kind, e.Path, what, "the %s list has an empty item.", name)
 	}
@@ -679,16 +971,3 @@ func countError(line *cmdline.Line) error {
 		line.Command.Usage,
 	)
 }
-
-// fields names in err the flags and arguments of in that filled the body
-// fields the server refused (Program.Fields).
-func (c *run) fields(err error, in reflect.Type) error {
-	if err == nil || c.tree.prog.Fields == nil {
-		return err
-	}
-
-	return c.tree.prog.Fields(err, in)
-}
-
-// errorOf is err as the program says an error of its session.
-func (c *run) errorOf(err error) error { return c.tree.prog.Error(c.api, err) }

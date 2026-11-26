@@ -5,6 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	gotypes "go/types"
 	"io"
 	"maps"
 	"net"
@@ -995,6 +999,9 @@ func TestStatus(t *testing.T) {
 		return err
 	}
 
+	removeNode := func(a *API) error { return deleteNode(t.Context(), a, "3") }
+	readNode := func(a *API) error { _, err := getNode(t.Context(), a, "3"); return err }
+
 	for _, tt := range []struct {
 		name   string
 		call   func(*API) error
@@ -1016,8 +1023,16 @@ func TestStatus(t *testing.T) {
 		{name: "a delete, 200", call: remove, status: 200, body: `{}`, want: "it is 200 OK, not the 204 No Content this operation answers." + written},
 		{name: "a delete, 202", call: remove, status: 202, body: `{}`, want: "it is 202 Accepted, not the 204 No Content this operation answers." + written},
 		{name: "a delete, 206 that is not JSON", call: remove, status: 206, body: "<html>", want: "it is 206 Partial Content, not the 204 No Content this operation answers." + written},
+		{name: "DELETE /nodes/3, 204", call: removeNode, status: 204},
 		// The values of attributes are strings (map[string]string): a null
 		// is not one, though the typed decode would read it as "".
+		{name: "GET /nodes/3, an attribute null", call: readNode, status: 200, body: rowOf[clientv0.Node](`{"id": "3", "attributes": {"rack": null}}`), want: `its attributes["rack"] is null.`},
+		{name: "GET /nodes/3, an attribute of another kind", call: readNode, status: 200, body: rowOf[clientv0.Node](`{"id": "3", "attributes": {"rack": 5}}`), want: "json: cannot unmarshal number into Go struct field Node.attributes.rack of type string."},
+		{name: "GET /nodes/3, an attribute", call: readNode, status: 200, body: rowOf[clientv0.Node](`{"id": "3", "attributes": {"rack": "top"}}`)},
+		{name: "DELETE /nodes/3, 200", call: removeNode, status: 200, body: `{"id": "3"}`, want: "it is 200 OK, not the 204 No Content this operation answers." + written},
+		{name: "DELETE /nodes/3, 201", call: removeNode, status: 201, body: `{"id": "3"}`, want: "it is 201 Created, not the 204 No Content this operation answers." + written},
+		{name: "DELETE /nodes/3, 202", call: removeNode, status: 202, body: `{"id": "3"}`, want: "it is 202 Accepted, not the 204 No Content this operation answers." + written},
+		{name: "DELETE /nodes/3, 206", call: removeNode, status: 206, body: `{"id": "3"}`, want: "it is 206 Partial Content, not the 204 No Content this operation answers." + written},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -1532,6 +1547,152 @@ func TestTimeout(t *testing.T) {
 	})
 }
 
+// guarded is an entity with a revision, as a node is.
+type guarded struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Revision string `json:"revision"`
+}
+
+// inspectGuards checks each call of a command on the generated client
+// whose operation takes a guard: see TestEveryGuardIsSent.
+func inspectGuards(
+	t *testing.T,
+	ops map[string]guardOp,
+	takes, guards map[string]string,
+	sent map[string]int,
+	calls, lits *int,
+) func(ast.Node) bool {
+	t.Helper()
+
+	return func(n ast.Node) bool {
+		if lit, ok := n.(*ast.CompositeLit); ok {
+			if sel, ok := lit.Type.(*ast.SelectorExpr); ok &&
+				takes[sel.Sel.Name] != "" {
+				*lits++
+			}
+		}
+
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+
+		fn, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || gotypes.ExprString(fn.X) != "c.API" {
+			return true
+		}
+
+		o, ok := ops[strings.TrimSuffix(fn.Sel.Name, "WithResponse")]
+		if !ok {
+			return true
+		}
+
+		*calls++
+
+		field := takes[o.typ]
+		where := gotypes.ExprString(call)
+
+		un, _ := call.Args[o.params].(*ast.UnaryExpr)
+		require.NotNil(
+			t,
+			un,
+			"%s: the parameters, which take %s, are not written out in the call",
+			where,
+			field,
+		)
+
+		lit, _ := un.X.(*ast.CompositeLit)
+		require.NotNil(
+			t,
+			lit,
+			"%s: the parameters, which take %s, are not written out in the call",
+			where,
+			field,
+		)
+
+		if o.id < 0 {
+			require.False(
+				t,
+				setsField(lit, field),
+				"%s has no entity and sends %s",
+				where,
+				field,
+			)
+
+			return true
+		}
+
+		has := slices.ContainsFunc(lit.Elts, func(e ast.Expr) bool {
+			kv, ok := e.(*ast.KeyValueExpr)
+			if !ok || gotypes.ExprString(kv.Key) != field {
+				return false
+			}
+
+			g, _ := kv.Value.(*ast.CallExpr)
+			if g == nil || len(g.Args) != 1 {
+				return false
+			}
+
+			return gotypes.ExprString(g.Fun) == "c."+guards[field] &&
+				gotypes.ExprString(g.Args[0]) == gotypes.ExprString(call.Args[o.id])
+		})
+		require.True(
+			t,
+			has,
+			"%s takes %s and does not send c.%s(%s), the guard of the entity it is made on",
+			where,
+			field,
+			guards[field],
+			gotypes.ExprString(call.Args[o.id]),
+		)
+
+		sent[field]++
+
+		return true
+	}
+}
+
+// guardOp is a method of the client that takes a guard: where its id and
+// its parameters are among the arguments, and their type; id is -1 for a
+// write with no entity, params -1 for a method that takes no guard.
+type guardOp struct {
+	id, params int
+	typ        string
+}
+
+// guardedOp is fn as a [guardOp]; takes is the guard field of each Params
+// type that has one.
+func guardedOp(fn *ast.FuncDecl, takes map[string]string) guardOp {
+	o, i := guardOp{id: -1, params: -1}, 0
+
+	for _, f := range fn.Type.Params.List {
+		for _, name := range f.Names {
+			if star, ok := f.Type.(*ast.StarExpr); ok &&
+				takes[gotypes.ExprString(star.X)] != "" {
+				o.params, o.typ = i, gotypes.ExprString(star.X)
+			}
+
+			if name.Name == "id" {
+				o.id = i
+			}
+
+			i++
+		}
+	}
+
+	return o
+}
+
+// setsField reports whether lit sets field.
+func setsField(lit *ast.CompositeLit, field string) bool {
+	return slices.ContainsFunc(lit.Elts, func(e ast.Expr) bool {
+		kv, ok := e.(*ast.KeyValueExpr)
+
+		return ok && gotypes.ExprString(kv.Key) == field
+	})
+}
+
 // The calls a test makes, each said as the CLI says it: the generated
 // client's call, through errorOf, as a command's call is.
 
@@ -1559,6 +1720,14 @@ func listUsers(ctx context.Context, a *API) ([]clientv0.User, error) {
 	return rows, a.errorOf(err)
 }
 
+func listNodes(ctx context.Context, a *API) ([]clientv0.Node, error) {
+	ctx = reading(ctx, a)
+
+	rows, err := a.ListNodesAll(ctx, &clientv0.ListNodesParams{PageSize: a.PageSize})
+
+	return rows, a.errorOf(err)
+}
+
 func createUser(ctx context.Context, a *API, name string) (clientv0.User, error) {
 	ctx = reading(ctx, a)
 
@@ -1582,6 +1751,22 @@ func updateUser(ctx context.Context, a *API) error {
 	)
 
 	return a.errorOf(err)
+}
+
+func getNode(ctx context.Context, a *API, id string) (clientv0.Node, error) {
+	ctx = reading(ctx, a)
+
+	n, err := clientv0.Got(a.GetNodeWithResponse(ctx, id))
+
+	return n, a.errorOf(err)
+}
+
+func deleteNode(ctx context.Context, a *API, id string) error {
+	ctx = reading(ctx, a)
+
+	return a.errorOf(
+		clientv0.Done(a.DeleteNodeWithResponse(ctx, id, &clientv0.DeleteNodeParams{})),
+	)
 }
 
 // bare is an API on url with no version check, as a test of how an answer
@@ -1878,4 +2063,99 @@ func TestJSONOfARow(t *testing.T) {
 	raw, ok := a.answerOf(users[0])
 	require.True(t, ok)
 	require.JSONEq(t, one, string(raw))
+}
+
+// TestEveryIfMatchIsSent: every call of an operation that takes If-Match
+// is given its parameters, written out in the call, with If-Match filled
+// from the builder's guard for the entity the call is made on, asked for
+// the very ID of the path. So a write that the server can guard by the
+// revision always is. An operation that takes none, such as
+// update-client, gets none.
+func TestEveryIfMatchIsSent(t *testing.T) {
+	t.Parallel()
+
+	guards := map[string]string{"IfMatch": "IfMatch"}
+
+	gen, err := parser.ParseFile(
+		token.NewFileSet(),
+		"../../../../gen/client/headscale/v0/client.gen.go",
+		nil,
+		0,
+	)
+	require.NoError(t, err)
+
+	// takes is the guard field of each Params type that has one.
+	takes := map[string]string{}
+
+	ast.Inspect(gen, func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if !ok {
+			return true
+		}
+
+		st, ok := ts.Type.(*ast.StructType)
+		if ok && strings.HasSuffix(ts.Name.Name, "Params") {
+			for _, f := range st.Fields.List {
+				for _, name := range f.Names {
+					if _, ok := guards[name.Name]; ok {
+						takes[ts.Name.Name] = name.Name
+					}
+				}
+			}
+		}
+
+		return true
+	})
+
+	// A write made on an entity sends that entity's guard. A write with no
+	// entity, such as the policy, which is one document, sends no If-Match:
+	// it is for a client that reads, changes and writes back.
+	ops := map[string]guardOp{}
+
+	for _, d := range gen.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Recv == nil ||
+			gotypes.ExprString(fn.Recv.List[0].Type) != "*Client" {
+			continue
+		}
+
+		if o := guardedOp(fn, takes); o.params >= 0 {
+			require.True(
+				t,
+				o.id >= 0 || takes[o.typ] == "IfMatch",
+				"%s takes %s and no id to ask it for",
+				fn.Name.Name,
+				takes[o.typ],
+			)
+			ops[fn.Name.Name] = o
+		}
+	}
+
+	// The commands make the calls, each on the generated client.
+	files, err := filepath.Glob("../*.go")
+	require.NoError(t, err)
+
+	sent, calls, lits := map[string]int{}, 0, 0
+
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		src, err := parser.ParseFile(token.NewFileSet(), name, nil, 0)
+		require.NoError(t, err)
+
+		ast.Inspect(src, inspectGuards(t, ops, takes, guards, sent, &calls, &lits))
+	}
+
+	require.Equal(
+		t,
+		lits,
+		calls,
+		"parameters that take a guard are made outside the call that sends them",
+	)
+
+	for field := range guards {
+		require.Positive(t, sent[field], "no operation that takes %s", field)
+	}
 }

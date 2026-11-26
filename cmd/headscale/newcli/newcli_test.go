@@ -41,9 +41,16 @@ type cliCase struct {
 	// env is added to the fixture's environment.
 	env []string
 	// stdin is what the case types; terminal says whether stdin and stdout
-	// are one.
+	// are one, and piped that stdin is a pipe all the same, as in
+	// "echo | headscale nodes delete 12".
 	stdin    string
 	terminal bool
+	piped    bool
+	// width is the width of that terminal in cells; 0 cuts nothing.
+	width int
+	// clock is the fixture's clock as a function of the wall clock; nil is
+	// the wall clock. The server's own clock stays the wall clock.
+	clock func(wall time.Time) time.Time
 	// release is the version the binary claims to be; "" is the test
 	// binary's, which is no release.
 	release string
@@ -60,6 +67,13 @@ type cliCase struct {
 	// check runs after the comparison: a read of the state back through
 	// the API after a write.
 	check func(t testing.TB, f *fixture, r result)
+	// answered runs as each answer of the server arrives, before the CLI
+	// reads it, with the request as "METHOD path?query": a case changes the
+	// state there between the CLI's read and its write.
+	answered func(t testing.TB, f *fixture, req string)
+	// clients is a server that Tailscale clients of the test can join,
+	// over its memory network; it has no TCP listener then.
+	clients bool
 }
 
 type result struct {
@@ -82,17 +96,44 @@ type fixture struct {
 	// releases are the release tags that `version` sees; no case reaches
 	// GitHub.
 	releases []string
+	// changes counts the changes a case's answered made.
+	changes int
 }
 
-func newFixture(tb testing.TB) *fixture {
+func newFixture(tb testing.TB, clients bool) *fixture {
 	tb.Helper()
 
+	return newFixtureAt(tb, clients, nil)
+}
+
+// newFixtureAt is newFixture with its clock as clock makes it of the wall
+// clock.
+func newFixtureAt(
+	tb testing.TB,
+	clients bool,
+	clock func(time.Time) time.Time,
+) *fixture {
+	tb.Helper()
+
+	// One clock for the CLI and for the last seen v0 reports for a connected
+	// node ("now"), or a minute could pass between them.
+	now := time.Now()
+	if clock != nil {
+		now = clock(now)
+	}
+
+	now = now.UTC().Truncate(time.Second)
+
 	// The node store waits for a batch to fill; a test does not.
-	srv := servertest.NewServer(
-		tb,
-		servertest.WithRealListener(),
+	opts := []servertest.ServerOption{
 		servertest.WithNodeStoreBatchTimeout(time.Millisecond),
-	)
+		servertest.WithConnectedSeen(func() time.Time { return now }),
+	}
+	if !clients {
+		opts = append(opts, servertest.WithRealListener())
+	}
+
+	srv := servertest.NewServer(tb, opts...)
 
 	dir := tb.TempDir()
 	file := filepath.Join(dir, "config.yaml")
@@ -100,7 +141,7 @@ func newFixture(tb testing.TB) *fixture {
 
 	return &fixture{
 		srv: srv,
-		now: time.Now().UTC().Truncate(time.Second),
+		now: now,
 		env: []string{
 			"HEADSCALE_CONFIG=" + file,
 			"HEADSCALE_UNIX_SOCKET=" + srv.SocketPath,
@@ -159,8 +200,9 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		Stdout:         &out,
 		Stderr:         &errOut,
 		Environ:        env,
-		Terminal:       tc.terminal,
+		Terminal:       tc.terminal && !tc.piped,
 		StdoutTerminal: tc.terminal,
+		Width:          tc.width,
 		PageSize:       pageSize,
 		Now:            func() time.Time { return f.now },
 		Version:        build,
@@ -171,6 +213,10 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 
 			answers[req.URL.Path] = append(answers[req.URL.Path], body)
 			asked = append(asked, req.Method+" "+req.URL.RequestURI())
+
+			if tc.answered != nil {
+				tc.answered(tb, f, req.Method+" "+req.URL.RequestURI())
+			}
 		},
 	})
 
@@ -191,12 +237,19 @@ const cliPages = -1
 func (f *fixture) token(tb testing.TB, scopes ...string) string {
 	tb.Helper()
 
-	_, client, err := f.srv.State().CreateOAuthClient(scopes, nil, "ci", nil)
+	return f.taggedToken(tb, nil, scopes...)
+}
+
+// taggedToken is an access token with scopes that holds tags.
+func (f *fixture) taggedToken(tb testing.TB, tags []string, scopes ...string) string {
+	tb.Helper()
+
+	_, client, err := f.srv.State().CreateOAuthClient(scopes, tags, "ci", nil)
 	require.NoError(tb, err)
 
 	expiry := f.now.Add(time.Hour)
 	token, _, err := f.srv.State().
-		MintAccessToken(client.ClientID, scopes, nil, &expiry)
+		MintAccessToken(client.ClientID, scopes, tags, &expiry)
 	require.NoError(tb, err)
 
 	return token
@@ -218,7 +271,7 @@ func runCases(t *testing.T, setup func(testing.TB, *fixture), cases []cliCase) {
 				"a case sets stdout or want, not both",
 			)
 
-			f := newFixture(t)
+			f := newFixtureAt(t, tc.clients, tc.clock)
 			if setup != nil {
 				setup(t, f)
 			}
@@ -569,6 +622,7 @@ func TestUntested(t *testing.T) {
 					Local:   true,
 					Aliases: []string{"rm"},
 					Example: []string{"headscale items delete"},
+					Confirm: func(command.Ctx, command.NoInput) (command.Prompt, error) { return command.Prompt{}, nil },
 					Run:     func(command.Ctx, command.NoInput) (command.NoOutput, error) { return command.NoOutput{}, nil },
 				}),
 			}},
@@ -675,7 +729,7 @@ func TestOneRule(t *testing.T) {
 		}
 	}
 
-	require.Contains(t, raw, "GetUser")
+	require.Contains(t, raw, "GetNode")
 
 	// allowed are the reads round the rule, by file and the text of the
 	// expression, with why.
@@ -793,6 +847,17 @@ Local commands (no server needed):
 
 Server commands (talk to a running headscale):
 
+  nodes list   List the nodes (alias: ls)
+  nodes get <node>   Show one node
+  nodes set <node>   Change the name or expiry of a node
+  nodes expire <node>   Log a node out
+  nodes delete <node>   Delete a node (alias: rm)
+  nodes update-client <node>   Ask a node to update its Tailscale client
+  nodes routes list [node]   List routes (alias: ls)
+  nodes routes set <node> <routes>   Replace the enabled routes of a node (alias: approve)
+  nodes routes clear <node>   Remove all enabled routes of a node
+  nodes tags list [node]   List tags and their nodes (alias: ls)
+  nodes tags set <node> <tags>   Replace the tags of a node
   users list   List the users (alias: ls)
   users get <user>   Show one user
   users create <name>   Create a local user

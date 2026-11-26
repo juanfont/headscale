@@ -48,12 +48,23 @@ type leaf struct {
 	// set is a command that changes the fields its Opt flags name, so a
 	// line gives at least one of them: NeedsChange.
 	set bool
-	// server reports whether this line talks to the server.
-	server func(*cmdline.Line) bool
+	// force is a command that can ask, and so takes --force.
+	force bool
+	// hint follows a wrong argument count or an empty list argument;
+	// emptyList follows the sentence of an empty list argument.
+	hint      func(args []string) string
+	emptyList string
+	// valid checks the line, read but not looked up, before any call.
+	valid func(*cmdline.Line) error
 	// session is the S of its spec, the session it runs with.
 	session reflect.Type
-	check   func(*program) error
-	cmd     func(flags []any) cmdline.Node
+	// target is the type of the command's target: the first argument that
+	// is an entity; nil for none.
+	target reflect.Type
+	// server reports whether this line talks to the server.
+	server func(*cmdline.Line) bool
+	check  func(*program) error
+	cmd    func(flags []any) cmdline.Node
 }
 
 func (*leaf) isNode() {}
@@ -76,6 +87,9 @@ type (
 	configFlags struct {
 		Config configFile `flag:"config" help:"Config file" short:"c"`
 	}
+	forceFlags struct {
+		Force bool `flag:"force" help:"Do not ask"`
+	}
 )
 
 var (
@@ -88,6 +102,16 @@ var (
 	)
 	errNoDefault = errors.New("a list with no Default column")
 	errNoRows    = errors.New("a list with no NoRows sentence")
+	errBlocks    = errors.New(
+		"blocks and no Columns: a block follows the lines of a sheet",
+	)
+	errNoAsk  = errors.New("a delete with no Confirm: every delete asks first")
+	errNoRead = errors.New(
+		"has a revision and no read: a write the server refuses because the target changed would not run again",
+	)
+	errNoSay = errors.New(
+		"is cut to the width of the terminal, and Long does not say so",
+	)
 )
 
 // specError is a spec that is wrong, named by its path.
@@ -140,13 +164,26 @@ func (format) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Direct
 // cloneColumns is a copy of a declaration the tree keeps, so that a
 // caller's later change of it does not change the tree.
 func cloneColumns[R any](cols table.Columns[R]) table.Columns[R] {
-	return slices.Clone(cols)
+	cols = slices.Clone(cols)
+	for i, c := range cols {
+		if c.Fold == nil {
+			continue
+		}
+
+		cols[i].Fold = make(map[string][]string, len(c.Fold))
+		for key, values := range c.Fold {
+			cols[i].Fold[key] = slices.Clone(values)
+		}
+	}
+
+	return cols
 }
 
 // New makes the command of a spec.
 func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
 
+	s.Columns, s.Blocks = cloneColumns(s.Columns), slices.Clone(s.Blocks)
 	l := common(
 		s.Name,
 		s.Short,
@@ -161,23 +198,20 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	l.output = !noOut || !s.Local || s.NeedsServer != nil
 	l.own = !noOut && s.Local && s.NeedsServer == nil
 	l.session = reflect.TypeFor[S]()
-	l.check = func(*program) error {
-		var errs []error
-
-		if s.Run == nil {
-			errs = append(errs, errNoRun)
-		}
-
-		switch {
-		case !noOut && s.Columns == nil && s.Done == nil:
-			errs = append(errs, errNoShow)
-		case s.Columns != nil && s.Done != nil:
-			errs = append(errs, errBoth)
-		}
-
-		return errors.Join(append(errs, s.Columns.Check())...)
-	}
+	l.check = func(p *program) error { return checkSpec(p, s) }
 	l.set = s.NeedsChange
+	l.force = s.Confirm != nil
+	l.hint = s.Hint
+	l.emptyList = s.EmptyList
+	l.target, _ = targetType(reflect.TypeFor[In]())
+
+	if s.Valid != nil {
+		l.valid = func(line *cmdline.Line) error {
+			in, _ := cmdline.Get[In](line)
+
+			return s.Valid(in)
+		}
+	}
 
 	l.cmd = func(flags []any) cmdline.Node {
 		return cmdline.Command[In]{
@@ -188,27 +222,50 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 			Run: func(ctx context.Context, in In) error {
 				c := ctxOf[S](ctx)
 
-				if c.server {
-					c.guard.Store(guardOf(in))
-				}
+				in, out, err := runGuarded(c, s, in)
 
-				out, err := s.Run(c, in)
-				if err != nil {
-					return c.fields(c.errorOf(err), reflect.TypeFor[In]())
-				}
-
-				return printOne(c.run, out, s.Columns, func() string {
+				done := func() string {
 					if s.Done == nil {
 						return ""
 					}
 
 					return s.Done(in, out, c.Now())
-				})
+				}
+
+				if err != nil {
+					return c.fields(c.about(err, in), reflect.TypeFor[In]())
+				}
+
+				return printOne(c.run, out, s.Columns, s.Blocks, done)
 			},
 		}
 	}
 
 	return l
+}
+
+// checkSpec reports what is wrong with a spec, for the tree to name.
+func checkSpec[S, In, Out any](_ *program, s Spec[S, In, Out]) error {
+	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
+
+	var errs []error
+
+	if s.Run == nil {
+		errs = append(errs, errNoRun)
+	}
+
+	switch {
+	case !noOut && s.Columns == nil && s.Done == nil:
+		errs = append(errs, errNoShow)
+	case s.Columns != nil && s.Done != nil:
+		errs = append(errs, errBoth)
+	}
+
+	if s.Blocks != nil && s.Columns == nil {
+		errs = append(errs, errBlocks)
+	}
+
+	return errors.Join(append(errs, s.Columns.Check(), s.Blocks.Check())...)
 }
 
 // NewList makes the command of a list spec.
@@ -232,7 +289,7 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 	l.filter = filterExample(s.Example)
 	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
 	l.session = reflect.TypeFor[S]()
-	l.check = func(*program) error {
+	l.check = func(p *program) error {
 		var errs []error
 
 		if s.Run == nil {
@@ -248,6 +305,22 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 
 		if s.NoRows == "" {
 			errs = append(errs, errNoRows)
+		}
+
+		// A list cut to the terminal says so, and how to read all of it.
+		for _, c := range s.Columns {
+			if says := c.Heading() + " is truncated to fit your terminal"; c.List == table.Cut &&
+				!strings.Contains(s.Long, says) {
+				errs = append(
+					errs,
+					fmt.Errorf(
+						"column %q %w: %q, with the way to read all of it",
+						c.Name,
+						errNoSay,
+						says,
+					),
+				)
+			}
 		}
 
 		return errors.Join(append(errs, s.Columns.Check())...)
@@ -338,6 +411,10 @@ func (l *leaf) flags() []any {
 		f = append(f, configFlags{})
 	}
 
+	if l.force {
+		f = append(f, forceFlags{})
+	}
+
 	return append(f, helpFlags{})
 }
 
@@ -352,6 +429,8 @@ type Tree struct {
 	groups map[string]Group
 	// oldNames leads an old path to the path of today.
 	oldNames map[string]string
+	// entities are the types of target the tree looks up, by type.
+	entities map[reflect.Type]Entity
 	// spellings leads every flag of the tree, as it can be typed ("--force",
 	// "-o"), to its long name, which messages use. --version is not one:
 	// on a command line it is an unknown flag.
@@ -373,6 +452,7 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 		name: p.Name, short: p.Short,
 		leaves: map[string]*leaf{}, groups: map[string]Group{},
 		oldNames: map[string]string{}, spellings: map[string]string{},
+		entities: map[reflect.Type]Entity{},
 	}
 
 	var errs []error
@@ -380,6 +460,7 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 	opts := make([]cmdline.Option, 0, len(p.Entities))
 
 	for _, e := range p.Entities {
+		t.entities[e.t] = e
 		opts = append(opts, e.lookup)
 
 		err := e.check()
@@ -451,6 +532,15 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 			}
 
 			err := n.check(&p)
+			if err != nil {
+				bad("%v", err)
+			}
+
+			if n.name == "delete" && !n.force {
+				bad("%v", errNoAsk)
+			}
+
+			err = checkTarget(n, t.entities)
 			if err != nil {
 				bad("%v", err)
 			}
@@ -653,4 +743,15 @@ func (t *Tree) Reached(argv []string) string {
 	line, _ := t.parser.Parse(argv)
 
 	return strings.Join(line.Command.Path, " ")
+}
+
+// checkTarget reports what the target of n lacks for the guard of its
+// writes.
+func checkTarget(n *leaf, ents map[reflect.Type]Entity) error {
+	e, known := ents[n.target]
+	if n.target != nil && hasJSON(n.target, "revision") && (!known || e.read == nil) {
+		return fmt.Errorf("target %v %w", n.target, errNoRead)
+	}
+
+	return nil
 }

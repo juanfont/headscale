@@ -287,6 +287,11 @@ func (a *API) problemOf(resp *http.Response, body []byte) error {
 		err = &ProblemError{Problem: p}
 	}
 
+	if resp.StatusCode/100 == 5 && resp.Request != nil &&
+		resp.Request.Method != http.MethodGet {
+		return &faultAfterWriteError{err}
+	}
+
 	return err
 }
 
@@ -313,6 +318,10 @@ func (a *API) unreadable(ae *clientv0.AnswerError) error {
 
 		why = "it is " + statusText(resp.StatusCode) + ", not the " +
 			strings.Join(names, " or ") + " this operation answers"
+	// GET /config is the one success that is not JSON: nearly any text
+	// reads as YAML, so its type says it.
+	case errors.Is(ae.Err, clientv0.ErrContentType):
+		why = "it is not YAML"
 	case isShape:
 		why = se.Why
 	case errors.Is(ae.Err, clientv0.ErrPageTokenNotString):
@@ -599,6 +608,7 @@ func connect(cfg *types.Config, env Env, stderr io.Writer) (*API, error) {
 		Timeout: cfg.CLI.Timeout,
 		Version: env.Version.Version,
 		Commit:  env.Version.Commit,
+		Sent:    env.Sent,
 		Warn: func(ownVersion, ownCommit, serverVersion, serverCommit string) {
 			fmt.Fprintf(
 				stderr,

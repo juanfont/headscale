@@ -12,6 +12,7 @@ import (
 var commands = []command.Node{
 	versionCmd,
 	completionCmd,
+	nodesGroup,
 	usersGroup,
 	apiGroup,
 	debugGroup,

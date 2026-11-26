@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/cmdline/table"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,6 +76,27 @@ func TestBuildChecks(t *testing.T) {
 			`get: column "x": unknown field "nam" in command.item`,
 		},
 		{
+			"a block of no map",
+			[]Node{New(func() Spec[testS, NoInput, item] {
+				s := spec()
+				s.Blocks = table.Blocks[item]{{Title: "X", Field: "name"}}
+
+				return s
+			}())},
+			`get: block "X": field "name": string is no map with text keys`,
+		},
+		{
+			"a block with no sheet",
+			[]Node{New(func() Spec[testS, NoInput, item] {
+				s := spec()
+				s.Columns, s.Blocks = nil, table.Blocks[item]{{Title: "X", Field: "name"}}
+				s.Done = func(NoInput, item, time.Time) string { return "done" }
+
+				return s
+			}())},
+			"get: blocks and no Columns: a block follows the lines of a sheet\nblock \"X\": field \"name\": string is no map with text keys",
+		},
+		{
 			"both Columns and Done",
 			[]Node{New(func() Spec[testS, NoInput, item] {
 				s := spec()
@@ -101,6 +123,19 @@ func TestBuildChecks(t *testing.T) {
 			"a list with no sentence for no rows",
 			[]Node{NewList(ListSpec[testS, NoInput, item]{Name: "list", Short: "List", Long: "List.", Example: []string{"prog list"}, Local: true, Columns: itemColumns, Run: noop[NoInput, []item]})},
 			"list: a list with no NoRows sentence",
+		},
+		{
+			"a list cut to the terminal that does not say so",
+			[]Node{NewList(ListSpec[testS, NoInput, clientv0.User]{
+				Name: "list", Short: "List", Long: "List.", Example: []string{"prog list"}, Local: true, NoRows: "No users.", Run: noop[NoInput, []clientv0.User],
+				Columns: table.Columns[clientv0.User]{{Name: "nodes", Field: "nodes", List: table.Cut, Default: true}},
+			})},
+			`list: column "nodes" is cut to the width of the terminal, and Long does not say so: "NODES is truncated to fit your terminal", with the way to read all of it`,
+		},
+		{
+			"a delete that does not ask",
+			[]Node{New(Spec[testS, getIn, NoOutput]{Name: "delete", Short: "Delete", Long: "Delete.", Example: []string{"prog delete a"}, Local: true, Run: noop[getIn, NoOutput]})},
+			"delete: a delete with no Confirm: every delete asks first",
 		},
 		{"a group with no short", []Node{Group{Name: "items", Commands: []Node{New(spec())}}}, "items: no Short"},
 		{
