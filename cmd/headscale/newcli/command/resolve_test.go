@@ -229,9 +229,16 @@ func TestCredentialWord(t *testing.T) {
 		whole, want string
 	}{
 		{authKeyTyped(), "hskey-auth-ab12cd-***", "ab12cd", "hskey-auth-ab12cd345678-s3cret", "a key is named by its ID or its prefix, never by the whole key. Its prefix is ab12cd345678."},
+		{apiKeyTyped(), "hskey-api-tr81ys-***", "tr81ys", "hskey-api-tr81ys345678-s3cret", "a key is named by its ID or its prefix, never by the whole key. Its prefix is tr81ys345678."},
+		{oauthClientTyped(), "c9f2aa000000", "c9f2aa000000", "HSKEY-CLIENT-c9f2aa000000-s3cret", "an OAuth client is named by its ID, never by its secret. Its ID is c9f2aa000000."},
 		// No output prints a client in the masked form with its ID, so it
 		// names none.
+		{oauthClientTyped(), "c9f2aa000000", "c9f2aa000000", "hskey-client-c9f2aa000000-***", "an OAuth client is named by its ID, never by its secret. Its ID is c9f2aa000000."},
+		{apiKeyTyped(), "7", "7", "hskey-auth-tr81ys345678-s3cret", "a key is named by its ID or its prefix, never by the whole key."},
+		{oauthClientTyped(), "c9f2aa000000", "c9f2aa000000", "hskey-api-c9f2aa000000-s3cret", "an OAuth client is named by its ID, never by its secret."},
 		// The server takes a client secret spelt as Tailscale spells it.
+		{oauthClientTyped(), "c9f2aa000000", "c9f2aa000000", "tskey-client-c9f2aa000000-s3cret", "an OAuth client is named by its ID, never by its secret. Its ID is c9f2aa000000."},
+		{oauthClientTyped(), "c9f2aa000000", "c9f2aa000000", "TSKEY-CLIENT-c9f2aa000000-s3cret?ephemeral=true", "an OAuth client is named by its ID, never by its secret. Its ID is c9f2aa000000."},
 		{authKeyTyped(), "7", "7", "tskey-client-c9f2aa000000-s3cret", "a key is named by its ID or its prefix, never by the whole key."},
 	} {
 		got, err := credentialWord(tt.k, tt.masked)

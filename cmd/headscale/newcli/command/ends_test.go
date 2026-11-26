@@ -47,3 +47,123 @@ func TestEnded(t *testing.T) {
 		})
 	}
 }
+
+// endOf is a delete made by NewEnd, for the checks of the tree.
+func endOf() Node {
+	return NewEnd(EndSpec[getIn, item]{
+		Short:    "S",
+		Long:     "S.",
+		Example:  []string{"prog keys delete 7"},
+		Target:   func(getIn) item { return item{} },
+		Of:       func(item) Ended { return Ended{} },
+		Revoke:   func(Ctx, string) error { return nil },
+		Get:      func(Ctx, string) (item, error) { return item{}, nil },
+		NeverOwn: true,
+	})
+}
+
+// TestEndOnly: the tree ties a credential's pieces to each other. A delete
+// whose target has revoked, or that stands beside a Secret, is made by
+// NewEnd, whatever its target; NewEnd stands only beside a Secret; and it
+// says whether the CLI can call with the credential.
+func TestEndOnly(t *testing.T) {
+	t.Parallel()
+
+	type cred struct {
+		ID      string                       `json:"id"`
+		Revoked nullable.Nullable[time.Time] `json:"revoked"`
+	}
+
+	type in struct {
+		Cred cred `arg:"cred"`
+	}
+
+	type secreted struct {
+		ID  string `json:"id"`
+		Key string `json:"key"`
+	}
+
+	byHand := New(Spec[in, NoOutput]{
+		Name:    "delete",
+		Short:   "S",
+		Long:    "S.",
+		Example: []string{"prog creds delete 2"},
+		Local:   true,
+		Confirm: func(Ctx, in) (Prompt, error) { return Prompt{}, nil },
+		Run:     noop[in, NoOutput],
+	})
+	plain := New(Spec[getIn, NoOutput]{
+		Name:    "delete",
+		Short:   "S",
+		Long:    "S.",
+		Example: []string{"prog keys delete 7"},
+		Local:   true,
+		Run:     noop[getIn, NoOutput],
+		Confirm: func(Ctx, getIn) (Prompt, error) { return Prompt{}, nil },
+	})
+	create := New(Spec[NoInput, secreted]{
+		Name:    "create",
+		Short:   "S",
+		Long:    "S.",
+		Example: []string{"prog keys create"},
+		Local:   true,
+		Run:     noop[NoInput, secreted],
+		Secret:  func(secreted) string { return "" },
+		Done:    func(NoInput, secreted, time.Time) string { return "" },
+	})
+	list := NewList(
+		ListSpec[NoInput, item]{
+			Name:    "list",
+			Short:   "S",
+			Long:    "S.",
+			Example: []string{"prog keys list"},
+			Local:   true,
+			Columns: itemColumns,
+			NoRows:  "None.",
+			Run:     noop[NoInput, []item],
+		},
+	)
+	unsaid := NewEnd(EndSpec[getIn, item]{
+		Short:   "S",
+		Long:    "S.",
+		Example: []string{"prog keys delete 7"},
+		Target:  func(getIn) item { return item{} },
+		Of:      func(item) Ended { return Ended{} },
+		Revoke:  func(Ctx, string) error { return nil },
+		Get:     func(Ctx, string) (item, error) { return item{}, nil },
+	})
+
+	for _, tt := range []struct {
+		name  string
+		nodes []Node
+		want  string
+	}{
+		{"a target with revoked", []Node{byHand}, "creds delete: " + errNotEnd.Error()},
+		{"beside a Secret, a target with no revoked", []Node{create, list, plain}, "keys delete: " + errNotEnd.Error()},
+		{"NewEnd with no Secret beside it", []Node{list, endOf()}, "keys delete: " + errEndAlone.Error()},
+		{"NewEnd that says nothing of Own", []Node{create, list, unsaid}, "keys delete: " + errOwn.Error()},
+	} {
+		group := "keys"
+		if tt.nodes[0] == byHand {
+			group = "creds"
+		}
+
+		_, err := build(
+			"prog",
+			"A program",
+			allowedAliases(),
+			nil,
+			Group{Name: group, Short: "S", Commands: tt.nodes},
+		)
+		require.ErrorContains(t, err, tt.want, tt.name)
+	}
+
+	_, err := build(
+		"prog",
+		"A program",
+		allowedAliases(),
+		nil,
+		Group{Name: "keys", Short: "S", Commands: []Node{create, list, endOf()}},
+	)
+	require.NoError(t, err)
+}

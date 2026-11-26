@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -125,9 +126,14 @@ func (e *ProblemError) Error() string {
 
 	switch p.Code { //nolint:exhaustive // the others print their title
 	case clientv0.ProblemCodeUnauthorized:
-		return "the server did not accept the API key."
+		// True of every credential and of every reason the server has: a
+		// typo, a key never made, one expired or revoked.
+		return "the server did not accept the credential of this CLI: it is unknown, expired or revoked.\nIt is set by cli.api_key in the config file, or HEADSCALE_CLI_API_KEY."
 	case clientv0.ProblemCodeForbidden:
-		return "this credential may not do that." + forbidden(p.Details)
+		return "this credential may not do that." + forbidden(
+			p.Details,
+			e.target.Kind == "node",
+		)
 	case clientv0.ProblemCodeNotFound:
 		o, err := p.Object.Get()
 		if err == nil {
@@ -160,7 +166,8 @@ func (e *ProblemError) Error() string {
 			) + " is managed by OIDC and cannot be edited here."
 		}
 	case clientv0.ProblemCodeOwnerConflict:
-		return "a key is owned by one user or by tags, not both."
+		// The server answers it for a key with no owner too.
+		return "a key needs one owner: one user, or tags, not both."
 	case clientv0.ProblemCodeExpiryRequired:
 		return "a key must have an expiry."
 	case clientv0.ProblemCodeTagsRequired:
@@ -169,11 +176,25 @@ func (e *ProblemError) Error() string {
 		}
 
 		return "the tag list is empty."
+	case clientv0.ProblemCodeInvalidScope:
+		return listed(
+			"unknown scope: ",
+			"unknown scopes: ",
+			texts(p.Details["scopes"]),
+		) + "."
+	case clientv0.ProblemCodeScopeRequiresTags:
+		scopes := texts(p.Details["scopes"])
+
+		return listed(
+			"scope ",
+			"scopes ",
+			scopes,
+		) + map[bool]string{true: " needs", false: " need"}[len(scopes) < 2] + " at least one tag (--tags)."
 	case clientv0.ProblemCodeTagsNotPermitted:
 		return "these tags are not in the policy: " + strings.Join(
 			texts(p.Details["tags"]),
 			", ",
-		)
+		) + "."
 	case clientv0.ProblemCodeExpiryInPast:
 		if e.expiry.IsZero() {
 			return "the expiry is in the past."
@@ -196,23 +217,7 @@ func (e *ProblemError) Error() string {
 	case clientv0.ProblemCodeUnhealthy:
 		return "the server is not healthy:" + messages(p.Details["reasons"])
 	case clientv0.ProblemCodeInvalidField:
-		var b strings.Builder
-
-		b.WriteString("the server refused a value:")
-
-		for _, f := range p.Errors {
-			b.WriteString(
-				"\n  " + table.Visible(
-					f.Location,
-					"",
-				) + ": " + table.Visible(
-					f.Message,
-					"",
-				),
-			)
-		}
-
-		return b.String()
+		return "the server refused a value:" + fieldErrors(p.Errors)
 	case clientv0.ProblemCodeTooLarge:
 		return "the file is too large for the server."
 	case clientv0.ProblemCodeInternal:
@@ -238,10 +243,11 @@ func (e *ProblemError) entity(o clientv0.ProblemObject) string {
 }
 
 // flagsOf names, in each entry of an invalid_field problem, the flag or the
-// argument of In that filled the body field: body.email is --email, and
-// body.profilePicUrl is the flag whose Go field is ProfilePicURL. A field
-// matches by its Go name or by its flag or argument name without dashes,
-// in any case. A location that no field of In fills stays as the server
+// argument of In that filled the body field: body.email is --email,
+// body.profilePicUrl the flag whose Go field is ProfilePicURL, body.userId
+// --user, and body.tags[1] --tags. A field matches by its Go name or by
+// its flag or argument name without dashes, with or without Id, in any
+// case. A location that no field of In fills stays as the server
 // wrote it.
 func flagsOf(err error, t reflect.Type) error {
 	p, ok := errors.AsType[*ProblemError](err)
@@ -273,13 +279,18 @@ func flagsOf(err error, t reflect.Type) error {
 				continue
 			}
 
-			// An owner fills the user or the tags.
+			// An owner fills the user or the tags; an entity, such as
+			// --user, its ID; an item of a list, tags[1], the list.
 			root, _, _ := strings.Cut(key, "[")
 			owner := sf.Type == reflect.TypeFor[Owner]() &&
 				(root == "userId" || root == "tags")
+			bare := strings.ReplaceAll(name, "-", "")
 
-			if owner || strings.EqualFold(sf.Name, key) ||
-				strings.EqualFold(strings.ReplaceAll(name, "-", ""), key) {
+			if owner ||
+				slices.ContainsFunc(
+					[]string{sf.Name, bare, sf.Name + "Id", bare + "Id"},
+					func(n string) bool { return strings.EqualFold(n, root) },
+				) {
 				p.Problem.Errors[i].Location = word
 
 				break
@@ -288,6 +299,24 @@ func flagsOf(err error, t reflect.Type) error {
 	}
 
 	return err
+}
+
+// fieldErrors are the lines of invalid_field, one for each field. flagsOf
+// names a field as the flag that filled it; any other is the API's name,
+// and the line says so.
+func fieldErrors(errs []clientv0.FieldError) string {
+	var b strings.Builder
+
+	for _, f := range errs {
+		at := table.Visible(f.Location, "")
+		if !strings.HasPrefix(at, "--") && !strings.HasPrefix(at, "<") {
+			at += " (as the server names it)"
+		}
+
+		b.WriteString("\n  " + at + ": " + table.Visible(f.Message, ""))
+	}
+
+	return b.String()
 }
 
 // refused is the sentence of update_refused, one for each reason.
@@ -325,8 +354,9 @@ func texts(v any) []string {
 	return out
 }
 
-// forbidden names what the credential lacks, when the problem says it.
-func forbidden(details map[string]any) string {
+// forbidden names what the credential lacks, when the problem says it; node
+// is a command whose target is a node.
+func forbidden(details map[string]any, node bool) string {
 	scopes := texts(details["scopes"])
 
 	rule, _ := details["rule"].(string)
@@ -334,8 +364,8 @@ func forbidden(details map[string]any) string {
 	switch {
 	case len(scopes) > 0:
 		return "\nIt lacks the scope " + strings.Join(scopes, ", ") + "."
-	case tokenRule(rule) != "":
-		return "\n" + tokenRule(rule)
+	case tokenRule(rule, node) != "":
+		return "\n" + tokenRule(rule, node)
 	case rule != "":
 		return "\nA token rule refuses it: " + table.Visible(rule, "") + "."
 	}
@@ -345,18 +375,37 @@ func forbidden(details map[string]any) string {
 
 // tokenRule is the sentence of a token rule the server names in
 // forbidden's details.rule; "" for a rule this build does not know, which
-// prints its word.
-func tokenRule(rule string) string {
+// prints its word. A rule that covers more than one command says what the
+// command at hand does: node is a change of a node.
+func tokenRule(rule string, node bool) string {
+	switch {
+	case rule == "token_must_own_tags" && node:
+		return "An OAuth access token gives and takes only tags it holds or owns, and changes only a node whose tags are all its own; an API key may give any tag of the policy."
+	case rule == "token_must_own_tags":
+		return "An OAuth access token gives a key or an OAuth client only tags it holds or owns; an API key may give any tag of the policy."
+	}
+
 	switch rule {
 	case "token_cannot_change_user_name_or_email":
 		return "An OAuth access token cannot change the name or the email of a user; an API key can."
-	case "token_must_own_tags":
-		return "An OAuth access token gives, takes and makes keys for only tags it holds or owns, and changes only a node whose tags are all its own; an API key may give any tag of the policy."
+	case "token_must_hold_scopes":
+		return "An OAuth access token makes an OAuth client with only scopes it holds itself."
+	case "token_cannot_create_api_key":
+		return "An OAuth access token cannot make an API key: an API key may do everything, so only an API key or the socket makes one."
 	case "token_cannot_create_key_for_user":
 		return "An OAuth access token makes only tagged keys; an API key may make a key for a user."
 	}
 
 	return ""
+}
+
+// listed is the list after one or many: "scope a", "scopes a, b".
+func listed(one, many string, list []string) string {
+	if len(list) == 1 {
+		return one + list[0]
+	}
+
+	return many + strings.Join(list, ", ")
 }
 
 // taken is the sentence of name_taken or email_taken, whose details hold
