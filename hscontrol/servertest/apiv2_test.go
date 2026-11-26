@@ -3,6 +3,8 @@ package servertest_test
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -674,4 +677,87 @@ func (o tofuOutputs) jsonEq(t *testing.T, key string, want any) {
 	wantJSON, err := json.Marshal(want)
 	require.NoError(t, err)
 	require.JSONEq(t, string(wantJSON), string(o.raw(t, key)))
+}
+
+// TestAPIv2AuthKeyHoldsThePolicy: /api/v2 checks a key's tags under the lock
+// of every policy write. A create that comes while a policy that drops its
+// tag is being installed waits, and is refused once that policy is in.
+// Checked before the lock, it would pass under the old policy and store the
+// key after the new one was in.
+func TestAPIv2AuthKeyHoldsThePolicy(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	apiKey := srv.CreateAPIKey(t, srv.CreateUser(t, "apiv2-race"))
+
+	_, _, err := srv.State().UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": [], "tag:gone": []}}`))
+	require.NoError(t, err)
+
+	parked, release := make(chan struct{}), make(chan struct{})
+	installed := make(chan error, 1)
+
+	go func() {
+		_, _, err := srv.State().UpdatePolicyIf([]byte(`{"tagOwners": {"tag:ci": []}}`), func(string) bool {
+			close(parked)
+			<-release
+
+			return true
+		})
+		installed <- err
+	}()
+
+	<-parked
+
+	type answer struct {
+		status int
+		body   string
+	}
+
+	created := make(chan answer, 1)
+
+	go func() {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/v2/tailnet/-/keys", strings.NewReader(
+			`{"capabilities": {"devices": {"create": {"tags": ["tag:gone"], "reusable": false, "ephemeral": false, "preauthorized": true}}}, "expirySeconds": 3600}`))
+		if err != nil {
+			created <- answer{body: err.Error()}
+
+			return
+		}
+
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("Content-Type", "application/json")
+
+		hc := &http.Client{Transport: &http.Transport{DialContext: srv.MemNet().Dial}}
+
+		resp, err := hc.Do(req)
+		if err != nil {
+			created <- answer{body: err.Error()}
+
+			return
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		created <- answer{status: resp.StatusCode, body: string(body)}
+	}()
+
+	select {
+	case a := <-created:
+		t.Fatalf("the create did not wait for the policy write: %d %s", a.status, a.body)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(release)
+	require.NoError(t, <-installed)
+
+	a := <-created
+	require.Equal(t, http.StatusBadRequest, a.status, a.body)
+	require.Contains(t, a.body, "tag:gone")
+
+	keys, err := srv.State().ListPreAuthKeys()
+	require.NoError(t, err)
+
+	for _, k := range keys {
+		require.NotContains(t, k.Tags, "tag:gone", "no key was stored for a tag the policy dropped")
+	}
 }
