@@ -1713,7 +1713,7 @@ The 23 tests of the three packages pass, also with `-race -count=3`. The tests c
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `id`, `src`, `lic`   | the case, its source (repository, revision, file, line and test, or the issue URL) and the source's licence                 |
 | `kind`, `topic`      | `run` or `complete`, and the area of the grammar                                                                            |
-| `upstream`, `expect` | the case as the source wrote it, and what the source expects, in words                                                      |
+| `upstream`, `expect` | the case as the source wrote it (for a cited row, in our words), and what the source expects, in words                      |
 | `tree`, `argv`       | the tree (empty for Headscale's), and argv on that tree; for `complete` the last word is the cursor word                    |
 | `want`               | the source's behaviour, carried onto the tree                                                                               |
 | `ours`, `why`        | where this library or Headscale decided otherwise: the expected outcome, and the decision (`D11`, …), the quirk or the call |
@@ -1721,11 +1721,11 @@ The 23 tests of the three packages pass, also with `-race -count=3`. The tests c
 
 **On the typed prototype: 343 cases match the source, 123 match the recorded decision, and 19 match neither.** These are the numbers of the first version, and each case has the same verdict as there. Each of the 19 is named, with its reason, in the driver's `explained` table, and an unexplained case fails the run: empty list values (5), Tab after a refused word (4), files for a path flag (3), no Tab values for bools (3), `--` at a group (1), and byte-wise flag words and kept quotes (3).
 
-**Licence.** A row re-expresses behaviour: argv and an expected outcome, in this project's own form, on its own tree. No upstream code, comment or issue text is copied. Re-expressed rows need no notice from any source; the `src` column is kept for attribution and for the yearly review. The test file carries one line: "Rows re-express behaviour recorded in the tests and trackers named in `src`." Rows from GPL and LGPL sources are facts only, with no text. This is the ordinary reading for test vectors, not legal advice.
+**Licence.** A row re-expresses behaviour: argv and an expected outcome, in this project's own form, on its own tree. A row from a permissive source (Apache-2.0, MIT, BSD-3-Clause, CC0) may quote, in `upstream`, the input of the case it names; `testdata/corpus-NOTICE.txt`, beside the corpus, lists every source with its licence and copyright notice, and the licence texts. A row from glibc, util-linux or POSIX is cited only: it names the test or the guideline and states the behaviour in our own words, on a command line of our own, with none of their text or expected output; the one input kept is `-+` of `others-203`, because it is the case itself. This is the ordinary reading for test vectors, not legal advice.
 
 **Upkeep.** Once a year, or at a cobra or pflag release if that is rarer: read the changes to the upstream test files since the recorded revision, and search the trackers with the recorded queries. A new IN item becomes a row; an OUT item becomes an inventory line with a reason. A bug report against this library becomes a row with the issue as its source. Measured pace over 12 months: about one pflag change about this grammar, none in cobra.
 
-**The corpus runs through Headscale's layer, on trees with text values.** Each of its three trees has a typed twin, and the driver fails when a twin is not the tree of the same name. A row checks the outcome as text: the command, the flags as typed, the arguments, or the kind of the mistake. No row has an expectation for a typed field; the library's own tests hold those. An expectation of a caller, such as "help", lives with the caller's tests. Splitting the 485 rows into a library part and a caller part is implementation work.
+**The corpus runs through the builder, `cmdline/command`, on trees with text values.** Each of its three trees has a typed twin, and the driver fails when a twin is not the tree of the same name. A row checks the outcome as text: the command, the flags as typed, the arguments, or the kind of the mistake. No row has an expectation for a typed field; the library's own tests hold those. An expectation of a caller, such as "help", lives with the caller's tests. Splitting the 485 rows into a library part and a caller part is implementation work.
 
 ### Fuzz targets
 
@@ -1737,7 +1737,7 @@ The 23 tests of the three packages pass, also with `-race -count=3`. The tests c
 | `FuzzLeaf`                | a value comes back byte for byte in all four spellings; after `--` every word is an argument; where flags stand among arguments changes nothing                                                                                                                                                                                                                                                                           | 2 min, 2.2 M, pass             |
 | `FuzzTab`                 | no panic, no hang, the same answer twice, at most 64 candidates; no candidate that the run then refuses because of that candidate, as an unknown command or flag, a repeat or a bad bool word                                                                                                                                                                                                                             | 2 min, 0.59 M, pass            |
 
-argv in `FuzzRun`, `FuzzLeaf` and `FuzzTab` is the fuzz input split at NUL, at most 64 words and 16 KiB, and a call that takes more than 1 second fails. These three run through Headscale's layer. The failing inputs that found bugs are kept as seeds, so `go test` replays them.
+argv in `FuzzRun`, `FuzzLeaf` and `FuzzTab` is the fuzz input split at NUL, at most 64 words and 16 KiB, and a call that takes more than 1 second fails. These three run through the builder, `cmdline/command`. The failing inputs that found bugs are kept as seeds, so `go test` replays them.
 
 ### Real shells
 
@@ -1783,6 +1783,8 @@ The fuzz targets test argv up to 64 words and 16 KiB.
 ### Where the package lives
 
 **The library starts as a package inside the Headscale module** (decision D25). It stands at the top level of the module, next to `cmd` and `hscontrol`: `github.com/juanfont/headscale/cmdline` (decisions D39 and D51). It is not under `internal/`, so other programs can import it. A test fails when the core imports anything outside Go's standard library; `script` is the exception. It moves to its own repository when a second real user exists. Then only the files of Headscale that import it change their import.
+
+Three packages under it are built on the parser and are not part of this specification: `cmdline/command`, the builder of commands, `cmdline/table`, the table engine, and `cmdline/duration`, the grammar of durations ([001](001-cli.md#our-layer-not-the-frameworks)). They are generic and import no package of Headscale but `cmdline/...`, which a test holds; they may use modules outside the standard library, such as `golang.org/x/term`.
 
 **The name is `cmdline`** (decision D51).
 
