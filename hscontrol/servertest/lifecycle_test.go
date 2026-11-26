@@ -302,6 +302,12 @@ func TestReloginOfExpiredNodeClearsPeerExpiry(t *testing.T) {
 		}
 	}, 5*time.Second, 10*time.Millisecond, "observer must see the node expired")
 
+	// The client regenerates its key only once it has seen its own expiry;
+	// before that it re-registers the old key, which the auth key renews.
+	client.WaitForCondition(t, "own key expired", 5*time.Second, func(nm *netmap.NetworkMap) bool {
+		return nm.SelfNode.Valid() && nm.SelfKeyExpiry().Before(time.Now()) && !nm.SelfKeyExpiry().IsZero()
+	})
+
 	// The server answers the expired key with NodeKeyExpired, so the client
 	// generates a new key, the way tailscaled re-authenticates.
 	client.Reconnect(t)
