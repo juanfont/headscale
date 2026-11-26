@@ -662,6 +662,13 @@ func (pol *Policy) compileOtherDests(
 				prefixes = append(prefixes, approvedSubnetPrefixes(nodes)...)
 			}
 
+			// Tailscale grants a capability once to a destination named twice.
+			if slices.ContainsFunc(capGrants, func(cg tailcfg.CapGrant) bool {
+				return slices.Equal(cg.Dsts, prefixes)
+			}) {
+				continue
+			}
+
 			capGrants = append(capGrants, tailcfg.CapGrant{
 				Dsts:   prefixes,
 				CapMap: grant.App,
