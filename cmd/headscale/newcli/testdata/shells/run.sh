@@ -59,9 +59,13 @@ for sh in bash zsh fish; do
   pids+=($!)
 done
 
+# An error of fish ends some lines in spaces, which the hook that trims
+# trailing whitespace would cut from the record; they are cut here, and
+# nothing else is.
 while IFS= read -r row; do
   echo "LINE: $row"
-  fish --no-config -c "headscale completion fish | source; complete -C '${row%|}'" 2>&1 | sed 's/^/  /' | grep . || echo "  (none)"
+  out=$(fish --no-config -c "headscale completion fish | source; complete -C '${row%|}'" 2>&1 | sed -e 's/ *$//' -e 's/^./  &/')
+  if [[ -n $out ]]; then printf '%s\n' "$out"; else echo "  (none)"; fi
 done <"$work/lines" >"$work/out/fish-c.txt"
 
 headscale completion powershell >"$work/headscale.ps1"

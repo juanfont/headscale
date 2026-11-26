@@ -1,5 +1,5 @@
 LINE: headscale |
-LISTED: [headscale <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / users       -- Manage users / version     -- Print the version / $ headscale ]
+LISTED: [headscale <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale ]
 FINAL: [headscale ]
 
 LINE: headscale ve|
@@ -87,7 +87,7 @@ LISTED: [headscale version -o json --<BEL> / --config  -- Config file / --help  
 FINAL: [headscale version -o json --]
 
 LINE: headscale -c -o |
-LISTED: [headscale -c -o <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / users       -- Manage users / version     -- Print the version / $ headscale -c -o ]
+LISTED: [headscale -c -o <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale -c -o ]
 FINAL: [headscale -c -o ]
 
 LINE: headscale -c x ve|
@@ -95,7 +95,7 @@ LISTED: [headscale -c x version ]
 FINAL: [headscale -c x version]
 
 LINE: headscale nodez |
-LISTED: [headscale nodez <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / users       -- Manage users / version     -- Print the version / $ headscale nodez ]
+LISTED: [headscale nodez <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale nodez ]
 FINAL: [headscale nodez ]
 
 LINE: headscale versoin --|
@@ -143,5 +143,129 @@ LISTED: [headscale -h version ]
 FINAL: [headscale -h version]
 
 LINE: headscale --version |
-LISTED: [headscale --version <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / users       -- Manage users / version     -- Print the version / $ headscale --version ]
+LISTED: [headscale --version <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale --version ]
 FINAL: [headscale --version ]
+
+LINE: headscale no|
+LISTED: [headscale nodes ]
+FINAL: [headscale nodes]
+
+LINE: headscale nodes |
+LISTED: [headscale nodes <BEL> / delete         -- Delete a node / expire         -- Log a node out / get            -- Show one node / list           -- List the nodes / routes         -- Manage the routes of a node / set            -- Change the name or expiry of a node / tags           -- Manage the tags of a node / update-client  -- Ask a node to update its Tailscale client / $ headscale nodes ]
+FINAL: [headscale nodes ]
+
+LINE: headscale nodes routes ap|
+LISTED: [headscale nodes routes approve ]
+FINAL: [headscale nodes routes approve]
+
+LINE: headscale -c x no|
+LISTED: [headscale -c x nodes ]
+FINAL: [headscale -c x nodes]
+
+LINE: headscale nodes list --|
+LISTED: [headscale nodes list --<BEL> / --columns       -- Columns to show: a list, or +name and -name to change the default / --config        -- Config file / --filter        -- Keep the rows that match; may be repeated / --help          -- Show this help / --list-columns  -- List the columns, the API field behind each, and exit / --output        -- Output format: json (the API object) / --sort          -- Column to sort by; -name sorts in reverse / $ headscale nodes list --]
+FINAL: [headscale nodes list --]
+
+LINE: headscale nodes list -o |
+LISTED: [headscale nodes list -o json ]
+FINAL: [headscale nodes list -o json]
+
+LINE: headscale nodes list --columns |
+LISTED: [headscale nodes list --columns <BEL> / advertised-routes  disco-key          expiry             ip                 name               os                 public-ip          update-available                                      / auth-key           enabled-routes     hostname           last-seen          node-key           owner              register-method    version                                               / created            ephemeral          id                 machine-key        online             problems           serving-routes                                                         / $ headscale nodes list --columns ]
+FINAL: [headscale nodes list --columns ]
+
+LINE: headscale nodes list --columns id,na|
+LISTED: [headscale nodes list --columns id,name]
+FINAL: [headscale nodes list --columns id,name]
+
+LINE: headscale nodes list --columns=id,na|
+LISTED: [headscale nodes list --columns=id,name]
+FINAL: [headscale nodes list --columns=id,name]
+
+LINE: headscale nodes list --columns id,|
+LISTED: [headscale nodes list --columns id,<BEL> / id,advertised-routes  id,disco-key          id,expiry             id,last-seen          id,node-key           id,owner              id,register-method    id,version                                 / id,auth-key           id,enabled-routes     id,hostname           id,machine-key        id,online             id,problems           id,serving-routes                                              / id,created            id,ephemeral          id,ip                 id,name               id,os                 id,public-ip          id,update-available                                            / $ headscale nodes list --columns id,]
+FINAL: [headscale nodes list --columns id,]
+
+LINE: headscale nodes list --sort la|
+LISTED: [headscale nodes list --sort last-seen ]
+FINAL: [headscale nodes list --sort last-seen]
+
+LINE: headscale nodes list --sort -la|
+LISTED: [headscale nodes list --sort -last-seen ]
+FINAL: [headscale nodes list --sort -last-seen]
+
+LINE: headscale nodes list --filter=ow|
+LISTED: [headscale nodes list --filter=owner]
+FINAL: [headscale nodes list --filter=owner]
+
+LINE: headscale nodes list |
+LISTED: [headscale nodes list <BEL>]
+FINAL: [headscale nodes list ]
+
+LINE: headscale nodes delete |
+LISTED: [headscale nodes delete <BEL>]
+FINAL: [headscale nodes delete ]
+
+LINE: headscale nodes rm --f|
+LISTED: [headscale nodes rm --force ]
+FINAL: [headscale nodes rm --force]
+
+LINE: headscale nodes list -o=|
+LISTED: [headscale nodes list -o=json ]
+FINAL: [headscale nodes list -o=json]
+
+LINE: headscale nodes list --config |
+LISTED: [headscale nodes list --config <BEL> / config.yaml    policy.hujson / $ headscale nodes list --config ]
+FINAL: [headscale nodes list --config ]
+
+LINE: headscale nodes list --config=|
+LISTED: [headscale nodes list --config=<BEL> / config.yaml    policy.hujson / $ headscale nodes list --config=]
+FINAL: [headscale nodes list --config=]
+
+LINE: headscale nodes set 12 --name |
+LISTED: [headscale nodes set 12 --name <BEL>]
+FINAL: [headscale nodes set 12 --name ]
+
+LINE: headscale nodes routes |
+LISTED: [headscale nodes routes <BEL> / clear  -- Remove all enabled routes of a node / list   -- List routes / set    -- Replace the enabled routes of a node / $ headscale nodes routes ]
+FINAL: [headscale nodes routes ]
+
+LINE: headscale nodes list --s|
+LISTED: [headscale nodes list --sort ]
+FINAL: [headscale nodes list --sort]
+
+LINE: headscale nodes list -|
+LISTED: [headscale nodes list --]
+FINAL: [headscale nodes list --]
+
+LINE: headscale nodes list -c|
+LISTED: [headscale nodes list -c ]
+FINAL: [headscale nodes list -c]
+
+LINE: headscale nodes list --bogus --l|
+LISTED: [headscale nodes list --bogus --list-columns ]
+FINAL: [headscale nodes list --bogus --list-columns]
+
+LINE: headscale nodes list --sort id --s|
+LISTED: [headscale nodes list --sort id --s<BEL>]
+FINAL: [headscale nodes list --sort id --s]
+
+LINE: headscale nodes list --filter id --f|
+LISTED: [headscale nodes list --filter id --filter ]
+FINAL: [headscale nodes list --filter id --filter]
+
+LINE: headscale nodes delete o |
+LISTED: [headscale nodes delete o <BEL>]
+FINAL: [headscale nodes delete o ]
+
+LINE: headscale nodes routes set 12 -- --|
+LISTED: [headscale nodes routes set 12 -- --<BEL>]
+FINAL: [headscale nodes routes set 12 -- --]
+
+LINE: headscale nodes list --filter -ow|
+LISTED: [headscale nodes list --filter -ow<BEL>]
+FINAL: [headscale nodes list --filter -ow]
+
+LINE: headscale nodes list --columns id,-ho|
+LISTED: [headscale nodes list --columns id,-hostname]
+FINAL: [headscale nodes list --columns id,-hostname]
