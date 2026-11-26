@@ -102,9 +102,8 @@ runs:
         curl -fsS --retry 60 --retry-delay 1 --retry-all-errors --cacert /tmp/hs/tls.crt \
           "${URL}/health" || { cat /tmp/hs/serve.log; exit 1; }
 
-        # Not UID: that is a readonly bash builtin.
-        USERID=$(./result/bin/headscale users create ci -o json | jq -r .id)
-        PREAUTH=$(./result/bin/headscale preauthkeys create --user "$USERID" --reusable)
+        ./result/bin/headscale users create ci >/dev/null
+        PREAUTH=$(./result/bin/headscale auth keys create ci --reusable)
 
         echo "::add-mask::$PREAUTH"
         {
