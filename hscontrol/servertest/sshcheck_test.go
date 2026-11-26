@@ -66,7 +66,7 @@ func TestSSHCheckReDelegatesWhenSessionMissing(t *testing.T) {
 
 	// The follow-up poll carries the real auth_id whose session is now missing.
 	// With an active check the server must re-delegate a fresh session.
-	followUp := pollSSHAction(t, h.Server.URL, h.Client(1), srcID, dstID, authID.String())
+	followUp := pollSSHAction(t, h.Server.URL, h.Client(1), srcID, dstID, authID.Raw())
 	require.NotEmpty(t, followUp.HoldAndDelegate,
 		"a missing session under an active check must re-delegate, got %+v", followUp)
 
@@ -180,7 +180,7 @@ func TestSSHCheckRejectedAfterRuleRemoved(t *testing.T) {
 			_, checkFound := h.Server.State().SSHCheckParams(srcID, dstID, sshCheckLocalUser)
 			require.False(t, checkFound, "test setup: check must be gone")
 
-			for poll, id := range map[string]string{"initial": "", "follow-up": authID.String()} {
+			for poll, id := range map[string]string{"initial": "", "follow-up": authID.Raw()} {
 				action := pollSSHAction(t, h.Server.URL, h.Client(1), srcID, dstID, id)
 				assert.True(t, action.Reject, "%s poll must reject, got %+v", poll, action)
 				assert.Empty(t, action.HoldAndDelegate, "%s poll must not delegate", poll)
@@ -270,7 +270,7 @@ func TestSSHCheckApprovalDroppedAfterSourceTagConversion(t *testing.T) {
 	require.True(t, ok)
 	auth.FinishAuth(types.AuthVerdict{})
 
-	approved := pollSSHAction(t, h.Server.URL, h.Client(1), srcID, dstID, authID.String())
+	approved := pollSSHAction(t, h.Server.URL, h.Client(1), srcID, dstID, authID.Raw())
 	require.True(t, approved.Accept)
 	cached := pollSSHAction(t, h.Server.URL, h.Client(1), srcID, dstID, "")
 	require.True(t, cached.Accept)
