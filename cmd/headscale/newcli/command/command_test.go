@@ -1594,3 +1594,91 @@ func TestWithheld(t *testing.T) {
 		})
 	}
 }
+
+// TestDoors: a local command's text, Failed and ExitCode, and what each is
+// where it does not belong: a server command exits 1 and prints no result
+// with its error, and a code no exit can carry is 1.
+func TestDoors(t *testing.T) {
+	t.Parallel()
+
+	text := func(name string, err error) Node {
+		return New(Spec[NoInput, Text]{
+			Name:    name,
+			Short:   "S",
+			Long:    "S.",
+			Example: []string{"prog " + name},
+			Local:   true,
+			Run:     func(Ctx, NoInput) (Text, error) { return "report\n", err },
+		})
+	}
+	exit := func(name string, local bool, err error) Node {
+		return New(Spec[NoInput, item]{
+			Name:    name,
+			Short:   "S",
+			Long:    "S.",
+			Example: []string{"prog " + name},
+			Local:   local,
+			Columns: itemColumns,
+			Run:     func(Ctx, NoInput) (item, error) { return item{ID: "1"}, err },
+		})
+	}
+
+	tree, err := Build("prog", "A program",
+		text("failed", Failed(errBroken)),
+		text("failed-nil", Failed(nil)),
+		text("coded-failed", Failed(ExitCode(3, errBroken))),
+		exit("coded", true, ExitCode(78, errBroken)),
+		exit("coded-nil", true, ExitCode(78, nil)),
+		exit("failed-nil-item", true, Failed(nil)),
+		exit("coded-zero", true, ExitCode(0, errBroken)),
+		exit("coded-big", true, ExitCode(256, errBroken)),
+		exit("coded-negative", true, ExitCode(-1, errBroken)),
+		exit("server-coded", false, ExitCode(78, errBroken)),
+		exit("server-failed", false, Failed(errBroken)),
+	)
+	require.NoError(t, err)
+
+	broke := "Error: it broke\n"
+
+	for _, tt := range []struct {
+		line           string
+		stdout, stderr string
+		code           int
+	}{
+		{line: "failed", stdout: "report\n", stderr: broke, code: 1},
+		{line: "failed-nil", stdout: "report\n"},
+		{line: "coded-failed", stdout: "report\n", stderr: broke, code: 3},
+		{line: "coded", stderr: broke, code: 78},
+		{line: "coded-nil", stdout: "ID:    1\nName:  -\n"},
+		{line: "failed-nil-item", stdout: "ID:    1\nName:  -\n"},
+		{line: "coded-zero", stderr: broke, code: 1},
+		{line: "coded-big", stderr: broke, code: 1},
+		{line: "coded-negative", stderr: broke, code: 1},
+		{line: "server-coded", stderr: broke, code: 1},
+		{line: "server-failed", stderr: broke, code: 1},
+	} {
+		t.Run(tt.line, func(t *testing.T) {
+			t.Parallel()
+
+			file := filepath.Join(t.TempDir(), "config.yaml")
+			require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+			var stdout, stderr bytes.Buffer
+
+			code := Run(tree, []string{tt.line}, Env{
+				Stdout:  &stdout,
+				Stderr:  &stderr,
+				Version: &types.VersionInfo{Version: "dev"},
+				Environ: []string{
+					"HEADSCALE_CONFIG=" + file,
+					"HEADSCALE_CLI_ADDRESS=" + fakeServer(t),
+					"HEADSCALE_CLI_API_KEY=key",
+				},
+			})
+
+			require.Equal(t, tt.stdout, stdout.String(), "stdout")
+			require.Equal(t, tt.stderr, stderr.String(), "stderr")
+			require.Equal(t, tt.code, code)
+		})
+	}
+}

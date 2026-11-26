@@ -1758,6 +1758,78 @@ func TestNotTheAPI(t *testing.T) {
 	}
 }
 
+// TestConfigIsYAML: GET /config is the one answer of v0 that is not JSON.
+// It is taken only as its one success, a 200 whose type parses and is
+// YAML, and as it came; any other is refused, as an answer of another
+// operation that is not JSON is.
+func TestConfigIsYAML(t *testing.T) {
+	t.Parallel()
+
+	const yaml = "# the docs\nserver_url: https://hs.example.com\n\n"
+
+	const notYAML = "it is not YAML."
+
+	for _, tt := range []struct {
+		name, ctype, body string
+		status            int
+		want, why         string
+	}{
+		{name: "YAML", ctype: "application/yaml", body: yaml, status: 200, want: yaml},
+		{name: "YAML with a charset", ctype: "application/yaml; charset=utf-8", body: yaml, status: 200, want: yaml},
+		{name: "JSON", ctype: "application/json", body: `{"server_url": "x"}`, status: 200, why: notYAML},
+		{name: "a page of HTML", ctype: "text/html", body: "<html>hi</html>", status: 200, why: notYAML},
+		{name: "YAML with no type", body: yaml, status: 200, why: notYAML},
+		{name: "a 204 with no type", status: 204, why: "it is 204 No Content, not the 200 OK this operation answers."},
+		{name: "a 204 of YAML", ctype: "application/yaml", status: 204, why: "it is 204 No Content, not the 200 OK this operation answers."},
+		{name: "a 206 of YAML", ctype: "application/yaml", body: "serve", status: 206, why: "it is 206 Partial Content, not the 200 OK this operation answers."},
+		{name: "a 201 of YAML", ctype: "application/yaml", body: yaml, status: 201, why: "it is 201 Created, not the 200 OK this operation answers."},
+		{name: "YAML with a parameter that does not parse", ctype: "application/yaml; charset", body: yaml, status: 200, why: notYAML},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Headscale-Version", "dev")
+					w.Header().Set("Content-Type", tt.ctype)
+					w.WriteHeader(tt.status)
+					_, _ = w.Write([]byte(tt.body))
+				}),
+			)
+			t.Cleanup(s.Close)
+
+			a, err := connectTest(
+				&types.Config{
+					CLI: types.CLIConfig{
+						Address: s.URL,
+						APIKey:  "key",
+						Timeout: time.Minute,
+					},
+				},
+				Env{Stderr: io.Discard, Version: types.GetVersionInfo()},
+			)
+			require.NoError(t, err)
+
+			got, err := getConfig(t.Context(), a, true)
+			if tt.want != "" {
+				require.NoError(t, err)
+				require.Equal(t, Text(tt.want), got)
+
+				return
+			}
+
+			require.EqualError(
+				t,
+				err,
+				"the server at "+strings.TrimPrefix(
+					s.URL,
+					"http://",
+				)+" sent an answer this CLI cannot read: "+tt.why,
+			)
+		})
+	}
+}
+
 // TestRedirect: no request follows a redirect, whatever its method and its
 // status, so nothing reaches the host the answer points to; the error names
 // that host by scheme and host only.
@@ -2449,6 +2521,22 @@ func setNodeTags(ctx context.Context, a *API, id string, tags []string) error {
 	))
 
 	return a.errorOf(err)
+}
+
+// getConfig is GET /config as generate config --running reads it.
+func getConfig(ctx context.Context, a *API, docs bool) (Text, error) {
+	ctx = reading(ctx, a)
+
+	resp, err := a.GetConfigWithResponse(ctx, &clientv0.GetConfigParams{Docs: &docs})
+	if err == nil {
+		err = resp.Err()
+	}
+
+	if err != nil {
+		return "", a.errorOf(err)
+	}
+
+	return Text(resp.Body), nil
 }
 
 // bare is an API on url with no version check, as a test of how an answer
