@@ -1358,7 +1358,7 @@ tag:test     0      yes
 	{
 		name:   "a tag the policy does not name",
 		args:   "nodes tags set 13 tag:serverr",
-		stderr: "Error: these tags are not in the policy: tag:serverr\n",
+		stderr: "Error: these tags are not in the policy: tag:serverr.\n",
 		code:   1,
 	},
 	{
@@ -1406,7 +1406,7 @@ tag:test     0      yes
 			f.vars["token"] = f.taggedToken(tb, []string{"tag:ci"}, "devices:core")
 		},
 		env: []string{"HEADSCALE_CLI_ADDRESS={url}", "HEADSCALE_CLI_API_KEY={token}"},
-		stderr: "Error: this credential may not do that.\nAn OAuth access token gives, takes and makes keys for only tags it holds or owns, " +
+		stderr: "Error: this credential may not do that.\nAn OAuth access token gives and takes only tags it holds or owns, " +
 			"and changes only a node whose tags are all its own; an API key may give any tag of the policy.\n",
 		code: 1,
 	},

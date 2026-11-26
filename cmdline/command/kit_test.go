@@ -2131,6 +2131,12 @@ var beyondKit = []string{
 	"auth keys list",
 	"auth keys get",
 	"auth keys delete",
+	"api keys list",
+	"api keys get",
+	"api keys delete",
+	"api oauth-clients list",
+	"api oauth-clients get",
+	"api oauth-clients delete",
 }
 
 func TestKitKnowsHeadscale(t *testing.T) {

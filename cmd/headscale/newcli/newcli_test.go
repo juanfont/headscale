@@ -75,6 +75,8 @@ type cliCase struct {
 	// clients is a server that Tailscale clients of the test can join,
 	// over its memory network; it has no TCP listener then.
 	clients bool
+	// server are options of the case's server beyond the fixture's own.
+	server []servertest.ServerOption
 }
 
 type result struct {
@@ -115,6 +117,7 @@ func newFixtureAt(
 	tb testing.TB,
 	clients bool,
 	clock func(time.Time) time.Time,
+	server ...servertest.ServerOption,
 ) *fixture {
 	tb.Helper()
 
@@ -128,10 +131,10 @@ func newFixtureAt(
 	now = now.UTC().Truncate(time.Second)
 
 	// The node store waits for a batch to fill; a test does not.
-	opts := []servertest.ServerOption{
+	opts := append([]servertest.ServerOption{
 		servertest.WithNodeStoreBatchTimeout(time.Millisecond),
 		servertest.WithConnectedSeen(func() time.Time { return now }),
-	}
+	}, server...)
 	if !clients {
 		opts = append(opts, servertest.WithRealListener())
 	}
@@ -293,7 +296,7 @@ func runCases(t *testing.T, setup func(testing.TB, *fixture), cases []cliCase) {
 				"a case sets stdout or want, not both",
 			)
 
-			f := newFixtureAt(t, tc.clients, tc.clock)
+			f := newFixtureAt(t, tc.clients, tc.clock, tc.server...)
 			if setup != nil {
 				setup(t, f)
 			}
@@ -889,6 +892,14 @@ Server commands (talk to a running headscale):
   auth keys create <owner>   Create an auth key
   auth keys delete <key>   Revoke an auth key (alias: rm)
   api whoami   Show who the server sees calling
+  api keys list   List the API keys (alias: ls)
+  api keys get <key>   Show one API key
+  api keys create   Create an API key
+  api keys delete <key>   Revoke an API key (alias: rm)
+  api oauth-clients list   List the OAuth clients (alias: ls)
+  api oauth-clients get <client>   Show one OAuth client
+  api oauth-clients create <scopes>   Create an OAuth client
+  api oauth-clients delete <client>   Revoke an OAuth client (alias: rm)
 
 Debug:
 
