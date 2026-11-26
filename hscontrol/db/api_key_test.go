@@ -350,7 +350,6 @@ func TestCredentialKindsAreIsolated(t *testing.T) {
 
 	_, err = db.GetPreAuthKeyByID(apiKey.ID)
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
-	require.ErrorIs(t, db.SetPreAuthKeyDescription(apiKey.ID, "x"), ErrPreAuthKeyNotFound)
 
 	// Both rows survived the cross-kind attempts.
 	_, err = db.GetPreAuthKeyByID(pakNew.ID)

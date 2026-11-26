@@ -251,21 +251,24 @@ func TestSSHCheckAuthKeepsApprovalOnExpiryExtension(t *testing.T) {
 	}
 }
 
-// TestSSHCheckAuthExpiresWithinBatch: a relogin that shares the expiry's
+// renewInStore renews the node's key expiry in the NodeStore, as a login did.
+func renewInStore(s *State, id types.NodeID) {
+	s.nodeStore.UpdateNode(id, func(n *types.Node) {
+		n.Expiry = new(time.Now().Add(24 * time.Hour))
+	})
+}
+
+// TestSSHCheckAuthExpiresWithinBatch: a write that shares the expiry's
 // NodeStore batch renews the node before SetNodeExpiry sees it, so the expiry
-// must forget approvals from what its own write saw.
+// must forget approvals from what its own write saw. A login no longer does
+// that (it publishes a committed write and keeps later fields), so the
+// renewal here is a NodeStore write of its own.
 func TestSSHCheckAuthExpiresWithinBatch(t *testing.T) {
 	s := newTestStateForSSHCheck(t)
 	src, dst := types.NodeID(1), types.NodeID(2)
 	s.SetLastSSHAuth(src, dst)
-	node, ok := s.GetNodeByID(src)
-	require.True(t, ok)
 
-	userID := types.UserID(node.UserID().Get())
-	pak, err := s.CreatePreAuthKey(&userID, true, false, nil, nil)
-	require.NoError(t, err)
-
-	// Hold the writer so the expiry and the relogin land in one batch, in
+	// Hold the writer so the expiry and the renewal land in one batch, in
 	// this order.
 	entered, release := make(chan struct{}), make(chan struct{})
 
@@ -289,23 +292,19 @@ func TestSSHCheckAuthExpiresWithinBatch(t *testing.T) {
 
 	waitParkedOnWriteQueue(t, "SetNodeExpiry")
 
-	regDone := make(chan error, 1)
+	renewDone := make(chan struct{})
 
 	go func() {
-		_, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
-			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
-			NodeKey:  key.NewNode().Public(),
-			Hostinfo: &tailcfg.Hostinfo{Hostname: node.Hostname()},
-			Expiry:   time.Now().Add(24 * time.Hour),
-		}, node.MachineKey())
-		regDone <- err
+		defer close(renewDone)
+
+		renewInStore(s, src)
 	}()
 
-	waitParkedOnWriteQueue(t, "reregisterNodeWithPAK")
+	waitParkedOnWriteQueue(t, "renewInStore")
 
 	releaseOnce()
 	require.NoError(t, <-expiryDone)
-	require.NoError(t, <-regDone)
+	<-renewDone
 
 	renewed, ok := s.GetNodeByID(src)
 	require.True(t, ok)

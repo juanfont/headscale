@@ -1,8 +1,10 @@
 package db
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -57,33 +59,25 @@ func (hsdb *HSDatabase) CreatePreAuthKey(
 	})
 }
 
-// CreateTokenPreAuthKey is [HSDatabase.CreatePreAuthKey] for a key an OAuth
-// access token makes, marked as such in the same transaction.
-func (hsdb *HSDatabase) CreateTokenPreAuthKey(
-	uid *types.UserID,
-	reusable bool,
-	ephemeral bool,
-	expiration *time.Time,
-	aclTags []string,
-) (*types.PreAuthKeyNew, error) {
-	return Write(hsdb.DB, func(tx *gorm.DB) (*types.PreAuthKeyNew, error) {
-		pak, err := CreatePreAuthKey(tx, uid, reusable, ephemeral, expiration, aclTags)
-		if err != nil {
-			return nil, err
-		}
-
-		err = tx.Model(&types.Credential{}).
-			Where("id = ?", pak.ID).
-			Update("created_by_token", true).Error
-		if err != nil {
-			return nil, fmt.Errorf("marking key as made by a token: %w", err)
-		}
-
-		return pak, nil
-	})
-}
-
 const authKeyPrefix = "hskey-auth-"
+
+// NewPreAuthKey is what a key is made from.
+type NewPreAuthKey struct {
+	// User is the owner of a user's key. The legacy APIs also set it on a
+	// tagged key, for the user who made it.
+	User        *types.UserID
+	Tags        []string
+	Reusable    bool
+	Ephemeral   bool
+	Expiration  *time.Time
+	Description string
+	// CreatedBy is the user who owns the credential that made the key.
+	CreatedBy *types.UserID
+	// ByToken marks a key an OAuth access token made.
+	ByToken bool
+	// Created is when the key was made; zero is now.
+	Created time.Time
+}
 
 // CreatePreAuthKey creates a new [types.PreAuthKey] in a user, and returns it.
 // The uid parameter can be nil for system-created tagged keys.
@@ -97,9 +91,19 @@ func CreatePreAuthKey(
 	expiration *time.Time,
 	aclTags []string,
 ) (*types.PreAuthKeyNew, error) {
+	_, made, err := CreatePreAuthKeyFrom(tx, NewPreAuthKey{
+		User: uid, Tags: aclTags, Reusable: reusable, Ephemeral: ephemeral, Expiration: expiration,
+	})
+
+	return made, err
+}
+
+// CreatePreAuthKeyFrom creates the key k describes. It returns the key as
+// stored, and once its secret.
+func CreatePreAuthKeyFrom(tx *gorm.DB, k NewPreAuthKey) (*types.PreAuthKey, *types.PreAuthKeyNew, error) {
 	// Validate: must be tagged OR user-owned, not neither
-	if uid == nil && len(aclTags) == 0 {
-		return nil, ErrPreAuthKeyNotTaggedOrOwned
+	if k.User == nil && len(k.Tags) == 0 {
+		return nil, nil, ErrPreAuthKeyNotTaggedOrOwned
 	}
 
 	var (
@@ -107,45 +111,68 @@ func CreatePreAuthKey(
 		userID *uint
 	)
 
-	if uid != nil {
+	if k.User != nil {
 		var err error
 
-		user, err = GetUserByID(tx, *uid)
+		user, err = GetUserByID(tx, *k.User)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		userID = &user.ID
 	}
 
-	aclTags, err := validateACLTags(aclTags)
+	aclTags, err := validateACLTags(k.Tags)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	now := time.Now().UTC()
+	var createdBy *uint
+	if k.CreatedBy != nil {
+		createdBy = new(uint(*k.CreatedBy))
+	}
+
+	now := k.Created
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 
 	keyStr, identifier, hash := generateSecret(authKeyPrefix)
 
 	// Set only UserID for the write so GORM does not upsert the User row; the
 	// User is attached afterwards for the returned projection.
 	cred := types.Credential{
-		Kind:       types.CredentialPreAuthKey,
-		Identifier: identifier,
-		Hash:       hash,
-		UserID:     userID, // nil for system-created keys, or "created by" for tagged keys
-		Reusable:   reusable,
-		Ephemeral:  ephemeral,
-		CreatedAt:  &now,
-		Expiration: expiration,
-		Tags:       aclTags, // empty for user-owned keys
+		Kind:            types.CredentialPreAuthKey,
+		Identifier:      identifier,
+		Hash:            hash,
+		UserID:          userID, // nil for system-created keys, or "created by" for tagged keys
+		Description:     k.Description,
+		Reusable:        k.Reusable,
+		Ephemeral:       k.Ephemeral,
+		CreatedByToken:  k.ByToken,
+		CreatedByUserID: createdBy,
+		CreatedAt:       &now,
+		Expiration:      k.Expiration,
+		Tags:            aclTags, // empty for user-owned keys
 	}
 
 	if err := tx.Save(&cred).Error; err != nil { //nolint:noinlineerr
-		return nil, fmt.Errorf("creating key in database: %w", err)
+		return nil, nil, fmt.Errorf("creating key in database: %w", err)
 	}
 
-	return &types.PreAuthKeyNew{
+	cred.User = user // nil for system-created keys
+
+	// The maker, read in the write: the answer of a create needs no read after
+	// the commit, which could fail and lose the secret.
+	var maker *types.User
+	if createdBy != nil {
+		maker, err = GetUserByID(tx, types.UserID(*createdBy))
+		if err != nil && !errors.Is(err, ErrUserNotFound) {
+			return nil, nil, err
+		}
+	}
+
+	return credentialToPreAuthKey(&cred), &types.PreAuthKeyNew{
 		ID:         cred.ID,
 		Key:        keyStr,
 		Reusable:   cred.Reusable,
@@ -153,26 +180,9 @@ func CreatePreAuthKey(
 		Tags:       cred.Tags,
 		Expiration: cred.Expiration,
 		CreatedAt:  cred.CreatedAt,
-		User:       user, // nil for system-created keys
+		User:       user,
+		CreatedBy:  maker,
 	}, nil
-}
-
-// SetPreAuthKeyDescription sets the free-text description on a pre-auth key.
-// The v2 keys API sets it after creation rather than threading it through the
-// many-armed CreatePreAuthKey signature shared by every other caller.
-func (hsdb *HSDatabase) SetPreAuthKeyDescription(id uint64, description string) error {
-	res := hsdb.DB.Model(&types.Credential{}).
-		Where("kind = ? AND id = ?", types.CredentialPreAuthKey, id).
-		Update("description", description)
-	if res.Error != nil {
-		return res.Error
-	}
-
-	if res.RowsAffected == 0 {
-		return ErrPreAuthKeyNotFound
-	}
-
-	return nil
 }
 
 func (hsdb *HSDatabase) ListPreAuthKeys() ([]types.PreAuthKey, error) {
@@ -215,6 +225,179 @@ func ListPreAuthKeysByUser(tx *gorm.DB, uid types.UserID) ([]types.PreAuthKey, e
 	}
 
 	return keys, nil
+}
+
+// PreAuthKeyFilter narrows a page of keys; a zero field matches every key.
+// When both are set, a key must match both.
+type PreAuthKeyFilter struct {
+	// User matches the keys the user owns; a tagged key never matches.
+	User types.UserID
+	Tag  string
+}
+
+// where is the filter in SQL. It may select more than [PreAuthKeyFilter.keeps]
+// keeps, never less.
+func (f PreAuthKeyFilter) where(rx *gorm.DB) *gorm.DB {
+	if f.User != 0 {
+		// A tagged key's JSON list holds a quoted string; a user's key has none.
+		rx = rx.Where("user_id = ? AND (tags IS NULL OR tags NOT LIKE ?)", uint(f.User), `%"%`)
+	}
+
+	if f.Tag != "" {
+		// The tag as the JSON serializer stores it; a case-sensitive substring
+		// on both databases, which LIKE is not on SQLite.
+		quoted, _ := json.Marshal(f.Tag) //nolint:errchkjson // a string always marshals
+
+		contains := "instr(tags, ?) > 0"
+		if rx.Name() == "postgres" {
+			contains = "strpos(tags, ?) > 0"
+		}
+
+		rx = rx.Where(contains, string(quoted))
+	}
+
+	return rx
+}
+
+func (f PreAuthKeyFilter) keeps(k *types.PreAuthKey) bool {
+	return (f.User == 0 || !k.IsTagged() && k.UserID != nil && types.UserID(*k.UserID) == f.User) &&
+		(f.Tag == "" || slices.Contains(k.Tags, f.Tag))
+}
+
+// ListPreAuthKeysPage returns, in ID order, up to limit keys with an ID
+// above after that f matches, revoked keys too, and the IDs of those a node
+// refers to; both from one transaction, which ends with ctx.
+func (hsdb *HSDatabase) ListPreAuthKeysPage(
+	ctx context.Context,
+	after uint64,
+	limit int,
+	f PreAuthKeyFilter,
+) ([]types.PreAuthKey, set.Set[uint64], error) {
+	type page struct {
+		keys []types.PreAuthKey
+		refs set.Set[uint64]
+	}
+
+	p, err := Read(hsdb.DB.WithContext(ctx), func(rx *gorm.DB) (page, error) {
+		var keys []types.PreAuthKey
+
+		creds, err := pageCredentials(rx, types.CredentialPreAuthKey, after, limit, f.where, func(c *types.Credential) bool {
+			k := credentialToPreAuthKey(c)
+			if f.keeps(k) {
+				keys = append(keys, *k)
+
+				return true
+			}
+
+			return false
+		})
+		if err != nil {
+			return page{}, err
+		}
+
+		ids := make([]uint64, len(creds))
+		for i := range creds {
+			ids[i] = creds[i].ID
+		}
+
+		refs, err := preAuthKeysReferenced(rx, ids)
+
+		return page{keys: keys, refs: refs}, err
+	})
+
+	return p.keys, p.refs, err
+}
+
+// maxCredentialBatch bounds the rows one query of a page reads.
+const maxCredentialBatch = 1000
+
+// pageCredentials is, in ID order, up to limit credentials of kind with an
+// ID above after that where selects in SQL and keep keeps. where may select
+// more than keep keeps; the batches double up to [maxCredentialBatch], so the
+// queries of a page do not grow with how few rows keep keeps.
+func pageCredentials(
+	rx *gorm.DB,
+	kind types.CredentialKind,
+	after uint64,
+	limit int,
+	where func(*gorm.DB) *gorm.DB,
+	keep func(*types.Credential) bool,
+) ([]types.Credential, error) {
+	var kept []types.Credential
+
+	for batch := limit; len(kept) < limit; batch = max(limit, min(2*batch, maxCredentialBatch)) {
+		var creds []types.Credential
+
+		err := where(rx.Preload("User").Where("kind = ? AND id > ?", kind, after)).
+			Order("id").Limit(batch).
+			Find(&creds).Error
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range creds {
+			if len(kept) < limit && keep(&creds[i]) {
+				kept = append(kept, creds[i])
+			}
+		}
+
+		if len(creds) < batch {
+			break
+		}
+
+		after = creds[len(creds)-1].ID
+	}
+
+	return kept, nil
+}
+
+// GetPreAuthKeyWithReference is the key with id, and whether a node refers
+// to it, from one transaction.
+func (hsdb *HSDatabase) GetPreAuthKeyWithReference(id uint64) (*types.PreAuthKey, bool, error) {
+	type found struct {
+		key        *types.PreAuthKey
+		referenced bool
+	}
+
+	f, err := Read(hsdb.DB, func(rx *gorm.DB) (found, error) {
+		var cred types.Credential
+
+		err := rx.Preload("User").First(&cred, "kind = ? AND id = ?", types.CredentialPreAuthKey, id).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return found{}, ErrPreAuthKeyNotFound
+		}
+
+		if err != nil {
+			return found{}, err
+		}
+
+		refs, err := preAuthKeysReferenced(rx, []uint64{id})
+
+		return found{key: credentialToPreAuthKey(&cred), referenced: refs.Contains(id)}, err
+	})
+
+	return f.key, f.referenced, err
+}
+
+// preAuthKeysReferenced is the IDs of ids that a node's auth_key_id holds.
+func preAuthKeysReferenced(rx *gorm.DB, ids []uint64) (set.Set[uint64], error) {
+	refs := set.Set[uint64]{}
+	if len(ids) == 0 {
+		return refs, nil
+	}
+
+	var held []uint64
+
+	err := rx.Model(&types.Node{}).
+		Where("auth_key_id IN ?", ids).
+		Distinct().Pluck("auth_key_id", &held).Error
+	if err != nil {
+		return nil, fmt.Errorf("reading the nodes of auth keys: %w", err)
+	}
+
+	refs.AddSlice(held)
+
+	return refs, nil
 }
 
 var (
@@ -484,18 +667,58 @@ func (hsdb *HSDatabase) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, 
 // guard the previous code (Update("used", true) with no WHERE) would
 // silently let both transactions claim the key.
 func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
-	res := tx.Model(&types.Credential{}).
-		Where("kind = ? AND id = ? AND used = ?", types.CredentialPreAuthKey, k.ID, false).
-		Update("used", true)
+	return ClaimPreAuthKey(tx, k, true)
+}
+
+// ClaimPreAuthKey is the last check of a registration with k, made in the
+// registration's transaction: a revoked or expired key is refused, and with
+// consume a single-use key another node took. The key was read and checked
+// before; a revoke or expire that answered since then must still hold. The
+// UPDATE locks the key's row, so one that committed is seen, and one that
+// has not waits for this registration and answers after the node exists.
+func ClaimPreAuthKey(tx *gorm.DB, k *types.PreAuthKey, consume bool) error {
+	q := tx.Model(&types.Credential{}).
+		Where("kind = ? AND id = ? AND revoked IS NULL", types.CredentialPreAuthKey, k.ID)
+
+	// A reusable key's row is written as it is, for the lock and the count.
+	var used any = gorm.Expr("used")
+	if consume {
+		q, used = q.Where("used = ?", false), true
+	}
+
+	res := q.Updates(map[string]any{
+		"used":       used,
+		"first_used": gorm.Expr("COALESCE(first_used, ?)", time.Now().UTC()),
+	})
 	if res.Error != nil {
 		return fmt.Errorf("updating key used status in database: %w", res.Error)
 	}
 
-	if res.RowsAffected == 0 {
+	// Read after the UPDATE holds the row. The expiry is compared here, not
+	// in SQL: SQLite compares stored times as text, in whatever zone wrote them.
+	var cred types.Credential
+
+	err := tx.Select("revoked", "expiration", "first_used").First(&cred, "kind = ? AND id = ?", types.CredentialPreAuthKey, k.ID).Error
+
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return ErrPreAuthKeyNotFound
+	case err != nil:
+		return fmt.Errorf("reading key: %w", err)
+	case cred.Revoked != nil:
+		return types.PAKError("authkey revoked")
+	case cred.Expiration != nil && types.ExpiredAt(*cred.Expiration, time.Now()):
+		return types.PAKError("authkey expired")
+	case res.RowsAffected == 0:
 		return types.PAKError("authkey already used")
 	}
 
-	k.Used = true
+	if consume {
+		k.Used = true
+	}
+
+	// The time stored, this claim's or an earlier one's.
+	k.FirstUsed = cred.FirstUsed
 
 	return nil
 }

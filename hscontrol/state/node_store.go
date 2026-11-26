@@ -628,6 +628,15 @@ func (s *NodeStore) Stop() {
 	})
 }
 
+func (s *NodeStore) isStopped() bool {
+	select {
+	case <-s.stopped:
+		return true
+	default:
+		return false
+	}
+}
+
 // processWrite processes the write queue in batches.
 func (s *NodeStore) processWrite() {
 	c := time.NewTicker(s.batchTimeout)

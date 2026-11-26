@@ -446,6 +446,15 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// When a node first joined with an auth key. Nothing recorded
+				// it, so existing rows stay NULL: a node's creation time is not
+				// when the key it now refers to was first used, and the used
+				// flag keeps meaning what it meant.
+				ID:       "202611252300-credential-first-used",
+				Migrate:  addCredentialFirstUsed,
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -816,4 +825,25 @@ func Write[T any](db *gorm.DB, fn func(tx *gorm.DB) (T, error)) (T, error) {
 	}
 
 	return ret, tx.Commit().Error
+}
+
+// addCredentialFirstUsed adds credentials.first_used.
+func addCredentialFirstUsed(tx *gorm.DB) error {
+	return tx.Transaction(func(tx *gorm.DB) error {
+		if tx.Migrator().HasColumn(&types.Credential{}, "first_used") {
+			return nil
+		}
+
+		colType := "datetime"
+		if tx.Name() != sqlite.DriverName {
+			colType = "timestamptz"
+		}
+
+		err := tx.Exec(`ALTER TABLE credentials ADD COLUMN first_used ` + colType).Error
+		if err != nil {
+			return fmt.Errorf("adding first_used to credentials: %w", err)
+		}
+
+		return nil
+	})
 }

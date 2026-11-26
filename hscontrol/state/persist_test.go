@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/netip"
@@ -2299,9 +2300,13 @@ func TestRegistrationRecordsCreator(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, new(user.ID), creator(viaKey(t, taggedKey)), "the maker of a tagged key")
 
-	tokenKey, err := s.CreateTokenPreAuthKey(nil, false, false, nil, []string{"tag:ci"})
+	_, tokenKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, ByToken: true}, func() error { return nil })
 	require.NoError(t, err)
 	assert.Nil(t, creator(viaKey(t, tokenKey)), "a key a token made")
+
+	_, apiKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, CreatedBy: user.TypedID()}, func() error { return nil })
+	require.NoError(t, err)
+	assert.Equal(t, new(user.ID), creator(viaKey(t, apiKey)), "the maker of a tagged key that records it apart")
 
 	authID := types.MustAuthID()
 	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
@@ -2313,6 +2318,67 @@ func TestRegistrationRecordsCreator(t *testing.T) {
 	byLogin, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodCLI)
 	require.NoError(t, err)
 	assert.Equal(t, new(user.ID), creator(byLogin), "a login")
+}
+
+var errRefused = errors.New("tag:ci does not own tag:prod")
+
+// TestCreateAuthKeyIfHoldsThePolicy: a key's check reads the policy and the
+// key is stored later. A policy write that would refuse the key waits for
+// it, so no key is stored under a policy its check did not read. Without
+// the lock the policy write finishes first.
+func TestCreateAuthKeyIfHoldsThePolicy(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": [], "tag:prod": ["tag:ci"]}}`))
+	require.NoError(t, err)
+
+	k := db.NewPreAuthKey{Tags: []string{"tag:prod"}, Expiration: new(time.Now().Add(time.Hour)), ByToken: true}
+
+	checked, release := make(chan struct{}), make(chan struct{})
+	made := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.CreateAuthKeyIf(k, func() error {
+			if !s.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
+				return errRefused
+			}
+
+			close(checked)
+			<-release
+
+			return nil
+		})
+		made <- err
+	}()
+
+	<-checked
+
+	policyDone := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": [], "tag:prod": []}}`))
+		policyDone <- err
+	}()
+
+	select {
+	case err := <-policyDone:
+		t.Fatalf("the policy changed between a key's check and its write (%v)", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(release)
+	require.NoError(t, <-made)
+	require.NoError(t, <-policyDone)
+
+	_, _, err = s.CreateAuthKeyIf(k, func() error {
+		if !s.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
+			return errRefused
+		}
+
+		return nil
+	})
+	require.ErrorIs(t, err, errRefused, "the new policy holds for the next key")
 }
 
 // TestLoadedExpiryIsUTC proves an expiry the database returns in another zone is
@@ -3808,4 +3874,496 @@ func TestPatchNodeResetOntoItsNameTellsNobody(t *testing.T) {
 	require.Equal(t, n.Revision(), again.Revision())
 	require.Empty(t, s.DrainSelfRefreshes())
 	require.True(t, repeat.IsEmpty(), "a reset that keeps the stored name tells no peer")
+}
+
+// TestRegistrationRefusesAKeyEndedAfterItsCheck: a registration read and
+// checked its key, then the key was revoked or expired; the write of the node
+// refuses it, for a new node and for a login with a new node key. A refused
+// new node gives its addresses back, and nodes that joined keep theirs: each
+// case has its own server whose address range holds two.
+func TestRegistrationRefusesAKeyEndedAfterItsCheck(t *testing.T) {
+	setup := func(t *testing.T) (*State, *types.User) {
+		t.Helper()
+
+		prefix := netip.MustParsePrefix("100.64.0.0/30")
+		cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+		cfg.Prefixes.V4 = &prefix
+		cfg.Prefixes.V6 = nil
+		cfg.Prefixes.Allocation = types.IPAllocationStrategyRandom
+
+		s, err := NewState(cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Close() })
+
+		return s, s.CreateUserForTest("ended-user")
+	}
+
+	// checkedKey is a key as a registration holds it after its checks.
+	checkedKey := func(t *testing.T, s *State, user *types.User, reusable bool) *types.PreAuthKey {
+		t.Helper()
+
+		made, err := s.CreatePreAuthKey(user.TypedID(), reusable, false, new(time.Now().Add(time.Hour)), nil)
+		require.NoError(t, err)
+
+		pak, err := s.GetPreAuthKey(made.Key)
+		require.NoError(t, err)
+		require.NoError(t, pak.Validate())
+
+		return pak
+	}
+
+	join := func(t *testing.T, s *State, user *types.User) (types.NodeView, tailcfg.RegisterRequest, key.MachinePublic, *types.PreAuthKeyNew) {
+		t.Helper()
+
+		made, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+		require.NoError(t, err)
+
+		machineKey := key.NewMachine().Public()
+		req := tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: made.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "ended-node"},
+		}
+
+		node, _, err := s.HandleNodeFromPreAuthKey(req, machineKey)
+		require.NoError(t, err)
+
+		return node, req, machineKey, made
+	}
+
+	ends := []struct {
+		name string
+		end  func(*State, uint64) error
+		want string
+	}{
+		{"revoked", (*State).RevokePreAuthKey, "authkey revoked"},
+		{"expired", (*State).ExpirePreAuthKey, "authkey expired"},
+	}
+
+	for _, end := range ends {
+		for _, reusable := range []bool{false, true} {
+			t.Run(fmt.Sprintf("a new node, %s, reusable %t", end.name, reusable), func(t *testing.T) {
+				s, user := setup(t)
+				pak := checkedKey(t, s, user, reusable)
+				require.NoError(t, end.end(s, pak.ID))
+
+				_, err := s.createAndSaveNewNode(newNodeParams{
+					User:           *pak.User,
+					MachineKey:     key.NewMachine().Public(),
+					NodeKey:        key.NewNode().Public(),
+					Hostname:       "ended-node",
+					Hostinfo:       &tailcfg.Hostinfo{Hostname: "ended-node"},
+					RegisterMethod: util.RegisterMethodAuthKey,
+					PreAuthKey:     pak,
+				})
+
+				var pakErr types.PAKError
+				require.ErrorAs(t, err, &pakErr)
+				require.Equal(t, end.want, pakErr.Error())
+				require.Zero(t, s.ListNodes().Len())
+
+				// The refused node took no address, so two nodes join; then
+				// both addresses are held.
+				join(t, s, user)
+				join(t, s, user)
+
+				_, _, err = s.ipAlloc.Next()
+				require.ErrorIs(t, err, db.ErrCouldNotAllocateIP, "nodes that joined keep their addresses")
+			})
+
+			t.Run(fmt.Sprintf("a login with a new node key, %s, reusable %t", end.name, reusable), func(t *testing.T) {
+				s, user := setup(t)
+				node, regReq, machineKey, first := join(t, s, user)
+
+				pak := checkedKey(t, s, user, reusable)
+				req := regReq
+				req.NodeKey = key.NewNode().Public()
+
+				view, ok := s.GetNodeByID(node.ID())
+				require.True(t, ok)
+
+				reauth, err := pakReregister(view, pak, req.NodeKey, time.Now())
+				require.NoError(t, err)
+				require.True(t, reauth, "precondition: the login writes the key")
+
+				require.NoError(t, end.end(s, pak.ID))
+
+				_, _, err = s.reregisterNodeWithPAK(view, pak, nil, req, machineKey, "ended-node", req.Hostinfo.Clone())
+
+				var pakErr types.PAKError
+				require.ErrorAs(t, err, &pakErr)
+				require.Equal(t, end.want, pakErr.Error())
+
+				after, ok := s.GetNodeByID(node.ID())
+				require.True(t, ok)
+				require.Equal(t, regReq.NodeKey, after.NodeKey(), "the node is as it was")
+				require.Equal(t, first.ID, after.AuthKeyID().Get())
+			})
+		}
+	}
+}
+
+// loginOnBothDatabases runs test on a State on SQLite and on one on
+// PostgreSQL; the PostgreSQL half skips when no server starts.
+func loginOnBothDatabases(t *testing.T, test func(t *testing.T, s *State)) {
+	t.Helper()
+
+	t.Run("sqlite", func(t *testing.T) {
+		s, err := NewState(persistTestConfig(t.TempDir() + "/headscale.db"))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Close() })
+
+		test(t, s)
+	})
+	t.Run("postgres", func(t *testing.T) { test(t, newPostgresStateForTest(t)) })
+}
+
+// TestRefusedReauthIsNeverVisible: a login with a new node key whose key the
+// claim refuses shows that key to no reader, no peer and no other persist,
+// before the refusal or after it, also when the row update itself fails.
+func TestRefusedReauthIsNeverVisible(t *testing.T) {
+	for _, rowFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("row update fails %t", rowFails), func(t *testing.T) {
+			loginOnBothDatabases(t, func(t *testing.T, s *State) {
+				t.Helper()
+
+				user := s.CreateUserForTest("refused")
+
+				join := func(host string) (types.NodeView, tailcfg.RegisterRequest, key.MachinePublic) {
+					made, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+					require.NoError(t, err)
+
+					mk := key.NewMachine().Public()
+					req := tailcfg.RegisterRequest{
+						Auth:     &tailcfg.RegisterResponseAuth{AuthKey: made.Key},
+						NodeKey:  key.NewNode().Public(),
+						Hostinfo: &tailcfg.Hostinfo{Hostname: host},
+					}
+
+					n, _, err := s.HandleNodeFromPreAuthKey(req, mk)
+					require.NoError(t, err)
+
+					return n, req, mk
+				}
+
+				node, regReq, machineKey := join("target")
+				peer, _, _ := join("peer")
+
+				// The key passed its checks, then was revoked.
+				made, err := s.CreatePreAuthKey(user.TypedID(), false, false, new(time.Now().Add(time.Hour)), nil)
+				require.NoError(t, err)
+				pak, err := s.GetPreAuthKey(made.Key)
+				require.NoError(t, err)
+				require.NoError(t, s.RevokePreAuthKey(pak.ID))
+
+				if rowFails {
+					if s.cfg.Database.Type == types.DatabasePostgres {
+						require.NoError(t, s.db.DB.Exec(`CREATE FUNCTION refuse() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'refused'; END $$ LANGUAGE plpgsql`).Error)
+						require.NoError(t, s.db.DB.Exec(`CREATE TRIGGER refuse BEFORE UPDATE ON nodes FOR EACH ROW EXECUTE FUNCTION refuse()`).Error)
+					} else {
+						require.NoError(t, s.db.DB.Exec(`CREATE TRIGGER refuse BEFORE UPDATE ON nodes BEGIN SELECT RAISE(ABORT, 'refused'); END`).Error)
+					}
+				}
+
+				req := regReq
+				req.NodeKey = key.NewNode().Public()
+
+				requireOldKey := func(why string) {
+					t.Helper()
+
+					got, ok := s.GetNodeByID(node.ID())
+					require.True(t, ok)
+					require.Equal(t, regReq.NodeKey, got.NodeKey(), "an admin read, "+why)
+
+					for _, p := range s.ListPeers(peer.ID()).All() {
+						if p.ID() == node.ID() {
+							require.Equal(t, regReq.NodeKey, p.NodeKey(), "a peer, "+why)
+						}
+					}
+				}
+
+				var windowPersist error
+
+				pool := s.db.DB.ConnPool
+				barrier := &beforeNodeTransaction{ConnPool: pool, before: func() {
+					requireOldKey("while the claim runs")
+
+					// What a map update's persist writes in that window.
+					fresh, _ := s.nodeStore.GetNode(node.ID())
+					windowPersist = s.db.DB.Select(nodeUpdateColumns).Updates(fresh.AsStruct()).Error
+				}}
+				s.db.DB.ConnPool = barrier
+				s.db.DB.Statement.ConnPool = barrier
+
+				restore := func() {
+					s.db.DB.ConnPool = pool
+					s.db.DB.Statement.ConnPool = pool
+				}
+				defer restore()
+
+				view, _ := s.GetNodeByID(node.ID())
+				_, _, err = s.reregisterNodeWithPAK(view, pak, nil, req, machineKey, "target", req.Hostinfo.Clone())
+
+				restore()
+
+				require.True(t, barrier.fired.Load())
+				require.Error(t, err)
+
+				if rowFails {
+					require.Error(t, windowPersist)
+				} else {
+					require.ErrorIs(t, err, types.PAKError("authkey revoked"))
+					require.NoError(t, windowPersist)
+				}
+
+				requireOldKey("after the refusal")
+
+				_, err = s.persistNode(view)
+				require.Equal(t, rowFails, err != nil)
+
+				row, err := s.db.GetNodeByID(node.ID())
+				require.NoError(t, err)
+				require.Equal(t, regReq.NodeKey, row.NodeKey, "the row")
+			})
+		})
+	}
+}
+
+// TestLoginKeepsItsOwnerOverAProfileRefresh: a refresh of a user's profile
+// and a map request of the old session that changes only NetInfo, between a
+// login's read of the node and its publish, change neither the node's owner,
+// nor its auth key, nor the host name and requested tags of its Hostinfo. The
+// login's writes and the map request's NetInfo hold in the NodeStore, in the
+// row after the next ordinary persist, for a peer and in what the login
+// answers.
+func TestLoginKeepsItsOwnerOverAProfileRefresh(t *testing.T) {
+	for _, toTag := range []bool{true, false} {
+		t.Run(fmt.Sprintf("to tag %t", toTag), func(t *testing.T) {
+			loginOnBothDatabases(t, func(t *testing.T, s *State) {
+				t.Helper()
+
+				owner := s.CreateUserForTest("owner")
+				_, err := s.SetPolicy([]byte(`{"tagOwners":{"tag:review":["owner@"]},
+					"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
+				require.NoError(t, err)
+
+				userKey, err := s.CreatePreAuthKey(owner.TypedID(), true, false, nil, nil)
+				require.NoError(t, err)
+				tagKey, err := s.CreatePreAuthKey(owner.TypedID(), true, false, nil, []string{"tag:review"})
+				require.NoError(t, err)
+
+				from, to := userKey, tagKey
+				if !toTag {
+					from, to = tagKey, userKey
+				}
+
+				peer := registerForPAKRereg(t, s, userKey)
+				c := registerForPAKRereg(t, s, from)
+				require.Equal(t, !toTag, c.node.IsTagged())
+
+				// The login asks for the tags it gets, or for none, so each
+				// direction changes RequestTags.
+				var wantTags []string
+				if toTag {
+					wantTags = []string{"tag:review"}
+				} else {
+					_, ok := s.nodeStore.UpdateNode(c.node.ID(), func(n *types.Node) {
+						n.Hostinfo = n.Hostinfo.Clone()
+						n.Hostinfo.RequestTags = []string{"tag:review"}
+					})
+					require.True(t, ok)
+				}
+
+				mapDone := make(chan error, 1)
+
+				pool := s.db.DB.ConnPool
+				barrier := &inCommitLogin{ConnPool: pool, before: func() {
+					_, _, err := s.UpdateUser(types.UserID(owner.ID), func(u *types.User) error {
+						u.DisplayName = "Refreshed"
+
+						return nil
+					})
+					require.NoError(t, err)
+
+					// The old session reports a new DERP region and nothing else;
+					// it writes the NodeStore, then waits for persistMu.
+					old, ok := s.GetNodeByID(c.node.ID())
+					require.True(t, ok)
+
+					hi := old.Hostinfo().AsStruct()
+					hi.NetInfo = &tailcfg.NetInfo{PreferredDERP: 9}
+
+					go func() {
+						_, err := s.UpdateNodeFromMapRequest(c.node.ID(), tailcfg.MapRequest{NodeKey: old.NodeKey(), DiscoKey: old.DiscoKey(), Hostinfo: hi})
+						mapDone <- err
+					}()
+
+					waitParked(t, "[sync.Mutex.Lock", "UpdateNodeFromMapRequest")
+				}}
+				s.db.DB.ConnPool, s.db.DB.Statement.ConnPool = barrier, barrier
+
+				req := c.regReq
+				req.Auth = &tailcfg.RegisterResponseAuth{AuthKey: to.Key}
+				req.NodeKey = key.NewNode().Public()
+				req.Hostinfo = &tailcfg.Hostinfo{Hostname: "login-host", RequestTags: wantTags}
+				told, _, err := s.HandleNodeFromPreAuthKey(req, c.machineKey)
+
+				s.db.DB.ConnPool, s.db.DB.Statement.ConnPool = pool, pool
+
+				require.NoError(t, err)
+				require.True(t, barrier.fired.Load(), "the refresh ran inside the login")
+				require.NoError(t, <-mapDone)
+
+				live, ok := s.GetNodeByID(c.node.ID())
+				require.True(t, ok)
+
+				_, err = s.persistNode(live)
+				require.NoError(t, err)
+
+				row, err := s.db.GetNodeByID(c.node.ID())
+				require.NoError(t, err)
+
+				var seen types.NodeView
+
+				for _, p := range s.ListPeers(peer.node.ID()).All() {
+					if p.ID() == c.node.ID() {
+						seen = p
+					}
+				}
+
+				require.True(t, seen.Valid(), "the peer sees the node")
+
+				for what, tagged := range map[string]bool{
+					"the NodeStore": live.IsTagged(), "the row": row.IsTagged(),
+					"the peer": seen.IsTagged(), "the login's answer": told.IsTagged(),
+				} {
+					assert.Equal(t, toTag, tagged, "%s keeps the login's owner", what)
+				}
+
+				for what, n := range map[string]types.NodeView{"the NodeStore": live, "the login's answer": told} {
+					assert.Equal(t, to.ID, n.AuthKeyID().Get(), "%s: the key ID", what)
+					assert.Equal(t, to.ID, n.AuthKey().ID(), "%s: the key record", what)
+				}
+
+				for what, hi := range map[string]tailcfg.HostinfoView{
+					"the NodeStore": live.Hostinfo(), "the row": row.View().Hostinfo(),
+					"the peer": seen.Hostinfo(), "the login's answer": told.Hostinfo(),
+				} {
+					assert.Equal(t, "login-host", hi.Hostname(), "%s: the login's host name", what)
+					assert.Equal(t, wantTags, hi.RequestTags().AsSlice(), "%s: the login's requested tags", what)
+					assert.EqualValues(t, 9, hi.NetInfo().PreferredDERP(), "%s: the map request's NetInfo", what)
+				}
+
+				require.NotNil(t, row.AuthKeyID)
+				assert.Equal(t, to.ID, *row.AuthKeyID, "the row: the key ID")
+
+				if !toTag {
+					assert.Equal(t, owner.ID, live.User().ID(), "the NodeStore: the owner")
+				}
+			})
+		})
+	}
+}
+
+// TestLoginSurvivesAPersistBeforeItsPublish: a persist of the node between
+// the commit of a login and its publish to the NodeStore writes the login,
+// not the node the NodeStore still holds; persistMu is not held across that
+// publish.
+func TestLoginSurvivesAPersistBeforeItsPublish(t *testing.T) {
+	loginOnBothDatabases(t, func(t *testing.T, s *State) {
+		t.Helper()
+
+		user := s.CreateUserForTest("window")
+		k, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+		require.NoError(t, err)
+
+		c := registerForPAKRereg(t, s, k)
+		pak, err := s.GetPreAuthKey(k.Key)
+		require.NoError(t, err)
+
+		req := c.regReq
+		req.NodeKey = key.NewNode().Public()
+
+		// Hold the writer so the login's publish waits behind it.
+		entered, release := make(chan struct{}), make(chan struct{})
+
+		releaseOnce := sync.OnceFunc(func() { close(release) })
+		defer releaseOnce()
+
+		go s.nodeStore.UpdateNode(c.node.ID(), func(*types.Node) {
+			close(entered)
+			<-release
+		})
+
+		<-entered
+
+		done := make(chan error, 1)
+
+		go func() {
+			_, err := c.reregister(c.node, pak, req)
+			done <- err
+		}()
+
+		waitParkedOnWriteQueue(t, "persistThenPublish")
+
+		live, _ := s.GetNodeByID(c.node.ID())
+		require.Equal(t, c.regReq.NodeKey, live.NodeKey(), "not published yet")
+
+		// What a map update persists in that window.
+		_, err = s.persistNode(live)
+		require.NoError(t, err)
+
+		row, err := s.db.GetNodeByID(c.node.ID())
+		require.NoError(t, err)
+		require.Equal(t, req.NodeKey, row.NodeKey, "the persist keeps the committed login")
+
+		releaseOnce()
+		require.NoError(t, <-done)
+
+		live, _ = s.GetNodeByID(c.node.ID())
+		require.Equal(t, req.NodeKey, live.NodeKey())
+	})
+}
+
+// TestOrdinarySaveKeepsDeletedCreatorCleared: a save that read a tagged node
+// before its creator was deleted does not write the deleted user back. The
+// save is held after its read, as a slow one would be.
+func TestOrdinarySaveKeepsDeletedCreatorCleared(t *testing.T) {
+	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("creator")
+	node := database.CreateRegisteredNodeForTest(user, "tagged")
+	node.UserID = nil
+	node.Tags = []string{"tag:ci"}
+	node.CreatedByUserID = &user.ID
+	require.NoError(t, database.DB.Model(node).Select("UserID", "Tags", "CreatedByUserID").Updates(node).Error)
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, s.Close()) })
+
+	view, ok := s.GetNodeByID(node.ID)
+	require.True(t, ok)
+	require.Equal(t, user.ID, view.CreatedByUserID().Get())
+
+	// Runs inside the save, after it read the node.
+	s.publishing[node.ID] = func(*types.Node) {
+		_, err := s.DeleteUser(types.UserID(user.ID))
+		require.NoError(t, err)
+
+		afterDelete, err := s.db.GetNodeByID(node.ID)
+		require.NoError(t, err)
+		require.Nil(t, afterDelete.CreatedByUserID)
+	}
+
+	_, err = s.persistNode(view)
+	require.NoError(t, err)
+
+	stored, err := s.db.GetNodeByID(node.ID)
+	require.NoError(t, err)
+	require.True(t, stored.IsTagged())
+	require.Nil(t, stored.CreatedByUserID, "an ordinary save wrote the deleted creator back")
 }

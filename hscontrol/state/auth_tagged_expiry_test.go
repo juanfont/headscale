@@ -1986,6 +1986,25 @@ func waitParkedOnWriteQueue(t *testing.T, fn string) {
 	}, 5*time.Second, time.Millisecond)
 }
 
+// waitParked waits until a goroutine running fn is blocked in state, as the
+// stack dump names it.
+func waitParked(t *testing.T, state, fn string) {
+	t.Helper()
+
+	buf := make([]byte, 1<<22)
+
+	require.Eventually(t, func() bool {
+		stacks := string(buf[:runtime.Stack(buf, true)])
+		for g := range strings.SplitSeq(stacks, "\n\n") {
+			if strings.Contains(g, state) && strings.Contains(g, "."+fn+"(") {
+				return true
+			}
+		}
+
+		return false
+	}, 5*time.Second, time.Millisecond)
+}
+
 // TestPAKReregisterRevalidatesAtMutation: a re-registration whose lookup
 // skipped key validation must decide again on the node the NodeStore writer
 // holds, because a concurrent write can land between lookup and mutation.
@@ -2182,9 +2201,9 @@ func TestPAKReregisterRevalidatesAtMutation(t *testing.T) {
 	})
 
 	// The node is expired after the lookup, then the key expires, then the
-	// writer runs a login under a new node key. The decision must be taken at
-	// the writer's own clock: any validity or clock read taken before the
-	// NodeStore write lets the expired key revive the node.
+	// write runs a login under a new node key. The decision must be taken at
+	// the write's own clock: any validity or clock read taken before it
+	// lets the expired key revive the node.
 	t.Run("admin_expire_then_key_expires", func(t *testing.T) {
 		s := newRetagTestState(t)
 		user := s.CreateUserForTest("pakuser")
@@ -2211,26 +2230,14 @@ func TestPAKReregisterRevalidatesAtMutation(t *testing.T) {
 		_, _, err = s.SetNodeExpiry(c.node.ID(), &tA)
 		require.NoError(t, err)
 
-		// Stall the writer so the re-registration's write is applied later.
-		entered, release := make(chan struct{}), make(chan struct{})
+		// Stall the write so the re-registration decides later.
+		s.persistMu.Lock()
 
-		releaseOnce := sync.OnceFunc(func() { close(release) })
+		releaseOnce := sync.OnceFunc(s.persistMu.Unlock)
 		defer releaseOnce()
 
-		stalled := make(chan struct{})
-
-		go func() {
-			defer close(stalled)
-
-			s.nodeStore.UpdateNode(c.node.ID(), func(*types.Node) {
-				close(entered)
-				<-release
-			})
-		}()
-
-		<-entered
 		require.Greater(t, time.Until(expiration), time.Second,
-			"setup must stall the writer well before the key expires")
+			"setup must stall the write well before the key expires")
 
 		type result struct {
 			node types.NodeView
@@ -2244,16 +2251,15 @@ func TestPAKReregisterRevalidatesAtMutation(t *testing.T) {
 			done <- result{n, err}
 		}()
 
-		waitParkedOnWriteQueue(t, "reregisterNodeWithPAK")
+		waitParked(t, "[sync.Mutex.Lock", "persistThenPublish")
 		require.True(t, time.Now().Before(expiration),
-			"the re-registration must reach its NodeStore write before the key expires")
+			"the re-registration must reach its write before the key expires")
 
-		// Only now let the key expire, then let the writer run.
+		// Only now let the key expire, then let the write run.
 		require.Eventually(t, func() bool {
 			return pak.ValidAt(time.Now()) != nil
 		}, time.Until(expiration)+time.Second, time.Millisecond)
 		releaseOnce()
-		<-stalled
 
 		res := <-done
 		require.ErrorIs(t, res.err, types.PAKError("authkey expired"))
@@ -2269,9 +2275,8 @@ func TestPAKReregisterRevalidatesAtMutation(t *testing.T) {
 }
 
 // TestPAKReregisterRollbackKeepsPriorWrite: when the database rejects a
-// re-registration, the NodeStore rollback must restore the node the writer
-// replaced, not the lookup's older view, so an admin expiry landed in between
-// survives.
+// re-registration, the node stays as the NodeStore holds it, not as the
+// lookup's older view, so an admin expiry landed in between survives.
 func TestPAKReregisterRollbackKeepsPriorWrite(t *testing.T) {
 	s := newRetagTestState(t)
 	user := s.CreateUserForTest("pakuser")
@@ -2498,6 +2503,29 @@ func (p *beforeNodeTransaction) BeginTx(
 	return beginner.BeginTx(ctx, opts)
 }
 
+// inCommitLogin runs before once, at the first transaction a login's
+// commitLogin begins: after the login read the node, before its row commits.
+type inCommitLogin struct {
+	gorm.ConnPool
+
+	fired  atomic.Bool
+	before func()
+}
+
+func (p *inCommitLogin) BeginTx(ctx context.Context, opts *sql.TxOptions) (gorm.ConnPool, error) {
+	buf := make([]byte, 1<<16)
+	if strings.Contains(string(buf[:runtime.Stack(buf, false)]), ".commitLogin(") && p.fired.CompareAndSwap(false, true) {
+		p.before()
+	}
+
+	beginner, ok := p.ConnPool.(gorm.TxBeginner)
+	if !ok {
+		return nil, gorm.ErrInvalidTransaction
+	}
+
+	return beginner.BeginTx(ctx, opts)
+}
+
 func TestReauthPersistenceKeepsConcurrentExpiry(t *testing.T) {
 	for _, interactive := range []bool{false, true} {
 		t.Run(fmt.Sprintf("interactive=%t", interactive), func(t *testing.T) {
@@ -2614,96 +2642,10 @@ func TestPersistNodeIncludesCurrentExpiry(t *testing.T) {
 	require.True(t, expiry.Equal(*stored.Expiry))
 }
 
-// TestPAKReregisterRollbackKeepsSameBatchWrites: admin writes queued behind a
-// failing re-registration share its NodeStore batch, so the rollback must
-// compare against what the registration wrote, not the node after the batch.
-func TestPAKReregisterRollbackKeepsSameBatchWrites(t *testing.T) {
-	s := newRetagTestState(t)
-	user := s.CreateUserForTest("rollback-user")
-	_, err := s.SetPolicy([]byte(`{"tagOwners":{
-    "tag:prod":["rollback-user@"],"tag:quarantine":["rollback-user@"]}}`))
-	require.NoError(t, err)
-	originalKey, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
-	require.NoError(t, err)
-	a := registerForPAKRereg(t, s, originalKey)
-	b := registerForPAKRereg(t, s, originalKey)
-
-	// Both rows are read unused; a spends the key, so b fails in the database.
-	sharedKey, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:prod"})
-	require.NoError(t, err)
-	pakA, err := s.GetPreAuthKeyByID(sharedKey.ID)
-	require.NoError(t, err)
-	pakB, err := s.GetPreAuthKeyByID(sharedKey.ID)
-	require.NoError(t, err)
-
-	// A login: only a new node key spends a key.
-	reqA := a.regReq
-	reqA.Auth = &tailcfg.RegisterResponseAuth{AuthKey: sharedKey.Key}
-	reqA.NodeKey = key.NewNode().Public()
-	_, err = a.reregister(a.node, pakA, reqA)
-	require.NoError(t, err)
-
-	reqB := b.regReq
-	reqB.Auth = &tailcfg.RegisterResponseAuth{AuthKey: sharedKey.Key}
-	reqB.NodeKey = key.NewNode().Public()
-
-	// Hold the writer so the registration and both admin writes queue behind it
-	// and land in one batch, in this order.
-	entered, release := make(chan struct{}), make(chan struct{})
-
-	releaseOnce := sync.OnceFunc(func() { close(release) })
-	defer releaseOnce()
-
-	go s.nodeStore.UpdateNode(a.node.ID(), func(*types.Node) {
-		close(entered)
-		<-release
-	})
-
-	<-entered
-
-	regDone := make(chan error, 1)
-
-	go func() {
-		_, err := b.reregister(b.node, pakB, reqB)
-		regDone <- err
-	}()
-
-	waitParkedOnWriteQueue(t, "reregisterNodeWithPAK")
-
-	tagsDone := make(chan error, 1)
-
-	go func() {
-		_, _, err := s.SetNodeTags(b.node.ID(), []string{"tag:quarantine"})
-		tagsDone <- err
-	}()
-
-	waitParkedOnWriteQueue(t, "SetNodeTags")
-
-	expiry := time.Now().Add(-time.Minute)
-	expiryDone := make(chan error, 1)
-
-	go func() {
-		_, _, err := s.SetNodeExpiry(b.node.ID(), &expiry)
-		expiryDone <- err
-	}()
-
-	waitParkedOnWriteQueue(t, "SetNodeExpiry")
-
-	releaseOnce()
-
-	require.ErrorIs(t, <-regDone, types.PAKError("authkey already used"))
-	require.NoError(t, <-tagsDone)
-	require.NoError(t, <-expiryDone)
-
-	ns, row := b.fields(t)
-	assert.Equal(t, []string{"tag:quarantine"}, ns.Tags, "admin tags must survive")
-	assert.Equal(t, expiry.UnixNano(), ns.Expiry, "admin expiry must survive")
-	assert.Equal(t, b.regReq.NodeKey, ns.NodeKey, "registration key must roll back")
-	assert.Equal(t, ns, row, "row must match NodeStore")
-}
-
+// TestPAKReregisterRollbackKeepsConcurrentWrites: writes that land while a
+// login's claim runs survive its refusal, and nothing of the login is seen.
 func TestPAKReregisterRollbackKeepsConcurrentWrites(t *testing.T) {
-	for _, update := range []string{"persisted_grant", "admin", "map"} {
+	for _, update := range []string{"none", "admin", "map"} {
 		t.Run(update, func(t *testing.T) {
 			dbPath, s, _ := persistTestSetup(t)
 			t.Cleanup(func() { _ = s.Close() })
@@ -2743,12 +2685,9 @@ func TestPAKReregisterRollbackKeepsConcurrentWrites(t *testing.T) {
 
 			pool := s.db.DB.ConnPool
 			barrier := &beforeNodeTransaction{ConnPool: pool, before: func() {
-				published, ok := s.GetNodeByID(b.node.ID())
+				current, ok := s.GetNodeByID(b.node.ID())
 				require.True(t, ok)
-				require.Equal(t, []string{"tag:prod"}, published.Tags().AsSlice())
-				// Another persist can write the published grant before registration
-				// takes persistMu. Reproduce that row at the transaction boundary.
-				require.NoError(t, s.db.DB.Select(nodeUpdateColumns).Updates(published.AsStruct()).Error)
+				require.Equal(t, want, pakFieldsOf(current.AsStruct()), "the login is not published before its claim")
 
 				switch update {
 				case "admin":
@@ -2787,7 +2726,7 @@ func TestPAKReregisterRollbackKeepsConcurrentWrites(t *testing.T) {
 
 					go func() {
 						_, err := s.UpdateNodeFromMapRequest(b.node.ID(), tailcfg.MapRequest{
-							NodeKey:   reqB.NodeKey,
+							NodeKey:   b.regReq.NodeKey,
 							Endpoints: []netip.AddrPort{endpoint},
 							Hostinfo: &tailcfg.Hostinfo{
 								Hostname: "current-host",
@@ -2824,8 +2763,8 @@ func TestPAKReregisterRollbackKeepsConcurrentWrites(t *testing.T) {
 			restore()
 
 			ns, row := b.fields(t)
-			assert.Equal(t, want, ns, "rollback must preserve newer writes")
-			assert.Equal(t, want, row, "rollback must repair the persisted grant")
+			assert.Equal(t, want, ns, "newer writes survive")
+			assert.Equal(t, want, row, "the row holds them")
 
 			if update == "map" {
 				current, ok := s.GetNodeByID(b.node.ID())
@@ -2845,7 +2784,7 @@ func TestPAKReregisterRollbackKeepsConcurrentWrites(t *testing.T) {
 			reopened := persistTestReopen(t, dbPath)
 			reloaded, ok := reopened.GetNodeByID(b.node.ID())
 			require.True(t, ok)
-			assert.Equal(t, want, pakFieldsOf(reloaded.AsStruct()), "restart must keep the rollback")
+			assert.Equal(t, want, pakFieldsOf(reloaded.AsStruct()), "a restart loads them")
 		})
 	}
 }
