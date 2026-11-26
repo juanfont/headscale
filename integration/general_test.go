@@ -364,6 +364,56 @@ func TestPingAllByHostname(t *testing.T) {
 	assertPingAll(t, allClients, allHostnames)
 }
 
+// TestPingAllMixedCapVer pairs a client at or above capability version 152,
+// which picks the WireGuard handshake from each peer's Cap, with a v1.104
+// client that cannot do the hybrid one. Each must see the other's own Cap.
+// Curl, not tailscale ping: disco pings succeed without a WireGuard session.
+// Released images lack curl, so only head curls; TCP covers both directions.
+func TestCurlMixedCapVer(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1"},
+		Versions:     []string{"head", "1.104"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{tsic.WithWebserver(80)},
+		hsic.WithTestName("curlmixedcapver"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	for _, client := range allClients {
+		if client.Version() != "head" {
+			continue
+		}
+
+		for _, peer := range allClients {
+			if client == peer {
+				continue
+			}
+
+			url := fmt.Sprintf("http://%s/etc/hostname", peer.MustIPv4())
+			msg := fmt.Sprintf("%s (%s) -> %s (%s)", client.Hostname(), client.Version(), peer.Hostname(), peer.Version())
+
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				assertCurlSuccessWithCollect(c, client, url, msg)
+			}, integrationutil.ScaledTimeout(30*time.Second), time.Second, msg)
+		}
+	}
+}
+
 // If subtests are parallel, then they will start before setup is run.
 // This might mean we approach setup slightly wrong, but for now, ignore
 // the linter
