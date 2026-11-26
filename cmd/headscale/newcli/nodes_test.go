@@ -1406,8 +1406,8 @@ tag:test     0      yes
 			f.vars["token"] = f.taggedToken(tb, []string{"tag:ci"}, "devices:core")
 		},
 		env: []string{"HEADSCALE_CLI_ADDRESS={url}", "HEADSCALE_CLI_API_KEY={token}"},
-		stderr: "Error: this credential may not do that.\nAn OAuth access token gives and takes only tags it holds or owns, " +
-			"and only on a node whose tags are all its own; an API key may give any tag of the policy.\n",
+		stderr: "Error: this credential may not do that.\nAn OAuth access token gives, takes and makes keys for only tags it holds or owns, " +
+			"and changes only a node whose tags are all its own; an API key may give any tag of the policy.\n",
 		code: 1,
 	},
 }

@@ -61,6 +61,7 @@ var userColumns = table.Columns[clientv0.User]{
 		Kind:  table.Text,
 		Help:  "Identifier at the identity provider",
 	},
+	//nolint:goconst // a column is named as its field
 	{Name: "created", Field: "created", Help: "When the user was created"},
 }
 

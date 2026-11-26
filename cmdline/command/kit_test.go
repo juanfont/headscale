@@ -4,7 +4,7 @@ package command_test
 // row by row, on Headscale's real tree. A row that names a command the tree
 // does not have yet waits for it: it is reported as skipped, with the
 // commands it waits for, and it runs as soon as they are in the tree.
-// The kit's own tree of twelve commands (KitModel) says which commands a
+// The kit's own tree of thirteen commands (KitModel) says which commands a
 // row names.
 
 import (
@@ -212,8 +212,8 @@ var runCases = []runCase{
 		"H10",
 		Must,
 		"R53",
-		sh("auth keys create alice --tags tag:a -h"),
-		help("auth keys create"),
+		sh("api oauth-clients create devices:core --tags tag:a -h"),
+		help("api oauth-clients create"),
 	},
 	{"H11", Must, "D8", sh("help"), usage(UnknownCommand, "", "help")},
 	{"H12", Must, "D8", sh("help nodes"), usage(UnknownCommand, "", "help")},
@@ -260,8 +260,8 @@ var runCases = []runCase{
 		"H21",
 		Must,
 		"D19 001-lists",
-		sh("auth keys create alice --tags= -h"),
-		usage(BadValue, "auth keys create", "tags"),
+		sh("api oauth-clients create devices:core --tags= -h"),
+		usage(BadValue, "api oauth-clients create", "tags"),
 	},
 	{
 		"H22",
@@ -378,14 +378,12 @@ var runCases = []runCase{
 		"F10",
 		Must,
 		"R20 R25",
-		sh("auth keys create --reusable alice -e 1h --tags tag:ci"),
+		sh("api oauth-clients create -d CI devices:core --tags tag:ci"),
 		ran(
-			"auth keys create",
-			[]string{"alice"},
-			"expiry",
-			"1h",
-			"reusable",
-			"true",
+			"api oauth-clients create",
+			[]string{"devices:core"},
+			"description",
+			"CI",
 			"tags",
 			"tag:ci",
 		),
@@ -676,15 +674,20 @@ var runCases = []runCase{
 		"L01",
 		Must,
 		"D6",
-		sh("auth keys create alice --tags tag:a,tag:b"),
-		ran("auth keys create", []string{"alice"}, "tags", "tag:a,tag:b"),
+		sh("api oauth-clients create devices:core --tags tag:a,tag:b"),
+		ran(
+			"api oauth-clients create",
+			[]string{"devices:core"},
+			"tags",
+			"tag:a,tag:b",
+		),
 	},
 	{
 		"L02",
 		Must,
 		"D6",
-		sh("auth keys create alice --tags tag:a --tags tag:b"),
-		usage(FlagRepeated, "auth keys create", "tags"),
+		sh("api oauth-clients create devices:core --tags tag:a --tags tag:b"),
+		usage(FlagRepeated, "api oauth-clients create", "tags"),
 	},
 	{
 		"L03",
@@ -698,8 +701,8 @@ var runCases = []runCase{
 		"L04",
 		Must,
 		"001-lists",
-		sh("auth keys create alice --tags="),
-		usage(BadValue, "auth keys create", "tags"),
+		sh("api oauth-clients create devices:core --tags="),
+		usage(BadValue, "api oauth-clients create", "tags"),
 	},
 	{
 		"L05",
@@ -747,8 +750,8 @@ var runCases = []runCase{
 		"L11",
 		Asked,
 		"001-lists",
-		sh("auth keys create alice --tags tag:a,"),
-		usage(BadValue, "auth keys create", "tags"),
+		sh("api oauth-clients create devices:core --tags tag:a,"),
+		usage(BadValue, "api oauth-clients create", "tags"),
 	},
 	{
 		"L12",
@@ -1391,8 +1394,8 @@ var compCases = []compCase{
 		"C10",
 		Must,
 		"D1",
-		sh("auth keys create alice --"),
-		[]string{"--tags", "--expiry", "--reusable", "--description"},
+		sh("api oauth-clients create devices:core --"),
+		[]string{"--tags", "--description"},
 		[]string{"--force", "--columns"},
 		false,
 	},
@@ -1548,7 +1551,7 @@ var compCases = []compCase{
 		"N19",
 		Stretch,
 		"R60",
-		sh("auth keys create alice --tags tag:p"),
+		sh("api oauth-clients create devices:core --tags tag:p"),
 		[]string{"tag:prod"},
 		nil,
 		false,
@@ -1557,7 +1560,7 @@ var compCases = []compCase{
 		"N20",
 		Stretch,
 		"R60",
-		sh("auth keys create alice --tags tag:ci,tag:p"),
+		sh("api oauth-clients create devices:core --tags tag:ci,tag:p"),
 		[]string{"tag:ci,tag:prod"},
 		nil,
 		false,
@@ -1716,7 +1719,7 @@ var compCases = []compCase{
 		"Q26",
 		Must,
 		"facts",
-		sh("auth keys create alice ---tags="),
+		sh("api oauth-clients create devices:core ---tags="),
 		nil,
 		[]string{"tag:ci", "---tags=tag:ci"},
 		false,
@@ -1766,7 +1769,7 @@ var compCases = []compCase{
 		"Q34",
 		Asked,
 		"call",
-		sh("auth keys create alice --tags +tag:p"),
+		sh("api oauth-clients create devices:core --tags +tag:p"),
 		nil,
 		[]string{"+tag:prod"},
 		false,
@@ -2125,6 +2128,9 @@ var beyondKit = []string{
 	"nodes tags",
 	"nodes tags list",
 	"nodes tags set",
+	"auth keys list",
+	"auth keys get",
+	"auth keys delete",
 }
 
 func TestKitKnowsHeadscale(t *testing.T) {
