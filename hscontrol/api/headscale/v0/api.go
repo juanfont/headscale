@@ -119,6 +119,7 @@ func newAPI(router chi.Router, b Backend, config huma.Config) huma.API {
 	registerUsers(api, b)
 	registerNodes(api, b)
 	registerTags(api, b)
+	registerAuthKeys(api, b)
 
 	return api
 }
@@ -690,6 +691,12 @@ func checkBody(id string, t reflect.Type, patch bool) {
 		optional := f.Type.Implements(optionalFieldType)
 
 		switch {
+		case f.Tag.Get("null") == "absent" && (patch || !optional || f.Tag.Get("nullable") == "true"):
+			// In a PATCH null clears a value; reading it as left out would
+			// keep the value, and a body of one null would change nothing.
+			panic(
+				where + ` reads null as left out, which only an Optional that refuses null, outside a PATCH, may`,
+			)
 		case optional && !strings.Contains(f.Tag.Get("json"), ",omitzero"):
 			panic(where + " is an Optional without omitzero")
 		case patch && !optional:
@@ -743,8 +750,9 @@ func decodesItself(t reflect.Type) bool {
 }
 
 // bodyProblem refuses null for a field not tagged nullable:"true", at any
-// depth; a PATCH body that sends no field; and then the fields that the
-// body checks itself.
+// depth, and reads it as left out for one tagged null:"absent"; then a
+// PATCH body that sends no field; and then the fields that the body checks
+// itself.
 func bodyProblem(in any, patch bool) *Problem {
 	body := reflect.ValueOf(in).Elem().FieldByName("Body")
 	p := newProblem(CodeInvalidField, "A field cannot be null.")
@@ -820,6 +828,11 @@ func nulls(v reflect.Value, loc string, patch bool, errs *[]FieldError) {
 			}
 
 			switch {
+			case f.isNull() && sf.Tag.Get("null") == "absent":
+				// The operation answers a missing field with its own code;
+				// telling the client to leave the field out would send it in
+				// a circle.
+				v.Field(i).SetZero()
 			case f.isNull() && sf.Tag.Get("nullable") != "true":
 				*errs = append(
 					*errs,

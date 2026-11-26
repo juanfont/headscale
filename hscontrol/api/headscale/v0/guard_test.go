@@ -645,6 +645,10 @@ var scopes002 = map[string]string{
 	"setNodeTags":      "devices:core",
 	"setNodeRoutes":    "devices:routes devices:core:read",
 	"listTags":         "devices:core:read",
+	"listAuthKeys":     "auth_keys:read",
+	"getAuthKey":       "auth_keys:read",
+	"createAuthKey":    "auth_keys",
+	"deleteAuthKey":    "auth_keys",
 }
 
 func TestScopesAre002s(t *testing.T) {

@@ -554,6 +554,15 @@ func TestRegisterRefusesBodies(t *testing.T) {
 		withTime struct {
 			At time.Time `json:"at"`
 		}
+		absent struct {
+			At Optional[time.Time] `json:"at,omitzero" null:"absent"`
+		}
+		absentNullable struct {
+			At Optional[time.Time] `json:"at,omitzero" null:"absent" nullable:"true"`
+		}
+		absentPlain struct {
+			At time.Time `json:"at" null:"absent"`
+		}
 	)
 
 	const prefix = "apiv0: x: body field "
@@ -612,6 +621,25 @@ func TestRegisterRefusesBodies(t *testing.T) {
 	require.NotPanics(t, tryBody[nested](http.MethodPost, 1))
 	require.NotPanics(t, tryBody[withTime](http.MethodPost, 1))
 	require.NotPanics(t, tryBody[optional](http.MethodPatch, 1))
+
+	const absentRefused = " reads null as left out, which only an Optional that refuses null, outside a PATCH, may"
+
+	require.PanicsWithValue(
+		t,
+		prefix+"absent.At"+absentRefused,
+		tryBody[absent](http.MethodPatch, 1),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"absentNullable.At"+absentRefused,
+		tryBody[absentNullable](http.MethodPost, 1),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"absentPlain.At"+absentRefused,
+		tryBody[absentPlain](http.MethodPost, 1),
+	)
+	require.NotPanics(t, tryBody[absent](http.MethodPost, 1))
 }
 
 // TestBodyNulls: null is refused inside a struct in a body, and inside the
