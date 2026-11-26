@@ -2380,6 +2380,14 @@ func (s *State) UpdatePolicyManagerNodesForTest() error {
 	return err
 }
 
+// SkipAddressForTest takes the next node address out of the pool, so a test
+// can register its next node at an address of its choosing.
+func (s *State) SkipAddressForTest() error {
+	_, _, err := s.ipAlloc.Next()
+
+	return err
+}
+
 // CreateRegisteredNodeForTest creates a test node with allocated IPs. This is a convenience wrapper around the database layer.
 func (s *State) CreateRegisteredNodeForTest(user *types.User, hostname ...string) *types.Node {
 	return s.db.CreateRegisteredNodeForTest(user, hostname...)
