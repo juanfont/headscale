@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"os"
 
@@ -12,7 +13,12 @@ import (
 // SetPolicy replaces the policy in the database. Only the newest row is
 // ever read, so older ones are removed rather than kept as history.
 func (hsdb *HSDatabase) SetPolicy(policy string) (*types.Policy, error) {
-	return Write(hsdb.DB, func(tx *gorm.DB) (*types.Policy, error) {
+	return hsdb.SetPolicyContext(context.Background(), policy)
+}
+
+// SetPolicyContext is [HSDatabase.SetPolicy] that ends with ctx.
+func (hsdb *HSDatabase) SetPolicyContext(ctx context.Context, policy string) (*types.Policy, error) {
+	return Write(hsdb.DB.WithContext(ctx), func(tx *gorm.DB) (*types.Policy, error) {
 		p := types.Policy{
 			Data: policy,
 		}
