@@ -71,6 +71,27 @@ ______________________________________________________________________
 - [IP sets](https://tailscale.com/docs/features/tailnet-policy-file/ip-sets) aren't supported.
 - A subset of [Autogroups](#autogroups) are available.
 
+## Refused policies
+
+Headscale refuses some policies Tailscale's hosted service refuses too. A refused policy is never served:
+
+- a policy that is stored when Headscale starts, in `policy.mode: file` and `database` alike, stops startup, with the
+  validation error in the log. Correct the document, then start Headscale again; in database mode, the
+  [FAQ's recovery steps](../about/faq.md#my-policy-is-stored-in-the-database-and-headscale-refuses-to-start-due-to-an-invalid-policy-how-can-i-recover)
+  store a corrected policy while the server will not start;
+- a reload that reads one, by SIGHUP in either mode, logs the error and keeps the policy in force, and the API and
+  `headscale policy set` refuse to store one, so the running policy never changes to a refused document.
+
+The refusals, each with the error Headscale logs:
+
+- `user:*@domain` names every user of an email domain, and only as a source or destination of a rule. As a tag owner
+  it is refused with `only tag:name, group:name, role autogroups, or user@domain are allowed`, as a group member with
+  `invalid group member type`: list the users.
+- A grant with `via` steers traffic through the nodes carrying its tags. Its `dst` accepts only prefixes, hosts and
+  `autogroup:internet`; anything else is refused with `cannot use via with non-IP dsts`. A prefix that overlaps the
+  Tailscale address ranges, except the 4via6 range, is refused with `cannot use via with tailscale IPs`. Write the
+  prefix the router serves, or `autogroup:internet`.
+
 ## Autogroups
 
 Headscale supports several [Autogroups](https://tailscale.com/docs/reference/targets-and-selectors#autogroups) that

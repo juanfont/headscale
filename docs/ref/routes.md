@@ -256,6 +256,10 @@ tagged with `tag:exit1` while user `bob` can only use an exit node tagged with `
 A user who matches several `via` grants can use the exit nodes of all of them. A `via` grant does not hide exit nodes
 from a user who also has a rule that allows access to the internet without `via`. Such a user can use all exit nodes.
 
+A grant with `via` accepts only prefixes, hosts and `autogroup:internet` as `dst`, and no prefix that overlaps the
+Tailscale address ranges, except the 4via6 range. A policy that uses anything else is refused, and a stored one stops
+Headscale at startup; see [refused policies](policy.md#refused-policies).
+
 ### Automatically approve an exit node with auto approvers
 
 The initial setup of an exit node usually requires manual approval on the control server before it can be used by a node

@@ -1686,6 +1686,108 @@ func TestNewStateEmptyPolicyFile(t *testing.T) {
 	require.NoError(t, s.Close())
 }
 
+// refusedPolicyDocuments are documents headscale refuses at validation,
+// as the hosted service does: a tag owner or a group member naming every
+// user of a domain, and a via grant whose destination is not a prefix, a
+// host or autogroup:internet, or lies in the Tailscale address ranges.
+// What a refusal means for a stored document is the same for each, so
+// the tests below table-drive them.
+var refusedPolicyDocuments = map[string]string{
+	"tag-owner-wildcard":    `{"tagOwners": {"tag:web": ["user:*@example.com"]}}`,
+	"group-member-wildcard": `{"groups": {"group:eng": ["user:*@example.com"]}}`,
+	"via-non-ip-dst":        `{"tagOwners": {"tag:web": []}, "grants": [{"src": ["*"], "dst": ["*"], "via": ["tag:web"], "ip": ["*"]}]}`,
+	"via-tailscale-ip-dst":  `{"tagOwners": {"tag:web": []}, "grants": [{"src": ["*"], "dst": ["100.64.0.0/10"], "via": ["tag:web"], "ip": ["*"]}]}`,
+}
+
+// TestNewStateRefusesStoredRefusedPolicy pins that a document headscale
+// refuses at validation stops startup in either policy mode: an upgrade
+// that leaves one stored cannot serve. Recovery is a corrected document:
+// edit the file, or store one with `headscale policy set
+// --bypass-server-and-access-database-directly` while the server is
+// stopped.
+func TestNewStateRefusesStoredRefusedPolicy(t *testing.T) {
+	for name, pol := range refusedPolicyDocuments {
+		t.Run(name+"/database", func(t *testing.T) {
+			cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+
+			// As an upgrade leaves it: stored without validation.
+			d, err := db.NewHeadscaleDatabase(cfg)
+			require.NoError(t, err)
+			_, err = d.SetPolicy(pol)
+			require.NoError(t, err)
+			require.NoError(t, d.Close())
+
+			_, err = NewState(cfg)
+			require.Error(t, err, "a refused document must stop startup")
+		})
+
+		t.Run(name+"/file", func(t *testing.T) {
+			cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+			cfg.Policy = types.PolicyConfig{
+				Mode: types.PolicyModeFile,
+				Path: filepath.Join(t.TempDir(), "policy.hujson"),
+			}
+
+			require.NoError(t, os.WriteFile(cfg.Policy.Path, []byte(pol), 0o600))
+
+			_, err := NewState(cfg)
+			require.Error(t, err, "a refused document must stop startup")
+		})
+	}
+}
+
+// TestReloadPolicyRefusedKeepsPolicyInForce pins what an operator sees
+// when the configured document is one headscale refuses at validation: a
+// reload (SIGHUP in either mode) returns the error and keeps the policy
+// in force, and so does a set through the API or CLI. The stored
+// document is not corrected by either.
+func TestReloadPolicyRefusedKeepsPolicyInForce(t *testing.T) {
+	const allowAll = `{"grants": [{"src": ["*"], "dst": ["*"], "ip": ["*"]}]}`
+
+	for name, pol := range refusedPolicyDocuments {
+		t.Run(name, func(t *testing.T) {
+			_, s, _ := persistTestSetup(t)
+			t.Cleanup(func() { _ = s.Close() })
+
+			_, err := s.SetPolicy([]byte(allowAll))
+			require.NoError(t, err)
+
+			before, _ := s.Filter()
+
+			t.Run("set", func(t *testing.T) {
+				_, err := s.SetPolicy([]byte(pol))
+				require.Error(t, err, "a refused document must not be set")
+
+				after, _ := s.Filter()
+				assert.Equal(t, before, after, "the policy in force is unchanged")
+			})
+
+			t.Run("reload-from-database", func(t *testing.T) {
+				_, err := s.SetPolicyInDB(pol)
+				require.NoError(t, err)
+
+				_, err = s.ReloadPolicy()
+				require.Error(t, err, "a refused document must not reload")
+
+				after, _ := s.Filter()
+				assert.Equal(t, before, after, "the policy in force is unchanged")
+			})
+
+			t.Run("reload-from-file", func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "policy.hujson")
+				require.NoError(t, os.WriteFile(path, []byte(pol), 0o600))
+				s.cfg.Policy = types.PolicyConfig{Mode: types.PolicyModeFile, Path: path}
+
+				_, err := s.ReloadPolicy()
+				require.Error(t, err, "a refused document must not reload")
+
+				after, _ := s.Filter()
+				assert.Equal(t, before, after, "the policy in force is unchanged")
+			})
+		})
+	}
+}
+
 // TestNodeWriteChangeWhenPolicyRefreshFails fails both the NodeStore
 // writer's SetNodes and the caller's. The write still reached the
 // NodeStore, so the change returned with the error must resend the node to
