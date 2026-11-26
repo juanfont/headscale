@@ -1,0 +1,60 @@
+LINE: headscale |
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [version     (Print the version)]
+LINE: headscale ve|
+  [version ]
+LINE: headscale api |
+  [whoami ]
+LINE: headscale debug h|
+  [health ]
+LINE: headscale completion |
+  [bash      ] [fish      ] [powershell] [zsh       ]
+LINE: headscale completion z|
+  [zsh ]
+LINE: headscale completion bash |
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale -|
+  [--config   (Config file)] [--help     (Show this help)] [--output   (Output format: json (the API object))] [--version  (Print the version line)]
+LINE: headscale version -|
+  [--config  (Config file)] [--help    (Show this help)] [--output  (Output format: json)]
+LINE: headscale version --|
+  [--config  (Config file)] [--help    (Show this help)] [--output  (Output format: json)]
+LINE: headscale version -c|
+  [-c ]
+LINE: headscale api whoami --|
+  [--config  (Config file)] [--help    (Show this help)] [--output  (Output format: json (the API object))]
+LINE: headscale -o |
+  [json ]
+LINE: headscale -o=|
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale --output=j|
+  [--output=json ]
+LINE: headscale debug health -o |
+  [json ]
+LINE: headscale version --output=|
+  [--output=json ]
+LINE: headscale -c |
+  [./config.yaml] [./policy.hujson]
+LINE: headscale --config=|
+  (none)
+LINE: headscale version --config |
+  [./config.yaml] [./policy.hujson]
+LINE: headscale -o json -c x debug health --|
+  [--help ]
+LINE: headscale version -o json --|
+  [--config  (Config file)] [--help    (Show this help)]
+LINE: headscale -c -o |
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [version     (Print the version)]
+LINE: headscale -c x ve|
+  [version ]
+LINE: headscale nodez |
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [version     (Print the version)]
+LINE: headscale versoin --|
+  [--config   (Config file)] [--help     (Show this help)] [--output   (Output format: json (the API object))] [--version  (Print the version line)]
+LINE: headscale version --bogus --|
+  [--config  (Config file)] [--help    (Show this help)] [--output  (Output format: json)]
+LINE: headscale completion bash -c|
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale -h ve|
+  [version ]
+LINE: headscale --version |
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [version     (Print the version)]
