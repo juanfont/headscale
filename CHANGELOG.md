@@ -535,6 +535,14 @@ Every option below is under `services.headscale`.
 - Fixed an issue where a DERP map refresh that retried an unreachable source delayed node expiry and other scheduled tasks. [#3683](https://github.com/juanfont/headscale/pull/3683)
 - The flake's `headscale-docker` image carries CA certificates, so it can fetch HTTPS DERP maps. [#3683](https://github.com/juanfont/headscale/pull/3683)
 
+## 0.29.8 (2026-11-26)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Peers now carry their own capability version, not the version of the node that receives the map. Tailscale v1.106 and newer use it to pick per-peer features such as hybrid WireGuard handshakes; with the wrong version, a v1.106 client could not connect to an older one [#3724](https://github.com/juanfont/headscale/pull/3724)
+
 ## 0.29.7 (2026-10-30)
 
 **Minimum supported Tailscale client version: v1.80.0**
