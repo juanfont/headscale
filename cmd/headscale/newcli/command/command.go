@@ -33,6 +33,7 @@ type (
 	Prompt          = lib.Prompt
 	NoInput         = lib.NoInput
 	NoOutput        = lib.NoOutput
+	Said            = lib.Said
 	Opt[T any]      = lib.Opt[T]
 	Path            = lib.Path
 	OneOf[W Words]  = lib.OneOf[W]
@@ -222,6 +223,9 @@ func program(name, short string) lib.Program[*API] {
 		Credentials: credentials(),
 		OpenFields: map[reflect.Type]string{
 			reflect.TypeFor[clientv0.HealthMessage](): "Details",
+		},
+		Unprintable: map[reflect.Type]error{
+			reflect.TypeFor[clientv0.AuthRequest](): errAuthReq,
 		},
 
 		Aliases:   []string{"ls", "rm", "approve"},

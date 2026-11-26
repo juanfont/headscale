@@ -115,7 +115,16 @@ var (
 	errEndAlone = errors.New(
 		"NewEnd is the delete of a credential, and no Secret beside it makes one",
 	)
+	errWholeKind = errors.New(
+		"takes a credential typed whole and is not text: the input rule reads only text",
+	)
 )
+
+// credentialRune is a character a credential is made of: base64 URL-safe.
+func credentialRune(c rune) bool {
+	return c == '-' || c == '_' || '0' <= c && c <= '9' || 'a' <= c && c <= 'z' ||
+		'A' <= c && c <= 'Z'
+}
 
 // masked is s as the edge of Headscale's program writes it.
 func masked(s string) string {
@@ -446,6 +455,59 @@ func TestLookupKeepsItsSentence(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 
 		Run(tree, strings.Fields(line), Env{Stdout: &stdout, Stderr: &stderr})
+		require.Equal(t, want, stderr.String(), line)
+	}
+}
+
+// TestTagIsNoUser: a tag where a user is wanted is said to be one, after
+// the users were read, and the command's hint follows it; a word of no
+// other kind gets no hint.
+func TestTagIsNoUser(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		User clientv0.User `arg:"user"`
+	}
+
+	tree, err := Build("prog", "A program", New(Spec[in, NoOutput]{
+		Name: "give", Short: "S", Long: "S.", Example: []string{"prog give alice"},
+		Hint: func(args []string) string { return "a hint for " + args[0] },
+		Run:  noop[in, NoOutput],
+	}))
+	require.NoError(t, err)
+
+	s := httptest.NewServer(versioned(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Headscale-Version", "dev")
+		_, _ = w.Write(
+			[]byte(
+				`{"users": [` + rowOf[clientv0.User](
+					`{"id": "1", "name": "alice"}`,
+				) + `]}`,
+			),
+		)
+	}))
+	t.Cleanup(s.Close)
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	for line, want := range map[string]string{
+		"give alice":  "",
+		"give tag:ci": "Error: a tag is not a user.\na hint for tag:ci\n",
+		"give bob":    "Error: no user matches \"bob\".\n",
+	} {
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, strings.Fields(line), Env{
+			Stdout:  &stdout,
+			Stderr:  &stderr,
+			Version: &types.VersionInfo{Version: "dev"},
+			Environ: []string{
+				"HEADSCALE_CONFIG=" + file,
+				"HEADSCALE_CLI_ADDRESS=" + s.URL,
+				"HEADSCALE_CLI_API_KEY=key",
+			},
+		})
 		require.Equal(t, want, stderr.String(), line)
 	}
 }
@@ -1420,5 +1482,88 @@ func TestAbout(t *testing.T) {
 			expiry,
 		)
 		require.Equal(t, tt.want, sentence(tt.err), tt.name)
+	}
+}
+
+// TestWithheld: a run that took a secret typed whole never writes it, raw
+// JSON included: an answer that repeats it, in any case or behind an escape
+// of JSON, is not printed, and the error says the command was done.
+func TestWithheld(t *testing.T) {
+	t.Parallel()
+
+	const id = "hskey-authreq-0123456789abcdef01234567"
+
+	type in struct {
+		ID AuthID `arg:"id"`
+	}
+
+	tree, err := Build("prog", "A program", New(Spec[in, item]{
+		Name:    "get",
+		Short:   "S",
+		Long:    "S.",
+		Example: []string{"prog get x"},
+		Run: func(c Ctx, _ in) (item, error) {
+			return callOf[item, anySuccess](
+				c.API,
+				func(cl *clientv0.Client) (*http.Response, error) {
+					req, err := http.NewRequestWithContext(
+						c,
+						http.MethodGet,
+						cl.Server+"echo",
+						nil,
+					)
+					if err != nil {
+						return nil, err
+					}
+
+					return cl.Client.Do(req)
+				},
+			)
+		},
+		Done: func(_ in, out item, _ time.Time) string { return "Item " + out.Name + "." },
+	}))
+	require.NoError(t, err)
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	repeated := "Error: the command was done, but the server's answer repeats <id>, a secret, so it is not printed. This is a fault of the server.\n"
+
+	for _, tt := range []struct {
+		name, name2, args, stdout, stderr string
+	}{
+		{name: "an answer that holds no ID", name2: "apple", args: "get " + id + " -o json", stdout: "{\n  \"id\": \"1\",\n  \"name\": \"apple\"\n}\n"},
+		{name: "the ID in -o json", name2: id, args: "get " + id + " -o json", stderr: repeated},
+		{name: "the ID in upper case", name2: strings.ToUpper(id), args: "get " + id + " -o json", stderr: repeated},
+		{name: "the ID behind an escape", name2: `hskey\u002dauthreq-0123456789abcdef01234567`, args: "get " + id + " -o json", stderr: repeated},
+		{name: "the ID in text goes through the edge", name2: id, args: "get " + id, stdout: "Item hskey-authreq-***.\n"},
+		{name: "another ID is no secret of this run", name2: "hskey-authreq-ffff", args: "get " + id + " -o json", stdout: "{\n  \"id\": \"1\",\n  \"name\": \"hskey-authreq-ffff\"\n}\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := httptest.NewServer(
+				versioned(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Headscale-Version", "dev")
+					_, _ = w.Write([]byte(`{"id": "1", "name": "` + tt.name2 + `"}`))
+				}),
+			)
+			t.Cleanup(s.Close)
+
+			var stdout, stderr bytes.Buffer
+
+			Run(tree, strings.Fields(tt.args), Env{
+				Stdout:  &stdout,
+				Stderr:  &stderr,
+				Version: &types.VersionInfo{Version: "dev"},
+				Environ: []string{
+					"HEADSCALE_CONFIG=" + file,
+					"HEADSCALE_CLI_ADDRESS=" + s.URL + "/",
+					"HEADSCALE_CLI_API_KEY=key",
+				},
+			})
+			require.Equal(t, tt.stdout, stdout.String())
+			require.Equal(t, tt.stderr, stderr.String())
+		})
 	}
 }

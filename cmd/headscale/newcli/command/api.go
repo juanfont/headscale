@@ -60,6 +60,10 @@ type API struct {
 	// read keeps the bodies of what the client read in this run, for
 	// -o json (answerOf).
 	read *reads
+
+	mu sync.Mutex
+	// requests are the auth requests read in this run; see AuthRequest.
+	requests map[AuthID]clientv0.AuthRequest
 }
 
 // answerKey is a decoded object: its type, and its value in a canonical
@@ -156,6 +160,38 @@ func (a *API) whoAmI(ctx context.Context) (clientv0.Me, error) {
 	})
 
 	return a.me, a.meErr
+}
+
+// AuthRequest is GET /auth-requests/{id}, read once a run: the
+// question of a command and its message say the same, and the secret goes
+// out once more only for the answer itself.
+func (a *API) AuthRequest(
+	ctx context.Context,
+	id AuthID,
+) (clientv0.AuthRequest, error) {
+	a.mu.Lock()
+	r, ok := a.requests[id]
+	a.mu.Unlock()
+
+	if ok {
+		return r, nil
+	}
+
+	r, err := clientv0.Got(a.GetAuthRequestWithResponse(ctx, string(id)))
+	if err != nil {
+		return r, a.errorOf(err)
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.requests == nil {
+		a.requests = map[AuthID]clientv0.AuthRequest{}
+	}
+
+	a.requests[id] = r
+
+	return r, nil
 }
 
 // errRestarted is a walk whose token the server refused twice.
