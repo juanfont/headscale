@@ -1,6 +1,8 @@
 package state
 
 import (
+	"slices"
+
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
@@ -13,7 +15,9 @@ import (
 // tags-XOR-user violations, ...) and both the boot scan and any future caller
 // run the whole set.
 type nodeHealthCheck struct {
-	name  string
+	name string
+	// code is the stable warning code the API reports for this check.
+	code  string
 	check func(nv types.NodeView, cfg *types.Config) (problem, fixHint string, ok bool)
 }
 
@@ -27,6 +31,7 @@ var nodeHealthChecks = []nodeHealthCheck{givenNameMapsToValidFQDN, expiryIsEncod
 // any peer's — so it must be renamed to recover.
 var givenNameMapsToValidFQDN = nodeHealthCheck{
 	name: "given-name-maps-to-valid-fqdn",
+	code: "node_name_invalid",
 	check: func(nv types.NodeView, cfg *types.Config) (string, string, bool) {
 		err := types.ValidateGivenName(nv.GivenName(), cfg.DNSConfig.BaseDomain)
 		if err != nil {
@@ -42,6 +47,7 @@ var givenNameMapsToValidFQDN = nodeHealthCheck{
 // any peer's — so its expiry must be reset to recover.
 var expiryIsEncodable = nodeHealthCheck{
 	name: "expiry-is-encodable",
+	code: "node_expiry_invalid",
 	check: func(nv types.NodeView, _ *types.Config) (string, string, bool) {
 		// No expiry is sent as the zero time, which is in range.
 		expiry, _ := nv.Expiry().GetOk()
@@ -106,4 +112,31 @@ func (s *State) logNodeHealth() {
 			Msg("node has invalid data that breaks map generation; " +
 				"run the fix to restore connectivity")
 	}
+}
+
+// NodeHealthProblem is one node check that some nodes fail.
+type NodeHealthProblem struct {
+	// Code is the stable code of the check, such as node_name_invalid.
+	Code  string
+	Nodes []types.NodeID
+}
+
+// NodeHealthProblems runs every node check against the current NodeStore
+// snapshot and returns one entry per failing check, in check order.
+func (s *State) NodeHealthProblems() []NodeHealthProblem {
+	byCheck := make(map[string][]types.NodeID)
+	for _, f := range s.scanNodeHealth() {
+		byCheck[f.check] = append(byCheck[f.check], f.nodeID)
+	}
+
+	var out []NodeHealthProblem
+
+	for _, c := range nodeHealthChecks {
+		if ids := byCheck[c.name]; len(ids) > 0 {
+			slices.Sort(ids)
+			out = append(out, NodeHealthProblem{Code: c.code, Nodes: ids})
+		}
+	}
+
+	return out
 }

@@ -3583,6 +3583,15 @@ func TestTagOwnedByTags(t *testing.T) {
 		var nilPM *PolicyManager
 		require.False(t, nilPM.TagOwnedByTags("tag:leaf", []string{"tag:root"}))
 	})
+
+	t.Run("TagsOwnedByTags lists what TagOwnedByTags allows", func(t *testing.T) {
+		require.Equal(t, []string{"tag:mid", "tag:root"}, pm.TagsOwnedByTags([]string{"tag:root"}))
+		require.Equal(t, []string{"tag:leaf", "tag:lone", "tag:mid"}, pm.TagsOwnedByTags([]string{"tag:mid", "tag:lone"}))
+		require.Empty(t, pm.TagsOwnedByTags(nil))
+
+		var nilPM *PolicyManager
+		require.Empty(t, nilPM.TagsOwnedByTags([]string{"tag:x"}), "as TagOwnedByTags: a nil manager allows nothing")
+	})
 }
 
 // benchPolicies are the ACL shapes BenchmarkBuildPeerMap and
