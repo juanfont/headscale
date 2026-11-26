@@ -275,12 +275,7 @@ func viaDatabase(
 	p, err := do(d)
 
 	if refused, ok := errors.AsType[*offline.RefusedError](err); ok {
-		return p, &command.ProblemError{
-			Problem: clientv0.Problem{
-				Code:    clientv0.ProblemCodePolicyInvalid,
-				Details: config.PolicyRefusal(refused.Policy, refused.Err),
-			},
-		}
+		return p, policyRefused(refused.Policy, refused.Err)
 	}
 
 	if ro, ok := errors.AsType[*offline.ReadOnlyError](err); ok {
@@ -342,4 +337,16 @@ func policyOf(
 	}{p.Policy, p.Updated, p.Mode, p.Path})
 
 	return p
+}
+
+// policyRefused is err, which refused the policy pol with no server, as
+// the problem the server answers for it: every command that judges a
+// policy says why in the same lines.
+func policyRefused(pol []byte, err error) error {
+	return &command.ProblemError{
+		Problem: clientv0.Problem{
+			Code:    clientv0.ProblemCodePolicyInvalid,
+			Details: config.PolicyRefusal(pol, err),
+		},
+	}
 }

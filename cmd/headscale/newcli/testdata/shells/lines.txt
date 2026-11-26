@@ -64,7 +64,11 @@ headscale nodes list --sort la|
 headscale nodes list --sort -la|
 headscale nodes list --filter=ow|
 headscale policy set |
-headscale check config |	waits check config
+headscale check config |
+headscale check policy |
+headscale check |
+headscale generate |
+headscale serve --|
 headscale nodes list |
 headscale nodes delete |
 headscale nodes rm --f|

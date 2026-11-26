@@ -10,7 +10,10 @@ import (
 
 // commands is the tree, in the order the root help lists it.
 var commands = []command.Node{
+	serveCmd,
 	versionCmd,
+	checkGroup,
+	generateGroup,
 	completionCmd,
 	nodesGroup,
 	usersGroup,

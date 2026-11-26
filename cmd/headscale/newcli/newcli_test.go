@@ -77,6 +77,10 @@ type cliCase struct {
 	clients bool
 	// server are options of the case's server beyond the fixture's own.
 	server []servertest.ServerOption
+	// until runs beside a command that runs until it is stopped, such as
+	// serve, and stops it when it returns, as a signal does. It returns
+	// when ctx ends, which the end of the command brings.
+	until func(ctx context.Context, f *fixture)
 }
 
 type result struct {
@@ -209,7 +213,28 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		pageSize = 0
 	}
 
+	// A command that until never stops ends here, and fails its case.
+	ctx, stop := context.WithTimeout(tb.Context(), time.Minute)
+	until := make(chan struct{})
+
+	go func() {
+		defer close(until)
+
+		if tc.until != nil {
+			tc.until(ctx, f)
+			stop()
+		}
+	}()
+
+	// The command has ended: so does until, before the case reads what it
+	// found.
+	defer func() {
+		stop()
+		<-until
+	}()
+
 	code := command.Run(Tree(), words(f.expand(shell(tc.args))), command.Env{
+		Context:        ctx,
 		Stdin:          strings.NewReader(f.expand(tc.stdin)),
 		Stdout:         &out,
 		Stderr:         &errOut,
@@ -310,8 +335,43 @@ func runCases(t *testing.T, setup func(testing.TB, *fixture), cases []cliCase) {
 	}
 }
 
-// runCase runs one case of runCases; a test that sets the working
-// directory runs its cases with it, one after the other.
+// runCasesIn runs cases one after the other in a directory that holds
+// files, by name, as a person runs a command next to its files: {dir} is
+// that directory. The working directory is the process's, so neither the
+// cases nor the test may be parallel.
+func runCasesIn(
+	t *testing.T,
+	files map[string]string,
+	setup func(testing.TB, *fixture),
+	cases []cliCase,
+) {
+	t.Helper()
+
+	dir := t.TempDir()
+	for name, body := range files {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
+	}
+
+	t.Chdir(dir)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runCase(t, func(tb testing.TB, f *fixture) {
+				tb.Helper()
+
+				f.vars["dir"] = dir
+
+				if setup != nil {
+					setup(tb, f)
+				}
+			}, tc)
+		})
+	}
+}
+
+// runCase runs one case of runCases on a server of its own, after setup;
+// a test that sets the working directory runs its cases with it, one after
+// the other.
 func runCase(t *testing.T, setup func(testing.TB, *fixture), tc cliCase) {
 	t.Helper()
 
@@ -814,6 +874,59 @@ func TestImports(t *testing.T) {
 			name,
 		)
 	}
+
+	// serve is the server, and only its log is written past the edge that
+	// masks a credential: through zerolog, or ServerOutput. Run turns the
+	// log off for every other command, and does nothing else with it.
+	more, err := filepath.Glob("*/*.go")
+	require.NoError(t, err)
+
+	const off = "zerolog.SetGlobalLevel(zerolog.Disabled)"
+
+	for _, name := range append(files, more...) {
+		if name == "serve.go" || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		f, err := parser.ParseFile(token.NewFileSet(), name, nil, 0)
+		require.NoError(t, err)
+
+		src, err := os.ReadFile(name)
+		require.NoError(t, err)
+
+		for _, imp := range f.Imports {
+			if !strings.HasPrefix(imp.Path.Value, `"github.com/rs/zerolog`) {
+				continue
+			}
+
+			if name == filepath.Join("command", "command.go") &&
+				imp.Path.Value == `"github.com/rs/zerolog"` &&
+				strings.Count(
+					string(src),
+					"zerolog.",
+				) == 2*strings.Count(
+					string(src),
+					off,
+				) {
+				continue
+			}
+
+			t.Errorf(
+				"%s imports %s: only serve writes a log, and Run only turns it off with %s",
+				name,
+				imp.Path.Value,
+				off,
+			)
+		}
+
+		require.NotRegexp(
+			t,
+			`\.ServerOutput\(|hscontrol\.(UseLogConfig|LogWarnings)\(`,
+			string(src),
+			"%s writes a server's log: only serve does",
+			name,
+		)
+	}
 }
 
 // TestOneRule: every answer the CLI reads passes the one rule of the
@@ -963,7 +1076,18 @@ const rootHelp = `headscale is an open source implementation of the Tailscale co
 
 Local commands (no server needed):
 
+  serve   Run the control server
   version   Print the version
+  check config [file]   Check a config file
+  check policy <file>   Check a policy file and run its tests
+  check derp-map <file>   Check a DERP map file
+  check extra-records <file>   Check an extra records file
+  check all [config-file]   Check the config and every file it points at
+  generate private-key   Print a new private key
+  generate config   Print a configuration file with every key
+  generate nixos-options   Print the NixOS options for services.headscale.settings
+  generate cli-reference   Print the reference page of the command line
+  generate man   Print the man page
   completion <shell>   Print the completion script of a shell
 
 Server commands (talk to a running headscale):
@@ -1008,6 +1132,7 @@ Debug:
 
   debug health   Check that the server is healthy
   debug create-node   Make a registration of a made-up node, for tests
+  debug mockoidc   Run a mock OIDC server for tests
 
 Server commands take -o json, which prints the API object.
 See ` + "`headscale <command> --help`" + ` for examples.

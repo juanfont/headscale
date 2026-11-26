@@ -1507,7 +1507,8 @@ var bypassCases = func() []cliCase {
 }()
 
 // TestPolicyRefusedBothWays: a refused policy prints the same lines through
-// the server and through the database bypass, set and --dry-run alike.
+// the server and through the database bypass, set and --dry-run alike, and
+// through check policy.
 func TestPolicyRefusedBothWays(t *testing.T) {
 	t.Parallel()
 
@@ -1540,6 +1541,17 @@ func TestPolicyRefusedBothWays(t *testing.T) {
 				require.Equal(t, server.stderr, r.stderr, "the bypass%s", dry)
 				require.Equal(t, 1, r.code)
 			}
+
+			// check policy says why in the same lines, but of a test that
+			// needs a user the server lacks: its stand-ins have every user
+			// the policy names.
+			if p.name == "a test that cannot run" {
+				return
+			}
+
+			r := f.run(t, cliCase{args: "check policy {dir}/bad.hujson"})
+			require.Equal(t, server.stderr, r.stderr, "check policy")
+			require.Equal(t, 1, r.code)
 		})
 	}
 }
@@ -1709,8 +1721,21 @@ func TestPolicyHealth(t *testing.T) {
 func TestVerbatimCommands(t *testing.T) {
 	t.Parallel()
 
+	// A Text is printed as a Verbatim text is.
+	check := "a line of the check itself, which names the file as typed"
+	file := "a file it makes: what is written to a file must be what was made"
 	why := map[string]string{
-		"policy get": "a changed byte is a changed policy: get > file must give back what set took",
+		"policy get":             "a changed byte is a changed policy: get > file must give back what set took",
+		"check config":           check,
+		"check policy":           check,
+		"check derp-map":         check,
+		"check extra-records":    check,
+		"check all":              "its report, which names the files of the config as written there",
+		"generate private-key":   file,
+		"generate config":        file + "; with --running the server's, which redacts its secrets",
+		"generate nixos-options": file,
+		"generate cli-reference": file,
+		"generate man":           file,
 	}
 
 	for _, c := range Tree().Commands() {

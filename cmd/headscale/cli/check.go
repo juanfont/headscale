@@ -2,19 +2,14 @@ package cli
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
-	"io"
 	"os"
-	"strings"
 
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/config"
-	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
 )
-
-var errCheckFailed = errors.New("check failed")
 
 func init() {
 	rootCmd.AddCommand(checkCmd)
@@ -52,12 +47,7 @@ var checkPolicyCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		policyPath, _ := cmd.Flags().GetString("file")
 
-		policyBytes, err := os.ReadFile(policyPath)
-		if err != nil {
-			return fmt.Errorf("reading policy file: %w", err)
-		}
-
-		err = policyv2.CheckPolicy(policyBytes)
+		_, err := config.CheckPolicy(policyPath)
 		if err != nil {
 			return err
 		}
@@ -101,48 +91,9 @@ var checkAllCmd = &cobra.Command{
 	skips it with a warning.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		out := cmd.OutOrStdout()
-
 		cfg, src, err := loadCheckedConfig(cmd)
-		if err != nil {
-			printCheckLine(out, "FAIL", "config", src, len("config"), err)
 
-			return fmt.Errorf("%w: config, files not checked", errCheckFailed)
-		}
-
-		files := config.Files(cfg)
-
-		width := len("config")
-		for _, f := range files {
-			width = max(width, len(f.Key))
-		}
-
-		printCheckLine(out, "ok", "config", src, width, nil)
-
-		failed := 0
-
-		for _, f := range files {
-			err := f.Check()
-
-			switch {
-			case err == nil:
-				printCheckLine(out, "ok", f.Key, f.Path, width, nil)
-			case f.CreatedAtStartup && errors.Is(err, os.ErrNotExist):
-				printCheckLine(out, "skip", f.Key, f.Path+" (missing; startup creates it)", width, nil)
-			case errors.Is(err, config.ErrSecretNotRead):
-				printCheckLine(out, "skip", f.Key, f.Path+" ("+err.Error()+")", width, nil)
-			default:
-				failed++
-
-				printCheckLine(out, "FAIL", f.Key, f.Path, width, err)
-			}
-		}
-
-		if failed > 0 {
-			return fmt.Errorf("%w: %d of %d files", errCheckFailed, failed, len(files))
-		}
-
-		return nil
+		return config.CheckAll(cmd.OutOrStdout(), cfg, src, err)
 	},
 }
 
@@ -180,37 +131,18 @@ func fileCheckCmd(use, short, valid string, check func(string) error) *cobra.Com
 func loadCheckedConfig(cmd *cobra.Command) (*types.Config, string, error) {
 	path, _ := cmd.Flags().GetString("file")
 
-	l, err := loadConfig(path)
-	if err == nil {
-		// As initConfig does; a config that failed keeps the console
-		// logger and the default level.
-		useLogConfig(l.Config, cmd.ErrOrStderr())
+	l, err := config.CheckConfig(cmp.Or(path, cfgFile, os.Getenv("HEADSCALE_CONFIG")), os.Environ())
+	if l.Config != nil {
+		// As initConfig does; a config that failed to load keeps the
+		// console logger and the default level.
+		hscontrol.UseLogConfig(l.Config, cmd.ErrOrStderr())
 	}
 
-	logWarnings(l.Warnings)
-
-	src := cmp.Or(l.File, "(defaults and environment)")
-	if err != nil {
-		return nil, src, err
-	}
-
-	err = config.Validate(l.Config)
-	logWarnings(config.Warnings(l.Config))
+	hscontrol.LogWarnings(l.Warnings)
 
 	if err != nil {
-		return nil, src, err
+		return nil, l.Source(), err
 	}
 
-	return l.Config, src, nil
-}
-
-// printCheckLine prints one result; an error goes indented below it.
-func printCheckLine(w io.Writer, status, key, path string, width int, err error) {
-	fmt.Fprintf(w, "%-4s  %-*s  %s\n", status, width, key, path)
-
-	if err != nil {
-		for l := range strings.SplitSeq(err.Error(), "\n") {
-			fmt.Fprintf(w, "      %s\n", l)
-		}
-	}
+	return l.Config, l.Source(), nil
 }

@@ -60,9 +60,9 @@ func TestHelpExamples(t *testing.T) {
 	}
 }
 
-// TestHelpWritesNoValue: no help, the root's included, writes out a
-// default or a limit, in any text it prints: Short, Long, the help of a
-// flag or an argument, an example. Such a value goes stale when the code
+// TestHelpWritesNoValue: no help, the root's included, and not the
+// reference page writes out a default or a limit, in any text it prints:
+// Short, Long, the help of a flag, an argument or a column, an example. Such a value goes stale when the code
 // changes it; the text names the setting or the flag instead.
 func TestHelpWritesNoValue(t *testing.T) {
 	t.Parallel()
@@ -111,6 +111,25 @@ func TestHelpWritesNoValue(t *testing.T) {
 			path,
 		)
 	}
+
+	// The reference page adds the columns of every list.
+	var out, errb bytes.Buffer
+	require.Equal(
+		t,
+		0,
+		command.Run(
+			tree,
+			[]string{"generate", "cli-reference"},
+			command.Env{Stdout: &out, Stderr: &errb},
+		),
+		errb.String(),
+	)
+	require.NotRegexp(
+		t,
+		writtenValue,
+		withoutDefaults(tree, out.String()),
+		"the reference page: name the setting or the flag, not its value",
+	)
 }
 
 // writtenValue is a default or a limit written out: "7 days by default",

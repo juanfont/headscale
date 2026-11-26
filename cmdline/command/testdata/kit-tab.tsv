@@ -1,6 +1,6 @@
-# headscale: 76 rows: fails 2 pass 64 stretch 2 waits 8
+# headscale: 76 rows: fails 2 pass 72 stretch 2
 # model: 76 rows: fails 2 pass 74
-headscale	C01	waits	serve, check
+headscale	C01	pass
 headscale	C02	pass
 headscale	C03	pass
 headscale	C04	pass
@@ -16,7 +16,7 @@ headscale	C13	pass
 headscale	C14	pass
 headscale	C15	pass
 headscale	C16	pass
-headscale	C17	waits	check config
+headscale	C17	pass
 headscale	C18	pass
 headscale	C19	pass
 headscale	C20	pass
@@ -31,12 +31,12 @@ headscale	N08	pass
 headscale	N09	pass
 headscale	N10	pass
 headscale	N11	pass
-headscale	N12	waits	check config
-headscale	N13	waits	check config
+headscale	N12	pass
+headscale	N13	pass
 headscale	N14	pass
-headscale	N15	waits	check config
+headscale	N15	pass
 headscale	N16	pass
-headscale	N17	waits	serve
+headscale	N17	pass
 headscale	N18	pass
 headscale	N19	stretch	":4\n"
 headscale	N20	stretch	":4\n"
@@ -52,7 +52,7 @@ headscale	Q08	fails	"-o\tOutput format: json (the API object)\n:4\n"
 headscale	Q09	pass
 headscale	Q10	pass
 headscale	Q11	pass
-headscale	Q12	waits	serve
+headscale	Q12	pass
 headscale	Q13	pass
 headscale	Q14	pass
 headscale	Q15	pass
@@ -60,7 +60,7 @@ headscale	Q16	pass
 headscale	Q17	pass
 headscale	Q18	pass
 headscale	Q19	pass
-headscale	Q20	waits	serve
+headscale	Q20	pass
 headscale	Q21	pass
 headscale	Q22	pass
 headscale	Q23	pass

@@ -2143,6 +2143,17 @@ var beyondKit = []string{
 	"api oauth-clients delete",
 	"policy get",
 	"policy reload",
+	"check policy",
+	"check derp-map",
+	"check extra-records",
+	"check all",
+	"debug mockoidc",
+	"generate",
+	"generate private-key",
+	"generate config",
+	"generate nixos-options",
+	"generate cli-reference",
+	"generate man",
 }
 
 func TestKitKnowsHeadscale(t *testing.T) {
