@@ -89,6 +89,7 @@ type PolicyManager struct {
 	// global and per-node filter rules are derived from these.
 	compiledGrants []compiledGrant
 	userNodeIdx    userNodeIndex
+	ownerIdx       ownerIndex
 
 	// Lazy map of per-node filter rules (reduced, for packet filters)
 	filterRulesMap *xsync.Map[types.NodeID, []tailcfg.FilterRule]
@@ -332,6 +333,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.resolvedPol = pol
 	pm.compiledGrants = grants
 	pm.userNodeIdx = buildUserNodeIndex(pm.nodes)
+	pm.ownerIdx = buildOwnerIndex(pm.userNodeIdx)
 	precomputeSelfRules(pm.compiledGrants, pm.userNodeIdx)
 	pm.needsPerNodeFilter = hasPerNodeGrants(pm.compiledGrants)
 	pm.viaTargetTags = collectViaTargetTags(pm.compiledGrants)
@@ -955,7 +957,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	capSrc := make(map[types.NodeID]bool, nodes.Len())
 
 	viaSrcs := make(map[types.NodeID][]matcher.Match)
-	siblingSrcs := siblingSelfSources(pm.compiledGrants, nodes, pm.userNodeIdx)
+	siblingSrcs := siblingSelfSources(pm.compiledGrants, nodes, pm.userNodeIdx, pm.ownerIdx)
 
 	for _, node := range nodes.All() {
 		ms := pm.nodeMatchersLocked(node, noViaRules)
@@ -1112,7 +1114,7 @@ func (pm *PolicyManager) filterRulesForNodeLocked(
 	node types.NodeView,
 ) []tailcfg.FilterRule {
 	return filterRulesForNode(
-		pm.compiledGrants, node, pm.userNodeIdx,
+		pm.compiledGrants, node, pm.userNodeIdx, pm.ownerIdx,
 	)
 }
 

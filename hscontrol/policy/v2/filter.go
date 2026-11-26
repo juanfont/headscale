@@ -204,7 +204,7 @@ func (pol *Policy) compileFilterRulesForNode(
 	userIdx := buildUserNodeIndex(nodes)
 	precomputeSelfRules(grants, userIdx)
 
-	return filterRulesForNode(grants, node, userIdx)
+	return filterRulesForNode(grants, node, userIdx, buildOwnerIndex(userIdx))
 }
 
 var sshAccept = tailcfg.SSHAction{

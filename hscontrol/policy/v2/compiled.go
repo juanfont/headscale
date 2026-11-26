@@ -16,6 +16,7 @@ import (
 	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/views"
+	"tailscale.com/util/mak"
 )
 
 // grantCategory classifies a grant by what per-node work it needs.
@@ -167,6 +168,74 @@ func buildUserNodeIndex(
 	}
 
 	return idx
+}
+
+// ownerIndex is every untagged node's address with its user, sorted by
+// address, and per family the users with a node of it: a route is looked up
+// in it, not walked against every user's nodes.
+type ownerIndex struct {
+	addrs []ownerAddr
+	fams  [2][]uint
+}
+
+type ownerAddr struct {
+	addr netip.Addr
+	uid  uint
+	node types.NodeView
+}
+
+func buildOwnerIndex(userIdx userNodeIndex) ownerIndex {
+	var (
+		idx  ownerIndex
+		fams [2]map[uint]bool
+	)
+
+	for uid, nodes := range userIdx {
+		for _, n := range nodes {
+			for _, ip := range n.IPs() {
+				idx.addrs = append(idx.addrs, ownerAddr{addr: ip, uid: uid, node: n})
+
+				f := 0
+				if ip.Is6() {
+					f = 1
+				}
+
+				mak.Set(&fams[f], uid, true)
+			}
+		}
+	}
+
+	slices.SortFunc(idx.addrs, func(a, b ownerAddr) int { return a.addr.Compare(b.addr) })
+
+	for f := range fams {
+		idx.fams[f] = slices.Sorted(maps.Keys(fams[f]))
+	}
+
+	return idx
+}
+
+// in calls fn with each indexed address inside p: an exit route, every
+// user of its family once, with no node.
+func (o ownerIndex) in(p netip.Prefix, fn func(ownerAddr)) {
+	if p.Bits() == 0 {
+		f := 0
+		if p.Addr().Is6() {
+			f = 1
+		}
+
+		for _, uid := range o.fams[f] {
+			fn(ownerAddr{uid: uid})
+		}
+
+		return
+	}
+
+	p = p.Masked()
+
+	i, _ := slices.BinarySearchFunc(o.addrs, p.Addr(), func(a ownerAddr, t netip.Addr) int { return a.addr.Compare(t) })
+	for ; i < len(o.addrs) && p.Contains(o.addrs[i].addr); i++ {
+		fn(o.addrs[i])
+	}
 }
 
 // A user association alone does not establish ownership: tagged nodes may retain their creator.
@@ -806,8 +875,13 @@ func filterRulesForNode(
 	grants []compiledGrant,
 	node types.NodeView,
 	userIdx userNodeIndex,
+	owners ownerIndex,
 ) []tailcfg.FilterRule {
-	return rulesForNode(grants, node, userIdx, filterSelfRules, compileViaForNode)
+	selfRules := func(cg *compiledGrant, n types.NodeView, idx userNodeIndex) keyedRules {
+		return filterSelfRules(cg, n, idx, owners)
+	}
+
+	return rulesForNode(grants, node, userIdx, selfRules, compileViaForNode)
 }
 
 // nodeOnlyMatchers returns the matchers of the self and via rules a node
@@ -902,6 +976,7 @@ func filterSelfRules(
 	cg *compiledGrant,
 	node types.NodeView,
 	userIdx userNodeIndex,
+	owners ownerIndex,
 ) keyedRules {
 	routes := slices.Concat(node.SubnetRoutes(), node.ExitRoutes())
 	if len(routes) == 0 {
@@ -912,29 +987,24 @@ func filterSelfRules(
 		return keyedRules{}
 	}
 
+	users := map[uint]bool{}
+	if nodeHasUserIdentity(node) {
+		users[node.User().ID()] = true
+	}
+
+	for _, r := range routes {
+		owners.in(r, func(o ownerAddr) { users[o.uid] = true })
+	}
+
 	var all keyedRules
 
-	for _, uid := range slices.Sorted(maps.Keys(userIdx)) {
-		own := nodeHasUserIdentity(node) && node.User().ID() == uid
-		if !own && !routesCoverAny(routes, userIdx[uid]) {
-			continue
-		}
-
+	for _, uid := range slices.Sorted(maps.Keys(users)) {
 		r := userSelfRules(cg, uid, userIdx)
 		all.rules = append(all.rules, r.rules...)
 		all.keys = append(all.keys, r.keys...)
 	}
 
 	return all
-}
-
-// routesCoverAny reports whether a route contains an address of any node.
-func routesCoverAny(routes []netip.Prefix, nodes []types.NodeView) bool {
-	return slices.ContainsFunc(nodes, func(n types.NodeView) bool {
-		return slices.ContainsFunc(n.IPs(), func(ip netip.Addr) bool {
-			return slices.ContainsFunc(routes, func(r netip.Prefix) bool { return r.Contains(ip) })
-		})
-	})
 }
 
 // userSelfRules returns uid's autogroup:self rules, shared from
@@ -1239,6 +1309,7 @@ func siblingSelfSources(
 	grants []compiledGrant,
 	nodes views.Slice[types.NodeView],
 	userIdx userNodeIndex,
+	owners ownerIndex,
 ) map[uint]map[types.NodeID]bool {
 	out := map[uint]map[types.NodeID]bool{}
 
@@ -1251,27 +1322,20 @@ func siblingSelfSources(
 			continue
 		}
 
-		routes := router.SubnetRoutes()
-		if len(routes) == 0 {
-			continue
-		}
-
 		owner := router.User().ID()
 
-		for uid, devices := range userIdx {
-			if uid == owner {
-				continue
-			}
-
-			for _, d := range devices {
-				if routesCoverAny(routes, []types.NodeView{d}) && selfSource(grants, uid, d, userIdx) {
-					if out[owner] == nil {
-						out[owner] = map[types.NodeID]bool{}
-					}
-
-					out[owner][d.ID()] = true
+		for _, r := range router.SubnetRoutes() {
+			owners.in(r, func(o ownerAddr) {
+				if o.uid == owner || out[owner][o.node.ID()] || !selfSource(grants, o.uid, o.node, userIdx) {
+					return
 				}
-			}
+
+				if out[owner] == nil {
+					out[owner] = map[types.NodeID]bool{}
+				}
+
+				out[owner][o.node.ID()] = true
+			})
 		}
 	}
 
