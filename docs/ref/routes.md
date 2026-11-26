@@ -37,31 +37,30 @@ Finally, [enable IP forwarding](#enable-ip-forwarding) to route traffic.
 
 #### Enable the subnet router on the control server
 
-The routes of a tailnet can be displayed with the `headscale nodes list-routes` command. A subnet router with the
+The routes of a tailnet can be displayed with the `headscale nodes routes list` command. A subnet router with the
 hostname `myrouter` announced the IPv4 networks `10.0.0.0/8` and `192.168.0.0/24`. Those need to be approved before they
 can be used.
 
 ```console
-$ headscale nodes list-routes
-ID | Hostname | Approved | Available      | Serving (Primary)
-1  | myrouter |          | 10.0.0.0/8     |
-   |          |          | 192.168.0.0/24 |
+$ headscale nodes routes list
+ID  NAME      ENABLED  ADVERTISED                  SERVING
+1   myrouter           10.0.0.0/8, 192.168.0.0/24
 ```
 
-Approve all desired routes of a subnet router by specifying them as comma separated list:
+Approve all desired routes of a subnet router by specifying them as comma separated list. The list replaces the routes
+the node had approved before; `headscale nodes routes clear` removes them all:
 
 ```console
-$ headscale nodes approve-routes --identifier 1 --routes 10.0.0.0/8,192.168.0.0/24
-Node updated
+$ headscale nodes routes set myrouter 10.0.0.0/8,192.168.0.0/24
+Node 1 (myrouter) enabled routes: 10.0.0.0/8, 192.168.0.0/24.
 ```
 
 The node `myrouter` can now route the IPv4 networks `10.0.0.0/8` and `192.168.0.0/24` for the tailnet.
 
 ```console
-$ headscale nodes list-routes
-ID | Hostname | Approved       | Available      | Serving (Primary)
-1  | myrouter | 10.0.0.0/8     | 10.0.0.0/8     | 10.0.0.0/8
-   |          | 192.168.0.0/24 | 192.168.0.0/24 | 192.168.0.0/24
+$ headscale nodes routes list
+ID  NAME      ENABLED                     ADVERTISED                  SERVING
+1   myrouter  10.0.0.0/8, 192.168.0.0/24  10.0.0.0/8, 192.168.0.0/24  10.0.0.0/8, 192.168.0.0/24
 ```
 
 #### Use the subnet router
@@ -166,31 +165,29 @@ Finally, [enable IP forwarding](#enable-ip-forwarding) to route traffic.
 
 #### Enable the exit node on the control server
 
-The routes of a tailnet can be displayed with the `headscale nodes list-routes` command. An exit node can be recognized
-by its announced routes: `0.0.0.0/0` for IPv4 and `::/0` for IPv6. The exit node with the hostname `myexit` is already
-available, but needs to be approved:
+The routes of a tailnet can be displayed with the `headscale nodes routes list` command. An exit node can be
+recognized by its announced routes: `0.0.0.0/0` for IPv4 and `::/0` for IPv6, which the list shows as `exit`. The exit
+node with the hostname `myexit` is already available, but needs to be approved:
 
 ```console
-$ headscale nodes list-routes
-ID | Hostname | Approved | Available | Serving (Primary)
-1  | myexit   |          | 0.0.0.0/0 |
-   |          |          | ::/0      |
+$ headscale nodes routes list
+ID  NAME    ENABLED  ADVERTISED  SERVING
+1   myexit           exit
 ```
 
-For exit nodes, it is sufficient to approve either the IPv4 or IPv6 route. The other will be approved automatically.
+For exit nodes, approve `exit`, which is both routes. Approving either `0.0.0.0/0` or `::/0` approves the other too.
 
 ```console
-$ headscale nodes approve-routes --identifier 1 --routes 0.0.0.0/0
-Node updated
+$ headscale nodes routes set myexit exit
+Node 1 (myexit) enabled routes: exit.
 ```
 
 The node `myexit` is now approved as exit node for the tailnet:
 
 ```console
-$ headscale nodes list-routes
-ID | Hostname | Approved  | Available | Serving (Primary)
-1  | myexit   | 0.0.0.0/0 | 0.0.0.0/0 | 0.0.0.0/0
-   |          | ::/0      | ::/0      | ::/0
+$ headscale nodes routes list
+ID  NAME    ENABLED  ADVERTISED  SERVING
+1   myexit  exit     exit        exit
 ```
 
 #### Use the exit node

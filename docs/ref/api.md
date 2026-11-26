@@ -5,57 +5,193 @@ interface](integration/web-ui.md), [remote control Headscale](#remote-control) o
 integration and tooling.
 
 The API requires a valid API key before use. To create an API key, log into your Headscale server and generate
-one with the default expiration of 90 days:
+one:
 
 ```shell
-headscale apikeys create
+headscale api keys create
 ```
 
 Copy the output of the command and save it for later. Please note that you can not retrieve an API key again. If the API
-key is lost, expire the old one, and create a new one.
+key is lost, delete the old one, and create a new one.
 
 To list the API keys currently associated with the server:
 
 ```shell
-headscale apikeys list
+headscale api keys list
 ```
 
-and to expire an API key:
+and to delete an API key, which stops it working at once:
 
 ```shell
-headscale apikeys expire --prefix <PREFIX>
+headscale api keys delete <PREFIX>
 ```
 
 ## REST API
 
-- API endpoint: `/api/v1`, e.g. `https://headscale.example.com/api/v1`
-- Documentation: `/api/v1/docs`, e.g. `https://headscale.example.com/api/v1/docs`
+- API endpoint: `/api/headscale/v0`, e.g. `https://headscale.example.com/api/headscale/v0`
+- Documentation: `/api/headscale/v0/docs`, e.g. `https://headscale.example.com/api/headscale/v0/docs`, and the
+  [OpenAPI document](api/headscale-v0.yaml) of this release
+- Errors: every error is a problem (RFC 9457) with a stable `code`, listed under [problem codes](api/problems.md)
 - Headscale Version: `/version`, e.g. `https://headscale.example.com/version`
 - Authenticate using HTTP Bearer authentication by sending the [API key](#api) with the HTTP `Authorization: Bearer <API_KEY>` header.
 
-Start by [creating an API key](#api) and test it with the examples below. Read the API documentation provided by your
-Headscale server at `/api/v1/docs` for details.
+API v0 may change in any minor release; every change is in the changelog under "API v0", and a patch release does not
+break it. The legacy API at `/api/v1` is deprecated and removed in Headscale 0.33: see
+[Migrate from /api/v1](#migrate-from-apiv1).
 
-=== "Get details for all users"
+Start by [creating an API key](#api) and test it with the examples below. Read the API documentation provided by your
+Headscale server at `/api/headscale/v0/docs` for details.
+
+=== "List users"
 
     ```console
     curl -H "Authorization: Bearer <API_KEY>" \
-        https://headscale.example.com/api/v1/user
+        https://headscale.example.com/api/headscale/v0/users
     ```
+
+    This is the first page. When the answer has `nextPageToken`, send it back as `?pageToken=` for the next one.
 
 === "Get details for user 'bob'"
 
     ```console
     curl -H "Authorization: Bearer <API_KEY>" \
-        https://headscale.example.com/api/v1/user?name=bob
+        "https://headscale.example.com/api/headscale/v0/users?name=bob"
     ```
 
 === "Register a node"
 
     ```console
     curl -H "Authorization: Bearer <API_KEY>" \
-        --json '{"user": "<USER>", "authId": "<AUTH_ID>"}' \
-        https://headscale.example.com/api/v1/auth/register
+        --json '{"userId": "<USER_ID>"}' \
+        "https://headscale.example.com/api/headscale/v0/auth-requests/<AUTH_ID>/register"
+    ```
+
+## Migrate from /api/v1
+
+The legacy API at `/api/v1` is frozen: it gets no new operation and no new field until it is removed.
+
+| Release    | `/api/v1`                                                                        |
+| ---------- | -------------------------------------------------------------------------------- |
+| 0.30       | works; every operation is marked deprecated and every answer carries the headers |
+| 0.31, 0.32 | the same, and fully frozen: no new operation and no new field, only fixes        |
+| 0.33       | removed                                                                          |
+
+How a client of `/api/v1` learns it:
+
+- Its OpenAPI document, at `/api/v1/openapi.yaml`, marks every operation `deprecated`; a client generated from it
+  shows the mark.
+- Every answer to a path under `/api/v1`, an error or a `404` too, carries `Deprecation`
+  ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)) and a `Link` to this guide. It carries no `Sunset`
+  ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)) until 0.33 has a date. A web UI that calls it cross-origin from the browser
+  reads them only when its reverse proxy exposes them; Headscale sends no CORS headers for `/api/v1`.
+- The server logs one warning the first time a client calls an operation of `/api/v1` after each start, with the
+  operation and the client's address.
+
+### What changes for every client
+
+- **Every list is paged.** Every `GET` of a collection (`/nodes`, `/users`, `/auth-keys`, `/api-keys`,
+  `/oauth-clients`, `/tags`) answers one page. Follow `nextPageToken`, sent back as `pageToken`, until it is missing.
+- **IDs, not names.** Every path, body and filter names a user by its ID (the `user` filters, `userId`); find the ID
+  with `GET /users?name=`.
+- **`name` of a node changes meaning.** In `/api/v1` `name` is the hostname and `givenName` the name; in v0 `name` is
+  the name and `hostname` the hostname. Code that reads `name` still runs and shows the other value.
+- **Status codes.** `/api/v1` answered `200` to every success. In v0 a `POST` that makes something answers `201`:
+  `/users`, `/auth-keys`, `/api-keys`, `/oauth-clients`, `/auth-requests/{id}/register` (the node) and `/debug/nodes`
+  (the auth request). `DELETE` of a node, an auth key, an API key or an OAuth client, and `approve` and `reject` of an
+  auth request, answer `204` with no body. `DELETE /users/{id}` answers `200` with what was removed, or with
+  `dryRun=true` what would be. Every other success is `200` with a body.
+- **Errors.** Every error, a path no operation has too, is a problem (`application/problem+json`): the text is
+  `detail`, and `code` is a string such as `name_taken`, listed under [problem codes](api/problems.md).
+- **Values.** Enums are short words (`cli`, not `REGISTER_METHOD_CLI`); a time that is not set is `null`, never the
+  year 1.
+- **Keys need an expiry.** A new auth key or API key without `expiry` is refused with `expiry_required`. An OAuth
+  client has no expiry.
+- **Owner.** A node and an auth key have `owner`: one user, or tags (then `user` is `null`). A tagged auth key is made
+  with `tags` and no `userId`. An API key's `owner` is the user recorded on it, or `null`; its `tags` is always `[]`,
+  and the owner does not limit what the key may do.
+- **A delete of a key revokes it.** `DELETE` of an auth key, an API key or an OAuth client refuses the credential at
+  once, and the record stays readable with `state` `revoked`. Read `removal` for when the server removes it: a time,
+  or `null` when it is kept for ever (`credentials.revoked_retention` is zero or less, or a node still refers to the
+  auth key). `/api/v1` removed the record of a deleted key at once.
+- **CORS.** v0 answers CORS itself for the origins in `api.cors.allowed_origins`. A reverse proxy that answers CORS in
+  its place must allow `PATCH` and `PUT`.
+
+### Each call
+
+Paths are relative to `/api/v1` and `/api/headscale/v0`.
+
+| `/api/v1`                              | API v0                                         | What changes                                                                                    |
+| -------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `GET /node`                            | `GET /nodes`                                   | paged; `user` filter takes an ID; an unknown user gives `{"nodes": []}`, not `404`              |
+| `GET /node/{nodeId}`                   | `GET /nodes/{id}`                              | the same object as in the list                                                                  |
+| `DELETE /node/{nodeId}`                | `DELETE /nodes/{id}`                           | `204`                                                                                           |
+| `POST /node/{nodeId}/expire`           | `POST /nodes/{id}/expire`, `PATCH /nodes/{id}` | now is the action, or `"expiry": "now"`; a future time, or `null` for never, is `expiry`        |
+| `POST /node/{nodeId}/rename/{newName}` | `PATCH /nodes/{id}`                            | the name is in the body, as `name`                                                              |
+| `POST /node/{nodeId}/tags`             | `PUT /nodes/{id}/tags`                         |                                                                                                 |
+| `POST /node/{nodeId}/approve_routes`   | `PUT /nodes/{id}/routes`                       |                                                                                                 |
+| `POST /node/register`                  | `POST /auth-requests/{id}/register`            | takes a user ID; `201` with the node                                                            |
+| `POST /node/backfillips`               | none                                           | works until 0.33 removes `/api/v1`                                                              |
+| `POST /debug/node`                     | `POST /debug/nodes`                            | takes no user; `201` with the auth request it made, not a node                                  |
+| `GET /user`                            | `GET /users`, `GET /users/{id}`                | paged; filters combine; a get by ID exists                                                      |
+| `POST /user`                           | `POST /users`                                  | `201`; `name` is required                                                                       |
+| `POST /user/{oldId}/rename/{newName}`  | `PATCH /users/{id}`                            | also display name, email and picture                                                            |
+| `DELETE /user/{id}`                    | `DELETE /users/{id}`                           | `withNodes`, `dryRun` and `expect`; `200` with what was removed, not `204`                      |
+| `GET /preauthkey`                      | `GET /auth-keys`, `GET /auth-keys/{id}`        | paged; revoked keys are listed until removed; `state`; plain `prefix`                           |
+| `POST /preauthkey`                     | `POST /auth-keys`                              | `userId` or `tags`; `expiry` required; `description`                                            |
+| `POST /preauthkey/expire`              | `DELETE /auth-keys/{id}`                       | the ID is in the path; revokes at once; the state is `revoked`, not `expired`                   |
+| `DELETE /preauthkey?id=`               | `DELETE /auth-keys/{id}`                       | the ID is in the path; revokes at once and keeps the record; see `removal`                      |
+| `GET /apikey`                          | `GET /api-keys`, `GET /api-keys/{id}`          | paged; `owner`, `state`, plain `prefix`                                                         |
+| `POST /apikey`                         | `POST /api-keys`                               | answers with the whole key; `userId`; `expiry` required                                         |
+| `POST /apikey/expire`                  | `DELETE /api-keys/{id}`                        | by ID only; revokes at once; the state is `revoked`                                             |
+| `DELETE /apikey/{prefix}`              | `DELETE /api-keys/{id}`                        | by ID only; revokes at once and keeps the record; see `removal`                                 |
+| `POST /auth/register`                  | `POST /auth-requests/{id}/register`            | takes a user ID, not a username                                                                 |
+| `POST /auth/approve`                   | `POST /auth-requests/{id}/approve`             | SSH checks only; a registration is `register`ed or `reject`ed (`auth_request_kind`); `204`      |
+| `POST /auth/reject`                    | `POST /auth-requests/{id}/reject`              | `204`                                                                                           |
+| `GET /policy`                          | `GET /policy`                                  | `mode`, `path` and an `ETag`; `updated`, `null` in file mode; no `500` when no policy is stored |
+| `PUT /policy`                          | `PUT /policy`                                  | `If-Match`; `dryRun`; each error has its line and column where it has a place in the text       |
+| `POST /policy/check`                   | `PUT /policy?dryRun=true`                      |                                                                                                 |
+| `GET /config`                          | `GET /config`                                  | a token needs `all`, as an API key has                                                          |
+| `GET /health`                          | `GET /health`                                  | `503` with reasons; `warnings`                                                                  |
+
+### Examples
+
+=== "Rename a node"
+
+    ```console
+    # before
+    curl -X POST -H "Authorization: Bearer <API_KEY>" \
+        https://headscale.example.com/api/v1/node/12/rename/web-1
+    # after
+    curl -X PATCH -H "Authorization: Bearer <API_KEY>" --json '{"name": "web-1"}' \
+        https://headscale.example.com/api/headscale/v0/nodes/12
+    ```
+
+=== "Disable a node's key expiry"
+
+    ```console
+    # before
+    curl -H "Authorization: Bearer <API_KEY>" --json '{"disableExpiry": true}' \
+        "https://headscale.example.com/api/v1/node/12/expire?disableExpiry=true"
+    # after
+    curl -X PATCH -H "Authorization: Bearer <API_KEY>" --json '{"expiry": null}' \
+        https://headscale.example.com/api/headscale/v0/nodes/12
+    ```
+
+    The "before" sends `disableExpiry` in the query and in the body because 0.29 reads only the query and some 0.30
+    builds read only the body; a `/api/v1` expire that finds the field in neither expires the node now. In v0 the call
+    without a body is `POST /nodes/{id}/expire`, which expires it now.
+
+=== "Create an auth key"
+
+    ```console
+    # before
+    curl -H "Authorization: Bearer <API_KEY>" \
+        --json '{"user": "3", "reusable": true, "expiration": "2030-01-01T00:00:00Z"}' \
+        https://headscale.example.com/api/v1/preauthkey
+    # after
+    curl -H "Authorization: Bearer <API_KEY>" \
+        --json '{"userId": "3", "reusable": true, "expiry": "2030-01-01T00:00:00Z"}' \
+        https://headscale.example.com/api/headscale/v0/auth-keys
     ```
 
 ## Join nodes with an OAuth client
@@ -76,7 +212,7 @@ Each tag must exist in the policy's `tagOwners`, or the create fails. The secret
 is shown once:
 
 ```shell
-headscale oauth-clients create --scope auth_keys --tag tag:ci
+headscale api oauth-clients create auth_keys --tags tag:ci
 ```
 
 Scopes apply to the whole tailnet, as in Tailscale: an `auth_keys` token can read
@@ -85,7 +221,7 @@ and revoke auth keys of any tag, an `oauth_keys` token every OAuth client, and a
 Keep the secret as safe as any credential that can revoke keys. Without
 `all=true`, a token lists only the auth keys made through a token, whatever their
 tags; with it, every valid auth key. An admin API key lists OAuth clients only
-with `all=true`, which `headscale oauth-clients list` sends. No listing holds a
+with `all=true`. No listing holds a
 spent, expired or revoked key. Tags limit only the tags a token puts on keys, clients and devices, and
 which tagged devices it may retag. Deleting an OAuth client revokes its secret
 and its access tokens; auth keys, clients and nodes created with it stay until
@@ -224,7 +360,8 @@ Headscale with no extra setup.
 
 ### Troubleshooting
 
-- Make sure you have the _same_ Headscale version on your server and workstation.
+- Make sure you have the _same_ Headscale version on your server and workstation: the CLI refuses a server of
+  another major or minor version.
 - Verify that your TLS certificate is valid and trusted.
 - If you don't have access to a trusted certificate (e.g. from Let's Encrypt), either:
     - Add your self-signed certificate to the trust store of your OS _or_

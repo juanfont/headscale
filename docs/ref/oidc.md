@@ -174,7 +174,7 @@ reauthenticate. The default node expiration can be configured via the top-level 
     A node can be expired immediately via:
 
     ```console
-    headscale node expire -i <NODE_ID>
+    headscale nodes expire <NODE_ID>
     ```
 
 ### Reference a user in the policy

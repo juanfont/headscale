@@ -4,6 +4,639 @@
 
 **Minimum supported Tailscale client version: v1.84.0**
 
+### CLI redesigned
+
+The `headscale` command line has a new structure. The target of a command is now a positional argument, and a node or a user can be named instead of given by ID. Every list has `--columns`, `--filter` and `--sort`, and every entity has `get`. The CLI now talks to the new Headscale API, and `--output json` prints the objects of that API.
+
+The old command names and flags are removed. There is no deprecation period. Update your scripts before you upgrade.
+
+The full reference is generated from the code: [Command line reference](https://headscale.net/stable/ref/cli/), and `man headscale`. The new API and the end of `/api/v1` have [their own entry](#apiv1-is-deprecated-and-removed-in-033) in this release.
+
+**Before you upgrade**
+
+- If you ever changed `prefixes` in the config after nodes had registered, run `headscale nodes backfillips` once on 0.29. The command is removed in 0.30. A family that only the new `prefixes` defaults of 0.30 add cannot be filled on 0.29: after the upgrade, `POST /api/v1/node/backfillips` adds it to existing nodes.
+
+**After you upgrade**
+
+- Change container healthchecks from `headscale health` to `headscale debug health`.
+
+- Add `--force` to scripts that delete keys or OAuth clients, reject auth requests, or tag user-owned nodes. These commands now ask for confirmation.
+
+- Change every script that reads `-o json`. Some keys have new names, see "JSON output" below.
+
+- Keep the CLI and the server on the same major and minor version. The CLI now refuses to talk to a server of another major or minor version.
+
+- Do not parse the table. It is cut and formatted for people.
+
+- Load the shell completion again (`headscale completion <shell>`): a script saved from 0.29 does not complete the new commands.
+
+<details>
+<summary>Renamed and moved commands</summary>
+
+| Before                                                                     | After                                                                     |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `headscale configtest`                                                     | `headscale check config`                                                  |
+| `headscale policy check -f p.hujson`                                       | `headscale check policy p.hujson`                                         |
+| `headscale dumpConfig`                                                     | `headscale generate config --running`                                     |
+| `headscale health`                                                         | `headscale debug health`                                                  |
+| `headscale mockoidc`                                                       | `headscale debug mockoidc`                                                |
+| `headscale debug create-node --name fake-1 -u alice -k <id> -r 10.0.0.0/8` | `headscale debug create-node --name fake-1 --key <id> --route 10.0.0.0/8` |
+| `headscale nodes list -u alice`                                            | `headscale nodes list --filter owner=alice`                               |
+| `headscale nodes list-routes`                                              | `headscale nodes routes list`                                             |
+| `headscale nodes list-routes -i 12`                                        | `headscale nodes routes list 12`                                          |
+| `headscale nodes approve-routes -i 12 -r 10.0.0.0/8`                       | `headscale nodes routes set 12 10.0.0.0/8`                                |
+| `headscale nodes approve-routes -i 12 -r ""`                               | `headscale nodes routes clear 12`                                         |
+| `headscale nodes tag -i 13 -t tag:a,tag:b`                                 | `headscale nodes tags set 13 tag:a,tag:b`                                 |
+| `headscale nodes rename -i 12 web-1`                                       | `headscale nodes set 12 --name web-1`                                     |
+| `headscale nodes expire -i 12`                                             | `headscale nodes expire 12`                                               |
+| `headscale nodes expire -i 12 -e 2027-01-01T00:00:00Z`                     | `headscale nodes set 12 --expiry 2027-01-01`                              |
+| `headscale nodes expire -i 12 --disable`                                   | `headscale nodes set 12 --expiry never`                                   |
+| `headscale nodes delete -i 12`                                             | `headscale nodes delete 12`                                               |
+| `headscale nodes register --user alice --key <id>`                         | `headscale auth register <id> alice`                                      |
+| `headscale nodes backfillips`                                              | removed                                                                   |
+| `headscale users list -n alice`                                            | `headscale users get alice`                                               |
+| `headscale users list -e carol@example.com`                                | `headscale users list --filter email=carol@example.com`                   |
+| `headscale users rename -n alice -r alice2`                                | `headscale users set alice --name alice2`                                 |
+| `headscale users destroy -n alice`                                         | `headscale users delete alice`                                            |
+| `headscale preauthkeys list`                                               | `headscale auth keys list`                                                |
+| `headscale preauthkeys create -u 3 --reusable -e 24h`                      | `headscale auth keys create alice --reusable -e 24h`                      |
+| `headscale preauthkeys create --tags tag:ci`                               | `headscale auth keys create tag:ci`                                       |
+| `headscale preauthkeys expire -i 7`                                        | `headscale auth keys delete 7`                                            |
+| `headscale preauthkeys delete -i 7`                                        | `headscale auth keys delete 7`                                            |
+| `headscale apikeys list`                                                   | `headscale api keys list`                                                 |
+| `headscale apikeys create -e 90d`                                          | `headscale api keys create -e 90d`                                        |
+| `headscale apikeys expire -p f0e1d2c3b4a5`                                 | `headscale api keys delete f0e1d2c3b4a5`                                  |
+| `headscale apikeys delete -p f0e1d2c3b4a5`                                 | `headscale api keys delete f0e1d2c3b4a5`                                  |
+| `headscale auth register --auth-id <id> --user alice`                      | `headscale auth register <id> alice`                                      |
+| `headscale auth approve --auth-id <id>`                                    | `headscale auth approve <id>`                                             |
+| `headscale auth reject --auth-id <id>`                                     | `headscale auth reject <id>`                                              |
+| `headscale policy set -f p.hujson`                                         | `headscale policy set p.hujson`                                           |
+| `headscale nodes update-client -i 12` (unreleased)                         | `headscale nodes update-client 12`                                        |
+| `headscale oauth-clients list` (unreleased)                                | `headscale api oauth-clients list`                                        |
+| `headscale oauth-clients create -s devices:core -t tag:ci` (unreleased)    | `headscale api oauth-clients create devices:core --tags tag:ci`           |
+| `headscale oauth-clients delete -i c9f2aa000001` (unreleased)              | `headscale api oauth-clients delete c9f2aa000001`                         |
+
+New commands: `headscale policy reload`, `headscale api whoami`, `headscale check all`, `headscale check derp-map`, `headscale check extra-records`, `headscale generate config`, `headscale generate nixos-options`, `headscale generate cli-reference`, `headscale generate man`, and `get` on every entity.
+
+`debug create-node` takes no user and has no `--output`: it makes a registration that waits, which `auth register` answers with a user, and prints one sentence.
+
+</details>
+
+<details>
+<summary>Targets are positional, and names work</summary>
+
+`--identifier`, `--id`, `--name`, `--prefix` and `--auth-id` are gone. The target comes after the command.
+
+A node is named by ID, tailnet IP, name or hostname. A user by ID, email, username or OIDC identifier. A key by ID or prefix.
+
+```console
+# before
+$ headscale nodes delete --identifier 12
+$ headscale users destroy --name alice
+$ headscale preauthkeys create --user 3            # a user ID only
+$ headscale apikeys expire --prefix f0e1d2c3b4a5
+
+# after
+$ headscale nodes delete 12
+$ headscale nodes delete mynode
+$ headscale nodes delete 100.64.0.1
+$ headscale users delete alice
+$ headscale auth keys create alice
+$ headscale api keys delete f0e1d2c3b4a5
+```
+
+A name that matches more than one entity is an error that lists the candidates.
+
+</details>
+
+<details>
+<summary>Files are positional</summary>
+
+`--file` / `-f` is gone. `-` reads from stdin.
+
+```console
+# before
+$ headscale policy set -f policy.hujson
+$ headscale policy check -f policy.hujson
+
+# after
+$ headscale policy set policy.hujson
+$ headscale check policy policy.hujson
+$ generate-policy.sh | headscale policy set -
+```
+
+</details>
+
+<details>
+<summary>Flags: short letters, `--expiry`, `--force`</summary>
+
+Short flags keep one meaning each. Only these exist: `-o`, `-c`, `-h`, `-e` (expiry), `-d` (description), `-u` (user). All others are long only, also on the `debug` test tools.
+
+`--expiration` is now `--expiry` everywhere.
+
+`--force` exists only on commands that can prompt. On any other command it is an unknown flag.
+
+```console
+# before
+$ headscale users create dave -d "Dave D" -e dave@example.com -p https://x/y.png
+$ headscale preauthkeys create -u 3 --expiration 24h
+$ headscale nodes list --force                      # accepted, no effect
+
+# after
+$ headscale users create dave --display-name "Dave D" --email dave@example.com --picture-url https://x/y.png
+$ headscale auth keys create alice --expiry 24h
+$ headscale nodes list --force                      # Error
+```
+
+</details>
+
+<details>
+<summary>How flags are written</summary>
+
+A flag may be given once. Only `--filter` may be repeated. A list is one value, separated by commas.
+
+A bool flag takes `--force`, `--force=true` or `--force=false`. After `=`, only `true` and `false` are accepted.
+
+Only `-c`, `-o` and `-h` may stand before the subcommand. Every other flag comes after the name of its command.
+
+`-o json` and `-o=json` are promised. `-ojson` and grouped short flags are not.
+
+```console
+# before
+$ headscale nodes list -o yaml -o json             # the last one won
+$ headscale preauthkeys create --tags tag:a --tags tag:b
+$ headscale nodes delete -i 12 --force=1
+$ headscale --force nodes delete -i 12
+
+# after
+$ headscale nodes list -o json
+$ headscale nodes delete 12 --force --force         # Error
+$ headscale auth keys create tag:a,tag:b
+$ headscale nodes delete 12 --force=true
+$ headscale nodes delete 12 --force=1               # Error
+$ headscale --force nodes delete 12                 # Error
+$ headscale -c /etc/headscale/config.yaml nodes list
+```
+
+</details>
+
+<details>
+<summary>Help, `--version`, Tab and the man page</summary>
+
+There is no `help` command. Use `--help` or `-h`.
+
+Tab offers an alias when no command name fits what is typed. It offers files only for a file argument or a path flag such as `--config`, and after a mistake on the line only when the word is in such a slot that Tab understood.
+
+`headscale --version` is new. It prints the version line only, and it does not check for updates. `headscale version` stays.
+
+`man headscale` is new. The one page has every command.
+
+```console
+# before
+$ headscale help nodes
+$ headscale nodes lo<Tab>                           # nothing: aliases were never offered
+$ headscale nodes rename -i 12 <Tab>                # file names
+$ headscale nodez <Tab>                             # file names
+
+# after
+$ headscale nodes --help
+$ headscale help nodes                              # Error
+$ headscale nodes routes ap<Tab>                    # approve
+$ headscale nodes set mynode --name <Tab>           # nothing
+$ headscale nodez <Tab>                             # the commands of headscale
+
+# new
+$ headscale --version
+$ man headscale
+```
+
+</details>
+
+<details>
+<summary>Aliases removed</summary>
+
+Only `ls` (list), `rm` (delete) and `nodes routes approve` (routes set) remain.
+
+```console
+# before
+$ headscale node ls
+$ headscale user new dave
+$ headscale nodes show
+$ headscale preauthkeys c -u 3
+$ headscale nodes del -i 12
+$ headscale gen private-key
+
+# after
+$ headscale nodes ls
+$ headscale users create dave
+$ headscale nodes list
+$ headscale auth keys create alice
+$ headscale nodes rm 12
+$ headscale generate private-key
+```
+
+</details>
+
+<details>
+<summary>JSON output</summary>
+
+`-o json` prints the objects of the new Headscale API (`/api/headscale/v0`). The keys are camelCase, every ID is a string, and every time is RFC 3339.
+
+`yaml` and `json-line` are removed. An unknown format is an error.
+
+```console
+# before (0.29)
+$ headscale nodes list -o json | jq '.[0]'
+{"id": 12, "name": "ubuntu-vm", "given_name": "mynode",
+ "user": {"id": 3, "name": "alice"}, "ip_addresses": [...],
+ "online": true, "last_seen": {"seconds": ...}, ...}
+
+# after
+$ headscale nodes list -o json | jq '.[0]'
+{"id": "12", "name": "mynode", "hostname": "ubuntu-vm",
+ "owner": {"user": {"id": "3", "name": "alice", ...}, "tags": []},
+ "addresses": [...], "connectedToControl": true, "lastSeen": "2026-11-10T09:14:00Z", ...}
+```
+
+Node keys, before and after. Note that `name` changes its meaning:
+
+| Before (0.29)      | After                                                               |
+| ------------------ | ------------------------------------------------------------------- |
+| `id` (a number)    | `id` (a string)                                                     |
+| `given_name`       | `name`                                                              |
+| `name`             | `hostname`                                                          |
+| `user`             | `owner.user`                                                        |
+| `tags`             | `owner.tags`                                                        |
+| `ip_addresses`     | `addresses`                                                         |
+| `online`           | `connectedToControl`                                                |
+| `last_seen`        | `lastSeen`                                                          |
+| `expiry`           | `expiry`; `null` when the node never expires                        |
+| `approved_routes`  | `enabledRoutes`                                                     |
+| `available_routes` | `advertisedRoutes`                                                  |
+| `subnet_routes`    | `servingRoutes`                                                     |
+| `register_method`  | `registerMethod`                                                    |
+| `pre_auth_key`     | `authKeyId` (the ID only)                                           |
+| `machine_key`      | `machineKey`                                                        |
+| `node_key`         | `nodeKey`                                                           |
+| `disco_key`        | `discoKey`                                                          |
+| `created_at`       | `created`                                                           |
+| not there          | `fqdn`, `expired`, `clientVersion`, `os`, `ephemeral`, `attributes` |
+
+Users, auth keys, API keys and OAuth clients change in the same way. `headscale <group> list --list-columns` prints the field of every column, and the API reference describes every object.
+
+With `-o json`, a command that changes something prints the object after the change. `delete` prints nothing, with two exceptions: `users delete` prints what it removed, and the delete of a credential prints the revoked record.
+
+`version -o json` is not an API object. Its keys are now Go field names: `buildTime` is `BuildTime`, `version` is `Version`.
+
+`-o json` no longer silences log lines and no longer changes the update check. Server commands print no log lines in any mode.
+
+`check`, `generate`, `serve` and `completion` have no `-o`. `generate private-key -o json` printed `{"private_key": …}`; now `generate private-key` prints the key alone.
+
+```console
+# before
+$ headscale nodes list -o yaml
+$ headscale generate private-key -o json
+
+# after
+$ headscale nodes list -o json
+$ headscale nodes list -o yaml                       # Error: "yaml" is not a valid --output: the only format is json.
+$ headscale nodes list --columns id,name -o json     # Error: --columns works on tables only.
+$ headscale generate private-key
+```
+
+</details>
+
+<details>
+<summary>Filtering, sorting and choosing columns</summary>
+
+The filter flags of single commands are replaced by `--filter` on every list. `=` is exact, `:` is contains, `<` and `>` compare times, numbers and versions. The filter also applies to `-o json`.
+
+```console
+# before
+$ headscale nodes list --user alice
+$ headscale users list --email carol@example.com
+$ headscale users list --identifier 3
+
+# after
+$ headscale nodes list --filter owner=alice
+$ headscale users list --filter email=carol@example.com
+$ headscale users get 3
+
+# new
+$ headscale nodes list --filter 'last-seen>30d'
+$ headscale nodes list --columns +os,+hostname --sort -last-seen
+$ headscale nodes list --list-columns
+$ headscale auth keys list --filter owner=tag:ci
+```
+
+</details>
+
+<details>
+<summary>Tables</summary>
+
+The default node columns are `ID`, `NAME`, `OWNER`, `IP`, `VERSION`, `ONLINE`, `LAST SEEN`, `EXPIRY`.
+
+`Hostname`, `MachineKey`, `NodeKey` and `Ephemeral` are no longer shown by default. `User` and `Tags` are merged into `OWNER`. `Expired` is merged into `EXPIRY`. `Connected` is now `ONLINE`.
+
+IP addresses are on one line. Times are relative. In a pipe the table has no colour and one line per row.
+
+```
+# before
+ID | Hostname | Name | MachineKey | NodeKey | User | Tags | IP addresses | Ephemeral | Last seen | Expiration | Connected | Expired
+
+# after
+ID  NAME     OWNER   IP                    VERSION  ONLINE  LAST SEEN  EXPIRY
+12  mynode   alice   100.64.0.1, fd7a::1   1.82.0   yes     now        in 89d
+
+# to get a column back
+$ headscale nodes list --columns +hostname,+node-key
+```
+
+Other tables change too:
+
+| Table     | Before                                                                  | After                                                     |
+| --------- | ----------------------------------------------------------------------- | --------------------------------------------------------- |
+| users     | `ID, Name, Username, Email, Created`                                    | `ID, NAME, DISPLAY NAME, EMAIL, PROVIDER, COUNT, NODES`   |
+| auth keys | `ID, Key/Prefix, Reusable, Ephemeral, Used, Expiration, Created, Owner` | `ID, PREFIX, OWNER, REUSABLE, EPHEMERAL, EXPIRY, CREATED` |
+| API keys  | `ID, Prefix, Expiration, Created`                                       | `ID, PREFIX, OWNER, EXPIRY, CREATED, LAST SEEN`           |
+| routes    | `ID, Hostname, Approved, Available, Serving (Primary)`                  | `ID, NAME, ENABLED, ADVERTISED, SERVING`                  |
+
+In the users table, `NAME` is now the username. Before, `Name` was the display name and `Username` the username.
+
+</details>
+
+<details>
+<summary>Errors and exit codes</summary>
+
+Errors are plain text on stderr in every output mode. They are no longer a JSON object.
+
+A declined prompt exits 1. A prompt without a terminal is an error.
+
+```console
+# before
+$ headscale nodes list -o json            # server down
+{"error": "connecting to ..."}
+
+$ echo n | headscale nodes delete -i 12; echo $?
+0
+
+# after
+$ headscale nodes list -o json            # server down
+Error: cannot connect to /var/run/headscale/headscale.sock: no such file or directory      (stderr, exit 1)
+
+$ echo n | headscale nodes delete 12; echo $?
+Error: confirmation needed, but there is no terminal.
+Run again with --force to delete Node 12 (mynode).
+1
+```
+
+</details>
+
+<details>
+<summary>The CLI and the server must match</summary>
+
+The CLI compares its version with the server's. When the major or minor version differs, the command stops.
+
+```console
+# after
+$ headscale nodes list
+Error: this headscale is 0.31.2 (3f2a9c1), the server is 0.30.4 (a491228).
+The CLI and the server must have the same major and minor version.
+If you just upgraded, restart the server.
+```
+
+</details>
+
+<details>
+<summary>More commands ask for confirmation</summary>
+
+New prompts: `auth keys delete`, `api keys delete`, `auth reject`, and `nodes tags set` on a node that a user owns.
+
+```console
+# before
+$ headscale preauthkeys expire -i 7            # no question
+
+# after
+$ headscale auth keys delete 7                 # asks
+$ headscale auth keys delete 7 --force         # does not ask
+```
+
+</details>
+
+<details>
+<summary>Wrong arguments are errors</summary>
+
+Extra arguments were silently ignored. Now every command checks its arguments. An empty list value is an error too.
+
+```console
+# before
+$ headscale nodes approve-routes -i 2 "0.0.0.0/0"
+Node updated                                  # nothing was approved
+
+# after
+$ headscale nodes routes set 2
+Error: `nodes routes set` needs 2 arguments, got 1.
+
+$ headscale nodes routes set 2 ""
+Error: the route list is empty.
+```
+
+</details>
+
+<details>
+<summary>Keys</summary>
+
+The owner of an auth key is one positional argument: a user, or a list of tags. A key cannot have both.
+
+Lists show only keys that work. `--all` shows used, expired and revoked keys. This is new for API keys too: an expired API key is hidden by default.
+
+**A key ends with `delete`, and `delete` no longer removes the record at once.** The key stops working at once and shows as `revoked`. The server removes the record after the retention time, 7 days by default. This is the same for auth keys, API keys and OAuth clients, and it is what the Tailscale API does. `expire` and `revoke` are gone as separate commands.
+
+An auth key for tags needs tags that the policy names. A key for an unknown tag is refused.
+
+On create, stdout carries only the key. The notes go to stderr.
+
+```console
+# before
+$ headscale preauthkeys create --user 3 --tags tag:ci        # tagged key, "created by" user 3
+$ headscale preauthkeys list                                 # all keys
+$ headscale apikeys list                                     # all keys
+
+# after
+$ headscale auth keys create tag:ci
+$ headscale auth keys list                                   # usable keys
+$ headscale auth keys list --all                             # all keys, with STATE
+$ headscale api keys list --all
+
+$ headscale auth keys delete 7                               # revoked now, removed after credentials.revoked_retention
+
+# new
+$ headscale auth keys create tag:ci -d "CI runners"          # a description
+$ headscale api keys create --user alice                     # an API key owned by a user
+$ headscale auth keys get ab12cd345678
+```
+
+</details>
+
+<details>
+<summary>Nodes</summary>
+
+`rename` and the expiry flags are now `nodes set`. A time in the past is rejected. An empty name resets the name to the one made from the hostname. Name and expiry change together, or not at all.
+
+`nodes routes list` with an unknown node is an error. It used to list every node.
+
+`exit` in a route list means both exit routes.
+
+`nodes update-client` says why a node did not start the update.
+
+```console
+# before
+$ headscale nodes rename -i 12 web-1
+$ headscale nodes expire -i 12 -e 2020-01-01T00:00:00Z       # accepted: node expired
+
+# after
+$ headscale nodes set 12 --name web-1
+$ headscale nodes set 12 --name ""                           # the name made from the hostname
+$ headscale nodes set 12 --expiry 2020-01-01                 # Error: ... is in the past.
+$ headscale nodes expire 12
+
+# new
+$ headscale nodes get mynode
+$ headscale nodes set mynode --expiry 90d
+$ headscale nodes routes set gateway 10.0.0.0/8,exit
+$ headscale nodes tags list
+$ headscale nodes list --columns +public-ip
+```
+
+</details>
+
+<details>
+<summary>Users</summary>
+
+`users set` changes the username, display name, email and picture of a local user. `users rename` is gone.
+
+`users delete` also removes the user's API keys. `users delete --with-nodes` removes the nodes too. When the user's nodes or keys are not the ones the prompt showed, nothing is removed, and the CLI asks again.
+
+`users create` checks its input: the picture URL must be an absolute `http` or `https` URL, and the email must be an address.
+
+```console
+# before
+$ headscale users rename --name alice --new-name alice2
+$ headscale users create dave --picture-url "javascript:alert(1)"    # accepted
+
+# after
+$ headscale users set alice --name alice2
+$ headscale users create dave --picture-url "javascript:alert(1)"    # Error
+
+# new
+$ headscale users set alice --display-name "Alice A" --email a@b.c
+$ headscale users set alice --picture-url ""                 # clear
+$ headscale users get alice
+$ headscale users delete alice --with-nodes
+```
+
+</details>
+
+<details>
+<summary>Auth requests</summary>
+
+`auth approve` is for an SSH check. `auth register` is for a registration. The wrong one is now an error. Before, `auth approve` on a registration was accepted and the node had to start again.
+
+The prompt of `auth reject` and the messages of all three say what is being answered.
+
+A request that was answered already is an error, whoever answered it: `no auth request has this ID. It may have timed out, or it was answered already.` The auth ID may be given as the whole URL that the node shows; only the ID in it is used.
+
+```console
+# after
+$ headscale auth approve <registration-auth-id>
+Error: this is a registration request. It needs a user:
+  headscale auth register <auth-id> <user>
+```
+
+</details>
+
+<details>
+<summary>OAuth clients (unreleased)</summary>
+
+Scopes are one positional comma list. Tags are `--tags`. `delete` asks for confirmation, and the client stays visible as `revoked` until the retention time removes it.
+
+```console
+# before
+$ headscale oauth-clients create --scope devices:core --scope auth_keys --tag tag:ci
+
+# after
+$ headscale api oauth-clients create devices:core,auth_keys --tags tag:ci
+```
+
+</details>
+
+<details>
+<summary>Policy, checks and the configuration</summary>
+
+`check config` and `check policy` need no server and no database, and they write nothing. `check policy` runs the tests in the policy.
+
+A check prints one line when it passes. What the configuration warns about goes to stderr as `warning: …`, whatever `log.level` and `log.format` say. `-` reads stdin, as HuJSON when it starts with `{` or `[` and as YAML otherwise. A check reads at most 16 MiB of a file or of stdin; a larger one is an error.
+
+`check config <file>` and `check all <file>` do not look at `--config` or `HEADSCALE_CONFIG`, so a new file can be checked before it is put in place.
+
+To test a policy against the users and nodes of a running server, use `policy set --dry-run`.
+
+`policy reload` asks the server to read the policy again and prints the result.
+
+The bypass flag has a new name: `--bypass-grpc-and-access-database-directly` is now `--bypass-server-and-access-database-directly`. `policy check` with the bypass is now `policy set --dry-run` with the bypass. The bypass refuses while a server runs, no longer migrates the database, and refuses a database of another version; the old CLI migrated it. In file mode it reads the policy file and refuses `set`, where the old CLI read and wrote the row.
+
+`policy get -o json` prints the API's policy object. `policy get` with no policy exits 0 with a note on stderr. A refused policy is told at the line and column of each problem. The aliases `show`, `view`, `fetch`, `put` and `update` are gone.
+
+`generate config --running` prints the configuration of the running server, as the server gives it: the `cli` section left out, and each secret written as `<redacted>`. It asks the server, so a token needs `all`: the answer names internal hosts, paths and accounts. A configuration whose secret is `<redacted>` is a config error: `check config` fails on it, and `serve` exits 78 and is not restarted by the systemd units.
+
+`serve` exits 78 when it loaded a configuration file and the configuration is wrong, in the file or in a `HEADSCALE_*` variable, and 1 for every other failure. `serve -c` with a file that does not exist answers `Error: the config file nope.yaml does not exist.`
+
+`generate private-key` reads no config: a broken config no longer makes it fail.
+
+```console
+# before
+$ headscale configtest                          # opened the database, ran migrations
+$ headscale policy check -f p.hujson            # needed a running server
+$ headscale policy check -f p.hujson --bypass-grpc-and-access-database-directly
+$ headscale dumpConfig                          # wrote /etc/headscale/config.dump.yaml
+
+# after
+$ headscale check config
+$ headscale check config new.yaml               # HEADSCALE_CONFIG is not looked at
+$ headscale check policy p.hujson
+$ headscale check all
+$ generate-config.sh | headscale check config -
+$ headscale policy set p.hujson --dry-run
+$ headscale policy set p.hujson --dry-run --bypass-server-and-access-database-directly
+$ headscale policy reload
+$ headscale generate config --running
+```
+
+</details>
+
+<details>
+<summary>Health, update check and config warning</summary>
+
+`headscale health` is now `headscale debug health`. It prints `healthy`; before it printed an empty line.
+
+The login page and the SSH-check page print `headscale auth register <auth-id> USERNAME` and `headscale auth approve <auth-id>`, and the hints for a node whose name or expiry cannot be sent print `headscale nodes set <id> --name <name>` and `headscale nodes expire <id>`.
+
+Only `headscale version` and the start of `headscale serve` ask GitHub for a newer release. Other commands no longer do. This removes the long wait on hosts without outbound access.
+
+Server commands no longer print `WRN no config file found, using defaults`.
+
+```console
+# before
+$ time headscale users list               # no outbound access
+real 0m30.1s
+
+# after
+$ time headscale users list
+real 0m0.1s
+```
+
+</details>
+
 ### v1 REST API replaced; gRPC and Protobuf removed
 
 The v1 REST API now provides an OpenAPI 3.1 specification at
@@ -14,13 +647,26 @@ HTTP API directly.
 
 [#3324](https://github.com/juanfont/headscale/pull/3324)
 
+### `/api/v1` is deprecated, and removed in 0.33
+
+Headscale's own API is now `/api/headscale/v0`, which the CLI uses. The legacy
+API at `/api/v1` is frozen: it keeps working in 0.30, 0.31 and 0.32, gets no
+new operation and no new field, and is removed in 0.33. Its OpenAPI document
+marks every operation `deprecated`; every answer under `/api/v1` carries the
+`Deprecation` and `Link` headers; the server logs a warning the first
+time a client calls it after each start. The
+[migration guide](https://headscale.net/stable/ref/api/#migrate-from-apiv1)
+takes each call to its v0 form.
+
+[#3364](https://github.com/juanfont/headscale/issues/3364)
+
 ### OAuth clients and scopes for the v2 API
 
 The v2 API now authenticates with OAuth 2.0 client-credentials, the way the
 Tailscale ecosystem does. An OAuth client mints short-lived access tokens whose
 scopes limit which operations they may perform and whose tags limit the devices
 they may create, so a credential can be issued with only the access it needs.
-The `headscale oauth-clients` command manages them. This lets the Tailscale
+`headscale api oauth-clients` manages them. This lets the Tailscale
 Terraform provider and Kubernetes operator drive Headscale unchanged; admin API
 keys remain all-access.
 
@@ -57,8 +703,8 @@ removed on this schedule:
   still need at least once on 0.30 or 0.31. Keys not used by then stop working
   and must be reissued.
 - **0.32** drops the legacy key formats: API keys of the form `prefix.secret`
-  (shown with a 7-character prefix in `headscale apikeys list`) and pre-auth
-  keys from before 0.28.0 (shown as `hskey-auth-legacy-…` in
+  (shown with a 7-character prefix in 0.29's `headscale apikeys list`) and
+  pre-auth keys from before 0.28.0 (shown as `hskey-auth-legacy-…` in 0.29's
   `headscale preauthkeys list`). Using them does not help; reissue them before
   upgrading to 0.32.
 
@@ -70,7 +716,8 @@ Projects built on Tailscale, such as tsnet services, tailscaled integrations or
 Tailscale client implementations, can now test against a real control server
 in their NixOS VM tests. Import `nixosModules.testkit` on a node named
 `headscale`. Clients join `http://headscale` with no certificates or other
-setup, and `hs-authkey USER` on that node mints their auth keys.
+setup, and `hs-authkey OWNER` on that node mints their auth keys, for a user or
+for tags.
 `nixosModules.testkit-peer` adds a tailscaled peer that joins with `hs-join KEY`:
 
 ```nix
@@ -81,6 +728,62 @@ nodes.peer.imports = [ inputs.headscale.nixosModules.testkit-peer ];
 
 See `nix/README.md` for the full contract, recipes for tsnet and non-Go
 clients, and how to run the same setup without Nix.
+
+**BREAKING** for projects that use the kit from the main branch: `hs-authkey`
+takes an owner now, the same as `auth keys create`. The owner is a user name or
+a list of tags. For a user, the script still creates the user when it is
+missing. For tags, it creates no user. A tag must be in the policy now, and the
+kit starts with no policy, so a test sets one with `headscale policy set`
+before it asks for a key for tags.
+
+```console
+# before
+$ hs-authkey alice
+$ hs-authkey alice --tags tag:ci
+$ hs-authkey alice --expiration 48h
+
+# after
+$ hs-authkey alice
+$ hs-authkey tag:ci
+$ hs-authkey alice --expiry 48h
+```
+
+A flag may be given once now. So when the caller's flags set `--expiry` (`-e`)
+or `--reusable`, in any form, `hs-authkey` leaves out its own `--expiry 24h` or
+`--reusable`. The CLI decides what is a flag: the kit asks its completion,
+which runs nothing, so in `--description --expiry` the second word is a
+description and the kit keeps its defaults; after `--` it adds none. The CLI
+also decides whether the owner is a user and names the user it finds missing,
+which the kit makes. A `-c FILE` (`--config`) in the flags chooses the server
+for that line alone: the kit still adds its defaults, but neither waits nor
+makes a user. After `--` the kit cannot tell whether a server was chosen: it
+neither waits, nor makes a user, nor adds its defaults. In both cases, create
+the user on the same server first, then run the line again. `hs-authkey alice` still gives
+a reusable key for 24 hours.
+
+The commands that the kit runs and documents change too, and so do those of a
+test script that calls the CLI itself:
+
+```console
+# before
+$ headscale health
+$ headscale users list --name "$user" -o json | jq -e 'length > 0'
+$ headscale preauthkeys create --user "$user" --reusable --expiration 24h "$@"
+$ headscale policy set -f FILE
+$ headscale nodes list -o json | jq -e 'all(.[]; .online)'
+$ headscale nodes list -o json | jq -r '.[] | .givenName, .ip_addresses[0]'
+
+# after
+$ headscale debug health
+$ headscale users list --filter name="$user" -o json | jq -e 'length > 0'
+$ headscale auth keys create "$owner" --reusable --expiry 24h    # what hs-authkey "$owner" runs
+$ headscale policy set FILE
+$ headscale nodes list -o json | jq -e 'all(.[]; .connectedToControl)'
+$ headscale nodes list -o json | jq -r '.[] | .name, .addresses[0]'
+```
+
+A check of a field that is gone, such as `.online`, now reads `null` and fails
+or, negated, passes for every node: change the field, not only the command.
 
 ### TLS certificates for nodes
 
@@ -93,8 +796,8 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 `headscale nodes update-client` and `POST /api/v2/device/{id}/update-client` ask a
 connected node to update its Tailscale client, like the "Start update" button of
 the Tailscale admin console. `GET /api/v2/device/{id}/update-status` reports the
-update. Both answer as Tailscale does: a node that does not allow remote updates,
-is not connected, or refuses is "not found". See [the client docs](https://headscale.net/stable/about/clients/#update-clients). [#3632](https://github.com/juanfont/headscale/pull/3632)
+update. The API answers as Tailscale does: a node that does not allow remote
+updates, is not connected, or refuses is "not found"; the CLI says which it is. See [the client docs](https://headscale.net/stable/about/clients/#update-clients). [#3632](https://github.com/juanfont/headscale/pull/3632)
 
 ### TailSQL on your own tailnet
 
@@ -250,8 +953,8 @@ maps each one to its replacement.
 
 - Only upgrades from 0.29.x are supported; migrations for older releases are removed and headscale refuses to start on an older database. Upgrade one minor release at a time to the latest 0.29.x first [#3352](https://github.com/juanfont/headscale/pull/3352) [#3650](https://github.com/juanfont/headscale/pull/3650)
 - The `pre_auth_keys`, `api_keys`, `oauth_clients` and `oauth_access_tokens` tables are merged into `credentials` and dropped. The migration cannot be reversed; take a backup before upgrading, as downgrading means restoring it [#3352](https://github.com/juanfont/headscale/pull/3352)
-- API key IDs are renumbered, as all credential kinds now share one ID sequence; scripts using `headscale apikeys expire|delete --id` should look IDs up again or use `--prefix` [#3352](https://github.com/juanfont/headscale/pull/3352)
-- Deleting a user now clears the owner of its API keys and OAuth clients instead of leaving a dangling reference [#3352](https://github.com/juanfont/headscale/pull/3352)
+- API key IDs are renumbered, as all credential kinds now share one ID sequence; scripts that delete API keys by ID should look IDs up again or name the key by its prefix, `headscale api keys delete <prefix>` [#3352](https://github.com/juanfont/headscale/pull/3352)
+- Deleting a user now deletes its API keys, through every API, and clears the owner of its OAuth clients instead of leaving a dangling reference [#3352](https://github.com/juanfont/headscale/pull/3352)
 
 - Policy writes delete older policies. Export history before the next write. Keep policy files in version control. Back up the database before upgrading. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Migrations add `nodes.auto_approved_routes`, `nodes.ephemeral`, and `credentials.created_by_token`. Existing route approvals count as manual. Nodes copy the ephemeral flag from their key. Migration cannot recover the flag if the key was already deleted. [#3619](https://github.com/juanfont/headscale/pull/3619)
@@ -306,10 +1009,12 @@ maps each one to its replacement.
 - The gRPC API is removed; all programmatic access now goes through the HTTP API at `/api/v1` [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Errors that previously returned HTTP 500 — unknown users or nodes, malformed input, duplicate names — now return the correct 404, 400 or 409 [#3324](https://github.com/juanfont/headscale/pull/3324)
 - The OpenAPI document is OpenAPI 3.1 at `/api/v1/openapi.yaml` (docs at `/api/v1/docs`), replacing Swagger 2.0 at `/swagger` [#3324](https://github.com/juanfont/headscale/pull/3324)
-- Renaming a user (`headscale users rename`, `POST /api/v1/user/{id}/rename/{name}`) now returns 400 for an OIDC user, whose name comes from the identity provider, and for an invalid user name; both were previously accepted
+- Renaming a user (`headscale users set --name`, `POST /api/v1/user/{id}/rename/{name}`) now returns 400 for an OIDC user, whose name comes from the identity provider, and for an invalid user name; both were previously accepted
 
-- V2 hides spent, expired, and revoked auth keys. OAuth key lists need `all=true` for keys created without tokens. Tags do not limit lists. V1 and `headscale preauthkeys list` hide revoked keys. Deleting referenced ephemeral keys revokes them. Referenced rows stay. [#3619](https://github.com/juanfont/headscale/pull/3619)
-- Tagged OAuth clients with `all` cannot issue tokens outside their tags. OAuth retagging requires permission for all current and requested tags. It replaces the set. Disallowed tags return HTTP 400. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- V2 hides spent, expired, and revoked auth keys. OAuth key lists need `all=true` for keys created without tokens. Tags do not limit lists. V1 and `headscale auth keys list` hide revoked keys; `auth keys list --all` shows them. Deleting referenced ephemeral keys revokes them. Referenced rows stay. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- A write to a node (rename, expiry, routes, tags) whose node was deleted after it was read is "not found" in every API, where it succeeded before. `/api/v1` answers `404` to approve, reject or register of an auth request that was answered or timed out already, and `400` to a register of an SSH check.
+- The v2 tag write of a device by an OAuth token, `POST /api/v2/device/{id}/tags`, is checked again when an admin changes the device between its check and its write. A device that keeps changing answers `409` with a message, not `500`: send the request again.
+- A tagged OAuth client issues tokens only for its tags. Its `all` scope still lets a token create an OAuth client with other tags or none, as on Tailscale: give `all` only to a client that may have every tag. OAuth retagging requires permission for all current and requested tags. It replaces the set. Disallowed tags return HTTP 400. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - OAuth clients keep their newest 1,000 tokens. At the limit, new tokens invalidate the oldest, even before expiry. Use separate clients for long-lived integrations. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - V2 device `name` contains the MagicDNS FQDN without its trailing dot. Tagged device `user` shows its join-key creator, when known. Admin-created tagged keys include `userId`. `fields=all` returns empty route lists as `[]`. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - V2 limits schema-validated bodies to 64 KiB. ACL writes and validation allow 1 MiB. Body reads stop after five seconds. Unknown `keyType` returns HTTP 400. Schema-validation details omit submitted values and list at most 20 entries. [#3619](https://github.com/juanfont/headscale/pull/3619)
@@ -321,6 +1026,7 @@ maps each one to its replacement.
 - Configuration keys are lower case: `Server_URL` is an unknown key. A key written both dotted and nested, such as `log.level` next to `log: {level: …}`, is an error. [#3674](https://github.com/juanfont/headscale/pull/3674) [#3677](https://github.com/juanfont/headscale/pull/3677)
 - A key with no value, such as `v6:`, takes its default and logs a warning. Write `""` or `[]` to clear a key. [#3683](https://github.com/juanfont/headscale/pull/3683)
 - A `HEADSCALE_*` variable set to `""` clears a key, as `""` does in the file. An empty variable still counts as unset. [#3683](https://github.com/juanfont/headscale/pull/3683)
+- `preauth_keys.revoked_retention` (unreleased) is now `credentials.revoked_retention`, for every kind of credential; a config file that sets the old key stops headscale from starting, and `HEADSCALE_PREAUTH_KEYS_REVOKED_RETENTION` is ignored with a warning
 
 #### Configuration values
 
@@ -367,31 +1073,33 @@ The [removed keys](https://headscale.net/stable/ref/configuration-options/#remov
 
 #### New and changed configuration defaults
 
-| Option                              | Before                 | Now                                       | Effect                                                                                                                    |
-| ----------------------------------- | ---------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `listen_addr`                       | None, a random port    | `0.0.0.0:8080`                            | Listens on every IPv4 and IPv6 address. A firewall that covers only IPv4 leaves the port open on IPv6.                    |
-| `prefixes.v4`, `prefixes.v6`        | None, one was required | `100.64.0.0/10`, `fd7a:115c:a1e0::/48`    | A configuration with one family now gives new nodes both. `headscale nodes backfillips` adds the other to existing nodes. |
-| `derp.urls`                         | None                   | Tailscale's DERP map                      | Clients can use Tailscale's relays.                                                                                       |
-| `derp.auto_update_enabled`          | `false`                | `true`                                    | The DERP map is refreshed every `derp.update_frequency`.                                                                  |
-| `dns.base_domain`                   | `""`                   | `tailnet.internal`                        | MagicDNS stays on by default, now under this name. With `dns.magic_dns: false`, node names become FQDNs under it.         |
-| `node.ephemeral.inactivity_timeout` | `120s`                 | `30m`                                     | The value of every shipped example since 0.23.                                                                            |
-| `tls.acme.cache_dir`                | `/var/www/.cache`      | `/var/lib/headscale/cache`                | The ACME account and certificates are stored here.                                                                        |
-| `dns.challenge.resolvers`           | New option             | Quad9: `9.9.9.9:53`, `149.112.112.112:53` | Only used for DNS-01 challenges, when `dns.challenge.provider` is set.                                                    |
-| `noise.private_key_path`            | Required               | `/var/lib/headscale/noise_private.key`    | No longer has to be set.                                                                                                  |
-| `database.type`                     | Required               | `sqlite`                                  | No longer has to be set.                                                                                                  |
-| `database.sqlite.path`              | Required for SQLite    | `/var/lib/headscale/db.sqlite`            | No longer has to be set.                                                                                                  |
+| Option                              | Before                 | Now                                       | Effect                                                                                                                                                     |
+| ----------------------------------- | ---------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listen_addr`                       | None, a random port    | `0.0.0.0:8080`                            | Listens on every IPv4 and IPv6 address. A firewall that covers only IPv4 leaves the port open on IPv6.                                                     |
+| `prefixes.v4`, `prefixes.v6`        | None, one was required | `100.64.0.0/10`, `fd7a:115c:a1e0::/48`    | A configuration with one family now gives new nodes both. `POST /api/v1/node/backfillips` adds the other to existing nodes; the CLI has no command for it. |
+| `derp.urls`                         | None                   | Tailscale's DERP map                      | Clients can use Tailscale's relays.                                                                                                                        |
+| `derp.auto_update_enabled`          | `false`                | `true`                                    | The DERP map is refreshed every `derp.update_frequency`.                                                                                                   |
+| `dns.base_domain`                   | `""`                   | `tailnet.internal`                        | MagicDNS stays on by default, now under this name. With `dns.magic_dns: false`, node names become FQDNs under it.                                          |
+| `node.ephemeral.inactivity_timeout` | `120s`                 | `30m`                                     | The value of every shipped example since 0.23.                                                                                                             |
+| `tls.acme.cache_dir`                | `/var/www/.cache`      | `/var/lib/headscale/cache`                | The ACME account and certificates are stored here.                                                                                                         |
+| `dns.challenge.resolvers`           | New option             | Quad9: `9.9.9.9:53`, `149.112.112.112:53` | Only used for DNS-01 challenges, when `dns.challenge.provider` is set.                                                                                     |
+| `noise.private_key_path`            | Required               | `/var/lib/headscale/noise_private.key`    | No longer has to be set.                                                                                                                                   |
+| `database.type`                     | Required               | `sqlite`                                  | No longer has to be set.                                                                                                                                   |
+| `database.sqlite.path`              | Required for SQLite    | `/var/lib/headscale/db.sqlite`            | No longer has to be set.                                                                                                                                   |
 
 [#3683](https://github.com/juanfont/headscale/pull/3683), except `tls.acme.cache_dir` ([#3554](https://github.com/juanfont/headscale/pull/3554)) and `dns.challenge.resolvers` ([#3680](https://github.com/juanfont/headscale/pull/3680)).
 
 #### CLI
 
-| Before                                                        | Now                                                                                                                | PR                                                       |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| `headscale configtest`                                        | `headscale check config`. It checks only the configuration; `headscale check all` also checks every file it names. | [#3669](https://github.com/juanfont/headscale/pull/3669) |
-| `headscale policy check`                                      | `headscale check policy`. Like `headscale policy set`, it refuses an empty file: use `{}` to allow all.            | [#3668](https://github.com/juanfont/headscale/pull/3668) |
-| `headscale dumpConfig` (hidden)                               | `/debug/config`, or `HEADSCALE_DEBUG_DUMP_CONFIG=1` when starting                                                  | [#3680](https://github.com/juanfont/headscale/pull/3680) |
-| `headscale policy --bypass-grpc-and-access-database-directly` | `--bypass-server-and-access-database-directly`                                                                     | [#3324](https://github.com/juanfont/headscale/pull/3324) |
-| `--output json` and `--output yaml` in the Protobuf encoding  | The shape of the API: camelCase fields, string-encoded IDs, RFC3339 timestamps                                     | [#3324](https://github.com/juanfont/headscale/pull/3324) |
+The CLI is redesigned; see "CLI redesigned" above for every command and flag that changed.
+
+| Before                                                        | Now                                                                                                                                          | PR                                                       |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `headscale configtest`                                        | `headscale check config`. It checks only the configuration; `headscale check all` also checks every file it names.                           | [#3669](https://github.com/juanfont/headscale/pull/3669) |
+| `headscale policy check`                                      | `headscale check policy`. Like `headscale policy set`, it refuses an empty file: use `{}` to allow all.                                      | [#3668](https://github.com/juanfont/headscale/pull/3668) |
+| `headscale dumpConfig` (hidden)                               | `headscale generate config --running`                                                                                                        | [#3680](https://github.com/juanfont/headscale/pull/3680) |
+| `headscale policy --bypass-grpc-and-access-database-directly` | `--bypass-server-and-access-database-directly`. The bypass refuses while a server runs and refuses a database of another version             | [#3324](https://github.com/juanfont/headscale/pull/3324) |
+| `--output json` and `--output yaml` in the Protobuf encoding  | `--output json` prints the objects of `/api/headscale/v0`: camelCase fields, string-encoded IDs, RFC3339 timestamps. `--output yaml` is gone | [#3324](https://github.com/juanfont/headscale/pull/3324) |
 
 #### NixOS module
 
@@ -482,16 +1190,16 @@ Every option below is under `services.headscale`.
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Errors in SSH rules start with `[ssh]` and use Tailscale's wording, for example `[ssh] users must be specified`; an undefined group now reads `group not found` [#3343](https://github.com/juanfont/headscale/pull/3343)
 - An SSH rule may target a user from a group whose only member is that user, as on Tailscale [#3343](https://github.com/juanfont/headscale/pull/3343)
-- Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
+- A user name that matches no user is "not found", not "multiple users match query"; an ambiguous match lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
-- `headscale preauthkeys create --user` accepts a user name as well as an ID
+- `headscale auth keys create` takes the user by name or email as well as by ID; 0.29's `preauthkeys create --user` took an ID only
 - `derp.paths` files may be Tailscale JSON or HuJSON DERP maps as well as YAML
 - `dns.extra_records_path` files may be HuJSON or YAML as well as JSON
 - A `derp.paths` region set to `null` removes that region again, as documented
 - `derp.paths` files may set `homeparams.regionscore` to make clients prefer or avoid DERP regions [#2932](https://github.com/juanfont/headscale/pull/2932)
 - The policy accepts a `derpMap` that adds or removes DERP regions, with the rules and error messages of Tailscale SaaS [#2932](https://github.com/juanfont/headscale/pull/2932)
 - Lower CPU use on large tailnets when node tags, owners, IPs or routes change [#3501](https://github.com/juanfont/headscale/pull/3501)
-- `headscale nodes backfillips` now sends the new IPs to connected clients [#3501](https://github.com/juanfont/headscale/pull/3501)
+- `POST /api/v1/node/backfillips` now sends the new IPs to connected clients; the `headscale nodes backfillips` command is removed (see "CLI redesigned") [#3501](https://github.com/juanfont/headscale/pull/3501)
 - A registration request from a client below the minimum supported version is now rejected before it can log a node out, use a pre-auth key or start a login [#3519](https://github.com/juanfont/headscale/pull/3519)
 
 - A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight [#3525](https://github.com/juanfont/headscale/pull/3525)

@@ -25,12 +25,12 @@ option on later does not reach nodes that joined while it was off.
 A connected node can also be asked to update right away:
 
 ```console
-headscale nodes update-client --identifier <NODE_ID>
+headscale nodes update-client <NODE_ID>
 ```
 
-The node must allow remote updates (`tailscale set --auto-update`) and run on a platform that can update itself. As on
-Tailscale, a node that does not, is not connected, or refuses (for example, with active Tailscale SSH sessions) is
-answered "not found". Headscale logs the reason a node gives. The command returns once the update has started.
+The node must allow remote updates (`tailscale set --auto-update`) and run on a platform that can update itself. A node
+that does not, is not connected, or refuses (for example, with active Tailscale SSH sessions) is an error that says
+why; Headscale logs the reason a node gives. The command returns once the update has started.
 
 The same request is available in the API as `POST /api/v2/device/<NODE_ID>/update-client`, with no body. It needs an
 API key or an OAuth token with the `devices:core` scope. `GET /api/v2/device/<NODE_ID>/update-status` answers
