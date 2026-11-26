@@ -95,6 +95,8 @@ openapi:
 # reads the API's 3.1 document with cmd/gen-openapi/<api>-client.yaml. The v0
 # document is also written where it is committed (docs/ref/api). oapi-codegen
 # is a tool of go.mod, so the committed clients are reproducible.
+# Every form of a v1 operation is deprecated: deprecate-v1.awk completes what
+# oapi-codegen marks. It goes with the v1 client in 0.33.
 .PHONY: client
 client:
 	@echo "Generating API clients..."
@@ -104,6 +106,8 @@ client:
 		go run ./cmd/gen-openapi -api $$api -client "$$tmp"; \
 		go tool oapi-codegen -config cmd/gen-openapi/$$(echo $$api | tr / -)-client.yaml "$$tmp"; \
 	done
+	awk -f cmd/gen-openapi/deprecate-v1.awk gen/client/v1/client.gen.go gen/client/v1/client.gen.go > gen/client/v1/client.gen.go.tmp
+	mv gen/client/v1/client.gen.go.tmp gen/client/v1/client.gen.go
 
 # Clean targets
 .PHONY: clean

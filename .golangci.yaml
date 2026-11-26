@@ -107,7 +107,7 @@ linters:
     rules:
       # golines (formatters below) wraps only the packages that were written
       # wrapped; the rest of the tree keeps its long lines.
-      - path-except: ^(cmd/headscale/newcli|cmdline|client|hscontrol/api/headscale/v0|hscontrol/offline)/
+      - path-except: ^(cmd/headscale/cli|cmdline|client|hscontrol/api/headscale/v0|hscontrol/offline)/
         linters:
           - golines
       # Config key names repeat across the key tables, validation and error
@@ -121,6 +121,12 @@ linters:
       - path: _test\.go
         linters:
           - dupword
+      # Every operation of /api/v1 is deprecated; v1's own tests call it on
+      # purpose until 0.33 removes it. Any other caller is warned.
+      - path: ^(hscontrol/apiv1_(client|socket)_test\.go|integration/api_auth_test\.go)$
+        linters:
+          - staticcheck
+        text: "SA1019: .*/gen/client/v1\\."
     paths:
       - third_party$
       - builtin$

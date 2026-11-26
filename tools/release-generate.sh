@@ -10,3 +10,5 @@ go build -o release-assets/headscale ./cmd/headscale
 release-assets/headscale generate config > release-assets/config-example.yaml
 release-assets/headscale generate nixos-options --release > release-assets/headscale-nixos-options.nix
 rm release-assets/headscale
+# The committed page, as 001 says: a package installs it, compressed.
+gzip -9n -c docs/ref/headscale.1 > release-assets/headscale.1.gz

@@ -1337,7 +1337,7 @@ func TestIssue3371_TaggedNodeLogoutReloginSingleUseKey(t *testing.T) {
 	user := app.state.CreateUserForTest("tag-logout-user")
 	tags := []string{"tag:tag1"}
 
-	// `headscale preauthkeys create --tags tag:tag1` (single-use).
+	// `headscale auth keys create tag:tag1` (single-use).
 	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, tags)
 	require.NoError(t, err)
 
@@ -1422,7 +1422,7 @@ func TestIssue3371_TaggedNodeLogoutReloginReusableKey(t *testing.T) {
 	user := app.state.CreateUserForTest("tag-logout-reusable")
 	tags := []string{"tag:tag1"}
 
-	// `headscale preauthkeys create --reusable --tags tag:tag1`.
+	// `headscale auth keys create tag:tag1 --reusable`.
 	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
 	require.NoError(t, err)
 

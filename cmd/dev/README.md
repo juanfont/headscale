@@ -27,9 +27,9 @@ done
 go tool mts server stop node1 && go tool mts server start node1
 go tool mts server stop node2 && go tool mts server start node2
 
-# Connect to headscale (use the auth key printed by cmd/dev)
-go tool mts node1 up --login-server=http://127.0.0.1:8080 --authkey=<KEY> --reset
-go tool mts node2 up --login-server=http://127.0.0.1:8080 --authkey=<KEY> --reset
+# Connect to headscale (cmd/dev prints the path of its key file)
+go tool mts node1 up --login-server=http://127.0.0.1:8080 --auth-key=file:<KEY_FILE> --reset
+go tool mts node2 up --login-server=http://127.0.0.1:8080 --auth-key=file:<KEY_FILE> --reset
 
 # Verify
 go tool mts node1 status
@@ -49,12 +49,14 @@ The metrics/debug port is `port + 1010` (default 9090).
 1. Builds the headscale binary into a temp directory
 2. Writes a minimal dev config (SQLite, public DERP, debug logging)
 3. Starts `headscale serve` as a subprocess
-4. Creates a "dev" user and a reusable 24h pre-auth key via the CLI
-5. Prints a banner with server URL, auth key, and usage instructions
+4. Creates a "dev" user and a reusable 24h pre-auth key via the CLI, and
+   writes the key to `authkey` in the state directory, readable by you only
+5. Prints a banner with server URL, the key file, and usage instructions
 6. Blocks until Ctrl+C, then kills headscale
 
-State lives in `/tmp/headscale-dev-*/`. Pass `--keep` to preserve it
-across restarts (useful for inspecting the database or reusing keys).
+State lives in `/tmp/headscale-dev-*/` and is removed on exit, the key file
+with it. Pass `--keep` to preserve it across restarts (useful for inspecting
+the database or reusing keys).
 
 ## Useful endpoints
 

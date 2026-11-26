@@ -2368,6 +2368,8 @@ func (s *State) WarnNodesHoldingExtraRecords() []types.NodeID {
 // returned changes tell clients about the new addresses.
 // Like the other writes, it returns the changes alongside an error once the
 // NodeStore holds new addresses; callers publish them before handling it.
+//
+// TODO(0.33): remove with /api/v1, its only caller.
 func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 	genBefore := s.polMan.NodesGeneration()
 

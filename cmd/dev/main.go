@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,7 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -26,7 +25,7 @@ var (
 
 var errHealthTimeout = errors.New("health check timed out")
 
-var errEmptyAuthKey = errors.New("empty auth key in response")
+var errEmptyAuthKey = errors.New("auth keys create printed no key")
 
 // maxDevPort is the highest --port value that keeps the derived metrics
 // port (port+1010) inside the valid 1..65535 TCP range.
@@ -161,32 +160,29 @@ func run() error {
 	// Create user.
 	fmt.Println("Creating user and pre-auth key...")
 
-	userJSON, err := runHS(ctx, hsBin, configPath, "users", "create", "dev", "-o", "json")
+	_, err = runHS(ctx, hsBin, configPath, "users", "create", "dev")
 	if err != nil {
 		return fmt.Errorf("creating user: %w", err)
 	}
 
-	userID, err := extractUserID(userJSON)
-	if err != nil {
-		return fmt.Errorf("parsing user: %w", err)
-	}
-
-	// Create pre-auth key.
-	keyJSON, err := runHS(
-		ctx, hsBin, configPath,
-		"preauthkeys", "create",
-		"-u", strconv.FormatUint(userID, 10),
-		"--reusable",
-		"-e", "24h",
-		"-o", "json",
-	)
+	// stdout carries the key alone.
+	keyOut, err := runHS(ctx, hsBin, configPath, "auth", "keys", "create", "dev", "--reusable", "-e", "24h")
 	if err != nil {
 		return fmt.Errorf("creating pre-auth key: %w", err)
 	}
 
-	authKey, err := extractAuthKey(keyJSON)
+	authKey := strings.TrimSpace(string(keyOut))
+	if authKey == "" {
+		return errEmptyAuthKey
+	}
+
+	// The key stays out of the terminal: tailscale up reads it from a file
+	// (--auth-key=file:), which goes with the state directory.
+	keyPath := filepath.Join(tmpDir, "authkey")
+
+	err = os.WriteFile(keyPath, []byte(authKey+"\n"), 0o600)
 	if err != nil {
-		return fmt.Errorf("parsing pre-auth key: %w", err)
+		return fmt.Errorf("writing auth key: %w", err)
 	}
 
 	// Print banner.
@@ -199,12 +195,12 @@ func run() error {
   Config:  %s
   State:   %s
 
-Pre-auth key: %s
+Pre-auth key: %s (reusable, 24h)
 
 Connect nodes with mts:
   go tool mts server run                  # start mts (once, another terminal)
   go tool mts server add node1            # create a node
-  go tool mts node1 up --login-server=http://127.0.0.1:%d --authkey=%s
+  go tool mts node1 up --login-server=http://127.0.0.1:%d %s
   go tool mts node1 status                # check connection
 
 Manage headscale:
@@ -215,10 +211,10 @@ Press Ctrl+C to stop.
 `,
 		*port, metricsPort, metricsPort,
 		configPath, tmpDir,
-		authKey,
-		*port, authKey,
-		hsBin, configPath,
-		hsBin, configPath,
+		keyPath,
+		*port, shellQuote("--auth-key=file:"+keyPath),
+		shellQuote(hsBin), shellQuote(configPath),
+		shellQuote(hsBin), shellQuote(configPath),
 	)
 
 	// Wait for headscale to exit.
@@ -277,36 +273,13 @@ func runHS(ctx context.Context, bin, config string, args ...string) ([]byte, err
 	return cmd.Output()
 }
 
-// extractUserID parses the JSON output of "users create" and returns the
-// user ID.
-func extractUserID(data []byte) (uint64, error) {
-	var user struct {
-		ID uint64 `json:"id"`
+// shellQuote is s as one word of a POSIX shell, for a command the banner
+// prints to copy: as it is when it holds only characters no shell treats
+// specially, else in single quotes, each single quote written as '\”.
+func shellQuote(s string) string {
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:=@%+,-") == "" {
+		return s
 	}
 
-	err := json.Unmarshal(data, &user)
-	if err != nil {
-		return 0, fmt.Errorf("unmarshalling user JSON: %w (raw: %s)", err, data)
-	}
-
-	return user.ID, nil
-}
-
-// extractAuthKey parses the JSON output of "preauthkeys create" and
-// returns the key string.
-func extractAuthKey(data []byte) (string, error) {
-	var key struct {
-		Key string `json:"key"`
-	}
-
-	err := json.Unmarshal(data, &key)
-	if err != nil {
-		return "", fmt.Errorf("unmarshalling key JSON: %w (raw: %s)", err, data)
-	}
-
-	if key.Key == "" {
-		return "", errEmptyAuthKey
-	}
-
-	return key.Key, nil
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

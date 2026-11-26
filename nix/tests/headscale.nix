@@ -2,8 +2,11 @@
 self:
 { lib, pkgs, ... }:
 let
+  # A config that names the server for the CLI alone: hs-authkey -c.
+  cliConfig = pkgs.writeText "cli.yaml" "unix_socket: /run/headscale/headscale.sock\n";
   policy = pkgs.writeText "policy.json" (
     builtins.toJSON {
+      tagOwners."tag:ci" = [ ];
       acls = [
         {
           action = "accept";
@@ -75,7 +78,52 @@ in
         "tailscale status --json | ${lib.getExe pkgs.jq} -e '.CertDomains == [\"peer1.tailnet\"]'"
     )
 
-    headscale.succeed("headscale policy set -f ${policy}")
+    headscale.succeed("headscale policy set ${policy}")
+    # A tag owner makes no user, and the caller's flags replace the kit's own.
+    headscale.succeed("hs-authkey tag:ci --expiry 1h --reusable=false")
+    headscale.succeed(
+        "headscale auth keys list --filter owner=tag:ci -o json | ${lib.getExe pkgs.jq} -e 'length == 1 and (.[0].reusable | not)'"
+    )
+    # A caller's value that looks like a flag is a value: the kit keeps its own.
+    headscale.succeed("hs-authkey test --description --reusable")
+    headscale.succeed("hs-authkey test --description --expiry")
+    headscale.succeed(
+        "headscale auth keys list -o json | ${lib.getExe pkgs.jq} -e '[.[] | select(.description | startswith(\"--\"))] | length == 2 and all(.reusable and (.expiry | sub(\"[.][0-9]+\"; \"\") | fromdateiso8601) > now + 43200)'"
+    )
+    # The kit asks Tab, which runs nothing: a line that ends in a flag
+    # waiting for its value makes no key, and --help shows the help.
+    keys = "headscale auth keys list --all -o json | ${lib.getExe pkgs.jq} length"
+    before = headscale.succeed(keys).strip()
+    headscale.fail("hs-authkey tag:ci --description")
+    out = headscale.succeed("hs-authkey tag:ci --expiry 1h --help")
+    assert "Usage:" in out, out
+    assert headscale.succeed(keys).strip() == before, "a probe made a key"
+    # A tag with space around it is a tag, as auth keys create reads it.
+    headscale.succeed("hs-authkey ' tag:ci '")
+    headscale.succeed("hs-authkey $'\\xc2\\xa0tag:ci'")
+    headscale.succeed(
+        "headscale auth keys list --filter owner=tag:ci -o json | ${lib.getExe pkgs.jq} -e 'length == 3'"
+    )
+    # After --, Tab offers no flag, so the caller's flags stand alone.
+    headscale.succeed("hs-authkey tag:ci --reusable=false -e 2h --")
+    headscale.succeed("headscale users list -o json | ${lib.getExe pkgs.jq} -e 'map(.name) == [\"test\"]'")
+    # A -c on the line chooses the server for that line alone, so the kit
+    # makes no user there: the default server is unreachable here, and the
+    # line still goes where -c points once the user exists.
+    other = "env -u HEADSCALE_UNIX_SOCKET HEADSCALE_CONFIG=/nonexistent.yaml hs-authkey other -c ${cliConfig}"
+    out = headscale.fail(other + " 2>&1")
+    assert "create the user other on the same server first" in out, out
+    headscale.succeed("headscale users list -o json | ${lib.getExe pkgs.jq} -e 'map(.name) == [\"test\"]'")
+    headscale.succeed("headscale users create other")
+    headscale.succeed(other)
+    # After --, Tab offers nothing: the kit makes no user, and says how.
+    out = headscale.fail("hs-authkey nobody -- 2>&1")
+    assert "create the user nobody on the same server first" in out, out
+    headscale.succeed("headscale users list -o json | ${lib.getExe pkgs.jq} -e 'map(.name) == [\"test\", \"other\"]'")
+    # With the environment choosing, the kit makes the user the CLI names,
+    # with no word of the line: key-only flags and padding do not matter.
+    headscale.succeed("hs-authkey $'\\xc2\\xa0fresh ' --ephemeral")
+    headscale.succeed("headscale users list -o json | ${lib.getExe pkgs.jq} -e 'map(.name) == [\"test\", \"other\", \"fresh\"]'")
     # The default socket needs neither a config file nor a variable.
     headscale.succeed("env -u HEADSCALE_UNIX_SOCKET headscale nodes list")
     # sudo resets the environment; PAM sets the module's variables again.
@@ -89,7 +137,7 @@ in
     # Clients reconnect after a control restart, peer1 over the TLS listener.
     headscale.systemctl("restart headscale.service")
     headscale.wait_until_succeeds(
-        "headscale nodes list -o json | ${lib.getExe pkgs.jq} -e 'length == 2 and all(.[]; .online)'",
+        "headscale nodes list -o json | ${lib.getExe pkgs.jq} -e 'length == 2 and all(.[]; .connectedToControl)'",
         timeout=timedelta(minutes=2),
     )
     peer1.wait_until_succeeds("tailscale ping --until-direct=false -c 1 peer2")

@@ -18,7 +18,7 @@ func TestGivenNameMapsToValidFQDNCheck(t *testing.T) {
 	problem, fixHint, ok := givenNameMapsToValidFQDN.check((&types.Node{ID: 7, GivenName: ""}).View(), cfg)
 	require.False(t, ok, "an empty given name must fail the check")
 	require.NotEmpty(t, problem)
-	require.Contains(t, fixHint, "rename --identifier 7", "fix hint must name the offending node")
+	require.Contains(t, fixHint, "set 7 --name", "fix hint must name the offending node")
 }
 
 func TestExpiryIsEncodableCheck(t *testing.T) {
@@ -45,7 +45,7 @@ func TestExpiryIsEncodableCheck(t *testing.T) {
 
 		if !ok {
 			require.NotEmpty(t, problem)
-			require.Equal(t, "headscale nodes expire --identifier 7", fixHint,
+			require.Equal(t, "headscale nodes expire 7", fixHint,
 				"the fix must name the node and keep an expired one expired")
 		}
 	}
@@ -89,7 +89,7 @@ func TestScanNodeHealthReportsInvalidNameWithoutMutating(t *testing.T) {
 	}
 
 	require.NotNil(t, badFinding, "a node with an invalid name must be reported")
-	require.Contains(t, badFinding.fixHint, "rename", "finding must carry an actionable fix")
+	require.Contains(t, badFinding.fixHint, "--name", "finding must carry an actionable fix")
 
 	// Log-only: neither the scan nor boot may rewrite the stored name.
 	nv, ok := s.GetNodeByID(bad.ID)

@@ -19,6 +19,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -153,6 +154,107 @@ func TestAPIV1Unauthorized401(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Equal(t, "text/plain; charset=utf-8", rec.Header().Get("Content-Type"))
 	assert.Equal(t, "Unauthorized", rec.Body.String())
+}
+
+// TestAPIV1Deprecated reads the operations from the document the router
+// serves, so an operation added later is held without a list to update:
+// each is marked deprecated and answers with Deprecation and Link, and no
+// Sunset. Every path of /api/v1, found or not, carries them on the router
+// and the socket, and no other path does. It reads the headers as sent, since a header set after
+// the status never reaches a client. The warning is logged once, however
+// many calls follow.
+func TestAPIV1Deprecated(t *testing.T) {
+	logs := captureLog(t, zerolog.WarnLevel)
+	app := createTestApp(t)
+	router := app.HTTPHandler()
+	socket := app.SocketHandler()
+
+	wantLink := "<" + apiv1.MigrationGuide + `>; rel="deprecation"; type="text/html"`
+
+	type sent struct {
+		status int
+		header http.Header
+		body   []byte
+	}
+
+	send := func(h http.Handler, method, path string) sent {
+		t.Helper()
+
+		req := httptest.NewRequestWithContext(context.Background(), method, path, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		res := rec.Result()
+		defer res.Body.Close()
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+
+		return sent{status: res.StatusCode, header: res.Header, body: body}
+	}
+
+	marked := func(h http.Handler, method, path string) sent {
+		t.Helper()
+
+		res := send(h, method, path)
+		assert.Equalf(t, "@1795564800", res.header.Get("Deprecation"), "%s %s", method, path)
+		assert.NotContainsf(t, res.header, "Sunset", "%s %s: no date for 0.33 yet", method, path)
+		assert.Equalf(t, wantLink, res.header.Get("Link"), "%s %s", method, path)
+
+		return res
+	}
+
+	unmarked := func(h http.Handler, path string) {
+		t.Helper()
+
+		res := send(h, http.MethodGet, path)
+		for _, k := range []string{"Deprecation", "Sunset", "Link"} {
+			assert.Emptyf(t, res.header.Get(k), "%s on %s", k, path)
+		}
+	}
+
+	res := marked(router, http.MethodGet, "/api/v1/openapi.json")
+	require.Equal(t, http.StatusOK, res.status)
+
+	var doc struct {
+		Paths map[string]map[string]struct {
+			OperationID      string `json:"operationId"`
+			Deprecated       bool   `json:"deprecated"`
+			DeprecatedReason string `json:"x-deprecated-reason"`
+		} `json:"paths"`
+	}
+	require.NoError(t, json.Unmarshal(res.body, &doc))
+	require.NotEmpty(t, doc.Paths)
+
+	params := regexp.MustCompile(`\{[^}]+\}`)
+
+	for path, item := range doc.Paths {
+		for method, op := range item {
+			assert.Truef(t, op.Deprecated, "%s %s (%s) is not marked deprecated", method, path, op.OperationID)
+			assert.Containsf(t, op.DeprecatedReason, apiv1.MigrationGuide, "%s %s (%s)", method, path, op.OperationID)
+			marked(router, strings.ToUpper(method), params.ReplaceAllString(path, "1"))
+		}
+	}
+
+	// The router's own 404 for the bare path keeps its status.
+	assert.Equal(t, http.StatusNotFound, marked(router, http.MethodGet, "/api/v1").status)
+
+	for _, h := range []http.Handler{router, socket} {
+		marked(h, http.MethodGet, "/api/v1/")
+		marked(h, http.MethodGet, "/api/v1/no-such-operation")
+		marked(h, http.MethodGet, "/api/v1/health")
+
+		for _, path := range []string{"/version", "/health", "/no-route", "/api/v10/no-route", "/api/v1x/user", "/api/v2/no-route", "/api/headscale/v0/health"} {
+			unmarked(h, path)
+		}
+	}
+
+	marked(socket, http.MethodGet, "/api/v1")
+	// The socket's mux redirects an unclean path before any API sees it.
+	assert.Equal(t, http.StatusTemporaryRedirect, marked(socket, http.MethodGet, "/api/v1//user").status)
+
+	msg := "a client uses /api/v1, which is deprecated and removed in Headscale 0.33; move it to /api/headscale/v0: " + apiv1.MigrationGuide
+	assert.Len(t, logs.entries(t, msg), 1)
 }
 
 // TestAPIV1QueryAsGateway: 0.29's grpc-gateway refused a query parameter given

@@ -313,6 +313,8 @@ func isTailscaleReservedIP(ip netip.Addr) bool {
 // it will be added.
 // If a prefix type has been removed (IPv4 or IPv6), it
 // will remove the IPs in that family from the node.
+//
+// TODO(0.33): remove with /api/v1, the only caller of State.BackfillNodeIPs.
 func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 	var (
 		err error

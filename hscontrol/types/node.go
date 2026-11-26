@@ -273,11 +273,11 @@ func (ns Nodes) ViewSlice() views.Slice[NodeView] {
 // RenameNodeCommand and ExpireNodeCommand are the CLI commands the server
 // names to fix a node; the CLI's tests check that they parse.
 func RenameNodeCommand(id NodeID) string {
-	return fmt.Sprintf("headscale nodes rename --identifier %d <name>", id)
+	return fmt.Sprintf("headscale nodes set %d --name <name>", id)
 }
 
 func ExpireNodeCommand(id NodeID) string {
-	return fmt.Sprintf("headscale nodes expire --identifier %d", id)
+	return fmt.Sprintf("headscale nodes expire %d", id)
 }
 
 // IsExpired returns whether the node registration has expired.

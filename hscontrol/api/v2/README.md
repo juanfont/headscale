@@ -153,11 +153,8 @@ compat`; declare its `Errors`; enforce the tailnet and scope. Map state
    nix dev shell; a missing binary fails the test. _Acceptance: `nix develop -c
 go test ./hscontrol/servertest/ -run TestAPIv2` is green._
 
-7. **Update the CLI** only if the v2 operation fully replaces a v1 one. Tailscale
+7. **Leave the CLI alone.** It speaks `/api/headscale/v0`, not v2. Tailscale
    has no separate key-expire verb (its `DELETE` _is_ the revoke), so v2 maps
    `DELETE` to a soft revoke: the key stays retrievable with `invalid: true`
    until the collector reaps it (`credentials.revoked_retention`; keys still
-   backing a node are kept), the
-   equivalent of v1 `preauthkeys expire`. `headscale preauthkeys` still stays on
-   v1 for now (it is the cross-user admin surface), but the verb gap that
-   previously blocked migration is closed.
+   backing a node are kept), as v0 and `headscale auth keys delete` do.

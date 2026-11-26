@@ -15,16 +15,56 @@ let
     name = "hs-authkey";
     runtimeInputs = [
       config.services.headscale.package
-      pkgs.jq
+      pkgs.coreutils
+      pkgs.gnugrep
+      pkgs.gnused
     ];
     text = ''
-      user=''${1:?usage: hs-authkey USER [headscale preauthkeys create flags]}
-      shift
-      # Safe straight after start_all(): the CLI retries the socket until this.
-      HEADSCALE_CLI_TIMEOUT=''${HEADSCALE_CLI_TIMEOUT:-60s} headscale health >/dev/null
-      headscale users list --name "$user" -o json | jq -e 'length > 0' >/dev/null ||
-        headscale users create "$user" >/dev/null
-      headscale preauthkeys create --user "$user" --reusable --expiration 24h "$@"
+      : "''${1:?usage: hs-authkey OWNER [headscale auth keys create flags]}"
+      line=("$@")
+      # A flag may be given once, and only the CLI's parser knows which word
+      # is a flag. Tab asks it without running anything or dialling a server:
+      # the flags it offers after the line are the ones not given yet. It
+      # offers none where a flag still waits for its value, or after --; the
+      # kit then adds nothing. __complete is the protocol the shipped
+      # completion scripts call.
+      offered=$(headscale __complete auth keys create "''${line[@]}" -- 2>/dev/null | cut -f1)
+      defaults=()
+      grep -qx -- --reusable <<<"$offered" && defaults+=(--reusable)
+      grep -qx -- --expiry <<<"$offered" && defaults+=(--expiry 24h)
+      # --config is the one root flag that chooses the server (and with it
+      # the credential). While Tab still offers it, the environment chooses
+      # for every command the kit runs. When it does not (the caller gave
+      # --config, or the line ends after -- or at a pending value, where Tab
+      # offers nothing), the kit runs only the caller's line, with the
+      # defaults Tab offered: none after --.
+      environment=
+      grep -qx -- --config <<<"$offered" && environment=1
+      if [ -n "$environment" ]; then
+        # Safe straight after start_all(): the CLI retries the socket until this.
+        HEADSCALE_CLI_TIMEOUT=''${HEADSCALE_CLI_TIMEOUT:-60s} headscale debug health >/dev/null
+      fi
+      errors=$(mktemp)
+      trap 'rm -f "$errors"' EXIT
+      if headscale auth keys create "''${line[@]}" "''${defaults[@]}" 2>"$errors"; then
+        cat "$errors" >&2
+        exit 0
+      fi
+      # The user the CLI names as missing, as its parser read the owner. The
+      # kit makes it with no word of the caller's line, so only on the
+      # server the environment chooses, and asks again.
+      user=$(sed -n 's/^Error: no user matches "\(.*\)"\.$/\1/p' "$errors")
+      if [ -z "$user" ]; then
+        cat "$errors" >&2
+        exit 1
+      fi
+      if [ -z "$environment" ]; then
+        cat "$errors" >&2
+        echo "hs-authkey: create the user $user on the same server first, then run this line again" >&2
+        exit 1
+      fi
+      headscale users create "$user" >/dev/null
+      headscale auth keys create "''${line[@]}" "''${defaults[@]}"
     '';
   };
 in

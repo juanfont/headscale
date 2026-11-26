@@ -369,7 +369,7 @@ func (a *AuthProviderWeb) AuthHandler(
 	_, err = writer.Write([]byte(templates.AuthWeb( //nolint:gosec // the ID is validated hex, and the template escapes
 		"Authentication check",
 		"Run the command below in the headscale server to approve this authentication request:",
-		"headscale auth approve --auth-id "+authID.Raw(),
+		"headscale auth approve "+authID.Raw(),
 	).Render()))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to write auth response")
@@ -411,7 +411,7 @@ func (a *AuthProviderWeb) RegisterHandler(
 	_, err = writer.Write([]byte(templates.AuthWeb( //nolint:gosec // the ID is validated hex, and the template escapes
 		"Node registration",
 		"Run the command below in the headscale server to add this node to your network:",
-		fmt.Sprintf("headscale auth register --auth-id %s --user USERNAME", authId.Raw()),
+		"headscale auth register "+authId.Raw()+" USERNAME",
 	).Render()))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to write register response")

@@ -666,6 +666,7 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 		return out, nil
 	})
 
+	// TODO(0.33): remove with /api/v1. No CLI calls it since 0.30.
 	huma.Register(api, huma.Operation{
 		OperationID: "backfillNodeIPs",
 		Method:      http.MethodPost,
