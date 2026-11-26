@@ -3,6 +3,7 @@ package table
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -203,6 +204,18 @@ func TestAgo(t *testing.T) {
 		require.Equal(t, tt.want, Ago(now.Add(tt.d), now), tt.d)
 	}
 
+	// Further than a Duration holds: counted in days, both ways.
+	far := time.Date(2999, 8, 27, 0, 0, 0, 0, time.UTC)
+	require.Equal(t, "in 355306d", Ago(far, now))
+	require.Equal(t, "355306d ago", Ago(now, far))
+	require.Equal(t, "in 355306d (2999-08-27 00:00 UTC)", When(far, now))
+	require.Equal(
+		t,
+		"in 106752d",
+		Ago(now.Add(math.MaxInt64-time.Hour), now),
+		"no overflow just short of it",
+	)
+
 	require.Equal(t, "never", Ago(time.Time{}, now))
 	require.Equal(t, "never", When(time.Time{}, now))
 	require.Equal(
@@ -393,4 +406,64 @@ func TestInvalid(t *testing.T) {
 
 	cs.Sort(rs, "-expiry", now)
 	require.Equal(t, []string{"3", "1", "2"}, ids(rs))
+}
+
+// TestFarTime: a time further than a Duration holds, such as an expiry in
+// 2999, reads as far in a cell and a sheet, and a filter of a span finds it
+// on the far side, ahead and back.
+func TestFarTime(t *testing.T) {
+	t.Parallel()
+
+	cs := Columns[row]{
+		{Name: "id", Field: "id", Default: true},
+		{Name: "expiry", Field: "expiry", Default: true, Ahead: true},
+		{Name: "last-seen", Field: "lastSeen", Default: true},
+	}
+	require.NoError(t, cs.Check())
+
+	far := time.Date(2999, 8, 27, 0, 0, 0, 0, time.UTC)
+	rs := []row{
+		{
+			ID:     "1",
+			Expiry: nullable.NewNullableWithValue(far),
+			Seen:   time.Date(1700, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			ID:     "2",
+			Expiry: nullable.NewNullableWithValue(now.Add(time.Hour)),
+			Seen:   now.Add(-time.Hour),
+		},
+	}
+
+	var b bytes.Buffer
+	require.NoError(t, Render(&b, rs, cs, now, nil))
+	require.Equal(
+		t,
+		"ID  EXPIRY      LAST SEEN\n1   in 355306d  119382d ago\n2   in 1h       1h ago\n",
+		b.String(),
+	)
+
+	b.Reset()
+	require.NoError(t, Sheet(&b, rs[0], cs, nil, now))
+	require.Equal(
+		t,
+		"ID:         1\nExpiry:     in 355306d (2999-08-27 00:00 UTC)\nLast seen:  119382d ago (1700-01-01 00:00 UTC)\n",
+		b.String(),
+	)
+
+	for text, want := range map[string][]bool{
+		"expiry<7d":      {false, true},
+		"expiry>90d":     {true, false},
+		"last-seen>365d": {true, false},
+		"last-seen<1d":   {false, true},
+	} {
+		f, err := cs.ParseFilter(text)
+		require.NoError(t, err)
+
+		for i, r := range rs {
+			got, err := f.Match(r, now)
+			require.NoError(t, err)
+			require.Equal(t, want[i], got, "%s on %s", text, r.ID)
+		}
+	}
 }

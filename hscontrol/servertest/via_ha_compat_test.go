@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	hsdb "github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
@@ -1156,7 +1157,9 @@ func (r *stepReplay) api(t *testing.T, stepName string, i int, a testcapture.Act
 		// that user, and an OAuth client's token as nobody.
 		user := r.admin
 		if strings.HasPrefix(a.Principal, "token:") {
-			pak, err = r.srv.State().CreateTokenPreAuthKey(nil, create.Reusable, create.Ephemeral, &expiry, create.Tags)
+			_, pak, err = r.srv.State().CreateAuthKeyIf(hsdb.NewPreAuthKey{
+				Tags: create.Tags, Reusable: create.Reusable, Ephemeral: create.Ephemeral, Expiration: &expiry, ByToken: true,
+			}, func() error { return nil })
 		} else {
 			if name, ok := strings.CutPrefix(a.Principal, "user:"); ok {
 				user, ok = r.users[name]

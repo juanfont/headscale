@@ -188,12 +188,13 @@ func TestListNodes(t *testing.T) {
 	}
 }
 
-// TestOwnerIsUserOrTags: a node always has one owner, a user or tags, and
+// TestOwnerIsUserOrTags: a node and an auth key always have one owner, a
+// user or tags, and
 // the document says so: never null, never neither.
 func TestOwnerIsUserOrTags(t *testing.T) {
 	reg := NewAPI(chi.NewMux(), Backend{}, specVersion).OpenAPI().Components.Schemas
 
-	for _, name := range []string{"Node"} {
+	for _, name := range []string{"Node", "AuthKey"} {
 		owner := reg.SchemaFromRef(reg.Map()[name].Properties["owner"].Ref)
 		require.False(t, owner.Nullable, name)
 		require.Len(t, owner.OneOf, 2, name)

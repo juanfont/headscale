@@ -60,7 +60,7 @@ var completionCases = []cliCase{
 	{
 		name:   "Tab offers the commands",
 		args:   "__complete ''",
-		stdout: "version\tPrint the version\ncompletion\tPrint the completion script of a shell\nnodes\tManage nodes\nusers\tManage users\napi\tAuthentication towards the headscale API\ndebug\tA health check and test tools\n:4\n",
+		stdout: "version\tPrint the version\ncompletion\tPrint the completion script of a shell\nnodes\tManage nodes\nusers\tManage users\nauth\tAuthentication of nodes to headscale\napi\tAuthentication towards the headscale API\ndebug\tA health check and test tools\n:4\n",
 	},
 }
 

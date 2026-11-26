@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/cmdline"
 	lib "github.com/juanfont/headscale/cmdline/command"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -37,6 +39,7 @@ type (
 	Words           = lib.Words
 	Shells          = lib.Shells
 	NowNever        = lib.NowNever
+	NoWords         = lib.NoWords
 	Expiry[W Words] = lib.Expiry[W]
 )
 
@@ -50,6 +53,15 @@ func NewList[In, Row any](s ListSpec[In, Row]) Node { return lib.NewList(s) }
 func Script(w io.Writer, shell OneOf[Shells], program string) error {
 	return lib.Script(w, shell, program)
 }
+
+// CreatedNote is lib.CreatedNote: the note of a create before its secret.
+func CreatedNote(name, owner, what, word string) string {
+	return lib.CreatedNote(name, owner, what, word)
+}
+
+// ErrNotRead is what a Run returns when its change is made and the object
+// to print cannot be read.
+var ErrNotRead = lib.ErrNotRead
 
 // Env is the world a run of the CLI sees. Tests give each run its own.
 type Env struct {
@@ -187,12 +199,19 @@ func program(name, short string) lib.Program[*API] {
 		Precondition: string(clientv0.ProblemCodePreconditionFailed),
 		About:        about,
 		Fields:       flagsOf,
+		MayBeMade:    mayBeMade,
 
 		Entities: entities(),
+		Readers:  []cmdline.Option{cmdline.LateReader(findOwner)},
 		Owner: func(ctx context.Context, word string) (string, error) {
 			u, err := findUser(ctx, word)
 
 			return u.Id, err
+		},
+
+		Credentials: credentials(),
+		OpenFields: map[reflect.Type]string{
+			reflect.TypeFor[clientv0.HealthMessage](): "Details",
 		},
 
 		Aliases:   []string{"ls", "rm", "approve"},
@@ -200,3 +219,17 @@ func program(name, short string) lib.Program[*API] {
 		Server:    "a running headscale",
 	}
 }
+
+// credentials are the credentials of Headscale: hskey-<kind>-, and the
+// other spellings the server takes. A key from before 0.28 is 48 hex
+// characters with no hskey-: it has no form to tell it from other text,
+// and the rule does not see it.
+func credentials() lib.Credentials {
+	return lib.Credentials{
+		Prefix: hskey,
+		Kinds:  []string{"auth", "api", "authreq", "client", "oauthtok", "reg"},
+		Fronts: types.SecretFronts(),
+	}
+}
+
+const hskey = "hskey-"

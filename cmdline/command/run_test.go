@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -195,6 +196,23 @@ func testTree(t *testing.T) *Tree {
 	require.NoError(t, err)
 
 	return tree
+}
+
+// TestEdgeKnowsEverySpelling: every spelling that the server's
+// authentication accepts is masked at the edge, in any case and inside a
+// word, so a spelling the server learns fails here until the edge knows it.
+func TestEdgeKnowsEverySpelling(t *testing.T) {
+	t.Parallel()
+
+	const id, secret = "c9f2aa000001", "S3cr3tS3cr3t"
+
+	for _, p := range types.CredentialPrefixes() {
+		for _, w := range []string{p + id + "-" + secret, strings.ToUpper(p + id + "-" + secret), `"x` + p + id + "-" + secret + `?ephemeral=true".`} {
+			out := strings.ToLower(masked(w))
+			require.NotContains(t, out, strings.ToLower(secret), w)
+			require.NotContains(t, out, id, w)
+		}
+	}
 }
 
 func TestRun(t *testing.T) {

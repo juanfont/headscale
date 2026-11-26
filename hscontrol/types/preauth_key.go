@@ -68,6 +68,14 @@ type PreAuthKey struct {
 	// CreatedByToken is set when an OAuth access token made the key.
 	CreatedByToken bool
 
+	// CreatedByUserID is the user who owns the credential that made the key;
+	// see [Credential.CreatedByUserID].
+	CreatedByUserID *uint
+
+	// FirstUsed is when a node first joined with the key; see
+	// [Credential.FirstUsed].
+	FirstUsed *time.Time
+
 	CreatedAt  *time.Time
 	Expiration *time.Time
 
@@ -87,6 +95,9 @@ type PreAuthKeyNew struct {
 	Expiration *time.Time
 	CreatedAt  *time.Time
 	User       *User // Can be nil for system-created tagged keys
+	// CreatedBy is the user the key records as its maker, as the write read
+	// it; nil when it records none.
+	CreatedBy *User
 }
 
 // Validate checks if a pre auth key can be used.
@@ -104,6 +115,12 @@ func (pak *PreAuthKey) Validate() error {
 	return pak.ValidAt(time.Now())
 }
 
+// ExpiredAt reports whether a credential that expires at expiry has expired
+// at now: after that instant, as a node expires. The checks of a credential
+// and what the API says of it read this one rule, so they agree at the
+// instant itself.
+func ExpiredAt(expiry, now time.Time) bool { return expiry.Before(now) }
+
 // ValidAt is [PreAuthKey.Validate] at a caller-chosen instant, without
 // logging, so a NodeStore writer can decide at its own clock.
 func (pak *PreAuthKey) ValidAt(now time.Time) error {
@@ -115,7 +132,7 @@ func (pak *PreAuthKey) ValidAt(now time.Time) error {
 		return PAKError("authkey revoked")
 	}
 
-	if pak.Expiration != nil && pak.Expiration.Before(now) {
+	if pak.Expiration != nil && ExpiredAt(*pak.Expiration, now) {
 		return PAKError("authkey expired")
 	}
 

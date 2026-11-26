@@ -275,6 +275,11 @@ type State struct {
 	sshCheckAuth map[sshCheckPair]sshCheckAuthRecord
 	sshCheckMu   sync.RWMutex
 
+	// publishing holds, under persistMu, the merge of a login whose row
+	// committed and that the NodeStore does not have yet; a persist of the
+	// node meanwhile writes it too. See [State.persistThenPublish].
+	publishing map[types.NodeID]UpdateNodeFunc
+
 	// persistMu serialises node-row persistence and deletion so the database
 	// always converges on [NodeStore] rather than being clobbered by a stale
 	// caller snapshot or resurrected by an update racing with deletion.
@@ -467,6 +472,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		pings:               newPingTracker(),
 
 		sshCheckAuth:  make(map[sshCheckPair]sshCheckAuthRecord),
+		publishing:    make(map[types.NodeID]UpdateNodeFunc),
 		registerLocks: xsync.NewMap[key.MachinePublic, *registerLock](),
 	}
 
@@ -999,6 +1005,10 @@ func (s *State) persistNodeWith(
 
 	nodePtr := fresh.AsStruct()
 
+	if merge, ok := s.publishing[node.ID()]; ok {
+		merge(nodePtr)
+	}
+
 	// Explicitly select all node columns so GORM includes nil/zero-value
 	// fields (e.g. UserID=nil when converting a user-owned node to tagged).
 	err := s.db.Write(func(tx *gorm.DB) error {
@@ -1018,6 +1028,163 @@ func (s *State) persistNodeWith(
 	}
 
 	return fresh, nil
+}
+
+// persistThenPublish writes node id the other way round from
+// [State.persistNodeWith]: mutate builds the write on a private copy, the row
+// and inTx commit, and only then does the NodeStore get it, so a write the
+// database refuses is never seen by a reader or a peer. A login takes this
+// path because it hands out a node key. persistMu is held for the read and
+// the transaction only, as for any persist; a persist of the node between the
+// commit and the publish writes the login too (publishing), and a NodeStore
+// write that lands meanwhile keeps its fields (see [mergeWrite]). It returns
+// the node the publish replaced and what it left.
+func (s *State) persistThenPublish(
+	id types.NodeID,
+	mutate func(*types.Node) error,
+	columns func(*types.Node) []string,
+	inTx func(*gorm.DB) error,
+) (types.NodeView, types.NodeView, error) {
+	merge, err := s.commitLogin(id, mutate, columns, inTx)
+	if err != nil {
+		return types.NodeView{}, types.NodeView{}, err
+	}
+
+	// The row committed. A node deleted or a store stopped since cannot take
+	// it; the next start loads the row.
+	before, after, ok := s.nodeStore.UpdateNodeDiff(id, merge)
+
+	s.persistMu.Lock()
+	delete(s.publishing, id)
+	s.persistMu.Unlock()
+
+	if !ok || !before.Valid() {
+		return types.NodeView{}, types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
+	}
+
+	return before, after, nil
+}
+
+// commitLogin is the read and the transaction of [State.persistThenPublish],
+// under persistMu. On success it returns the merge to publish, which it has
+// left in publishing.
+func (s *State) commitLogin(
+	id types.NodeID,
+	mutate func(*types.Node) error,
+	columns func(*types.Node) []string,
+	inTx func(*gorm.DB) error,
+) (UpdateNodeFunc, error) {
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+
+	// A stopped store still reads its last snapshot but publishes nothing.
+	current, ok := s.nodeStore.GetNode(id)
+	if !ok || s.nodeStore.isStopped() {
+		return nil, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
+	}
+
+	prior, candidate := current.AsStruct(), current.AsStruct()
+
+	err := mutate(candidate)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.db.Write(func(tx *gorm.DB) error {
+		res := tx.Select(columns(candidate)).Updates(candidate)
+		if res.Error != nil {
+			return res.Error
+		}
+
+		// A delete took the row before persistMu was ours.
+		if res.RowsAffected == 0 {
+			return fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
+		}
+
+		if inTx != nil {
+			return inTx(tx)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("saving node: %w", err)
+	}
+
+	merge := func(n *types.Node) { mergeWrite(n, prior, candidate) }
+	s.publishing[id] = merge
+
+	return merge, nil
+}
+
+// mergeWrite applies to n each field candidate changed from prior, unless a
+// later write changed it in n first. The owner (tags, user) and the auth key
+// (its ID and record) each move as one, and each is compared by what it is,
+// not by the user records it carries: a profile refresh replaces those and
+// changes neither. Hostinfo is merged field by field: a login writes its host
+// name and requested tags, a map request its NetInfo, and neither is the
+// other's change.
+func mergeWrite(n, prior, candidate *types.Node) {
+	mergeFields(reflect.ValueOf(n).Elem(), reflect.ValueOf(prior).Elem(), reflect.ValueOf(candidate).Elem(),
+		"Tags", "UserID", "User", "AuthKeyID", "AuthKey", "Hostinfo")
+
+	switch {
+	case n.Hostinfo != nil && prior.Hostinfo != nil && candidate.Hostinfo != nil:
+		hi := n.Hostinfo.Clone()
+		mergeFields(reflect.ValueOf(hi).Elem(), reflect.ValueOf(prior.Hostinfo).Elem(), reflect.ValueOf(candidate.Hostinfo).Elem())
+		n.Hostinfo = hi
+	case !reflect.DeepEqual(prior.Hostinfo, candidate.Hostinfo) && reflect.DeepEqual(n.Hostinfo, prior.Hostinfo):
+		n.Hostinfo = candidate.Hostinfo
+	}
+
+	if !registrationOwnershipStillMatches(candidate, prior) && registrationOwnershipStillMatches(n, prior) {
+		n.Tags, n.UserID, n.User = candidate.Tags, candidate.UserID, candidate.User
+	}
+
+	// Whether a later write replaced the key is a matter of which key the node
+	// holds: a change to the state of the node's copy is no replacement and
+	// does not undo the login.
+	if !sameAuthKey(candidate, prior) && sameKeyRef(n, prior) {
+		n.AuthKeyID, n.AuthKey = candidate.AuthKeyID, candidate.AuthKey
+	}
+}
+
+// mergeFields sets each field of cur, but those named in skip, that want
+// changed from was and cur still holds as was.
+func mergeFields(cur, was, want reflect.Value, skip ...string) {
+	for i := range cur.NumField() {
+		if slices.Contains(skip, cur.Type().Field(i).Name) {
+			continue
+		}
+
+		if !reflect.DeepEqual(was.Field(i).Interface(), want.Field(i).Interface()) &&
+			reflect.DeepEqual(cur.Field(i).Interface(), was.Field(i).Interface()) {
+			cur.Field(i).Set(want.Field(i))
+		}
+	}
+}
+
+// sameAuthKey says whether a and b hold the same auth key, in the same state,
+// whatever the user records it carries say.
+func sameAuthKey(a, b *types.Node) bool {
+	if !reflect.DeepEqual(a.AuthKeyID, b.AuthKeyID) || (a.AuthKey == nil) != (b.AuthKey == nil) {
+		return false
+	}
+
+	if a.AuthKey == nil {
+		return true
+	}
+
+	ka, kb := *a.AuthKey, *b.AuthKey
+	ka.User, kb.User = nil, nil
+
+	return reflect.DeepEqual(ka, kb)
+}
+
+// sameKeyRef says whether a and b refer to the same auth key, whatever the
+// state of their copies.
+func sameKeyRef(a, b *types.Node) bool {
+	return reflect.DeepEqual(a.AuthKeyID, b.AuthKeyID) && (a.AuthKey == nil) == (b.AuthKey == nil)
 }
 
 // persistNodeAndRefreshPolicy saves the given node state to the database and refreshes the
@@ -2582,9 +2749,47 @@ func (s *State) CreatePreAuthKey(userID *types.UserID, reusable bool, ephemeral 
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
 }
 
-// CreateTokenPreAuthKey creates a key an OAuth access token makes.
-func (s *State) CreateTokenPreAuthKey(userID *types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKeyNew, error) {
-	return s.db.CreateTokenPreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
+// CreateAuthKeyIf makes the key k describes when check passes, and returns
+// it as stored and once with its secret. check runs under the lock that
+// every policy write takes, so a key is stored under the policy check read:
+// a policy that took a tag from the caller has either not been installed
+// yet, or the check already sees it.
+func (s *State) CreateAuthKeyIf(k hsdb.NewPreAuthKey, check func() error) (*types.PreAuthKey, *types.PreAuthKeyNew, error) {
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+
+	err := check()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var stored *types.PreAuthKey
+
+	made, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.PreAuthKeyNew, error) {
+		var (
+			made *types.PreAuthKeyNew
+			err  error
+		)
+
+		stored, made, err = hsdb.CreatePreAuthKeyFrom(tx, k)
+
+		return made, err
+	})
+
+	return stored, made, err
+}
+
+// ListAuthKeysPage is up to limit auth keys with an ID above after, in ID
+// order, revoked ones too, that f matches; and the IDs among them that a
+// node refers to. See [hsdb.HSDatabase.ListPreAuthKeysPage].
+func (s *State) ListAuthKeysPage(ctx context.Context, after uint64, limit int, f hsdb.PreAuthKeyFilter) ([]types.PreAuthKey, set.Set[uint64], error) {
+	return s.db.ListPreAuthKeysPage(ctx, after, limit, f)
+}
+
+// GetAuthKey is the auth key with id, revoked or not, and whether a node
+// refers to it.
+func (s *State) GetAuthKey(id uint64) (*types.PreAuthKey, bool, error) {
+	return s.db.GetPreAuthKeyWithReference(id)
 }
 
 // Test helpers for the state layer
@@ -2676,11 +2881,6 @@ func (s *State) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, error) {
 // ListPreAuthKeys returns all pre-authentication keys for a user.
 func (s *State) ListPreAuthKeys() ([]types.PreAuthKey, error) {
 	return s.db.ListPreAuthKeys()
-}
-
-// SetPreAuthKeyDescription sets the free-text description on a pre-auth key.
-func (s *State) SetPreAuthKeyDescription(id uint64, description string) error {
-	return s.db.SetPreAuthKeyDescription(id, description)
 }
 
 // ExpirePreAuthKey marks a pre-authentication key as expired.
@@ -3188,13 +3388,15 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 // keyUser is a copy of the user a key speaks for, whom a node it registers
 // records as its creator: the owner of a user's key, the maker of a tagged
-// one; none for a key a token made.
+// one, which the legacy APIs record as the owner and v0 apart; none for a
+// key a token made.
 func keyUser(k *types.PreAuthKey) *uint {
-	if k.UserID == nil {
+	uid := cmp.Or(k.UserID, k.CreatedByUserID)
+	if uid == nil {
 		return nil
 	}
 
-	return new(*k.UserID)
+	return new(*uid)
 }
 
 // createAndSaveNewNode creates a new node, allocates IPs, saves to DB, and adds to [NodeStore].
@@ -3337,13 +3539,13 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 			return nil, fmt.Errorf("saving node: %w", err)
 		}
 
-		if params.PreAuthKey != nil && !params.PreAuthKey.Reusable {
-			err := hsdb.UsePreAuthKey(tx, params.PreAuthKey)
+		if params.PreAuthKey != nil {
+			err := hsdb.ClaimPreAuthKey(tx, params.PreAuthKey, !params.PreAuthKey.Reusable)
 			if err != nil {
 				return nil, fmt.Errorf("using pre auth key: %w", err)
 			}
 
-			// UsePreAuthKey marked the key used; refresh the node's in-memory
+			// A claim may mark the key used; refresh the node's in-memory
 			// AuthKey so the NodeStore copy matches the database.
 			nodeToRegister.AuthKey = params.PreAuthKey.AsCredential()
 		}
@@ -3351,6 +3553,9 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		return &nodeToRegister, nil
 	})
 	if err != nil {
+		// The row rolled back and the NodeStore never had the node.
+		s.ipAlloc.FreeIPs(nodeToRegister.IPs())
+
 		return types.NodeView{}, err
 	}
 
@@ -4143,14 +4348,14 @@ func shouldConsumePreAuthKey(pak *types.PreAuthKey) bool {
 }
 
 // reregisterNodeWithPAK updates an existing node in place for a pre-auth key
-// re-registration: NodeStore first, then the database.
+// re-registration: the database first, then the NodeStore.
 //
-// The caller's lookup view goes stale before the NodeStore writer runs: an
-// admin or logout expiry, a node key reconcile, a retag or a deletion can land
-// in between, and the key or the node can expire. So the writer decides
-// whether the key must be valid on the node it replaces, at its own clock, and
+// The caller's lookup view goes stale before the write: an admin or logout
+// expiry, a node key reconcile, a retag or a deletion can land in between, and
+// the key or the node can expire. So the write decides whether the key must be
+// valid on the node as it reads it under persistMu, at its own clock, and
 // leaves the node untouched when it is not. existingNodeSameUser is used only
-// for its ID and for logging. It also returns the node the writer replaced.
+// for its ID and for logging. It also returns the node the publish replaced.
 func (s *State) reregisterNodeWithPAK(
 	existingNodeSameUser types.NodeView,
 	pak *types.PreAuthKey,
@@ -4180,27 +4385,35 @@ func (s *State) reregisterNodeWithPAK(
 		return types.NodeView{}, types.NodeView{}, ErrNodeKeyInUse
 	}
 
-	// prior is the node the writer replaced: the NetInfo source and the
-	// rollback target if the database write below fails. written is what this
-	// write left; the view after the batch can hold later writes.
 	var (
-		prior   *types.Node
-		written *types.Node
-		authErr error
 		reauth  bool
+		authErr error
+		// written is the node the publish takes, so the claim can give its
+		// key the first use it stored.
+		written *types.Node
 	)
 
-	// Update existing node - NodeStore first, then database
-	before, updatedNodeView, ok := s.nodeStore.UpdateNodeDiff(existingNodeSameUser.ID(), func(node *types.Node) {
+	// The database first, then the NodeStore: a key the claim refuses must
+	// never reach a peer, nor the row through another persist.
+	before, updatedNodeView, err := s.persistThenPublish(existingNodeSameUser.ID(), func(node *types.Node) error {
+		written = node
+
 		// One clock read, so the whole mutation is decided at one instant.
 		now := time.Now()
 
-		prior = node.Clone()
-		defer func() { written = node.Clone() }()
+		prior := node.Clone()
 
 		reauth, authErr = pakReregister(node.View(), pak, regReq.NodeKey, now)
 		if authErr != nil {
-			return
+			log.Debug().
+				Caller().
+				Uint64(zf.NodeID, existingNodeSameUser.ID().Uint64()).
+				Str(zf.MachineKey, machineKey.ShortString()).
+				Uint64(zf.AuthKeyID, pak.ID).
+				Err(authErr).
+				Msg("Re-registration needs a valid auth key when it applies, rejecting")
+
+			return authErr
 		}
 
 		setHostname(node, hostname)
@@ -4217,7 +4430,7 @@ func (s *State) reregisterNodeWithPAK(
 		node.LastSeen = new(now)
 
 		if !reauth {
-			return
+			return nil
 		}
 
 		node.NodeKey = regReq.NodeKey
@@ -4316,52 +4529,42 @@ func (s *State) reregisterNodeWithPAK(
 
 		// Route approvals stay on an owner change, as on Tailscale SaaS;
 		// autoApprovers only add.
-	})
+		return nil
+	}, func(*types.Node) []string {
+		// Only re-authentication writes a newly loaded key's reference, and
+		// the creator it sets. A wake-up keeps the prior key, which may have
+		// been deleted (#2862).
+		if reauth {
+			return append(slices.Clone(nodeUpdateColumns), "AuthKeyID", "CreatedByUserID")
+		}
 
-	// A nil prior means the writer never saw the node (deleted, or the store
-	// stopped), so nothing was decided and nothing may be persisted.
-	if !ok || prior == nil {
-		return types.NodeView{}, types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeSameUser.ID())
-	}
-
-	if authErr != nil {
-		log.Debug().
-			Caller().
-			Uint64(zf.NodeID, existingNodeSameUser.ID().Uint64()).
-			Str(zf.MachineKey, machineKey.ShortString()).
-			Uint64(zf.AuthKeyID, pak.ID).
-			Err(authErr).
-			Msg("Re-registration needs a valid auth key when it applies, rejecting")
-
-		return types.NodeView{}, types.NodeView{}, authErr
-	}
-
-	// Only re-authentication writes a newly loaded key's reference, and the
-	// creator it sets. A wake-up keeps the prior key, which may have been
-	// deleted (#2862).
-	reregColumns := nodeUpdateColumns
-	if reauth {
-		reregColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID", "CreatedByUserID")
-	}
-
-	_, err := s.persistNodeWith(updatedNodeView, reregColumns, func(tx *gorm.DB) error {
+		return nodeUpdateColumns
+	}, func(tx *gorm.DB) error {
 		// Only mark the key used on the *first* registration. On
 		// re-registration the same key is already used and the
-		// atomic compare-and-set in [hsdb.UsePreAuthKey] would otherwise
+		// atomic compare-and-set in [hsdb.ClaimPreAuthKey] would otherwise
 		// reject it as "authkey already used", locking out containers
-		// that restart with the same one-shot key.
-		if reauth && shouldConsumePreAuthKey(pak) {
-			err := hsdb.UsePreAuthKey(tx, pak)
+		// that restart with the same one-shot key. A revoke since the
+		// check holds either way.
+		if reauth {
+			err := hsdb.ClaimPreAuthKey(tx, pak, shouldConsumePreAuthKey(pak))
 			if err != nil {
 				return fmt.Errorf("using pre auth key: %w", err)
+			}
+
+			// The mutation copied the key before the claim stored its first use.
+			if written.AuthKey != nil {
+				written.AuthKey.FirstUsed = pak.FirstUsed
 			}
 		}
 
 		return nil
 	})
-	if err != nil {
-		s.undoReregistration(prior, written)
+	if authErr != nil || errors.Is(err, ErrNodeNotInNodeStore) {
+		return types.NodeView{}, types.NodeView{}, err
+	}
 
+	if err != nil {
 		return types.NodeView{}, types.NodeView{}, fmt.Errorf("writing node to database: %w", err)
 	}
 
@@ -4377,65 +4580,11 @@ func (s *State) reregisterNodeWithPAK(
 	return updatedNodeView, before, nil
 }
 
+// registrationOwnershipStillMatches says whether node and written have one
+// owner: the tags and the user ID, not the user's profile, which a refresh
+// changes under the same owner.
 func registrationOwnershipStillMatches(node, written *types.Node) bool {
-	return slices.Equal(node.Tags, written.Tags) &&
-		reflect.DeepEqual(node.UserID, written.UserID) && reflect.DeepEqual(node.User, written.User)
-}
-
-// undoReregistration puts back the fields of a failed re-registration that
-// still hold what it wrote, so later admin and map writes survive, and saves
-// the result. LastSeen stays because the node did contact us; sessions,
-// endpoints and health are not rolled back.
-func (s *State) undoReregistration(prior, written *types.Node) {
-	restored, exists := s.nodeStore.UpdateNode(prior.ID, func(n *types.Node) {
-		if n.NodeKey == written.NodeKey {
-			n.NodeKey = prior.NodeKey
-		}
-
-		if n.Hostname == written.Hostname {
-			n.Hostname = prior.Hostname
-		}
-
-		if reflect.DeepEqual(n.Hostinfo, written.Hostinfo) {
-			n.Hostinfo = prior.Hostinfo
-		}
-
-		if n.RegisterMethod == written.RegisterMethod {
-			n.RegisterMethod = prior.RegisterMethod
-		}
-
-		if registrationOwnershipStillMatches(n, written) {
-			n.Tags = prior.Tags
-			n.UserID = prior.UserID
-			n.User = prior.User
-		}
-
-		if n.Ephemeral == written.Ephemeral {
-			n.Ephemeral = prior.Ephemeral
-		}
-
-		if reflect.DeepEqual(n.Expiry, written.Expiry) {
-			n.Expiry = prior.Expiry
-		}
-
-		if n.KeyExpiryDisabled == written.KeyExpiryDisabled {
-			n.KeyExpiryDisabled = prior.KeyExpiryDisabled
-		}
-
-		if reflect.DeepEqual(n.AuthKeyID, written.AuthKeyID) &&
-			reflect.DeepEqual(n.AuthKey, written.AuthKey) {
-			n.AuthKey = prior.AuthKey
-			n.AuthKeyID = prior.AuthKeyID
-		}
-	})
-	if !exists {
-		return
-	}
-
-	_, err := s.persistNode(restored)
-	if err != nil {
-		log.Error().Err(err).Uint64(zf.NodeID, prior.ID.Uint64()).Msg("Persisting re-registration rollback failed")
-	}
+	return slices.Equal(node.Tags, written.Tags) && reflect.DeepEqual(node.UserID, written.UserID)
 }
 
 // relogin is what a same-user relogin changed that its peers read.

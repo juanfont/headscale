@@ -325,7 +325,8 @@ func TestColumnsOfTheList(t *testing.T) {
 
 // TestNoColumnLeft: a --columns that takes away every column the table
 // would show is a mistake of the line, refused before any call, with -o json
-// as without.
+// as without. --all adds the column a list hides rows by, which is then left;
+// Tab goes on past such a list, since an item typed after it can repair it.
 func TestNoColumnLeft(t *testing.T) {
 	const refused = "Error: --columns leaves no column to show.\n"
 
@@ -339,6 +340,8 @@ func TestNoColumnLeft(t *testing.T) {
 		{tree: testTree(t), line: "items list --columns -name,-id", stderr: refused, code: 1},
 		{tree: testTree(t), line: "items list --columns -id,-name -o json", stderr: refused, code: 1},
 		{tree: testTree(t), line: "items list --columns -id", stdout: "NAME\napple\n-\n"},
+		{tree: onlyTree(t, stated{ID: "1", Name: "a", State: "valid"}), line: "keys --columns -id,-name", stderr: refused, code: 1},
+		{tree: onlyTree(t, stated{ID: "1", Name: "a", State: "valid"}), line: "keys --all --columns -id,-name", stdout: "STATE\nvalid\n"},
 	} {
 		var stdout, stderr bytes.Buffer
 
@@ -350,4 +353,22 @@ func TestNoColumnLeft(t *testing.T) {
 			tt.line,
 		)
 	}
+
+	var stdout bytes.Buffer
+
+	require.Equal(
+		t,
+		0,
+		Run(
+			onlyTree(t),
+			words("__complete keys --columns=-id,-name,+"),
+			Env{Stdout: &stdout},
+		),
+	)
+	require.Equal(
+		t,
+		"-id,-name,+state\n:6\n",
+		stdout.String(),
+		"Tab goes on after a list that has taken every column away",
+	)
 }

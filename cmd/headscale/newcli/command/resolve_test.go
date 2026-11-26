@@ -7,6 +7,7 @@ import (
 
 	lib "github.com/juanfont/headscale/cmdline/command"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
+	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/require"
 )
 
@@ -127,4 +128,117 @@ func TestCandidatesChecked(t *testing.T) {
 		Done: func(NoInput, NoOutput, time.Time) string { return "" },
 	}))
 	require.NoError(t, err)
+}
+
+// TestMatchAuthKey: a key is found by ID, else by prefix, also when typed
+// masked or whole; no message repeats a secret.
+func TestMatchAuthKey(t *testing.T) {
+	t.Parallel()
+
+	alice := nullable.NewNullableWithValue(
+		clientv0.Owner{
+			User: nullable.NewNullableWithValue(
+				clientv0.OwnerUser{Id: "3", LoginName: "alice"},
+			),
+		},
+	)
+	ci := nullable.NewNullableWithValue(
+		clientv0.Owner{
+			Tags: []string{"tag:ci"},
+			User: nullable.NewNullNullable[clientv0.OwnerUser](),
+		},
+	)
+	keys := []clientv0.AuthKey{
+		{Id: "7", Prefix: "ab12cd", Owner: alice, State: "valid"},
+		{Id: "9", Prefix: "7", Owner: ci, State: "revoked"},
+		{Id: "10", Prefix: "legacy-0f1e2d", Owner: ci, State: "valid"},
+		// Two keys with one prefix: a server cannot store them, the rule
+		// lists them all the same.
+		{Id: "11", Prefix: "dup123", Owner: alice, State: "valid"},
+		{Id: "12", Prefix: "dup123", Owner: ci, State: "expired"},
+	}
+
+	for word, want := range map[string]string{
+		"7":                            "7",
+		"ab12cd":                       "7",
+		"hskey-auth-ab12cd-***":        "7",
+		"9":                            "9",
+		"hskey-auth-legacy-0f1e2d-***": "10",
+	} {
+		w, err := credentialWord(authKeyTyped(), word)
+		require.NoError(t, err, word)
+
+		k, err := matchAuthKey(keys, w, word)
+		require.NoError(t, err, word)
+		require.Equal(t, want, k.Id, word)
+	}
+
+	// A whole key is refused, also one whose secret holds a dash, as keys
+	// of 0.28 and 0.29 can, and in any case; the prefix is said, the
+	// secret not.
+	for word, want := range map[string]string{
+		"hskey-auth-ab12cd345678-0123456789abcd": " Its prefix is ab12cd345678.",
+		"hskey-auth-ab12cd345678-01234-6789abcd": " Its prefix is ab12cd345678.",
+		"HSKEY-AUTH-ab12cd345678-0123456789abcd": " Its prefix is ab12cd345678.",
+		"hskey-auht-ab12cd345678-0123456789abcd": "",
+		"hskey-api-ab12cd345678-0123456789abcd":  "",
+		"hskey-auth-short":                       "",
+	} {
+		_, err := credentialWord(authKeyTyped(), word)
+		require.EqualError(
+			t,
+			err,
+			"a key is named by its ID or its prefix, never by the whole key."+want,
+			word,
+		)
+	}
+
+	_, err := matchAuthKey(keys, "ffffff", "ffffff")
+	require.EqualError(t, err, `no auth key matches "ffffff".`)
+
+	// A secret typed in the masked form is a part that holds the secret:
+	// the message quotes the word as typed, which the edge masks.
+	w, err := credentialWord(authKeyTyped(), "hskey-auth-ab12cd345678-s3cret-***")
+	require.NoError(t, err)
+
+	_, err = matchAuthKey(keys, w, "hskey-auth-ab12cd345678-s3cret-***")
+	require.EqualError(
+		t,
+		err,
+		`no auth key matches "hskey-auth-ab12cd345678-s3cret-***".`,
+	)
+	require.Equal(t, `no auth key matches "hskey-auth-***".`, masked(err.Error()))
+
+	_, err = matchAuthKey(keys, "dup123", "dup123")
+	require.EqualError(t, err, `"dup123" matches 2 auth keys. Use the ID to select one:
+
+  ID  PREFIX  OWNER   STATE
+  11  dup123  alice   valid
+  12  dup123  tag:ci  expired`)
+}
+
+// TestCredentialWord: a key reads its masked form, and every kind refuses
+// its whole secret, saying the part that names it; another kind's secret
+// is refused without it.
+func TestCredentialWord(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		k           typed
+		masked, got string
+		whole, want string
+	}{
+		{authKeyTyped(), "hskey-auth-ab12cd-***", "ab12cd", "hskey-auth-ab12cd345678-s3cret", "a key is named by its ID or its prefix, never by the whole key. Its prefix is ab12cd345678."},
+		// No output prints a client in the masked form with its ID, so it
+		// names none.
+		// The server takes a client secret spelt as Tailscale spells it.
+		{authKeyTyped(), "7", "7", "tskey-client-c9f2aa000000-s3cret", "a key is named by its ID or its prefix, never by the whole key."},
+	} {
+		got, err := credentialWord(tt.k, tt.masked)
+		require.NoError(t, err, tt.masked)
+		require.Equal(t, tt.got, got, tt.masked)
+
+		_, err = credentialWord(tt.k, tt.whole)
+		require.EqualError(t, err, tt.want, tt.whole)
+	}
 }

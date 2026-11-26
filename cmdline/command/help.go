@@ -115,6 +115,14 @@ func (t *Tree) commandHelp(w io.Writer, c *cmdline.Info, l *leaf) {
 			help = strings.Replace(help, "match;", "match, such as "+l.filter+";", 1)
 		}
 
+		if f.Name == "all" && l.only != "" {
+			help += ", not only " + l.only
+		}
+
+		if f.Default != "" {
+			help += " (default " + f.Default + ")"
+		}
+
 		fmt.Fprintf(tw, "  %s%s\t%s\n", short, name, help)
 	}
 

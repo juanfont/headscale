@@ -121,6 +121,7 @@ var nodeColumns = table.Columns[clientv0.Node]{
 	{Name: "machine-key", Field: "machineKey", Help: "Machine key"},
 	{Name: "node-key", Field: "nodeKey", Help: "Node key"},
 	{Name: "disco-key", Field: "discoKey", Help: "Disco key"},
+	//nolint:goconst // a column is named as its field
 	{Name: "created", Field: "created", Help: "When the node registered"},
 	{
 		Name:  "problems",

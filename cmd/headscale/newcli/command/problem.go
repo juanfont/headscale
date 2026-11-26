@@ -92,6 +92,15 @@ func about(err error, target lib.Object, expiry time.Time) {
 	p.expiry = expiry
 }
 
+// mayBeMade reports whether err leaves a write unknown: an answer that
+// cannot be read, none, or a server fault after the write.
+func mayBeMade(err error) bool {
+	_, unread := errors.AsType[*unreadableError](err)
+	_, fault := errors.AsType[*faultAfterWriteError](err)
+
+	return unread || sentWrite(err) || fault
+}
+
 // faultAfterWriteError is a server fault, 5xx, that answered a write: what
 // failed may have come after the change, as a read after a commit or a
 // proxy that gave up waiting, so the change may have been made.
@@ -150,8 +159,16 @@ func (e *ProblemError) Error() string {
 				o.Name,
 			) + " is managed by OIDC and cannot be edited here."
 		}
+	case clientv0.ProblemCodeOwnerConflict:
+		return "a key is owned by one user or by tags, not both."
+	case clientv0.ProblemCodeExpiryRequired:
+		return "a key must have an expiry."
 	case clientv0.ProblemCodeTagsRequired:
-		return "the tag list is empty. A tagged node needs at least one tag."
+		if e.target.Kind == "node" {
+			return "the tag list is empty. A tagged node needs at least one tag."
+		}
+
+		return "the tag list is empty."
 	case clientv0.ProblemCodeTagsNotPermitted:
 		return "these tags are not in the policy: " + strings.Join(
 			texts(p.Details["tags"]),
@@ -256,7 +273,12 @@ func flagsOf(err error, t reflect.Type) error {
 				continue
 			}
 
-			if strings.EqualFold(sf.Name, key) ||
+			// An owner fills the user or the tags.
+			root, _, _ := strings.Cut(key, "[")
+			owner := sf.Type == reflect.TypeFor[Owner]() &&
+				(root == "userId" || root == "tags")
+
+			if owner || strings.EqualFold(sf.Name, key) ||
 				strings.EqualFold(strings.ReplaceAll(name, "-", ""), key) {
 				p.Problem.Errors[i].Location = word
 
@@ -329,7 +351,9 @@ func tokenRule(rule string) string {
 	case "token_cannot_change_user_name_or_email":
 		return "An OAuth access token cannot change the name or the email of a user; an API key can."
 	case "token_must_own_tags":
-		return "An OAuth access token gives and takes only tags it holds or owns, and only on a node whose tags are all its own; an API key may give any tag of the policy."
+		return "An OAuth access token gives, takes and makes keys for only tags it holds or owns, and changes only a node whose tags are all its own; an API key may give any tag of the policy."
+	case "token_cannot_create_key_for_user":
+		return "An OAuth access token makes only tagged keys; an API key may make a key for a user."
 	}
 
 	return ""

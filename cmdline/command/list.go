@@ -172,6 +172,7 @@ func signed(mark byte, prefix string) (string, string, bool) {
 // is the line of the list, for the pointer to --list-columns.
 func listCheck[R any](
 	cols table.Columns[R],
+	only string,
 	line *cmdline.Line,
 	command string,
 ) (int, error) {
@@ -218,7 +219,7 @@ func listCheck[R any](
 				return g.At, bad(g, err)
 			}
 
-			if len(cols.Pick(trimmedItems(g.Value))) == 0 {
+			if len(shownBy(cols, only, line).Pick(trimmedItems(g.Value))) == 0 {
 				return g.At, bad(g, &table.ValueError{Text: noColumns})
 			}
 
@@ -284,6 +285,27 @@ const mixedColumns = "--columns takes a plain list, or only + and - entries. Not
 // noColumns refuses a --columns that takes away every column the table
 // would show; with -o json too, since the mistake is in the line.
 const noColumns = "--columns leaves no column to show."
+
+// shownBy is the columns a line's --columns edits: the list's defaults,
+// and with --all the column its Only filter hides rows by, as the run
+// shows them.
+func shownBy[R any](
+	cols table.Columns[R],
+	only string,
+	line *cmdline.Line,
+) table.Columns[R] {
+	if only == "" ||
+		!slices.ContainsFunc(
+			line.Flags,
+			func(g cmdline.Given) bool { return g.Name == "all" && g.Value != "false" },
+		) {
+		return cols
+	}
+
+	o, _ := cols.ParseFilter(only)
+
+	return cols.Shown(o.Column())
+}
 
 // trimmedItems are the items of a list value, without the space around
 // each, as the parser hands them to the run.

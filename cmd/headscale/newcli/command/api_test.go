@@ -412,6 +412,41 @@ func TestEmptyAnswer(t *testing.T) {
 	)
 }
 
+// TestFaultAfterWrite: a 5xx that answers a write may come after the
+// change, so a Secret command says where to find the credential; one that
+// answers a read changed nothing.
+func TestFaultAfterWrite(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(versioned(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Headscale-Version", "dev")
+
+		// GET /version before the write must succeed, or nothing is sent.
+		if r.URL.Path == "/api/headscale/v0/version" {
+			return
+		}
+
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"code": "internal", "status": 500, "title": "x"}`))
+	}))
+	t.Cleanup(s.Close)
+
+	a := apiOf(t, s.URL, &types.VersionInfo{Version: "dev"}, io.Discard)
+	a.target = "hs.example.com"
+
+	var fault *faultAfterWriteError
+
+	_, err := createUser(t.Context(), a, "x")
+	require.ErrorAs(t, err, &fault)
+
+	var p *ProblemError
+	require.ErrorAs(t, err, &p, "the problem is said as before")
+
+	_, err = me(t.Context(), a)
+	require.Error(t, err)
+	require.NotErrorAs(t, err, &fault)
+}
+
 // TestConnectError: the message says what was wrong, and names the host
 // as the operator knows it.
 func TestConnectError(t *testing.T) {

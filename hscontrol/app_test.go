@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -654,4 +655,62 @@ func TestAPIv0Paths(t *testing.T) {
 			require.Contains(t, logged.String(), `"request_id":"`+p.RequestID+`"`, "%s %s: no request log line", name, path)
 		}
 	}
+}
+
+// TestAccessLogHidesSecrets: a secret sent as a path segment, in any case,
+// through the real router, reaches the request log as its kind only.
+func TestAccessLogHidesSecrets(t *testing.T) {
+	var logged bytes.Buffer
+
+	old, oldLevel := log.Logger, zerolog.GlobalLevel()
+	log.Logger = zerolog.New(&logged)
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	t.Cleanup(func() {
+		log.Logger = old
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	// Stands in for the legacy and the Tailscale API.
+	teapot := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	app := &Headscale{cfg: &types.Config{}, authProvider: NewAuthProviderWeb("")}
+	router := app.createRouter(teapot, teapot, apiv0.Handler(apiv0.Backend{}))
+
+	const secret = "0123456789ab-SECRETSECRETSECRETSECRETSECRETSECRETSECRET"
+
+	spellings := types.CredentialPrefixes()
+	paths := make([]string, 0, 4+2*len(spellings))
+	paths = append(paths,
+		apiv0.Prefix+"/auth-keys/hskey-auth-"+secret,
+		"/register/hskey-authreq-"+secret,
+		"/api/v1/x/hskey-api-"+secret+"/y",
+		apiv0.Prefix+"/auth-keys/HSKey-Auth-"+secret,
+	)
+
+	// Every spelling authentication accepts, the Tailscale one of an OAuth
+	// client secret too.
+	for _, p := range spellings {
+		paths = append(paths, apiv0.Prefix+"/oauth-clients/"+p+secret, apiv0.Prefix+"/oauth-clients/"+strings.ToUpper(p)+secret)
+	}
+
+	for _, path := range paths {
+		logged.Reset()
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+
+		require.NotContains(t, logged.String(), "SECRET", path)
+		require.Contains(t, logged.String(), "http request", path)
+	}
+
+	// The socket logs v0 with the router's logger.
+	logged.Reset()
+	socketHandler(teapot, teapot, apiv0.Handler(apiv0.Backend{})).ServeHTTP(httptest.NewRecorder(),
+		httptest.NewRequestWithContext(t.Context(), http.MethodGet, apiv0.Prefix+"/auth-keys/hskey-auth-"+secret, nil))
+	require.NotContains(t, logged.String(), "SECRET")
+	require.Contains(t, logged.String(), "http request")
+
+	require.Equal(t, "/api/v1/x/hskey-api-***/y", types.HideSecrets("/api/v1/x/hskey-api-"+secret+"/y"))
+	require.Equal(t, "/a/b", types.HideSecrets("/a/b"))
+	require.Equal(t, "/x/tskey-client-***", types.HideSecrets("/x/tskey-client-"+secret))
 }

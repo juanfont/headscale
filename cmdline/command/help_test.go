@@ -90,3 +90,32 @@ func TestHelpWriteFails(t *testing.T) {
 		require.Contains(t, stderr.String(), "no space left on device", args)
 	}
 }
+
+// TestHelpDefault: a flag's default is said once, in its tag, and the help
+// prints it.
+func TestHelpDefault(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Expiry Expiry[NoWords] `default:"1h" flag:"expiry" help:"When it ends"`
+	}
+
+	tree, err := testBuild("prog", "A program", New(Spec[testS, in, NoOutput]{
+		Name:    "make",
+		Short:   "Make",
+		Long:    "Make.",
+		Example: []string{"prog make"},
+		Local:   true,
+		Run:     noop[in, NoOutput],
+	}))
+	require.NoError(t, err)
+
+	var b bytes.Buffer
+
+	require.Equal(t, 0, Run(tree, []string{"make", "-h"}, Env{Stdout: &b}))
+	require.Contains(
+		t,
+		b.String(),
+		"      --expiry string   When it ends (default 1h)\n",
+	)
+}

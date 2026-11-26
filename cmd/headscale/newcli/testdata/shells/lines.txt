@@ -69,8 +69,8 @@ headscale nodes list |
 headscale nodes delete |
 headscale nodes rm --f|
 headscale nodes list -o=|
-headscale auth keys create alice --tags tag:p|	waits auth keys create
-headscale auth keys create alice --tags tag:ci,tag:p|	waits auth keys create
+headscale api oauth-clients create devices:core --tags tag:p|	waits api oauth-clients create
+headscale api oauth-clients create devices:core --tags tag:ci,tag:p|	waits api oauth-clients create
 headscale nodes list --config |
 headscale nodes list --config=|
 headscale nodes set 12 --name |

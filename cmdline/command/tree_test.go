@@ -133,6 +133,30 @@ func TestBuildChecks(t *testing.T) {
 			`list: column "nodes" is cut to the width of the terminal, and Long does not say so: "NODES is truncated to fit your terminal", with the way to read all of it`,
 		},
 		{
+			"a default filter that does not read",
+			[]Node{NewList(ListSpec[testS, NoInput, stated]{
+				Name: "list", Short: "List", Long: "List; --all shows all.", Example: []string{"prog list"}, Local: true, NoRows: "No keys.", Run: noop[NoInput, []stated],
+				Columns: statedColumns, Only: "status=valid",
+			})},
+			`list: the filter Only "status=valid": unknown column "status". Did you mean "state"?`,
+		},
+		{
+			"a default filter on a column that is shown",
+			[]Node{NewList(ListSpec[testS, NoInput, stated]{
+				Name: "list", Short: "List", Long: "List; --all shows all.", Example: []string{"prog list"}, Local: true, NoRows: "No keys.", Run: noop[NoInput, []stated],
+				Columns: statedColumns, Only: "name=a",
+			})},
+			`list: the filter Only "name=a": column "name" is a Default column: --all adds the column of Only to the defaults`,
+		},
+		{
+			"a default filter the help does not explain",
+			[]Node{NewList(ListSpec[testS, NoInput, stated]{
+				Name: "list", Short: "List", Long: "List.", Example: []string{"prog list"}, Local: true, NoRows: "No keys.", Run: noop[NoInput, []stated],
+				Columns: statedColumns, Only: "state=valid",
+			})},
+			"list: a list with Only hides rows, and Long does not say what --all shows",
+		},
+		{
 			"a delete that does not ask",
 			[]Node{New(Spec[testS, getIn, NoOutput]{Name: "delete", Short: "Delete", Long: "Delete.", Example: []string{"prog delete a"}, Local: true, Run: noop[getIn, NoOutput]})},
 			"delete: a delete with no Confirm: every delete asks first",

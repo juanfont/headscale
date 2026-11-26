@@ -71,7 +71,7 @@ func TestProblemSentence(t *testing.T) {
 			clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "node", Id: "12", Name: "mynode"})},
 			"Node 12 (mynode) no longer exists.",
 		},
-		{"tags required", clientv0.Problem{Code: clientv0.ProblemCodeTagsRequired}, "the tag list is empty. A tagged node needs at least one tag."},
+		{"tags required of what is no node, such as a key", clientv0.Problem{Code: clientv0.ProblemCodeTagsRequired}, "the tag list is empty."},
 		{
 			"tags not permitted names them, escaped",
 			clientv0.Problem{Code: clientv0.ProblemCodeTagsNotPermitted, Details: map[string]any{"tags": []any{"tag:serverr", "tag:x\nError: fake"}}},
@@ -87,8 +87,15 @@ func TestProblemSentence(t *testing.T) {
 		{
 			"forbidden by the rule on tags",
 			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_must_own_tags"}},
-			"this credential may not do that.\nAn OAuth access token gives and takes only tags it holds or owns, and only on a node whose tags are all its own; an API key may give any tag of the policy.",
+			"this credential may not do that.\nAn OAuth access token gives, takes and makes keys for only tags it holds or owns, and changes only a node whose tags are all its own; an API key may give any tag of the policy.",
 		},
+		{
+			"forbidden by the rule on keys for a user",
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_cannot_create_key_for_user"}},
+			"this credential may not do that.\nAn OAuth access token makes only tagged keys; an API key may make a key for a user.",
+		},
+		{"owner conflict", clientv0.Problem{Code: clientv0.ProblemCodeOwnerConflict}, "a key is owned by one user or by tags, not both."},
+		{"expiry required", clientv0.Problem{Code: clientv0.ProblemCodeExpiryRequired}, "a key must have an expiry."},
 		{"not found with no object", clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Title: "Not found"}, "Not found (not_found)."},
 		{
 			"unhealthy lists the reasons",
@@ -144,6 +151,17 @@ func TestProblemSentence(t *testing.T) {
 		})
 	}
 
+	node := &ProblemError{
+		Problem: clientv0.Problem{Code: clientv0.ProblemCodeTagsRequired},
+		target:  clientv0.ProblemObject{Kind: "node", Id: "12"},
+	}
+	require.EqualError(
+		t,
+		node,
+		"the tag list is empty. A tagged node needs at least one tag.",
+		"tags required of a node",
+	)
+
 	require.EqualError(
 		t,
 		problemOf(502, []byte("<html>")),
@@ -160,6 +178,7 @@ func TestFlagsOf(t *testing.T) {
 		Name          string      `arg:"name"`
 		DisplayName   Opt[string] `flag:"display-name" help:"x"`
 		ProfilePicURL string      `flag:"picture-url"  help:"x"`
+		Owner         Owner       `arg:"owner"`
 	}
 
 	p := &ProblemError{
@@ -171,12 +190,14 @@ func TestFlagsOf(t *testing.T) {
 				{Location: "body.profilePicUrl", Message: "c"},
 				{Location: "body.other", Message: "d"},
 				{Location: "query.pageSize", Message: "e"},
+				{Location: "body.userId", Message: "f"},
+				{Location: "body.tags[1]", Message: "g"},
 			},
 		},
 	}
 
 	require.Equal(t, "the server refused a value:\n"+
-		"  <name>: a\n  --display-name: b\n  --picture-url: c\n  body.other: d\n  query.pageSize: e",
+		"  <name>: a\n  --display-name: b\n  --picture-url: c\n  body.other: d\n  query.pageSize: e\n  <owner>: f\n  <owner>: g",
 		sentence(flagsFor[in](fmt.Errorf("wrapped: %w", p))))
 	require.Equal(t, errBroken, flagsFor[in](errBroken))
 }

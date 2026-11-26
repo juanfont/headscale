@@ -62,6 +62,7 @@ CREATE TABLE credentials(
   revoked datetime,
   created_by_token numeric DEFAULT false,
   created_by_user_id integer,
+  first_used datetime,
 
   CONSTRAINT fk_credentials_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
   CONSTRAINT chk_credentials_hash CHECK(hash IS NOT NULL OR revoked IS NOT NULL),

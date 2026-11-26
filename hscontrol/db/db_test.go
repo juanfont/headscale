@@ -745,7 +745,7 @@ func TestSQLiteMigrationAddsCreatedByToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, got.CreatedByToken)
 
-	made, err := hsdb.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	made, err := createTokenKey(hsdb)
 	require.NoError(t, err)
 	got, err = hsdb.GetPreAuthKeyByID(made.ID)
 	require.NoError(t, err)
@@ -1510,6 +1510,85 @@ func TestCreatedByUserMigration(t *testing.T) {
 			var cred types.Credential
 			require.NoError(t, hsdb.DB.First(&cred, key.ID).Error)
 			assert.Nil(t, cred.CreatedByUserID, "the user is forgotten")
+		})
+	}
+}
+
+// TestCredentialFirstUsedMigration upgrades a database from before
+// first_used: an old key, spent or not, knows no first use and keeps its
+// used flag; the first use since is written once.
+func TestCredentialFirstUsedMigration(t *testing.T) {
+	for name, open := range map[string]func(*testing.T) func() *HSDatabase{
+		"sqlite": func(t *testing.T) func() *HSDatabase {
+			t.Helper()
+
+			dbPath := t.TempDir() + "/headscale_test.db"
+
+			return func() *HSDatabase {
+				hsdb, err := NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+				require.NoError(t, err)
+
+				return hsdb
+			}
+		},
+		"postgres": func(t *testing.T) func() *HSDatabase {
+			t.Helper()
+
+			u := newPostgresDBForTest(t)
+
+			return func() *HSDatabase { return newHeadscaleDBFromPostgresURL(t, u) }
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reopen := open(t)
+			hsdb := reopen()
+
+			spent, err := hsdb.CreatePreAuthKey(nil, false, false, nil, []string{"tag:ci"})
+			require.NoError(t, err)
+			require.NoError(t, hsdb.DB.Model(&types.Credential{}).Where("id = ?", spent.ID).Update("used", true).Error)
+
+			reusable, err := hsdb.CreatePreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+			require.NoError(t, err)
+
+			for _, stmt := range []string{
+				`ALTER TABLE credentials DROP COLUMN first_used`,
+				`DELETE FROM migrations WHERE id = '202611252300-credential-first-used'`,
+			} {
+				require.NoError(t, hsdb.DB.Exec(stmt).Error, stmt)
+			}
+
+			require.NoError(t, hsdb.Close())
+
+			hsdb = reopen()
+
+			read := func(id uint64) types.Credential {
+				var c types.Credential
+				require.NoError(t, hsdb.DB.First(&c, id).Error)
+
+				return c
+			}
+
+			assert.Nil(t, read(spent.ID).FirstUsed, "an old key knows no first use")
+			assert.True(t, read(spent.ID).Used, "an old key keeps its used flag")
+			assert.Nil(t, read(reusable.ID).FirstUsed)
+
+			pak, err := hsdb.GetPreAuthKeyByID(reusable.ID)
+			require.NoError(t, err)
+
+			claim := func() {
+				require.NoError(t, hsdb.DB.Transaction(func(tx *gorm.DB) error {
+					return ClaimPreAuthKey(tx, pak, false)
+				}))
+			}
+
+			claim()
+
+			first := read(reusable.ID).FirstUsed
+			require.NotNil(t, first, "a use is written")
+			assert.False(t, read(reusable.ID).Used, "a reusable key's flag stays as /api/v1 shows it")
+
+			claim()
+			assert.True(t, first.Equal(*read(reusable.ID).FirstUsed), "only the first use is written")
 		})
 	}
 }

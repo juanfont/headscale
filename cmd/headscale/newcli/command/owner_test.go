@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -52,6 +53,91 @@ func TestOwned(t *testing.T) {
 
 	name, _ = OwnerName(nullable.NewNullNullable[clientv0.Owner]())
 	require.Empty(t, name)
+}
+
+type ownerIn struct {
+	Owner Owner `arg:"owner"`
+}
+
+// TestOwner: an owner is a user, looked up as a target is, or tags; its
+// form is checked before any call.
+func TestOwner(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu    sync.Mutex
+		asked int
+	)
+
+	s := httptest.NewServer(versioned(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		asked++
+		mu.Unlock()
+
+		w.Header().Set("Headscale-Version", "dev")
+		_, _ = w.Write(
+			[]byte(
+				`{"users": [` + rowOf[clientv0.User](
+					`{"id": "3", "name": "alice", "loginName": "alice"}`,
+				) + `, ` + rowOf[clientv0.User](
+					`{"id": "4", "name": "bob", "loginName": "bob"}`,
+				) + `]}`,
+			),
+		)
+	}))
+	t.Cleanup(s.Close)
+
+	tree, err := Build("prog", "A program", New(Spec[ownerIn, NoOutput]{
+		Name: "make", Short: "S", Long: "S.", Example: []string{"prog make alice"},
+		Run: noop[ownerIn, NoOutput],
+		Done: func(in ownerIn, _ NoOutput, _ time.Time) string {
+			if u, ok := in.Owner.User(); ok {
+				return "user " + u.Id
+			}
+
+			return "tags " + strings.Join(in.Owner.Tags(), " ")
+		},
+	}))
+	require.NoError(t, err)
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	for _, tt := range []struct {
+		line, stdout, stderr string
+		calls                int
+	}{
+		{line: "make alice", stdout: "user 3\n", calls: 1},
+		{line: "make 4", stdout: "user 4\n", calls: 1},
+		{line: "make tag:ci,tag:build", stdout: "tags tag:ci tag:build\n"},
+		{line: "make alcie", stderr: "Error: no user matches \"alcie\".\n", calls: 1},
+		{line: "make alice,tag:ci", stderr: "Error: a key is owned by one user or by tags, not both.\n"},
+		{line: "make alice,bob", stderr: "Error: a key is owned by one user. Got 2: alice, bob.\n"},
+		{line: "make tag:ci,,tag:b", stderr: "Error: the owner list has an empty item.\n"},
+		{line: "make ''", stderr: "Error: an empty word names no owner.\n"},
+	} {
+		mu.Lock()
+		asked = 0
+		mu.Unlock()
+
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, words(tt.line), Env{
+			Stdout: &stdout,
+			Stderr: &stderr,
+			Environ: []string{
+				"HEADSCALE_CONFIG=" + file,
+				"HEADSCALE_CLI_ADDRESS=" + s.URL,
+				"HEADSCALE_CLI_API_KEY=key",
+			},
+		})
+		require.Equal(t, tt.stdout, stdout.String(), tt.line)
+		require.Equal(t, tt.stderr, stderr.String(), tt.line)
+
+		mu.Lock()
+		require.Equal(t, tt.calls, asked, tt.line)
+		mu.Unlock()
+	}
 }
 
 type owned struct {
