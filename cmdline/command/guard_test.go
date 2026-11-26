@@ -21,6 +21,23 @@ func TestIfMatch(t *testing.T) {
 	}{guarded{ID: "12", Revision: "r2"}}))
 	require.Equal(t, new(`"r2"`), c.IfMatch("12"))
 	require.Nil(t, c.IfMatch("13"), "another entity")
+	require.Nil(t, c.Expect("12"), "a revision is no token")
+
+	c.guard.Store(&revision{id: "12", rev: "tok", token: true})
+	require.Nil(t, c.IfMatch("12"), "a token is no revision")
+}
+
+// TestExpect: a write on the target sends the token the question gave, in
+// place of a revision; another entity, and a run before any question, none.
+func TestExpect(t *testing.T) {
+	t.Parallel()
+
+	c := &run{}
+	require.Nil(t, c.Expect("3"), "no question yet")
+
+	c.guard.Store(&revision{id: "3", rev: "0123456789abcdef", token: true})
+	require.Equal(t, new("0123456789abcdef"), c.Expect("3"))
+	require.Nil(t, c.Expect("4"), "another entity")
 }
 
 // TestGuardOf: the target is the first argument that is an entity; one

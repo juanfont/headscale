@@ -1,8 +1,12 @@
 package newcli
 
 import (
+	"errors"
+
 	"pgregory.net/rapid"
 )
+
+var errModelMismatch = errors.New("CLI model mismatch")
 
 // fatal fails a draw with its format alone and logs the values: Rapid
 // shrinks a failure only while it reads the same on replay, and a value

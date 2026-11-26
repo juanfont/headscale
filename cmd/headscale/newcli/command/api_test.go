@@ -1582,11 +1582,299 @@ func TestTimeout(t *testing.T) {
 	})
 }
 
+// TestLostAnswer: a request whose answer the server cuts says what the
+// CLI knows. A write may have been made from the moment it was sent until
+// its answer is read whole, so an answer cut after its headers is a write
+// that may have been made too; a dry run and a read changed nothing, and
+// none of them is a server the CLI cannot connect to.
+func TestLostAnswer(t *testing.T) {
+	t.Parallel()
+
+	// start is a server that hangs up on every request but the version:
+	// before the headers, or after them and half of the body.
+	start := func(t *testing.T, where string) string {
+		t.Helper()
+
+		s := httptest.NewServer(versioned(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Headscale-Version", "dev")
+
+			if r.URL.Path == "/api/headscale/v0/version" {
+				return
+			}
+
+			rc := http.NewResponseController(w)
+
+			if where == "after the headers" {
+				w.Header().Set("Content-Length", "100")
+				_, _ = w.Write([]byte(`{"id": "3", `))
+				_ = rc.Flush()
+			}
+
+			conn, _, err := rc.Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+		}))
+		t.Cleanup(s.Close)
+
+		return s.URL
+	}
+
+	for _, tt := range []struct {
+		name string
+		call func(ctx context.Context, a *API) error
+		want string
+	}{
+		{
+			name: "a write",
+			call: updateUser,
+			want: "the server at {host} did not answer the change: the connection was closed.\n" +
+				"The change may have been made: look before you run the command again.",
+		},
+		{
+			name: "a dry run",
+			call: func(ctx context.Context, a *API) error {
+				return deleteUser(ctx, a, "3", true)
+			},
+			want: "the server at {host} did not answer: the connection was closed.\nNothing was changed: run the command again.",
+		},
+		{
+			name: "a read",
+			call: func(ctx context.Context, a *API) error {
+				_, err := me(ctx, a)
+
+				return err
+			},
+			want: "the server at {host} did not answer: the connection was closed.\nRun the command again.",
+		},
+	} {
+		for _, where := range []string{"before the headers", "after the headers"} {
+			t.Run(tt.name+" cut "+where, func(t *testing.T) {
+				t.Parallel()
+
+				url := start(t, where)
+
+				a, err := connectTest(
+					&types.Config{
+						CLI: types.CLIConfig{
+							Address: url,
+							APIKey:  "key",
+							Timeout: time.Minute,
+						},
+					},
+					Env{Stderr: io.Discard, Version: types.GetVersionInfo()},
+				)
+				require.NoError(t, err)
+
+				require.EqualError(
+					t,
+					tt.call(t.Context(), a),
+					strings.ReplaceAll(
+						tt.want,
+						"{host}",
+						strings.TrimPrefix(url, "http://"),
+					),
+				)
+			})
+		}
+	}
+}
+
+// TestRefusedAfterWrite: an answer the version check refuses after the
+// write went out, of another minor version or with no Headscale-Version,
+// is a change that may have been made; one to a read or a dry run changed
+// nothing.
+func TestRefusedAfterWrite(t *testing.T) {
+	t.Parallel()
+
+	const refused = "this headscale is 0.30.0, the server is 0.31.0.\n" +
+		"The CLI and the server must have the same major and minor version.\n" +
+		"If you just upgraded, restart the server."
+
+	const mayBe = "\nThe change may have been made: look before you run the command again."
+
+	for _, tt := range []struct {
+		name, version string
+		call          func(ctx context.Context, a *API) error
+		want          string
+	}{
+		{
+			name: "a write, another minor version", version: "0.31.0",
+			call: updateUser,
+			want: refused + mayBe,
+		},
+		{
+			name: "a write, no version",
+			call: updateUser,
+			want: "the server at {host} answered 200 OK without Headscale-Version.\nIs it headscale?" + mayBe,
+		},
+		{
+			name: "a dry run", version: "0.31.0",
+			call: func(ctx context.Context, a *API) error {
+				return deleteUser(ctx, a, "3", true)
+			},
+			want: refused,
+		},
+		{
+			name: "a read", version: "0.31.0",
+			call: func(ctx context.Context, a *API) error {
+				_, err := me(ctx, a)
+
+				return err
+			},
+			want: refused,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := httptest.NewServer(
+				versioned(func(w http.ResponseWriter, r *http.Request) {
+					// The version a write asks first is the CLI's; the answer
+					// after it is not.
+					if r.URL.Path == "/api/headscale/v0/version" {
+						w.Header().Set("Headscale-Version", "0.30.0")
+
+						return
+					}
+
+					if tt.version != "" {
+						w.Header().Set("Headscale-Version", tt.version)
+					}
+
+					_, _ = w.Write([]byte(`{"id": "3"}`))
+				}),
+			)
+			t.Cleanup(s.Close)
+
+			a, err := connectTest(
+				&types.Config{
+					CLI: types.CLIConfig{
+						Address: s.URL,
+						APIKey:  "key",
+						Timeout: time.Minute,
+					},
+				},
+				Env{Stderr: io.Discard, Version: &types.VersionInfo{Version: "0.30.0"}},
+			)
+			require.NoError(t, err)
+
+			err = tt.call(t.Context(), a)
+			require.EqualError(
+				t,
+				err,
+				strings.ReplaceAll(
+					tt.want,
+					"{host}",
+					strings.TrimPrefix(s.URL, "http://"),
+				),
+			)
+			require.Equal(t, tt.want != refused, sentWrite(err))
+		})
+	}
+}
+
 // guarded is an entity with a revision, as a node is.
 type guarded struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Revision string `json:"revision"`
+}
+
+// TestEveryGuardIsSent: every call of an operation that takes a guard is
+// given its parameters, written out in the call, with the guard filled
+// from the builder's guard for the entity the call is made on: If-Match
+// with ifMatch, expect with expect, each asked for the very ID of the
+// path. So a write that the server can guard always is, on the target it
+// was asked for. An operation that takes none, such as update-client, gets
+// none.
+func TestEveryGuardIsSent(t *testing.T) {
+	t.Parallel()
+
+	guards := map[string]string{"IfMatch": "IfMatch", "Expect": "Expect"}
+
+	gen, err := parser.ParseFile(
+		token.NewFileSet(),
+		"../../../../gen/client/headscale/v0/client.gen.go",
+		nil,
+		0,
+	)
+	require.NoError(t, err)
+
+	// takes is the guard field of each Params type that has one.
+	takes := map[string]string{}
+
+	ast.Inspect(gen, func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if !ok {
+			return true
+		}
+
+		st, ok := ts.Type.(*ast.StructType)
+		if ok && strings.HasSuffix(ts.Name.Name, "Params") {
+			for _, f := range st.Fields.List {
+				for _, name := range f.Names {
+					if _, ok := guards[name.Name]; ok {
+						takes[ts.Name.Name] = name.Name
+					}
+				}
+			}
+		}
+
+		return true
+	})
+
+	// A write made on an entity sends that entity's guard. A write with no
+	// entity, such as the policy, which is one document, sends no If-Match:
+	// it is for a client that reads, changes and writes back.
+	ops := map[string]guardOp{}
+
+	for _, d := range gen.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Recv == nil ||
+			gotypes.ExprString(fn.Recv.List[0].Type) != "*Client" {
+			continue
+		}
+
+		if o := guardedOp(fn, takes); o.params >= 0 {
+			require.True(
+				t,
+				o.id >= 0 || takes[o.typ] == "IfMatch",
+				"%s takes %s and no id to ask it for",
+				fn.Name.Name,
+				takes[o.typ],
+			)
+			ops[fn.Name.Name] = o
+		}
+	}
+
+	// The commands make the calls, each on the generated client.
+	files, err := filepath.Glob("../*.go")
+	require.NoError(t, err)
+
+	sent, calls, lits := map[string]int{}, 0, 0
+
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		src, err := parser.ParseFile(token.NewFileSet(), name, nil, 0)
+		require.NoError(t, err)
+
+		ast.Inspect(src, inspectGuards(t, ops, takes, guards, sent, &calls, &lits))
+	}
+
+	require.Equal(
+		t,
+		lits,
+		calls,
+		"parameters that take a guard are made outside the call that sends them",
+	)
+
+	for field := range guards {
+		require.Positive(t, sent[field], "no operation that takes %s", field)
+	}
 }
 
 // inspectGuards checks each call of a command on the generated client
@@ -1728,6 +2016,76 @@ func setsField(lit *ast.CompositeLit, field string) bool {
 	})
 }
 
+// TestWriteAnswerRefused: a write whose own answer the version check
+// refuses was made or not; the error says so after the version's
+// sentence. A refused GET /version sent no write and says only the
+// version.
+func TestWriteAnswerRefused(t *testing.T) {
+	t.Parallel()
+
+	const made = "\nThe change may have been made: look before you run the command again."
+
+	for _, tt := range []struct{ probe, write, want string }{
+		{"0.30.2", "0.31.0", "this headscale is 0.30.1, the server is 0.31.0.\n" +
+			"The CLI and the server must have the same major and minor version.\n" +
+			"If you just upgraded, restart the server." + made},
+		{"0.30.2", "", "answered 201 Created without Headscale-Version.\nIs it headscale?" + made},
+		{"0.31.0", "0.31.0", "this headscale is 0.30.1, the server is 0.31.0.\n" +
+			"The CLI and the server must have the same major and minor version.\n" +
+			"If you just upgraded, restart the server."},
+	} {
+		s := httptest.NewServer(versioned(func(w http.ResponseWriter, r *http.Request) {
+			version := tt.write
+			if r.Method == http.MethodGet {
+				version = tt.probe
+			}
+
+			if version != "" {
+				w.Header().Set("Headscale-Version", version)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+		}))
+		t.Cleanup(s.Close)
+
+		a, err := connectTest(
+			&types.Config{
+				CLI: types.CLIConfig{
+					Address: s.URL,
+					APIKey:  "key",
+					Timeout: time.Minute,
+				},
+			},
+			Env{Stderr: io.Discard, Version: &types.VersionInfo{Version: "0.30.1"}},
+		)
+		require.NoError(t, err)
+
+		err = a.send(
+			documented[anySuccess](),
+			func(c *clientv0.Client) (*http.Response, error) {
+				req, err := http.NewRequestWithContext(
+					t.Context(),
+					http.MethodPost,
+					s.URL+"/x",
+					nil,
+				)
+				if err != nil {
+					return nil, err
+				}
+
+				return c.Client.Do(req)
+			},
+		)
+		require.ErrorContains(t, err, tt.want)
+
+		if !strings.HasSuffix(tt.want, made) {
+			require.NotContains(t, err.Error(), "may have been made")
+		}
+	}
+}
+
 // The calls a test makes, each said as the CLI says it: the generated
 // client's call, through errorOf, as a command's call is.
 
@@ -1784,6 +2142,18 @@ func updateUser(ctx context.Context, a *API) error {
 			clientv0.UpdateUserBody{},
 		),
 	)
+
+	return a.errorOf(err)
+}
+
+func deleteUser(ctx context.Context, a *API, id string, dryRun bool) error {
+	ctx = reading(ctx, a)
+
+	_, err := clientv0.Got(a.DeleteUserWithResponse(
+		ctx,
+		id,
+		&clientv0.DeleteUserParams{WithNodes: new(false), DryRun: new(dryRun)},
+	))
 
 	return a.errorOf(err)
 }
@@ -2098,99 +2468,4 @@ func TestJSONOfARow(t *testing.T) {
 	raw, ok := a.answerOf(users[0])
 	require.True(t, ok)
 	require.JSONEq(t, one, string(raw))
-}
-
-// TestEveryIfMatchIsSent: every call of an operation that takes If-Match
-// is given its parameters, written out in the call, with If-Match filled
-// from the builder's guard for the entity the call is made on, asked for
-// the very ID of the path. So a write that the server can guard by the
-// revision always is. An operation that takes none, such as
-// update-client, gets none.
-func TestEveryIfMatchIsSent(t *testing.T) {
-	t.Parallel()
-
-	guards := map[string]string{"IfMatch": "IfMatch"}
-
-	gen, err := parser.ParseFile(
-		token.NewFileSet(),
-		"../../../../gen/client/headscale/v0/client.gen.go",
-		nil,
-		0,
-	)
-	require.NoError(t, err)
-
-	// takes is the guard field of each Params type that has one.
-	takes := map[string]string{}
-
-	ast.Inspect(gen, func(n ast.Node) bool {
-		ts, ok := n.(*ast.TypeSpec)
-		if !ok {
-			return true
-		}
-
-		st, ok := ts.Type.(*ast.StructType)
-		if ok && strings.HasSuffix(ts.Name.Name, "Params") {
-			for _, f := range st.Fields.List {
-				for _, name := range f.Names {
-					if _, ok := guards[name.Name]; ok {
-						takes[ts.Name.Name] = name.Name
-					}
-				}
-			}
-		}
-
-		return true
-	})
-
-	// A write made on an entity sends that entity's guard. A write with no
-	// entity, such as the policy, which is one document, sends no If-Match:
-	// it is for a client that reads, changes and writes back.
-	ops := map[string]guardOp{}
-
-	for _, d := range gen.Decls {
-		fn, ok := d.(*ast.FuncDecl)
-		if !ok || fn.Recv == nil ||
-			gotypes.ExprString(fn.Recv.List[0].Type) != "*Client" {
-			continue
-		}
-
-		if o := guardedOp(fn, takes); o.params >= 0 {
-			require.True(
-				t,
-				o.id >= 0 || takes[o.typ] == "IfMatch",
-				"%s takes %s and no id to ask it for",
-				fn.Name.Name,
-				takes[o.typ],
-			)
-			ops[fn.Name.Name] = o
-		}
-	}
-
-	// The commands make the calls, each on the generated client.
-	files, err := filepath.Glob("../*.go")
-	require.NoError(t, err)
-
-	sent, calls, lits := map[string]int{}, 0, 0
-
-	for _, name := range files {
-		if strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-
-		src, err := parser.ParseFile(token.NewFileSet(), name, nil, 0)
-		require.NoError(t, err)
-
-		ast.Inspect(src, inspectGuards(t, ops, takes, guards, sent, &calls, &lits))
-	}
-
-	require.Equal(
-		t,
-		lits,
-		calls,
-		"parameters that take a guard are made outside the call that sends them",
-	)
-
-	for field := range guards {
-		require.Positive(t, sent[field], "no operation that takes %s", field)
-	}
 }

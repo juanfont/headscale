@@ -597,6 +597,7 @@ func TestAbout(t *testing.T) {
 
 	type told struct {
 		target Object
+		word   string
 		expiry time.Time
 	}
 
@@ -605,8 +606,8 @@ func TestAbout(t *testing.T) {
 		err  error
 		want []told
 	}{
-		{"set mynode", refusedError{}, []told{{Object{"node", "12", "mynode"}, time.Time{}}}},
-		{"set mynode --expiry 2024-01-01", refusedError{}, []told{{Object{"node", "12", "mynode"}, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+		{"set mynode", refusedError{}, []told{{Object{"node", "12", "mynode"}, "mynode", time.Time{}}}},
+		{"set mynode --expiry 2024-01-01", refusedError{}, []told{{Object{"node", "12", "mynode"}, "mynode", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}}},
 		{"set mynode", errBroken, nil},
 	} {
 		var got []told
@@ -620,8 +621,8 @@ func TestAbout(t *testing.T) {
 
 			return ""
 		}
-		p.About = func(_ error, target Object, expiry time.Time) {
-			got = append(got, told{target, expiry})
+		p.About = func(_ error, target Object, word string, expiry time.Time) {
+			got = append(got, told{target, word, expiry})
 		}
 		p.Entities = []Entity{EntityOf(
 			"node",

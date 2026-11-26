@@ -149,8 +149,10 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer) error {
 		terminal: env.Terminal,
 		screen:   env.StdoutTerminal,
 		width:    env.Width,
+		askWidth: env.StderrWidth,
 		colour:   env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
 		answers:  bufio.NewReader(stdin),
+		discard:  env.DiscardInput,
 		line:     line,
 		json:     output.Output != "" || own.Output != "",
 		now:      env.Now,
@@ -434,11 +436,14 @@ func (c *run) confirm(p Prompt, before string) (bool, error) {
 		return false, nil
 	}
 
-	question, action := p.Question, "Run again with --force to "+p.Action+"."
+	warning := ""
 	if p.Warning != nil {
-		if w := p.Warning(); w != "" {
-			question, action = question+" "+w, action+" "+w
-		}
+		warning = p.Warning()
+	}
+
+	action := "Run again with --force to " + p.Action + "."
+	if warning != "" {
+		action += " " + warning
 	}
 
 	if !c.terminal {
@@ -451,13 +456,48 @@ func (c *run) confirm(p Prompt, before string) (bool, error) {
 
 	// A question nobody can see gets no answer, whatever stdin holds.
 	if before != "" {
+		// What was typed before this question cannot answer it.
+		if c.discard != nil {
+			c.discard()
+			_, _ = c.answers.Discard(c.answers.Buffered())
+		}
+
 		_, err := io.WriteString(c.stderr, before+"\n")
 		if err != nil {
 			return false, err
 		}
 	}
 
-	_, err := io.WriteString(c.stderr, question+" [y/N] ")
+	// The question, the warning and [y/N] on one line; with a list, each
+	// on a line of its own after the question and the list, so the answer
+	// comes right after what it answers. A list cut to the terminal the
+	// question is on still says how many it leaves out.
+	lines := []string{p.Question}
+
+	if len(p.List) > 0 {
+		items := make([]string, len(p.List))
+		for i, s := range p.List {
+			items[i] = table.Visible(s, "")
+		}
+
+		list := strings.Join(items, ", ")
+		if c.askWidth > 0 {
+			list = table.FitList(items, c.askWidth-len(listIndent))
+		}
+
+		lines = append(lines, listIndent+list)
+	}
+
+	if warning != "" {
+		lines = append(lines, warning)
+	}
+
+	sep := " "
+	if len(p.List) > 0 {
+		sep = "\n"
+	}
+
+	_, err := io.WriteString(c.stderr, strings.Join(append(lines, "[y/N] "), sep))
 	if err != nil {
 		return false, err
 	}
@@ -470,12 +510,19 @@ func (c *run) confirm(p Prompt, before string) (bool, error) {
 	return true, errAborted
 }
 
+// listIndent starts the line of a Prompt's List.
+const listIndent = "  "
+
 // runGuarded runs s on in: the question, when s has one, and Run, with the
 // guard the builder stores for the write. A write the server refuses
-// because its target changed runs once more on the target read again, and
-// the question is asked again, after a line that says why the same
-// question comes twice; a second refusal is the error. in is what the last
-// try ran on.
+// because that guard no longer holds runs once more on what is new: the
+// target read again, when its type has a read, and the question made
+// again, which may ask the server itself, after a line that says why the
+// same question comes twice. A second refusal is the error. A refusal of
+// anything else, such as a guard a command sent itself, is the error at
+// once: what the command sends was not made from what the builder reads
+// again, so a second try could overwrite what the guard kept. in is what
+// the last try ran on.
 func runGuarded[S, In, Out any](
 	c Ctx[S],
 	s Spec[S, In, Out],
@@ -483,61 +530,105 @@ func runGuarded[S, In, Out any](
 ) (In, Out, error) {
 	asked := false
 
-	attempt := func(in In, again string) (Out, error) {
+	attempt := func(in In, again string) (Out, *revision, error) {
+		var zero Out
+
+		g := guardOf(in)
 		if c.server {
-			c.guard.Store(guardOf(in))
+			c.guard.Store(g)
+		}
+
+		// Never none: a change asked about is written on what was shown.
+		if s.Confirm != nil && c.server && unrevised(in) {
+			//nolint:err113,staticcheck // a sentence of the CLI
+			return zero, nil, fmt.Errorf(
+				"the server at %s answered %s with no revision to guard the change with, so nothing was changed. This is a fault of the server.",
+				c.target(),
+				c.named(in),
+			)
 		}
 
 		if s.Confirm != nil {
 			p, err := s.Confirm(c, in)
-			if err == nil {
-				if !asked {
-					again = ""
-				}
-
-				asked, err = c.confirm(p, again)
+			if err != nil {
+				return zero, nil, c.errorOf(err)
 			}
 
-			if err != nil {
-				var zero Out
+			if p.Guard != "" || s.Changed != "" {
+				g, err = c.handOver(in, p.Guard, s.Changed)
+				if err != nil {
+					return zero, nil, err
+				}
 
-				return zero, c.errorOf(err)
+				c.guard.Store(g)
+			}
+
+			if !asked {
+				again = ""
+			}
+
+			asked, err = c.confirm(p, again)
+			if err != nil {
+				return zero, nil, err
 			}
 		}
 
 		out, err := s.Run(c, in)
 
-		return out, c.errorOf(err)
+		return out, g, c.errorOf(err)
 	}
 
-	out, err := attempt(in, "")
-	if !c.changed(err) {
+	out, g, err := attempt(in, "")
+	if !c.guardRefused(err, g, s.Changed) {
 		return in, out, err
 	}
 
-	again, ok, rerr := reread(c, in)
-
-	switch {
-	case rerr != nil:
-		return in, out, rerr
-	case !ok:
+	again, _, err := reread(c, in)
+	if err != nil {
 		return in, out, err
 	}
 
-	out, err = attempt(again, c.named(in)+" changed while the question was open.")
+	out, g, err = attempt(again, c.named(in)+" changed while you decided.")
+	if c.guardRefused(err, g, s.Changed) && c.tree.prog.Again != nil {
+		c.tree.prog.Again(err)
+	}
 
 	return again, out, err
 }
 
-// changed is a write the server refused because its target changed after
-// the CLI read it: the program's Precondition.
-func (c *run) changed(err error) bool {
-	if err == nil || c.tree.prog.Refusal == nil {
-		return false
+// handOver is the guard of the write on the target of in after a question
+// that handed over token. A guard is never dropped: a token with no target
+// to send it on, or with no Changed to name its refusal, is a fault of the
+// spec, and a question of a spec with Changed that hands over none is a
+// fault of the server, such as a dry run that answered no token. Either
+// way the write is not sent.
+func (c *run) handOver(
+	in any,
+	token string,
+	changed string,
+) (*revision, error) {
+	o, ok := c.object(in)
+
+	switch {
+	case token == "" && c.server:
+		//nolint:err113,staticcheck // a sentence of the CLI
+		return nil, fmt.Errorf(
+			"the server at %s sent no token to guard the change with, so nothing was changed. This is a fault of the server.",
+			c.target(),
+		)
+	case token == "":
+		return nil, errNoToken
+	case changed == "":
+		return nil, errGuardNoChanged
+	case !ok || !c.server:
+		return nil, errGuardNoTarget
 	}
 
-	return c.tree.prog.Refusal(err) == c.tree.prog.Precondition
+	return &revision{id: o.ID, rev: token, token: true}, nil
 }
+
+// target names the server of the run in a sentence.
+func (c *run) target() string { return c.tree.prog.Target(c.api) }
 
 // fields names in err the flags and arguments of in that filled the body
 // fields the server refused (Program.Fields).
@@ -552,9 +643,42 @@ func (c *run) fields(err error, in reflect.Type) error {
 // errorOf is err as the program says an error of its session.
 func (c *run) errorOf(err error) error { return c.tree.prog.Error(c.api, err) }
 
+var (
+	errNoToken = errors.New(
+		"the question handed over no guard, so nothing was changed",
+	)
+	errGuardNoChanged = errors.New(
+		"a question handed over a guard, and the spec names no Changed: its refusal would not be asked again",
+	)
+	errGuardNoTarget = errors.New(
+		"a question handed over a guard, and the command has no target on the server to send it with",
+	)
+)
+
+// guardRefused is a write the server refused because the guard g, which the
+// builder stored for it, no longer holds: the program's Precondition for a
+// revision, the spec's Changed for a token. No guard, no refusal of it.
+func (c *run) guardRefused(err error, g *revision, changed string) bool {
+	if err == nil || g == nil || c.tree.prog.Refusal == nil {
+		return false
+	}
+
+	code := c.tree.prog.Refusal(err)
+
+	switch {
+	case code == "":
+		return false
+	case g.token:
+		return code == changed
+	}
+
+	return code == c.tree.prog.Precondition
+}
+
 // reread is in with its target read again by its ID: what a write runs on
-// after the server refused it because the target changed. ok is false
-// when the target's type has no read.
+// after the server refused it because the target changed. ok is false when
+// the target's type has no read: in stays as it is, and the question, made
+// again, is what is new.
 func reread[S, In any](c Ctx[S], in In) (In, bool, error) {
 	e, ok := target(reflect.ValueOf(&in).Elem())
 	if !ok {
@@ -605,6 +729,35 @@ func (c *run) object(in any) (Object, bool) {
 	}, true
 }
 
+// typed is the word the target of in was typed as; "" for none.
+func (c *run) typed(in any) string {
+	t := reflect.TypeOf(in)
+
+	_, i := targetType(t)
+	if i < 0 || c.line == nil {
+		return ""
+	}
+
+	// The arguments are typed in the order of their fields.
+	k := 0
+
+	for f := range t.Fields() {
+		if f.Index[0] == i {
+			break
+		}
+
+		if f.Tag.Get("arg") != "" {
+			k++
+		}
+	}
+
+	if k >= len(c.line.Args) {
+		return ""
+	}
+
+	return c.line.Args[k]
+}
+
 // expiring is an [Expiry] of any words.
 type expiring interface {
 	At(now time.Time) time.Time
@@ -624,7 +777,7 @@ func (c *run) about(err error, in any) error {
 
 	var expiry time.Time
 
-	defer func() { c.tree.prog.About(err, target, expiry) }()
+	defer func() { c.tree.prog.About(err, target, c.typed(in), expiry) }()
 
 	v := reflect.ValueOf(in)
 	if v.Kind() != reflect.Struct {

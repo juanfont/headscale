@@ -3,6 +3,11 @@ package newcli
 import (
 	"cmp"
 	"encoding/json"
+	"maps"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -1316,5 +1321,116 @@ func TestSecretOnce(t *testing.T) {
 			)
 			require.Empty(t, r.stderr, "-o json prints no note")
 		})
+	}
+}
+
+// TestSecretAnswerRefused: a create whose answer the CLI does not take, the
+// credential made, says where to find it and revoke it, for every kind and
+// in both outputs: an empty 204, an answer of another minor version or
+// with no Headscale-Version, and a server fault after the write.
+func TestSecretAnswerRefused(t *testing.T) {
+	t.Parallel()
+
+	answers := map[string]func(w http.ResponseWriter, rec *httptest.ResponseRecorder){
+		"no body": func(w http.ResponseWriter, rec *httptest.ResponseRecorder) {
+			w.Header().Set("Headscale-Version", rec.Header().Get("Headscale-Version"))
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"another minor version": func(w http.ResponseWriter, rec *httptest.ResponseRecorder) {
+			maps.Copy(w.Header(), rec.Header())
+			w.Header().Set("Headscale-Version", "v0.31.0")
+			w.WriteHeader(rec.Code)
+			_, _ = w.Write(rec.Body.Bytes())
+		},
+		"no version": func(w http.ResponseWriter, rec *httptest.ResponseRecorder) {
+			maps.Copy(w.Header(), rec.Header())
+			w.Header().Del("Headscale-Version")
+			w.WriteHeader(rec.Code)
+			_, _ = w.Write(rec.Body.Bytes())
+		},
+		"a server fault": func(w http.ResponseWriter, rec *httptest.ResponseRecorder) {
+			w.Header().Set("Headscale-Version", rec.Header().Get("Headscale-Version"))
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write(
+				[]byte(
+					`{"code": "internal", "status": 500, "title": "Internal Server Error"}`,
+				),
+			)
+		},
+	}
+
+	for _, k := range credKinds() {
+		for mode, answer := range answers {
+			for _, js := range []string{"", " -o json"} {
+				t.Run(k.group+", "+mode+js, func(t *testing.T) {
+					t.Parallel()
+
+					f := newFixture(t, false)
+					credring(t, f)
+
+					secret, _, err := f.srv.State().CreateAPIKey(nil)
+					require.NoError(t, err)
+
+					target, err := url.Parse(f.vars["url"])
+					require.NoError(t, err)
+
+					proxy := httputil.NewSingleHostReverseProxy(target)
+					hs := httptest.NewServer(
+						http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							if r.Method != http.MethodPost || r.URL.Path != k.path {
+								proxy.ServeHTTP(w, r)
+
+								return
+							}
+
+							rec := httptest.NewRecorder()
+							proxy.ServeHTTP(rec, r)
+							answer(w, rec)
+						}),
+					)
+					t.Cleanup(hs.Close)
+
+					var before, after int64
+
+					require.NoError(
+						t,
+						f.srv.State().
+							DB().
+							DB.Model(&types.Credential{}).
+							Count(&before).
+							Error,
+					)
+
+					r := f.run(t, cliCase{
+						args:    k.create + js,
+						release: "v0.30.0",
+						env: []string{
+							"HEADSCALE_CLI_ADDRESS=" + hs.URL,
+							"HEADSCALE_CLI_API_KEY=" + secret,
+						},
+					})
+
+					require.NoError(
+						t,
+						f.srv.State().
+							DB().
+							DB.Model(&types.Credential{}).
+							Count(&after).
+							Error,
+					)
+					require.Equal(t, before+1, after, "the credential was made")
+					require.Equal(t, 1, r.code, r.stderr)
+					require.Empty(t, r.stdout)
+					require.True(
+						t,
+						strings.HasSuffix(
+							r.stderr,
+							"Find it and revoke it:\n  headscale "+k.group+" list\n",
+						),
+						r.stderr,
+					)
+				})
+			}
+		}
 	}
 }

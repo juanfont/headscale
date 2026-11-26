@@ -60,6 +60,26 @@ type EndSpec[In, T any] struct {
 // calls with: the delete works, and every call after it is refused.
 const ownSentence = "This CLI calls with it: once it is revoked, the server refuses the CLI."
 
+// OwnWarning is a Prompt.Warning: sentence when own reports that the
+// credential the CLI calls with goes with the change. GET /me is made only
+// when a person reads the answer, and only when the CLI calls with a
+// credential: the socket has none. A CLI that cannot read who it is asks
+// all the same. A question asked again does not ask the server again.
+func OwnWarning(c Ctx, sentence string, own func(me clientv0.Me) bool) func() string {
+	if c.API == nil || c.API.local || c.API.socket {
+		return nil
+	}
+
+	return func() string {
+		me, err := c.API.whoAmI(c)
+		if err == nil && own(me) {
+			return sentence
+		}
+
+		return ""
+	}
+}
+
 // NewEnd makes the delete of a credential: a revoked one is not asked
 // about, a read after the delete learns when the record is removed, and a
 // read that fails, as when the CLI revoked its own credential, is no error.
@@ -91,18 +111,12 @@ func NewEnd[In, T any](s EndSpec[In, T]) Node {
 
 			p := Prompt{Question: q, Action: "delete " + e.Name}
 
-			// GET /me only when a person reads the answer, and only when
-			// the CLI calls with a credential: the socket has none. A CLI
-			// that cannot read who it is asks all the same.
-			if s.Own != nil && c.API != nil && !c.API.local && !c.API.socket {
-				p.Warning = func() string {
-					me, err := clientv0.Got(c.API.GetMeWithResponse(c))
-					if err == nil && s.Own(me, t) {
-						return ownSentence
-					}
-
-					return ""
-				}
+			if s.Own != nil {
+				p.Warning = OwnWarning(
+					c,
+					ownSentence,
+					func(me clientv0.Me) bool { return s.Own(me, t) },
+				)
 			}
 
 			return p, nil

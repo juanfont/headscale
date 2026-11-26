@@ -227,6 +227,8 @@ const (
 	ProblemCodeUnhealthy            ProblemCode = "unhealthy"
 	ProblemCodeUnsupportedMediaType ProblemCode = "unsupported_media_type"
 	ProblemCodeUpdateRefused        ProblemCode = "update_refused"
+	ProblemCodeUserChanged          ProblemCode = "user_changed"
+	ProblemCodeUserHasNodes         ProblemCode = "user_has_nodes"
 	ProblemCodeUserManagedByOidc    ProblemCode = "user_managed_by_oidc"
 )
 
@@ -280,6 +282,10 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeUnsupportedMediaType:
 		return true
 	case ProblemCodeUpdateRefused:
+		return true
+	case ProblemCodeUserChanged:
+		return true
+	case ProblemCodeUserHasNodes:
 		return true
 	case ProblemCodeUserManagedByOidc:
 		return true
@@ -685,6 +691,21 @@ type Credential struct {
 
 // CredentialKind defines model for CredentialKind.
 type CredentialKind string
+
+// DeletedUser defines model for DeletedUser.
+type DeletedUser struct {
+	// ApiKeyCount The API keys the user owns, revoked and expired ones too.
+	ApiKeyCount int64 `json:"apiKeyCount"`
+
+	// AuthKeyCount The auth keys the user owns, revoked and expired ones too; tagged keys it made stay.
+	AuthKeyCount int64 `json:"authKeyCount"`
+
+	// Expect Stands for the user and every node and key it owns. Send it as expect to remove only what this showed.
+	Expect string `json:"expect"`
+
+	// Nodes The nodes of the user, in ID order.
+	Nodes []NodeReference `json:"nodes"`
+}
 
 // FieldError defines model for FieldError.
 type FieldError struct {
@@ -1323,6 +1344,18 @@ type ListUsersParams struct {
 	Email *string `form:"email,omitempty" json:"email,omitempty"`
 }
 
+// DeleteUserParams defines parameters for DeleteUser.
+type DeleteUserParams struct {
+	// WithNodes Delete the nodes the user owns too. Needs the scope devices:core as well as users.
+	WithNodes *bool `form:"withNodes,omitempty" json:"withNodes,omitempty"`
+
+	// DryRun Answer what the delete would remove, and remove nothing.
+	DryRun *bool `form:"dryRun,omitempty" json:"dryRun,omitempty"`
+
+	// Expect The expect of a dry run: refuse with user_changed and remove nothing when a node or a key of the user came or went since.
+	Expect *string `form:"expect,omitempty" json:"expect,omitempty"`
+}
+
 // CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
 type CreateAPIKeyJSONRequestBody = CreateAPIKeyBody
 
@@ -1681,6 +1714,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/headscale/v0/users (the `CreateUser` operationId).
 	CreateUser(ctx context.Context, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteUser Delete a user
+	//
+	// Removes the user with the auth keys and API keys it owns, and with withNodes=true its nodes, in one step that cannot be undone: all of it or none of it. Tagged nodes and keys the user made stay. The answer is what was removed; with dryRun=true it is what would be, and nothing is removed. Send the expect of a dry run to remove only what it showed. withNodes=true needs the scope devices:core as well as users (x-parameter-scopes); a token without it is forbidden before the request is read. A step after the delete committed that fails, such as a refresh of the policy, is logged, and the answer is still what was removed.
+	//
+	// Corresponds with DELETE /api/headscale/v0/users/{id} (the `DeleteUser` operationId).
+	DeleteUser(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetUser Read one user
 	//
@@ -2295,6 +2335,23 @@ func (c *Client) CreateUserWithBody(ctx context.Context, contentType string, bod
 // Corresponds with POST /api/headscale/v0/users (the `CreateUser` operationId).
 func (c *Client) CreateUser(ctx context.Context, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateUserRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteUser Delete a user
+//
+// Removes the user with the auth keys and API keys it owns, and with withNodes=true its nodes, in one step that cannot be undone: all of it or none of it. Tagged nodes and keys the user made stay. The answer is what was removed; with dryRun=true it is what would be, and nothing is removed. Send the expect of a dry run to remove only what it showed. withNodes=true needs the scope devices:core as well as users (x-parameter-scopes); a token without it is forbidden before the request is read. A step after the delete committed that fails, such as a refresh of the policy, is logged, and the answer is still what was removed.
+//
+// Corresponds with DELETE /api/headscale/v0/users/{id} (the `DeleteUser` operationId).
+func (c *Client) DeleteUser(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteUserRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3665,6 +3722,91 @@ func NewCreateUserRequestWithBody(server string, contentType string, body io.Rea
 	return req, nil
 }
 
+// NewDeleteUserRequest constructs an http.Request for the DeleteUser method
+func NewDeleteUserRequest(server string, id string, params *DeleteUserParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WithNodes != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "withNodes", *params.WithNodes, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.DryRun != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "dryRun", *params.DryRun, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Expect != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "expect", *params.Expect, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetUserRequest constructs an http.Request for the GetUser method
 func NewGetUserRequest(server string, id string) (*http.Request, error) {
 	var err error
@@ -4118,6 +4260,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/headscale/v0/users (the `CreateUser` operationId).
 	CreateUserWithResponse(ctx context.Context, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResponse, error)
+
+	// DeleteUserWithResponse Delete a user
+	//
+	// Removes the user with the auth keys and API keys it owns, and with withNodes=true its nodes, in one step that cannot be undone: all of it or none of it. Tagged nodes and keys the user made stay. The answer is what was removed; with dryRun=true it is what would be, and nothing is removed. Send the expect of a dry run to remove only what it showed. withNodes=true needs the scope devices:core as well as users (x-parameter-scopes); a token without it is forbidden before the request is read. A step after the delete committed that fails, such as a refresh of the policy, is logged, and the answer is still what was removed.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/headscale/v0/users/{id} (the `DeleteUser` operationId).
+	DeleteUserWithResponse(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error)
 
 	// GetUserWithResponse Read one user
 	//
@@ -8161,6 +8312,169 @@ func (r CreateUserResponse) ContentType() string {
 	return ""
 }
 
+// DeleteUserResponse200Headers the declared response headers of an HTTP 200 response for DeleteUser
+type DeleteUserResponse200Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteUserResponse401Headers the declared response headers of an HTTP 401 response for DeleteUser
+type DeleteUserResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteUserResponse403Headers the declared response headers of an HTTP 403 response for DeleteUser
+type DeleteUserResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteUserResponse404Headers the declared response headers of an HTTP 404 response for DeleteUser
+type DeleteUserResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteUserResponse409Headers the declared response headers of an HTTP 409 response for DeleteUser
+type DeleteUserResponse409Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteUserResponse422Headers the declared response headers of an HTTP 422 response for DeleteUser
+type DeleteUserResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteUserResponse500Headers the declared response headers of an HTTP 500 response for DeleteUser
+type DeleteUserResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteUserResponse503Headers the declared response headers of an HTTP 503 response for DeleteUser
+type DeleteUserResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type DeleteUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DeletedUser
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *DeleteUserResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *DeleteUserResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *DeleteUserResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *DeleteUserResponse404Headers
+	// Headers409 the parsed response headers for an HTTP 409 response
+	Headers409 *DeleteUserResponse409Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *DeleteUserResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *DeleteUserResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *DeleteUserResponse503Headers
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *DeleteUserResponse) decodedSuccess() (any, []byte) {
+	if r.JSON200 != nil {
+		return r.JSON200, r.Body
+	}
+	return nil, nil
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteUserResponse) GetJSON200() *DeletedUser {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteUserResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteUserResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteUserResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteUserResponse) GetApplicationproblemJSON409() *Problem {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteUserResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeleteUserResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteUserResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetUserResponse200Headers the declared response headers of an HTTP 200 response for GetUser
 type GetUserResponse200Headers struct {
 	HeadscaleCommit  *string
@@ -9139,6 +9453,22 @@ func (c *ClientWithResponses) CreateUserWithResponse(ctx context.Context, body C
 		return nil, err
 	}
 	r, err := ParseCreateUserResponse(rsp)
+	return told(ctx, r, err)
+}
+
+// DeleteUserWithResponse Delete a user
+//
+// Removes the user with the auth keys and API keys it owns, and with withNodes=true its nodes, in one step that cannot be undone: all of it or none of it. Tagged nodes and keys the user made stay. The answer is what was removed; with dryRun=true it is what would be, and nothing is removed. Send the expect of a dry run to remove only what it showed. withNodes=true needs the scope devices:core as well as users (x-parameter-scopes); a token without it is forbidden before the request is read. A step after the delete committed that fails, such as a refresh of the policy, is logged, and the answer is still what was removed.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/headscale/v0/users/{id} (the `DeleteUser` operationId).
+func (c *ClientWithResponses) DeleteUserWithResponse(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error) {
+	rsp, err := c.DeleteUser(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseDeleteUserResponse(rsp)
 	return told(ctx, r, err)
 }
 
@@ -15338,6 +15668,253 @@ func ParseCreateUserResponse(rsp *http.Response) (*CreateUserResponse, error) {
 	return response, nil
 }
 
+// ParseDeleteUserResponse parses an HTTP response from a DeleteUserWithResponse call
+func ParseDeleteUserResponse(rsp *http.Response) (*DeleteUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	// json reads the body by the exact member names (DecodeResponse): it
+	// shadows encoding/json for the unmarshal generated below.
+	json := exactJSON{rsp: rsp, page: false}
+	_ = json
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeletedUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	if rsp.StatusCode == 200 && response.JSON200 == nil {
+		var dest DeletedUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+	}
+	if rsp.StatusCode == 401 {
+		response.ApplicationproblemJSON401 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 403 {
+		response.ApplicationproblemJSON403 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 404 {
+		response.ApplicationproblemJSON404 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 409 {
+		response.ApplicationproblemJSON409 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 422 {
+		response.ApplicationproblemJSON422 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 500 {
+		response.ApplicationproblemJSON500 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 503 {
+		response.ApplicationproblemJSON503 = problemIn(bodyBytes)
+	}
+	switch {
+	case rsp.StatusCode == 200:
+		var headers DeleteUserResponse200Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers DeleteUserResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers DeleteUserResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers DeleteUserResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 409:
+		var headers DeleteUserResponse409Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers409 = &headers
+	case rsp.StatusCode == 422:
+		var headers DeleteUserResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers DeleteUserResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers DeleteUserResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseGetUserResponse parses an HTTP response from a GetUserWithResponse call
 func ParseGetUserResponse(rsp *http.Response) (*GetUserResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -16429,6 +17006,20 @@ func (r *CreateUserResponse) Result() (*User, error) {
 		return r.JSON201, nil
 	}
 	if err := answerOf(r.HTTPResponse, r.Body, []int{201}); err != nil {
+		return nil, err
+	}
+	// A documented success is always read by Parse; this is one made by
+	// hand.
+	return nil, &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrStatus}
+}
+
+// Result is the 200 answer of DeleteUser, or the answer as an error:
+// a *ResponseError, or an *AnswerError.
+func (r *DeleteUserResponse) Result() (*DeletedUser, error) {
+	if r.JSON200 != nil {
+		return r.JSON200, nil
+	}
+	if err := answerOf(r.HTTPResponse, r.Body, []int{200}); err != nil {
 		return nil, err
 	}
 	// A documented success is always read by Parse; this is one made by

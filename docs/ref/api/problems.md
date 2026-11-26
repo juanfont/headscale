@@ -187,6 +187,21 @@ code, and is `{}` when the code has none.
     - `reason`: `notConnected`, `updatesNotAllowed`, `clientRefused` or `timeout`; a client must accept a reason it does not know
     - `clientError`: with `clientRefused`, the text the Tailscale client sent; `""` when it sent none
 
+## user_changed { #user_changed }
+
+- **Status:** 409
+- **Title:** The user changed
+- **When:** A delete of a user with `expect`, when a node or a key of the user came or went since the dry run. Nothing is removed; run the dry run again. `object` is the user.
+- **`details`:** `{}`
+
+## user_has_nodes { #user_has_nodes }
+
+- **Status:** 409
+- **Title:** The user still owns nodes
+- **When:** A delete of a user that owns nodes, without `withNodes=true`. Nothing is removed. `object` is the user.
+- **`details`:**
+    - `nodes`: every node the user owns, `{id, name}`, in ID order
+
 ## user_managed_by_oidc { #user_managed_by_oidc }
 
 - **Status:** 409

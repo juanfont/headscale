@@ -8,6 +8,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // revokedNow is the time a revoke stores: in UTC, because SQLite compares
@@ -40,13 +41,72 @@ func revokeCredential(tx *gorm.DB, kind types.CredentialKind, cond string, arg a
 // DestroyRevokedCredentialsBefore removes every credential revoked before
 // cutoff, of every kind, and returns how many. An auth key that a node refers
 // to is kept until that node is deleted, so the node's auth key stays valid.
+//
+// It never waits for a row, so it is never part of a deadlock, whatever
+// another writer locks and in whichever order: on PostgreSQL it takes its rows
+// FOR UPDATE SKIP LOCKED, and a row someone holds is left for the next run.
+// SQLite has one connection, and there it is a plain SELECT in the job's
+// transaction. It works in pieces of [idsPerStatement] revoked rows, each
+// its own transaction, so no statement binds more IDs than a database takes.
+// The time is compared here as an instant, not in SQL: SQLite compares stored
+// times as text, and a row written before every writer stored UTC carries
+// its server's offset.
 func (hsdb *HSDatabase) DestroyRevokedCredentialsBefore(cutoff time.Time) (int64, error) {
-	res := hsdb.DB.Where("revoked IS NOT NULL AND revoked < ?", cutoff.UTC()).
-		Where("id NOT IN (SELECT auth_key_id FROM nodes WHERE auth_key_id IS NOT NULL)").
-		Delete(&types.Credential{})
+	var (
+		total int64
+		after uint64
+	)
 
-	return res.RowsAffected, res.Error
+	for {
+		var seen int
+
+		n, err := Write(hsdb.DB, func(tx *gorm.DB) (int, error) {
+			var rows []types.Credential
+
+			err := tx.Model(&types.Credential{}).
+				Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate, Options: clause.LockingOptionsSkipLocked}).
+				Select("id", "revoked").
+				Where("revoked IS NOT NULL AND id > ?", after).
+				Where("id NOT IN (SELECT auth_key_id FROM nodes WHERE auth_key_id IS NOT NULL)").
+				Order("id").Limit(idsPerStatement).Find(&rows).Error
+			if err != nil || len(rows) == 0 {
+				return 0, err
+			}
+
+			seen, after = len(rows), rows[len(rows)-1].ID
+
+			var ids []uint64
+
+			for _, r := range rows {
+				if r.Revoked.Before(cutoff) {
+					ids = append(ids, r.ID)
+				}
+			}
+
+			if len(ids) == 0 {
+				return 0, nil
+			}
+
+			return len(ids), tx.Delete(&types.Credential{}, ids).Error
+		})
+		if err != nil {
+			return total, err
+		}
+
+		total += int64(n)
+
+		// A short piece is the last: what is left is held, or not revoked.
+		if seen < idsPerStatement {
+			return total, nil
+		}
+	}
 }
+
+// idsPerStatement bounds the IDs one statement binds, far below what a
+// database takes (SQLite 32766, PostgreSQL 65535): the rows one transaction
+// of [HSDatabase.DestroyRevokedCredentialsBefore] removes, and each piece of
+// [DestroyUserContents].
+const idsPerStatement = 1000
 
 // credentialToAPIKey projects a unified credentials row onto the [types.APIKey]
 // shape the API, state, and CLI layers consume.

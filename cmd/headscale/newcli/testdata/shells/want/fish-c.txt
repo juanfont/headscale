@@ -97,6 +97,7 @@ LINE: headscale completion bash -c|
   (none)
 LINE: headscale users |
   create	Create a local user
+  delete	Delete a user with its keys
   get	Show one user
   list	List the users
   set	Change a local user

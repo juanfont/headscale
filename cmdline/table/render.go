@@ -155,7 +155,7 @@ func onScreen[R any](
 
 			for _, line := range grid {
 				if line[i].cut {
-					shown = max(shown, width(fitList(line[i].entries, widths[i])))
+					shown = max(shown, width(FitList(line[i].entries, widths[i])))
 				} else {
 					shown = max(shown, min(line[i].natural(), widths[i]))
 				}
@@ -179,7 +179,7 @@ func onScreen[R any](
 			for i, cell := range line {
 				switch {
 				case cell.cut && at == 0:
-					texts[i] = fitList(cell.entries, widths[i])
+					texts[i] = FitList(cell.entries, widths[i])
 				case at < len(cell.lines):
 					texts[i] = fit(cell.lines[at], widths[i])
 				}
@@ -293,19 +293,37 @@ func fit(
 	return (displaywidth.Options{}).TruncateString(text, n, "…")
 }
 
-// fitList is as many entries as fit in n cells, then "… (+K)" for the K
+// FitList is as many entries as fit in n cells, then "… (+K)" for the K
 // left out.
-func fitList(entries []string, n int) string {
-	for k := len(entries); k >= 0; k-- {
-		s := strings.Join(entries[:k], ", ")
+func FitList(entries []string, n int) string {
+	// Widths add up entry by entry (see width for where they do not), so
+	// each prefix of the list is known without joining it: one pass, not
+	// one join per cut.
+	joined := make([]int, len(entries)+1)
+	for i, e := range entries {
+		joined[i+1] = joined[i] + width(e) + 2*min(i, 1)
+	}
 
+	for k := len(entries); k >= 0; k-- {
+		w := joined[k]
+		if k < len(entries) {
+			// " … (+K)": the space when entries come first, five cells, K.
+			w += min(k, 1) + 5
+			for left := len(entries) - k; left > 0; left /= 10 {
+				w++
+			}
+		}
+
+		if w > n {
+			continue
+		}
+
+		s := strings.Join(entries[:k], ", ")
 		if k < len(entries) {
 			s = strings.TrimSpace(s + " … (+" + strconv.Itoa(len(entries)-k) + ")")
 		}
 
-		if width(s) <= n {
-			return s
-		}
+		return s
 	}
 
 	return fit("(+"+strconv.Itoa(len(entries))+")", n)
