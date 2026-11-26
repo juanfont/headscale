@@ -4729,10 +4729,11 @@ func isUsefulEndpointType(t tailcfg.EndpointType) bool {
 // buildMapRequestChangeResponse picks the narrowest broadcast for a processed
 // MapRequest delta. Policy and route changes are handled by the caller.
 //
-// Two wire constraints shape the order: tailcfg.PeerChange.DERPRegion == 0
-// means "unchanged", so clearing DERP cannot ride a patch and needs a whole
-// peer; and a key patch already carries endpoints, key expiry, and DERP, so a
-// key change subsumes an endpoint or DERP patch in the same request.
+// Two wire constraints shape the order: a [tailcfg.PeerChange] omits a zero
+// DERPRegion or DiscoKey, which then reads as "unchanged", so clearing either
+// cannot ride a patch and needs a whole peer; and a key patch already carries
+// endpoints, key expiry, and DERP, so a key change subsumes an endpoint or
+// DERP patch in the same request.
 // The delta decides which fields to send; their values come from the fresh
 // node because concurrent requests may have superseded the captured values.
 func buildMapRequestChangeResponse(
@@ -4762,6 +4763,10 @@ func buildMapRequestChangeResponse(
 	}
 
 	if delta.discoKeyChanged {
+		if node.DiscoKey().IsZero() {
+			return change.NodeAdded(id)
+		}
+
 		c := change.NodeKeyRotated(node)
 		if delta.derpChanged {
 			c.PeerPatches[0].DERPRegion = currentDERP

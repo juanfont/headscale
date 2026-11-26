@@ -967,6 +967,7 @@ func TestBuildMapRequestChangeResponse(t *testing.T) {
 		name     string
 		delta    mapRequestDelta
 		nodeDERP tailcfg.DERPRegionID
+		noDisco  bool
 
 		wantEmpty     bool
 		wantWholePeer bool
@@ -995,6 +996,13 @@ func TestBuildMapRequestChangeResponse(t *testing.T) {
 		{
 			name:  "disco key and derp clear to zero",
 			delta: mapRequestDelta{discoKeyChanged: true, derpChanged: true, oldDERP: 1, newDERP: 0},
+
+			wantWholePeer: true,
+		},
+		{
+			name:    "disco key cleared",
+			delta:   mapRequestDelta{discoKeyChanged: true},
+			noDisco: true,
 
 			wantWholePeer: true,
 		},
@@ -1041,6 +1049,11 @@ func TestBuildMapRequestChangeResponse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			current := node.Clone()
 			current.Hostinfo.NetInfo.PreferredDERP = tt.nodeDERP
+
+			if tt.noDisco {
+				current.DiscoKey = key.DiscoPublic{}
+			}
+
 			c := buildMapRequestChangeResponse(node.ID, current.View(), tt.delta)
 
 			if tt.wantEmpty {
