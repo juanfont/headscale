@@ -5,7 +5,7 @@ package command
 // Inputs that found bugs are kept in testdata/fuzz, so go test replays
 // them.
 //
-//	go test -run '^$' -fuzz '^FuzzRun$' -fuzztime 2m ./cmd/headscale/newcli/command/
+//	go test -run '^$' -fuzz '^FuzzRun$' -fuzztime 2m ./cmd/headscale/cli/command/
 
 import (
 	"errors"
