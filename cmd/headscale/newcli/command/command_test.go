@@ -5,11 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -95,6 +97,18 @@ func connectTest(cfg *types.Config, env Env) (*API, error) {
 
 // The library's refusals of a spec, as its error says them.
 var (
+	errNoQuestion = errors.New(
+		"a refusal named in Changed and no Confirm: the write would run again on what it sent before",
+	)
+	errNoGuardTarget = errors.New(
+		"a refusal named in Changed and no target that is an entity: the guard of the question would reach no write",
+	)
+	errGuardMix = errors.New(
+		"a refusal named in Changed on a target with a revision: the write takes one guard, and the token would drop the revision",
+	)
+	errGuardNoChanged = errors.New(
+		"a question handed over a guard, and the spec names no Changed: its refusal would not be asked again",
+	)
 	errNotEnd = errors.New(
 		"a delete of a credential, beside a Secret or of a target with revoked, is made by NewEnd",
 	)
@@ -668,7 +682,7 @@ func TestRetry(t *testing.T) {
 		stdout, stderr := run(tree(t, s), start(t, s), "rename r1", "y\nyes\n")
 		require.Equal(
 			t,
-			"Rename web0? [y/N] Node 12 (web0) changed while the question was open.\nRename web2? [y/N] ",
+			"Rename web0? [y/N] Node 12 (web0) changed while you decided.\nRename web2? [y/N] ",
 			stderr,
 		)
 		require.Equal(t, "renamed web2 to web2\n", stdout)
@@ -695,6 +709,42 @@ func TestRetry(t *testing.T) {
 		require.Len(t, s.seen, 4)
 	})
 
+	// An answer typed before the second question was shown cannot confirm
+	// it: the terminal drops what waits, so the second y is not read.
+	t.Run("a y typed ahead does not answer the second question", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2}
+		url := start(t, s)
+		discarded := 0
+
+		var stdout, stderr bytes.Buffer
+
+		Run(tree(t, s), strings.Fields("rename r1"), Env{
+			Stdin: strings.NewReader(
+				"y\ny\n",
+			),
+			Stdout:   &stdout,
+			Stderr:   &stderr,
+			Terminal: true,
+			Version:  &types.VersionInfo{Version: "dev"},
+			Environ: []string{
+				"HEADSCALE_CONFIG=" + file,
+				"HEADSCALE_CLI_ADDRESS=" + url,
+				"HEADSCALE_CLI_API_KEY=key",
+			},
+			DiscardInput: func() { discarded++ },
+		})
+		require.Equal(
+			t,
+			"Rename web0? [y/N] Node 12 (web0) changed while you decided.\nRename web2? [y/N] Aborted.\n",
+			stderr.String(),
+		)
+		require.Empty(t, stdout.String())
+		require.Equal(t, 1, discarded, "before the second question only")
+		require.Len(t, s.seen, 3, "no second write")
+	})
+
 	t.Run("no to the second question", func(t *testing.T) {
 		t.Parallel()
 
@@ -702,7 +752,7 @@ func TestRetry(t *testing.T) {
 		stdout, stderr := run(tree(t, s), start(t, s), "rename r1", "y\nn\n")
 		require.Equal(
 			t,
-			"Rename web0? [y/N] Node 12 (web0) changed while the question was open.\nRename web2? [y/N] Aborted.\n",
+			"Rename web0? [y/N] Node 12 (web0) changed while you decided.\nRename web2? [y/N] Aborted.\n",
 			stderr,
 		)
 		require.Empty(t, stdout)
@@ -723,6 +773,62 @@ func TestRetry(t *testing.T) {
 		require.Len(t, s.seen, 4, "one retry, no more")
 	})
 
+	t.Run("gone when read again", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2, gone: true}
+		_, stderr := run(tree(t, s), start(t, s), "rename r1 --force", "")
+		require.Equal(
+			t,
+			"Error: Node 12 (web0) no longer exists.\n",
+			stderr,
+			"the server names no object that is gone; the target has its name",
+		)
+	})
+
+	// Never none: a confirmed write with no revision to send is not sent,
+	// the first time or after a refusal.
+	t.Run("no revision: nothing is written", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{}
+		url := start(t, s)
+		stdout, stderr := run(tree(t, s), url, "rename none --force", "")
+		require.Equal(
+			t,
+			"Error: the server at "+strings.TrimPrefix(
+				url,
+				"http://",
+			)+" answered Node 12 (web0) with no revision to guard the change with, so nothing was changed. This is a fault of the server.\n",
+			stderr,
+		)
+		require.Empty(t, stdout)
+		require.Empty(t, s.seen, "no request at all")
+	})
+
+	t.Run("no revision when read again: no second write", func(t *testing.T) {
+		t.Parallel()
+
+		s := &server{rev: 2, noRevision: true}
+		url := start(t, s)
+		_, stderr := run(tree(t, s), url, "rename r1 --force", "")
+		// The read again is refused by its shape (shapeOf) before the guard looks.
+		require.Contains(
+			t,
+			stderr,
+			"sent an answer this CLI cannot read: it has no revision.",
+		)
+		require.Equal(
+			t,
+			[]string{
+				"GET /api/headscale/v0/version ",
+				`PATCH /nodes/12 "r1"`,
+				"GET /nodes/12 ",
+			},
+			s.seen,
+		)
+	})
+
 	t.Run("a type with a revision and no read does not build", func(t *testing.T) {
 		t.Parallel()
 
@@ -733,6 +839,533 @@ func TestRetry(t *testing.T) {
 			"rename: target command.guarded has a revision and no read: a write the server refuses because the target changed would not run again",
 		)
 	})
+}
+
+// box is an entity with no revision and no read, as a user is: what its
+// delete removes comes from a dry run of the server.
+type box struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// TestQuestionFromTheServer: a question made by a call to the server hands
+// its token to the write, and a refusal the command names as Changed asks
+// the server again, says why in one line, asks again and writes once more
+// with the new token; a second refusal is the error. The tree is one for
+// every case, as the CLI's leaves are, so -race sees a token kept in it.
+func TestQuestionFromTheServer(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Box box `arg:"box"`
+	}
+
+	const boxChanged clientv0.ProblemCode = "box_changed"
+
+	// server holds the contents of box 1: each dry run answers them and a
+	// token of their generation; a write with an older token is refused.
+	// grow is how many dry runs add an item after they answer.
+	type server struct {
+		mu    sync.Mutex
+		gen   int
+		items []string
+		grow  int
+		seen  []string
+		// noToken answers the dry run with no token, as a broken server.
+		noToken bool
+		url     string
+	}
+
+	start := func(t *testing.T, s *server) string {
+		t.Helper()
+
+		hs := httptest.NewServer(
+			versioned(func(w http.ResponseWriter, r *http.Request) {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+
+				s.seen = append(s.seen, r.Method+" "+r.URL.RequestURI())
+
+				w.Header().Set("Headscale-Version", "dev")
+
+				answer := func() {
+					token := "t" + strconv.Itoa(s.gen)
+					if s.noToken {
+						token = ""
+					}
+
+					_, _ = fmt.Fprintf(
+						w,
+						`{"items": [%s], "expect": "%s"}`,
+						`"`+strings.Join(s.items, `", "`)+`"`,
+						token,
+					)
+				}
+
+				switch {
+				case r.URL.Path == "/api/headscale/v0/version":
+				case r.URL.Path == "/api/headscale/v0/me":
+					_, _ = io.WriteString(w, rowOf[clientv0.Me](`{}`))
+				case r.URL.Query().Get("dryRun") == "true":
+					answer()
+
+					if s.grow > 0 {
+						s.grow--
+						s.gen++
+						s.items = append(s.items, "new"+strconv.Itoa(s.gen))
+					}
+				case r.URL.Query().Get("expect") != "t"+strconv.Itoa(s.gen):
+					w.WriteHeader(http.StatusConflict)
+					_, _ = w.Write(
+						[]byte(
+							`{"code": "box_changed", "status": 409, "title": "Box changed", "object": {"kind": "box", "id": "1", "name": "b"}}`,
+						),
+					)
+				default:
+					answer()
+				}
+			}),
+		)
+		t.Cleanup(hs.Close)
+		s.url = hs.URL
+
+		return hs.URL
+	}
+
+	type removed struct {
+		Items  []string `json:"items"`
+		Expect string   `json:"expect"`
+	}
+
+	del := func(c Ctx, id string, dry bool) (removed, error) {
+		return callOf[removed, anySuccess](
+			c.API,
+			func(cl *clientv0.Client) (*http.Response, error) {
+				q := "?dryRun=" + strconv.FormatBool(dry)
+				if e := c.Expect(id); e != nil {
+					q += "&expect=" + *e
+				}
+
+				req, err := http.NewRequestWithContext(
+					c,
+					http.MethodDelete,
+					cl.Server+"boxes/"+id+q,
+					nil,
+				)
+				if err != nil {
+					return nil, err
+				}
+
+				return cl.Client.Do(req)
+			},
+		)
+	}
+
+	spec := Spec[in, removed]{
+		Name:    "delete",
+		Short:   "S",
+		Long:    "S.",
+		Example: []string{"prog delete b"},
+		Changed: string(boxChanged),
+		Confirm: func(c Ctx, in in) (Prompt, error) {
+			d, err := del(c, in.Box.ID, true)
+			if err != nil {
+				return Prompt{}, err
+			}
+
+			p := Prompt{
+				Question: "Delete box " + in.Box.Name + "?",
+				Action:   "delete it",
+				List:     d.Items,
+				Guard:    d.Expect,
+			}
+			if in.Box.Name == "mine" {
+				p.Warning = OwnWarning(
+					c,
+					"It is yours.",
+					func(clientv0.Me) bool { return true },
+				)
+			}
+
+			return p, nil
+		},
+		Run:  func(c Ctx, in in) (removed, error) { return del(c, in.Box.ID, false) },
+		Done: func(_ in, out removed, _ time.Time) string { return "deleted " + strings.Join(out.Items, ", ") },
+	}
+
+	find := func(_ context.Context, word string) (box, error) { return box{ID: "1", Name: word}, nil }
+	ents := []lib.Entity{
+		lib.EntityOf("box", find, nil, func(b box) string { return b.Name }, nil),
+	}
+
+	tree, err := build("prog", "A program", allowedAliases(), ents, New(spec))
+	require.NoError(t, err)
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	run := func(s *server, args, stdin string, width int) (string, string) {
+		var stdout, stderr bytes.Buffer
+
+		Run(tree, strings.Fields(args), Env{
+			// stdout is wide, as a file is to the CLI; the question is on stderr.
+			Stdin: strings.NewReader(
+				stdin,
+			),
+			Stdout:      &stdout,
+			Stderr:      &stderr,
+			Terminal:    true,
+			Width:       200,
+			StderrWidth: width,
+			Version:     &types.VersionInfo{Version: "dev"},
+			Environ: []string{
+				"HEADSCALE_CONFIG=" + file,
+				"HEADSCALE_CLI_ADDRESS=" + start(t, s),
+				"HEADSCALE_CLI_API_KEY=key",
+			},
+		})
+
+		return stdout.String(), stderr.String()
+	}
+
+	version := "GET /api/headscale/v0/version"
+
+	for _, tt := range []struct {
+		name, args, stdin string
+		width             int
+		items             []string
+		grow              int
+		noToken           bool
+		stdout, stderr    string
+		seen              []string
+	}{
+		{
+			name: "the list under the question, [y/N] on its own line, the token of the dry run sent", args: "delete b", stdin: "y\n",
+			stderr: "Delete box b?\n  x, y\n[y/N] ", stdout: "deleted x, y\n",
+			seen: []string{version, "DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t0"},
+		},
+		{
+			name: "no: nothing is written", args: "delete b", stdin: "n\n",
+			stderr: "Delete box b?\n  x, y\n[y/N] Aborted.\n",
+			seen:   []string{version, "DELETE /boxes/1?dryRun=true"},
+		},
+		{
+			name: "a list cut to the terminal of the question says how many it leaves out", args: "delete b", stdin: "y\n", width: 16,
+			items:  []string{"alpha", "beta", "gamma"},
+			stderr: "Delete box b?\n  alpha … (+2)\n[y/N] ", stdout: "deleted alpha, beta, gamma\n",
+			seen: []string{version, "DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t0"},
+		},
+		{
+			name: "changed once: asked the server again, asked again, written with the new token", args: "delete b", stdin: "y\nyes\n", grow: 1,
+			stderr: "Delete box b?\n  x, y\n[y/N] box 1 (b) changed while you decided.\nDelete box b?\n  x, y, new1\n[y/N] ",
+			stdout: "deleted x, y, new1\n",
+			seen: []string{
+				version, "DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t0",
+				"DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t1",
+			},
+		},
+		{
+			name: "changed once with --force: nothing asked, nothing said, the new token", args: "delete b --force", grow: 1,
+			stdout: "deleted x, y, new1\n",
+			seen: []string{
+				version, "DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t0",
+				"DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t1",
+			},
+		},
+		{
+			name: "a warning stands after the list, before [y/N]; who calls is asked once", args: "delete mine", stdin: "y\nyes\n", grow: 1,
+			stderr: "Delete box mine?\n  x, y\nIt is yours.\n[y/N] box 1 (mine) changed while you decided.\nDelete box mine?\n  x, y, new1\nIt is yours.\n[y/N] ",
+			stdout: "deleted x, y, new1\n",
+			seen: []string{
+				version, "DELETE /boxes/1?dryRun=true", "GET /api/headscale/v0/me", "DELETE /boxes/1?dryRun=false&expect=t0",
+				"DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t1",
+			},
+		},
+		{
+			name: "changed twice: the sentence of the builder, whatever the code, after one retry", args: "delete b --force", grow: 2,
+			stderr: "Error: box 1 (b) changed while the command ran. Run it again.\n",
+			seen: []string{
+				version, "DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t0",
+				"DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t1",
+			},
+		},
+		{
+			name: "no to the second question", args: "delete b", stdin: "y\nn\n", grow: 1,
+			stderr: "Delete box b?\n  x, y\n[y/N] box 1 (b) changed while you decided.\nDelete box b?\n  x, y, new1\n[y/N] Aborted.\n",
+			seen:   []string{version, "DELETE /boxes/1?dryRun=true", "DELETE /boxes/1?dryRun=false&expect=t0", "DELETE /boxes/1?dryRun=true"},
+		},
+		{
+			name: "a dry run that answers no token: no question, no write", args: "delete b --force", noToken: true,
+			stderr: "Error: the server at {host} sent no token to guard the change with, so nothing was changed. This is a fault of the server.\n",
+			seen:   []string{version, "DELETE /boxes/1?dryRun=true"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := &server{items: tt.items, grow: tt.grow, noToken: tt.noToken}
+			if s.items == nil {
+				s.items = []string{"x", "y"}
+			}
+
+			stdout, stderr := run(s, tt.args, tt.stdin, tt.width)
+			require.Equal(
+				t,
+				strings.ReplaceAll(
+					tt.stderr,
+					"{host}",
+					strings.TrimPrefix(s.url, "http://"),
+				),
+				stderr,
+			)
+			require.Equal(t, tt.stdout, stdout)
+			require.Equal(t, tt.seen, s.seen)
+		})
+	}
+
+	t.Run(
+		"a guard with no Changed to name its refusal is not sent",
+		func(t *testing.T) {
+			t.Parallel()
+
+			spec := spec
+			spec.Changed = ""
+
+			tree, err := build("prog", "A program", allowedAliases(), ents, New(spec))
+			require.NoError(t, err)
+
+			s := &server{items: []string{"x"}}
+
+			var stderr bytes.Buffer
+
+			Run(tree, []string{"delete", "b", "--force"}, Env{
+				Stdout:  io.Discard,
+				Stderr:  &stderr,
+				Version: &types.VersionInfo{Version: "dev"},
+				Environ: []string{
+					"HEADSCALE_CONFIG=" + file,
+					"HEADSCALE_CLI_ADDRESS=" + start(t, s),
+					"HEADSCALE_CLI_API_KEY=key",
+				},
+			})
+			require.Equal(t, "Error: "+errGuardNoChanged.Error()+"\n", stderr.String())
+			require.Equal(t, []string{version, "DELETE /boxes/1?dryRun=true"}, s.seen)
+		},
+	)
+
+	t.Run("a refusal named in Changed needs a question", func(t *testing.T) {
+		t.Parallel()
+
+		spec := spec
+		spec.Confirm = nil
+		spec.Name = "remove"
+
+		_, err := build("prog", "A program", allowedAliases(), ents, New(spec))
+		require.ErrorContains(t, err, "remove: "+errNoQuestion.Error())
+	})
+
+	t.Run(
+		"a refusal named in Changed needs a target that is an entity",
+		func(t *testing.T) {
+			t.Parallel()
+
+			_, err := build(
+				"prog",
+				"A program",
+				allowedAliases(),
+				ents,
+				New(Spec[getIn, NoOutput]{
+					Name:    "remove",
+					Short:   "S",
+					Long:    "S.",
+					Example: []string{"prog remove b"},
+					Changed: string(boxChanged),
+					Confirm: func(Ctx, getIn) (Prompt, error) { return Prompt{}, nil },
+					Run:     func(Ctx, getIn) (NoOutput, error) { return NoOutput{}, nil },
+				}),
+			)
+			require.ErrorContains(t, err, "remove: "+errNoGuardTarget.Error())
+		},
+	)
+
+	t.Run(
+		"a refusal named in Changed on a target with a revision does not build",
+		func(t *testing.T) {
+			t.Parallel()
+
+			type nodeIn struct {
+				Node guarded `arg:"node"`
+			}
+
+			find := func(_ context.Context, word string) (guarded, error) { return guarded{ID: "1", Name: word}, nil }
+			read := func(_ context.Context, id string) (guarded, error) { return guarded{ID: id}, nil }
+
+			_, err := build(
+				"prog",
+				"A program",
+				allowedAliases(),
+				[]lib.Entity{
+					lib.EntityOf(
+						"node",
+						find,
+						nil,
+						func(g guarded) string { return g.Name },
+						read,
+					),
+				},
+				New(Spec[nodeIn, NoOutput]{
+					Name:    "remove",
+					Short:   "S",
+					Long:    "S.",
+					Example: []string{"prog remove b"},
+					Changed: string(boxChanged),
+					Confirm: func(Ctx, nodeIn) (Prompt, error) { return Prompt{}, nil },
+					Run:     func(Ctx, nodeIn) (NoOutput, error) { return NoOutput{}, nil },
+				}),
+			)
+			require.ErrorContains(t, err, "remove: "+errGuardMix.Error())
+		},
+	)
+}
+
+// TestOwnGuardIsNotTriedAgain: a command that sends a guard of its own,
+// as a write of a policy with the ETag it read, gets the refusal of it as
+// the error. The builder tries again only a guard it stored: a second try
+// would read the other writer's ETag and replace what that writer wrote.
+// The question that asks nothing is there for --force, as a command that
+// asks only sometimes has it.
+func TestOwnGuardIsNotTriedAgain(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu     sync.Mutex
+		gen    int
+		doc    = "theirs-0"
+		seen   []string
+		writes int
+	)
+
+	hs := httptest.NewServer(versioned(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		seen = append(
+			seen,
+			strings.TrimSpace(r.Method+" "+r.URL.Path+" "+r.Header.Get("If-Match")),
+		)
+		w.Header().Set("Headscale-Version", "dev")
+
+		switch {
+		case r.URL.Path == "/api/headscale/v0/version":
+		case r.Method == http.MethodGet:
+			w.Header().Set("ETag", fmt.Sprintf(`"e%d"`, gen))
+			w.WriteHeader(http.StatusNoContent)
+
+			// Another admin writes between the CLI's read and its write.
+			if writes == 0 {
+				gen++
+				doc = "theirs-1"
+				writes++
+			}
+		case r.Header.Get("If-Match") != fmt.Sprintf(`"e%d"`, gen):
+			w.WriteHeader(http.StatusPreconditionFailed)
+			_, _ = w.Write(
+				[]byte(
+					`{"code": "precondition_failed", "status": 412, "title": "Precondition failed"}`,
+				),
+			)
+		default:
+			gen++
+			doc = "mine"
+
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	t.Cleanup(hs.Close)
+
+	send := func(c Ctx, method, etag string) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(c, method, hs.URL+"/policy", nil)
+		if err != nil {
+			return nil, err
+		}
+
+		if etag != "" {
+			req.Header.Set("If-Match", etag)
+		}
+
+		//nolint:forcetypeassert // the generated client
+		return c.API.ClientInterface.(*clientv0.Client).Client.Do(req)
+	}
+
+	tree, err := build(
+		"prog",
+		"A program",
+		allowedAliases(),
+		nil,
+		New(Spec[NoInput, NoOutput]{
+			Name: "set", Short: "S", Long: "S.", Example: []string{"prog set"},
+			Confirm: func(Ctx, NoInput) (Prompt, error) { return Prompt{}, nil },
+			Run: func(c Ctx, _ NoInput) (NoOutput, error) {
+				var etag string
+
+				_, err := callOf[NoOutput, anySuccess](
+					c.API,
+					func(*clientv0.Client) (*http.Response, error) {
+						resp, err := send(c, http.MethodGet, "")
+						if err == nil {
+							etag = resp.Header.Get("ETag")
+						}
+
+						return resp, err
+					},
+				)
+				if err != nil {
+					return NoOutput{}, err
+				}
+
+				return callOf[NoOutput, anySuccess](
+					c.API,
+					func(*clientv0.Client) (*http.Response, error) { return send(c, http.MethodPut, etag) },
+				)
+			},
+			Done: func(NoInput, NoOutput, time.Time) string { return "set" },
+		}),
+	)
+	require.NoError(t, err)
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	var stdout, stderr bytes.Buffer
+
+	code := Run(tree, []string{"set"}, Env{
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+		Version: &types.VersionInfo{Version: "dev"},
+		Environ: []string{
+			"HEADSCALE_CONFIG=" + file,
+			"HEADSCALE_CLI_ADDRESS=" + hs.URL,
+			"HEADSCALE_CLI_API_KEY=key",
+		},
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Equal(t, 1, code)
+	require.Empty(t, stdout.String())
+	require.Equal(
+		t,
+		"Error: Precondition failed (precondition_failed).\n",
+		stderr.String(),
+	)
+	require.Equal(
+		t,
+		[]string{"GET /policy", `PUT /policy "e0"`},
+		seen,
+		"no second read, no second write",
+	)
+	require.Equal(t, "theirs-1", doc, "the other admin's write is kept")
 }
 
 // TestAbout: a problem of the server gets what the command knows of it. A
@@ -783,6 +1416,7 @@ func TestAbout(t *testing.T) {
 		about(
 			tt.err,
 			lib.Object{Kind: "node", ID: tt.in.Node.Id, Name: tt.in.Node.Name},
+			"",
 			expiry,
 		)
 		require.Equal(t, tt.want, sentence(tt.err), tt.name)

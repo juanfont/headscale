@@ -41,10 +41,13 @@ type Program[S any] struct {
 	// any other error. Precondition is the code that refuses an If-Match.
 	Refusal      func(err error) string
 	Precondition string
+	// Again marks err, the refusal of a guard on the second try: the
+	// target changed again.
+	Again func(err error)
 	// About gives err, a refusal, what the command knows of it: the
-	// target as the command read it, and the expiry it sent, zero when
-	// none.
-	About func(err error, target Object, expiry time.Time)
+	// target as the command read it, the word it was typed as, and the
+	// expiry it sent, zero when none.
+	About func(err error, target Object, word string, expiry time.Time)
 	// Fields names, in err, the flags and arguments of the input type in
 	// that filled the fields of the body the server refused.
 	Fields func(err error, in reflect.Type) error
@@ -89,7 +92,7 @@ func erase[S any](p Program[S]) program {
 	e := program{
 		Name: p.Name, Short: p.Short, Version: p.Version,
 		Sentence: p.Sentence,
-		Refusal:  p.Refusal, Precondition: p.Precondition,
+		Refusal:  p.Refusal, Precondition: p.Precondition, Again: p.Again,
 		About: p.About, Fields: p.Fields, MayBeMade: p.MayBeMade,
 		Entities: p.Entities, Readers: p.Readers, Owner: p.Owner,
 		Credentials: p.Credentials, OpenFields: p.OpenFields,

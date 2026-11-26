@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	lib "github.com/juanfont/headscale/cmdline/command"
 	"github.com/juanfont/headscale/cmdline/table"
@@ -29,6 +30,13 @@ type ProblemError struct {
 	// command read it, and the expiry it sent, zero when none.
 	target clientv0.ProblemObject
 	expiry time.Time
+	// word is the target as it was typed, which the lookup found to be
+	// the target alone, for a line that names it again.
+	word string
+	// changed is a refusal of the builder's guard on the second try: the
+	// target changed again, whatever code the command's guard is refused
+	// with.
+	changed bool
 }
 
 // sentence is the text of err. A problem of the server, a server that
@@ -79,7 +87,7 @@ func refusalCode(err error) string {
 
 // about gives the problem err holds what the builder knows of the
 // command it answers.
-func about(err error, target lib.Object, expiry time.Time) {
+func about(err error, target lib.Object, word string, expiry time.Time) {
 	p, ok := problemIn(err)
 	if !ok {
 		return
@@ -90,7 +98,7 @@ func about(err error, target lib.Object, expiry time.Time) {
 		Id:   target.ID,
 		Name: target.Name,
 	}
-	p.expiry = expiry
+	p.word, p.expiry = word, expiry
 }
 
 // mayBeMade reports whether err leaves a write unknown: an answer that
@@ -122,6 +130,20 @@ func problemOf(status int, body json.RawMessage) error {
 }
 
 func (e *ProblemError) Error() string {
+	if e.changed {
+		o, err := e.Problem.Object.Get()
+		if err != nil {
+			o = e.target
+		}
+
+		return e.entity(o) + " changed while the command ran. Run it again."
+	}
+
+	return e.text()
+}
+
+// text is the sentence of the problem from its code.
+func (e *ProblemError) text() string {
 	p := e.Problem
 
 	switch p.Code { //nolint:exhaustive // the others print their title
@@ -147,23 +169,12 @@ func (e *ProblemError) Error() string {
 		if s, ok := taken(p, "email"); ok {
 			return s
 		}
-	case clientv0.ProblemCodePreconditionFailed:
+	case clientv0.ProblemCodePreconditionFailed,
+		clientv0.ProblemCodeUserHasNodes,
+		clientv0.ProblemCodeUserManagedByOidc:
 		o, err := p.Object.Get()
 		if err == nil {
-			return table.Entity(
-				string(o.Kind),
-				o.Id,
-				o.Name,
-			) + " changed while the command ran. Run it again."
-		}
-	case clientv0.ProblemCodeUserManagedByOidc:
-		o, err := p.Object.Get()
-		if err == nil {
-			return table.Entity(
-				string(o.Kind),
-				o.Id,
-				o.Name,
-			) + " is managed by OIDC and cannot be edited here."
+			return e.aboutObject(o)
 		}
 	case clientv0.ProblemCodeOwnerConflict:
 		// The server answers it for a key with no owner too.
@@ -342,6 +353,69 @@ func refused(node string, details map[string]any) string {
 	return node + " did not start the update (" + table.Visible(reason, "") + ")."
 }
 
+// aboutObject is the sentence of a problem about the object o.
+func (e *ProblemError) aboutObject(o clientv0.ProblemObject) string {
+	p := e.Problem
+
+	switch p.Code { //nolint:exhaustive // Error sends only these
+	case clientv0.ProblemCodeUserHasNodes:
+		return hasNodes(o, p.Details["nodes"], e.word)
+	case clientv0.ProblemCodeUserManagedByOidc:
+		return table.Entity(
+			string(o.Kind),
+			o.Id,
+			o.Name,
+		) + " is managed by OIDC and cannot be edited here."
+	}
+
+	return table.Entity(
+		string(o.Kind),
+		o.Id,
+		o.Name,
+	) + " changed while the command ran. Run it again."
+}
+
+// hasNodes is the sentence of user_has_nodes: the nodes the user owns by
+// name, all of them, and the line that deletes them together. The line
+// names the user by the word typed, which the lookup found to be this
+// user alone, when it can be typed again as it is, and by its ID
+// otherwise: a word of digits alone is read as an ID, one that starts
+// with a dash as a flag.
+func hasNodes(user clientv0.ProblemObject, nodes any, word string) string {
+	list, _ := nodes.([]any)
+
+	names := make([]string, 0, len(list))
+	for _, n := range list {
+		m, _ := n.(map[string]any)
+		names = append(names, table.Visible(fmt.Sprint(m["name"]), ""))
+	}
+
+	if word == "" || strings.HasPrefix(word, "-") ||
+		strings.Trim(word, "0123456789") == "" ||
+		strings.ContainsFunc(word, func(r rune) bool {
+			return !strings.ContainsRune("@.-_+", r) &&
+				(r > unicode.MaxASCII || !unicode.IsLetter(r) && !unicode.IsDigit(r))
+		}) {
+		word = user.Id
+	}
+
+	return table.Entity(
+		string(user.Kind),
+		user.Id,
+		user.Name,
+	) + " still owns " + table.Count(
+		len(names),
+		"node",
+	) + ": " + strings.Join(
+		names,
+		", ",
+	) +
+		".\nDelete or tag them first, or delete them together:\n  headscale users delete " + table.Visible(
+		word,
+		"",
+	) + " --with-nodes"
+}
+
 // texts are the entries of a list of the details, each made visible.
 func texts(v any) []string {
 	list, _ := v.([]any)
@@ -362,8 +436,13 @@ func forbidden(details map[string]any, node bool) string {
 	rule, _ := details["rule"].(string)
 
 	switch {
-	case len(scopes) > 0:
-		return "\nIt lacks the scope " + strings.Join(scopes, ", ") + "."
+	case len(scopes) == 1:
+		return "\nIt lacks the scope " + scopes[0] + "."
+	case len(scopes) > 1:
+		return "\nIt lacks the scopes " + strings.Join(
+			scopes[:len(scopes)-1],
+			", ",
+		) + " and " + scopes[len(scopes)-1] + "."
 	case tokenRule(rule, node) != "":
 		return "\n" + tokenRule(rule, node)
 	case rule != "":

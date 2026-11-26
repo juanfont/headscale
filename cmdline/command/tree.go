@@ -54,6 +54,9 @@ type leaf struct {
 	set bool
 	// force is a command that can ask, and so takes --force.
 	force bool
+	// changed is a command whose question hands a guard to the write:
+	// Spec.Changed.
+	changed bool
 	// secret is a command that prints a secret once: Spec.Secret.
 	secret bool
 	// end is the delete of a credential, made by NewEnd.
@@ -119,6 +122,19 @@ var (
 	errNoAsk  = errors.New("a delete with no Confirm: every delete asks first")
 	errNoRead = errors.New(
 		"has a revision and no read: a write the server refuses because the target changed would not run again",
+	)
+	// errNoQuestion: a refusal that a question answers again needs the
+	// question, which makes what the write sends anew.
+	errNoQuestion = errors.New(
+		"a refusal named in Changed and no Confirm: the write would run again on what it sent before",
+	)
+	// errNoGuardTarget, errGuardMix: the token of a question is kept for
+	// the target, in the one place its revision would be.
+	errNoGuardTarget = errors.New(
+		"a refusal named in Changed and no target that is an entity: the guard of the question would reach no write",
+	)
+	errGuardMix = errors.New(
+		"a refusal named in Changed on a target with a revision: the write takes one guard, and the token would drop the revision",
 	)
 	errNoSay = errors.New(
 		"is cut to the width of the terminal, and Long does not say so",
@@ -215,6 +231,7 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	l.check = func(p *program) error { return errors.Join(checkSpec(p, s), ruleErr) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
+	l.changed = s.Changed != ""
 	l.secret = s.Secret != nil
 	l.end = s.End
 
@@ -299,6 +316,36 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	return l
 }
 
+// Refuse makes Build refuse n, a command, with err when err is not nil: a
+// check of a constructor of the program, such as one that makes a kind of
+// delete.
+func Refuse(n Node, err error) Node {
+	if l, ok := n.(*leaf); ok && err != nil {
+		check := l.check
+		l.check = func(p *program) error { return errors.Join(check(p), err) }
+	}
+
+	return n
+}
+
+// checkTarget reports what the target of n lacks for the guard of its
+// writes.
+func checkTarget(n *leaf, ents map[reflect.Type]Entity) error {
+	e, known := ents[n.target]
+	revised := n.target != nil && hasJSON(n.target, "revision")
+
+	switch {
+	case revised && (!known || e.read == nil):
+		return fmt.Errorf("target %v %w", n.target, errNoRead)
+	case n.changed && !known:
+		return errNoGuardTarget
+	case n.changed && revised:
+		return errGuardMix
+	}
+
+	return nil
+}
+
 // checkSpec reports what is wrong with a spec, for the tree to name.
 func checkSpec[S, In, Out any](p *program, s Spec[S, In, Out]) error {
 	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
@@ -327,6 +374,10 @@ func checkSpec[S, In, Out any](p *program, s Spec[S, In, Out]) error {
 
 	if s.Blocks != nil && s.Columns == nil {
 		errs = append(errs, errBlocks)
+	}
+
+	if s.Changed != "" && s.Confirm == nil {
+		errs = append(errs, errNoQuestion)
 	}
 
 	return errors.Join(append(errs, s.Columns.Check(), s.Blocks.Check())...)
@@ -850,27 +901,4 @@ func (t *Tree) Reached(argv []string) string {
 	line, _ := t.parser.Parse(argv)
 
 	return strings.Join(line.Command.Path, " ")
-}
-
-// Refuse makes Build refuse n, a command, with err when err is not nil: a
-// check of a constructor of the program, such as one that makes a kind of
-// delete.
-func Refuse(n Node, err error) Node {
-	if l, ok := n.(*leaf); ok && err != nil {
-		check := l.check
-		l.check = func(p *program) error { return errors.Join(check(p), err) }
-	}
-
-	return n
-}
-
-// checkTarget reports what the target of n lacks for the guard of its
-// writes.
-func checkTarget(n *leaf, ents map[reflect.Type]Entity) error {
-	e, known := ents[n.target]
-	if n.target != nil && hasJSON(n.target, "revision") && (!known || e.read == nil) {
-		return fmt.Errorf("target %v %w", n.target, errNoRead)
-	}
-
-	return nil
 }

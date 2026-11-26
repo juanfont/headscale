@@ -65,6 +65,14 @@ type Spec[S, In, Out any] struct {
 	// as it is then, also under --force, so a question made from a call to
 	// the server is made anew.
 	Confirm func(c Ctx[S], in In) (Prompt, error)
+	// Changed is the code with which the server refuses the Guard that
+	// Confirm hands over, when what the question showed is no longer true:
+	// the builder then asks again and runs once more. A spec with Changed
+	// hands over a Guard every time, on a target that is an entity with no
+	// revision. A target's revision needs no Changed: precondition_failed
+	// refuses it. The builder tries again only a refusal of a guard it
+	// stored, never one a command sends itself.
+	Changed string
 	// Hint is a line of what to do after a wrong argument count, an empty
 	// list argument, or a word of another kind than its lookup takes, such
 	// as a tag for a user, from the arguments as typed; "" adds nothing.
@@ -124,11 +132,21 @@ type ListSpec[S, In, Row any] struct {
 // " [y/N]", and the Action that --force would take, for the error when no
 // terminal can answer: "delete Node 12 (mynode)". Warning, when there is
 // one, is a sentence that follows both; the builder reads it only when a
-// person will read it, after --force, so it may cost a call.
+// person will read it, after --force, so it may cost a call. List is shown
+// under the question, on one line cut to the terminal, and [y/N] then
+// stands on a line of its own.
+//
+// Guard stands for what the question showed, such as the token of a dry
+// run: the builder hands it to the write on the target (Ctx.Expect). It
+// needs Spec.Changed, and a spec with Changed always gives one: a guard is
+// never dropped. It is never kept in a variable of the spec: a spec is
+// shared by every run.
 type Prompt struct {
 	Question string
 	Action   string
 	Warning  func() string
+	List     []string
+	Guard    string
 }
 
 // NoInput is the input of a command that takes nothing.
@@ -180,8 +198,13 @@ type run struct {
 	screen bool
 	width  int
 	colour bool
+	// askWidth is the width of stderr's terminal, which a question is
+	// written to; 0 when unknown.
+	askWidth int
 	// answers reads the replies to prompts from stdin.
 	answers *bufio.Reader
+	// discard drops the answers typed and not yet read; nil drops none.
+	discard func()
 	// line is the command line, for the flags the builder adds.
 	line *cmdline.Line
 
@@ -222,6 +245,11 @@ type Env struct {
 	Environ []string
 	// Terminal reports whether stdin is a terminal, which a prompt needs.
 	Terminal bool
+	// DiscardInput drops what was typed on the terminal and not yet read,
+	// before a second question, so that an answer typed ahead does not
+	// answer what it never saw; nil drops nothing, as for a pipe, whose
+	// script knows what it answers.
+	DiscardInput func()
 	// StdoutTerminal reports whether stdout is a terminal: an empty list
 	// then says so in words, and a table is drawn in colour, unless
 	// NO_COLOR is set, and cut to Width.
@@ -257,7 +285,14 @@ func OSEnv() Env {
 		return w
 	}
 
+	var discard func()
+	if terminal(os.Stdin) {
+		//nolint:gosec // a file descriptor fits an int
+		discard = func() { discardInput(int(os.Stdin.Fd())) }
+	}
+
 	return Env{
+		DiscardInput:   discard,
 		Stdin:          os.Stdin,
 		Stdout:         os.Stdout,
 		Stderr:         os.Stderr,

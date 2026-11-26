@@ -943,6 +943,7 @@ func TestTestTreesUseTheBuilder(t *testing.T) {
 		"Columns",
 		"Blocks",
 		"Confirm",
+		"Changed",
 		"Hint",
 		"EmptyList",
 		"Valid",

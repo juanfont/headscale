@@ -48,6 +48,14 @@ type API struct {
 	// lists the release tags of headscale, for the update hint.
 	build    *types.VersionInfo
 	releases func(ctx context.Context) ([]string, error)
+	// me is GET /me, read once a run. A delete asks its question again
+	// after the server refused the write because the target changed, and
+	// the warning under the question (OwnWarning) needs who calls each
+	// time; who calls does not change within a run, so the second question
+	// sends no second GET /me.
+	meOnce sync.Once
+	me     clientv0.Me
+	meErr  error
 
 	// read keeps the bodies of what the client read in this run, for
 	// -o json (answerOf).
@@ -138,6 +146,16 @@ func (a *API) answerOf(v any) (json.RawMessage, bool) {
 	raw, ok := a.read.objs[k]
 
 	return raw, ok
+}
+
+// whoAmI is GET /me, read once a run: see the field me.
+func (a *API) whoAmI(ctx context.Context) (clientv0.Me, error) {
+	a.meOnce.Do(func() {
+		a.me, a.meErr = clientv0.Got(a.GetMeWithResponse(ctx))
+		a.meErr = a.errorOf(a.meErr)
+	})
+
+	return a.me, a.meErr
 }
 
 // errRestarted is a walk whose token the server refused twice.

@@ -6,11 +6,16 @@ import (
 	"strings"
 )
 
-// revision is the target of a command and its revision, which a write on
-// the target sends back in If-Match: a server that holds another revision
-// refuses the write with precondition_failed, so a change made in between
-// is not lost.
-type revision struct{ id, rev string }
+// revision is the guard of a write on the target of a command: what the
+// CLI read or showed of it, which the server compares before it writes,
+// so a change made in between is not lost. One kind per run: the target's
+// revision, sent in If-Match and refused with precondition_failed, or the
+// token a question handed over (Prompt.Guard), sent as expect and refused
+// with the spec's Changed. The builder refuses a spec that would need both.
+type revision struct {
+	id, rev string
+	token   bool
+}
 
 // IfMatch is the If-Match of a write on the entity id: the revision the
 // builder read for the target, when id is the target; nil, which sends
@@ -18,11 +23,26 @@ type revision struct{ id, rev string }
 // (TestEveryGuardIsSent).
 func (c *run) IfMatch(id string) *string {
 	g := c.guard.Load()
-	if g == nil || g.id != id {
+	if g == nil || g.token || g.id != id {
 		return nil
 	}
 
 	return new(strconv.Quote(g.rev))
+}
+
+// Expect is the token of a dry run that a write on the entity id sends
+// back, so the server refuses it when what the question showed changed:
+// the Guard of the Prompt, which the builder keeps as it keeps a revision;
+// nil for another entity, and for the dry run itself, which the builder
+// asks before any Guard is set. Every call whose operation takes expect
+// passes it (TestEveryGuardIsSent).
+func (c *run) Expect(id string) *string {
+	g := c.guard.Load()
+	if g == nil || !g.token || g.id != id {
+		return nil
+	}
+
+	return &g.rev
 }
 
 // guardOf is the revision of the target of in: its first argument that is
@@ -40,6 +60,14 @@ func guardOf[In any](in In) *revision {
 	}
 
 	return &revision{id: jsonText(e, "id"), rev: rev}
+}
+
+// unrevised reports whether the target of in is an entity that has a
+// revision, as a node does, and the server sent it none.
+func unrevised[In any](in In) bool {
+	e, ok := target(reflect.ValueOf(in))
+
+	return ok && hasJSON(e.Type(), "revision") && jsonText(e, "revision") == ""
 }
 
 // target is the field of the target in the input struct v, when it holds

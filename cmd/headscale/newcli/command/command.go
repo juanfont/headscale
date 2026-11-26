@@ -72,6 +72,9 @@ type Env struct {
 	Environ []string
 	// Terminal reports whether stdin is a terminal, which a prompt needs.
 	Terminal bool
+	// DiscardInput drops what was typed on the terminal and not yet read,
+	// before a second question; nil drops nothing.
+	DiscardInput func()
 	// StdoutTerminal reports whether stdout is a terminal; Width is its
 	// width in cells, 0 cuts nothing; StderrWidth is stderr's.
 	StdoutTerminal bool
@@ -114,6 +117,7 @@ func OSEnv() Env {
 		Stderr:         o.Stderr,
 		Environ:        o.Environ,
 		Terminal:       o.Terminal,
+		DiscardInput:   o.DiscardInput,
 		StdoutTerminal: o.StdoutTerminal,
 		Width:          o.Width,
 		StderrWidth:    o.StderrWidth,
@@ -166,6 +170,7 @@ func Run(t *Tree, argv []string, env Env) int {
 		Stderr:         env.Stderr,
 		Environ:        env.Environ,
 		Terminal:       env.Terminal,
+		DiscardInput:   env.DiscardInput,
 		StdoutTerminal: env.StdoutTerminal,
 		Width:          env.Width,
 		StderrWidth:    env.StderrWidth,
@@ -197,9 +202,14 @@ func program(name, short string) lib.Program[*API] {
 
 		Refusal:      refusalCode,
 		Precondition: string(clientv0.ProblemCodePreconditionFailed),
-		About:        about,
-		Fields:       flagsOf,
-		MayBeMade:    mayBeMade,
+		Again: func(err error) {
+			if p, ok := problemIn(err); ok {
+				p.changed = true
+			}
+		},
+		About:     about,
+		Fields:    flagsOf,
+		MayBeMade: mayBeMade,
 
 		Entities: entities(),
 		Readers:  []cmdline.Option{cmdline.LateReader(findOwner)},
