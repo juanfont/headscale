@@ -948,9 +948,16 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	nodeMatchers := make(map[types.NodeID][]matcher.Match, nodes.Len())
 	capSrc := make(map[types.NodeID]bool, nodes.Len())
 
+	viaSrcs := make(map[types.NodeID][]matcher.Match)
+
 	for _, node := range nodes.All() {
-		ms := pm.nodeMatchersLocked(node, viaPeerRule)
+		ms := pm.nodeMatchersLocked(node, noViaRules)
 		nodeMatchers[node.ID()] = ms
+
+		if srcs := viaSources(pm.compiledGrants, node); len(srcs) > 0 {
+			viaSrcs[node.ID()] = srcs
+		}
+
 		capSrc[node.ID()] = slices.ContainsFunc(ms, func(m matcher.Match) bool {
 			return m.CapDestsIsTheInternet() &&
 				matcherReachesSource(&m, node.IPs(), routeInfo[node.ID()].subnet)
@@ -987,7 +994,9 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			canJReachI := hasFilterI && nodeJ.CanAccessWithRoutes(matchersI, nodeI, riJ.subnet, riI.subnet, riI.isExit)
 			canIReachJ := hasFilterJ && nodeI.CanAccessWithRoutes(matchersJ, nodeJ, riI.subnet, riJ.subnet, riJ.isExit)
 
-			linked := canIAccessJ || canJAccessI || canJReachI || canIReachJ
+			linked := canIAccessJ || canJAccessI || canJReachI || canIReachJ ||
+				isViaSource(viaSrcs[nodeI.ID()], nodeJ, riJ.subnet) ||
+				isViaSource(viaSrcs[nodeJ.ID()], nodeI, riI.subnet)
 			if linked || sameUser(nodeI, nodeJ) {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
@@ -1014,6 +1023,14 @@ func addCapSourceOnExit(
 	if srcHasCap && isExit {
 		ret[exit] = append(ret[exit], src)
 	}
+}
+
+// isViaSource reports whether node, or a subnet it routes, is a source of one
+// of a router's via grants, see [viaSources].
+func isViaSource(srcs []matcher.Match, node types.NodeView, routes []netipx.IPRange) bool {
+	return slices.ContainsFunc(srcs, func(m matcher.Match) bool {
+		return matcherReachesSource(&m, node.IPs(), routes)
+	})
 }
 
 func matcherReachesSource(m *matcher.Match, ips []netip.Addr, routes []netipx.IPRange) bool {
@@ -1126,7 +1143,7 @@ func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRul
 // MatchersForNode returns the matchers that filter the routes a node sees.
 // These are UNREDUCED matchers - they include all rules where the node could be either source or destination.
 // This is different from [PolicyManager.FilterForNode] which returns REDUCED rules for packet filtering.
-// Peers come from [PolicyManager.BuildPeerMap], which uses [viaPeerRule] where these matchers use the via rule.
+// Peers come from [PolicyManager.BuildPeerMap], which uses [viaSources] where these matchers use the via rule.
 //
 // For global policies: returns the global matchers (same for all nodes)
 // For autogroup:self: returns node-specific matchers from unreduced compiled rules.

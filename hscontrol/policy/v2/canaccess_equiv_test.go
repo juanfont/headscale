@@ -197,6 +197,13 @@ func peerMapPrefixReference(
 				canAccessPrefixReference(b, a, mi) ||
 				canAccessPrefixReference(a, b, mj) ||
 				canAccessPrefixReference(b, a, mj)
+
+			if pm.needsPerNodeFilter {
+				linkedByEitherPolicy = linkedByEitherPolicy ||
+					isViaSourcePrefixReference(viaSources(pm.compiledGrants, a.View()), b) ||
+					isViaSourcePrefixReference(viaSources(pm.compiledGrants, b.View()), a)
+			}
+
 			if linkedByEitherPolicy || sameUser(a.View(), b.View()) {
 				peers[a.ID] = append(peers[a.ID], b.ID)
 				peers[b.ID] = append(peers[b.ID], a.ID)
@@ -205,6 +212,12 @@ func peerMapPrefixReference(
 	}
 
 	return peers
+}
+
+func isViaSourcePrefixReference(srcs []matcher.Match, n *types.Node) bool {
+	return slices.ContainsFunc(srcs, func(m matcher.Match) bool {
+		return m.SrcsContainsIPs(n.IPs()...) || m.SrcsOverlapsPrefixes(n.SubnetRoutes()...)
+	})
 }
 
 func canAccessPrefixReference(a, b *types.Node, matchers []matcher.Match) bool {
