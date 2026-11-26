@@ -83,6 +83,9 @@ func TestStressConnectDisconnect(t *testing.T) {
 		for range 10 {
 			h.Client(1).Disconnect(t)
 			h.Client(1).Reconnect(t)
+			// Only a session that reached Connect ends the grace period; under
+			// load, ten cancelled-early polls outlast it and the node goes offline.
+			h.Client(1).WaitForPeers(t, 1, 10*time.Second)
 		}
 
 		// Give the monitor a moment to catch up, then stop it.
