@@ -25,7 +25,7 @@ func TestAuthCommandValidation(t *testing.T) {
 
 	// Well-formed (correct prefix/length) but unknown auth-id: the handler
 	// reaches the cache lookup and reports no pending session.
-	unknown := types.MustAuthID().String()
+	unknown := types.MustAuthID().Raw()
 
 	tests := []struct {
 		name    string
