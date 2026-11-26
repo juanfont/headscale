@@ -2,6 +2,7 @@ package db
 
 import (
 	"cmp"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -350,13 +351,13 @@ func (hsdb *HSDatabase) ListUsers(filter *types.User) ([]types.User, error) {
 }
 
 // GetUsersByIDs reads the users with ids in one query.
-func (hsdb *HSDatabase) GetUsersByIDs(ids []types.UserID) ([]types.User, error) {
+func (hsdb *HSDatabase) GetUsersByIDs(ctx context.Context, ids []types.UserID) ([]types.User, error) {
 	users := []types.User{}
 	if len(ids) == 0 {
 		return users, nil
 	}
 
-	err := hsdb.DB.Where("id IN ?", ids).Find(&users).Error
+	err := hsdb.DB.WithContext(ctx).Where("id IN ?", ids).Find(&users).Error
 	if err != nil {
 		return nil, err
 	}

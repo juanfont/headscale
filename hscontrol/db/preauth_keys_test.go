@@ -653,12 +653,12 @@ func TestListPreAuthKeysPage(t *testing.T) {
 		_, _, err = db.ListPreAuthKeysPage(ctx, 0, 2, PreAuthKeyFilter{})
 		require.ErrorIs(t, err, context.Canceled, "the list ends with its request")
 
-		k, referenced, err := db.GetPreAuthKeyWithReference(ids[4])
+		k, referenced, err := db.GetPreAuthKeyWithReference(t.Context(), ids[4])
 		require.NoError(t, err)
 		require.True(t, referenced)
 		require.Equal(t, ids[4], k.ID)
 
-		_, _, err = db.GetPreAuthKeyWithReference(99999)
+		_, _, err = db.GetPreAuthKeyWithReference(t.Context(), 99999)
 		require.ErrorIs(t, err, ErrPreAuthKeyNotFound)
 	}
 

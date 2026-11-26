@@ -350,6 +350,13 @@ func (b *logBuffer) Write(p []byte) (int, error) {
 	return b.buf.Write(p)
 }
 
+func (b *logBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
+}
+
 // entries returns the logged lines whose message is msg.
 func (b *logBuffer) entries(t *testing.T, msg string) []map[string]any {
 	t.Helper()
@@ -540,4 +547,29 @@ func TestErrForLog(t *testing.T) {
 
 	long := fmt.Errorf("parsing %q: %w", strings.Repeat("x", 4000), errTestUnexpected)
 	requireClipped(t, long.Error(), errForLog(long).Error())
+}
+
+// TestWebAuthPagesCarryTheID: the web provider's pages hand the auth ID to
+// the person who opened its link, who runs the command they print.
+func TestWebAuthPagesCarryTheID(t *testing.T) {
+	provider := NewAuthProviderWeb("https://headscale.example")
+	id := types.MustAuthID()
+
+	require.Equal(t, "https://headscale.example/register/"+id.Raw(), provider.RegisterURL(id))
+	require.Equal(t, "https://headscale.example/auth/"+id.Raw(), provider.AuthURL(id))
+
+	for path, handler := range map[string]http.HandlerFunc{
+		"headscale auth register --auth-id " + id.Raw() + " --user USERNAME": provider.RegisterHandler,
+		"headscale auth approve --auth-id " + id.Raw():                       provider.AuthHandler,
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("auth_id", id.Raw())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Contains(t, rec.Body.String(), path)
+	}
 }

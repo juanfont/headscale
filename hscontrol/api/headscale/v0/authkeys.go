@@ -107,7 +107,7 @@ func (b *CreateAuthKeyBody) fieldErrors() []FieldError {
 	if b.UserID.Set {
 		_, err := pathID[types.UserID](b.UserID.Value)
 		if err != nil {
-			errs = append(errs, FieldError{Location: "body.userId", Message: notUserID})
+			errs = append(errs, FieldError{Location: userIDField, Message: notUserID})
 		}
 	}
 
@@ -127,10 +127,7 @@ func (b *CreateAuthKeyBody) fieldErrors() []FieldError {
 	if types.ValidateUserText(b.Description.Value) != nil {
 		errs = append(
 			errs,
-			FieldError{
-				Location: "body.description",
-				Message:  "has a control character or a bidirectional formatting character",
-			},
+			FieldError{Location: "body.description", Message: hasControlCharacter},
 		)
 	}
 
@@ -221,7 +218,7 @@ func registerAuthKeys(api huma.API, b Backend) {
 
 		rows, next := cutPage(pg, rows, func(k types.PreAuthKey) uint64 { return k.ID })
 
-		keys, err := b.authKeys(rows, refs)
+		keys, err := b.authKeys(ctx, rows, refs)
 		if err != nil {
 			return nil, err
 		}
@@ -238,7 +235,7 @@ func registerAuthKeys(api huma.API, b Backend) {
 		Summary:     "Read one auth key",
 		Description: "Without the secret. A revoked key is read until the server removes it.",
 		Tags:        tags,
-	}, needs(scope.AuthKeysRead), []answer{authKeyNotFound}, func(_ context.Context, in *authKeyIDInput) (*struct{ Body AuthKey }, error) {
+	}, needs(scope.AuthKeysRead), []answer{authKeyNotFound}, func(ctx context.Context, in *authKeyIDInput) (*struct{ Body AuthKey }, error) {
 		id, err := pathID[uint64](in.ID)
 		if err != nil {
 			return nil, err
@@ -246,7 +243,7 @@ func registerAuthKeys(api huma.API, b Backend) {
 
 		defer b.State.UsersMoment()()
 
-		k, referenced, err := b.State.GetAuthKey(id)
+		k, referenced, err := b.State.GetAuthKey(ctx, id)
 		if err != nil {
 			return nil, about(err, ProblemObject{Kind: "authKey", ID: in.ID})
 		}
@@ -256,7 +253,7 @@ func registerAuthKeys(api huma.API, b Backend) {
 			refs.Add(id)
 		}
 
-		keys, err := b.authKeys([]types.PreAuthKey{*k}, refs)
+		keys, err := b.authKeys(ctx, []types.PreAuthKey{*k}, refs)
 		if err != nil {
 			return nil, err
 		}
@@ -356,9 +353,7 @@ func (b Backend) createAuthKey(
 	switch {
 	case errors.Is(err, db.ErrUserNotFound):
 		p := newProblem(CodeInvalidField, "A field is not valid.")
-		p.Errors = []FieldError{
-			{Location: "body.userId", Message: "no user has this ID"},
-		}
+		p.Errors = []FieldError{{Location: userIDField, Message: "no user has this ID"}}
 
 		return nil, p
 	case err != nil:
@@ -383,6 +378,7 @@ func (b Backend) createAuthKey(
 // authKeys is ks as the API shows them; refs are the IDs a node refers to.
 // The creators a page names are read in one query.
 func (b Backend) authKeys(
+	ctx context.Context,
 	ks []types.PreAuthKey,
 	refs tsset.Set[uint64],
 ) ([]AuthKey, error) {
@@ -396,7 +392,7 @@ func (b Backend) authKeys(
 
 	slices.Sort(ids)
 
-	users, err := b.State.GetUsersByIDs(slices.Compact(ids))
+	users, err := b.State.GetUsersByIDs(ctx, slices.Compact(ids))
 	if err != nil {
 		return nil, err
 	}

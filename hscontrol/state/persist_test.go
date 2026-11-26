@@ -4481,6 +4481,42 @@ func TestLoginSurvivesAPersistBeforeItsPublish(t *testing.T) {
 	})
 }
 
+// TestUsersByIDsTakesItsContext: GetUsersByIDs, whose request ended, does
+// not wait for the database connection, as TestUserReadsTakeTheirContext.
+func TestUsersByIDsTakesItsContext(t *testing.T) {
+	s, err := NewState(persistTestConfig(t.TempDir() + "/headscale.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("alice")
+
+	held := s.db.DB.Begin()
+	require.NoError(t, held.Error)
+
+	defer held.Rollback()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	for name, read := range map[string]func() error{
+		"by IDs": func() error {
+			_, err := s.GetUsersByIDs(ctx, []types.UserID{types.UserID(user.ID)})
+			return err
+		},
+	} {
+		done := make(chan error, 1)
+
+		go func() { done <- read() }()
+
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, context.Canceled, name)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s waited for the connection", name)
+		}
+	}
+}
+
 // TestOrdinarySaveKeepsDeletedCreatorCleared: a save that read a tagged node
 // before its creator was deleted does not write the deleted user back. The
 // save is held after its read, as a slow one would be.

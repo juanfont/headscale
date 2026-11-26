@@ -232,7 +232,8 @@ func mapError(msg string, err error) error {
 		errors.Is(err, util.ErrUsernameInvalidChar),
 		errors.Is(err, db.ErrPreAuthKeyNotTaggedOrOwned),
 		errors.Is(err, db.ErrSingleUseAuthKeyHasBeenUsed),
-		errors.Is(err, state.ErrInvalidPolicy):
+		errors.Is(err, state.ErrInvalidPolicy),
+		errors.Is(err, state.ErrAuthRequestKind):
 		return huma.Error400BadRequest(msg, err)
 
 	// A unique index refused the write, e.g. a racing create or a rename to a

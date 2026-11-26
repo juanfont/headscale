@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	apiv0 "github.com/juanfont/headscale/hscontrol/api/headscale/v0"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
@@ -278,9 +281,9 @@ func newOIDCPendingProvider(t *testing.T, capacity int) *AuthProviderOIDC {
 func oidcPendingAuthRequest(t *testing.T, authID types.AuthID) *http.Request {
 	t.Helper()
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/register/"+authID.String(), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/register/"+authID.Raw(), nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("auth_id", authID.String())
+	rctx.URLParams.Add("auth_id", authID.Raw())
 
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
@@ -1155,7 +1158,7 @@ func (b *oidcBrowser) pendingNode(t *testing.T) (types.AuthID, string) {
 		Hostname:   "reload-victim",
 	})))
 
-	return authID, b.publicURL + "/register/" + authID.String()
+	return authID, b.publicURL + "/register/" + authID.Raw()
 }
 
 var (
@@ -1273,7 +1276,7 @@ func TestRegisterConfirmGETIsNotADeadEnd(t *testing.T) {
 	status, _, _ := b.get(t, registerURL)
 	require.Equal(t, http.StatusOK, status)
 
-	confirmStatus, _, body := b.get(t, b.srv.URL+"/register/confirm/"+authID.String())
+	confirmStatus, _, body := b.get(t, b.srv.URL+"/register/confirm/"+authID.Raw())
 
 	require.NotEqual(t, http.StatusMethodNotAllowed, confirmStatus,
 		"GET on the confirmation URL must not be a dead end for a user who "+
@@ -1311,7 +1314,7 @@ func TestRegisterConfirmNeedsTheCallbackCookie(t *testing.T) {
 	require.NoError(t, err)
 
 	attacker := &http.Client{Jar: jar}
-	confirmURL := b.srv.URL + "/register/confirm/" + authID.String()
+	confirmURL := b.srv.URL + "/register/confirm/" + authID.Raw()
 
 	//nolint:noctx,bodyclose // test client; closed below
 	viewed, err := attacker.Get(confirmURL)
@@ -1359,7 +1362,7 @@ func TestSetRegisterConfirmCookieSameSite(t *testing.T) {
 	assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite,
 		"the confirm cookie must survive the callback redirect")
 	assert.True(t, cookies[0].Secure, "https server_url must set Secure")
-	assert.Equal(t, "/register/confirm/"+authID.String(), cookies[0].Path)
+	assert.Equal(t, "/register/confirm/"+authID.Raw(), cookies[0].Path)
 }
 
 // TestRegisterConfirmURLFollowsServerURLPrefix covers the deployment
@@ -1374,7 +1377,7 @@ func TestRegisterConfirmURLFollowsServerURLPrefix(t *testing.T) {
 	status, landed, body := b.get(t, registerURL)
 	require.Equal(t, http.StatusOK, status,
 		"the prefixed callback must receive its state and nonce cookies")
-	assert.Equal(t, "/hs/register/confirm/"+authID.String(), landed.Path)
+	assert.Equal(t, "/hs/register/confirm/"+authID.Raw(), landed.Path)
 	assert.Contains(t, body, "Confirm node registration")
 }
 
@@ -1647,7 +1650,7 @@ func TestSSHCheckNeedsConfirmation(t *testing.T) {
 				Subject: src.User.Name, PreferredUsername: src.User.Name,
 			})
 
-			status, landed, body := b.get(t, b.publicURL+"/auth/"+authID.String())
+			status, landed, body := b.get(t, b.publicURL+"/auth/"+authID.Raw())
 			require.Equal(t, http.StatusOK, status)
 
 			select {
@@ -1656,7 +1659,7 @@ func TestSSHCheckNeedsConfirmation(t *testing.T) {
 			default:
 			}
 
-			require.Equal(t, "/register/confirm/"+authID.String(), landed.Path)
+			require.Equal(t, "/register/confirm/"+authID.Raw(), landed.Path)
 			require.Contains(t, body, "Confirm SSH session")
 			require.Contains(t, body, src.GivenName)
 			require.Contains(t, body, dst.GivenName)
@@ -1736,7 +1739,7 @@ func TestSSHCheckRejectsOtherUser(t *testing.T) {
 	require.True(t, ok)
 	b.idp.QueueUser(&mockoidc.MockUser{Subject: "other-ssh-user", PreferredUsername: "other"})
 
-	status, _, _ := b.get(t, b.publicURL+"/auth/"+authID.String())
+	status, _, _ := b.get(t, b.publicURL+"/auth/"+authID.Raw())
 	require.Equal(t, http.StatusForbidden, status)
 	require.Nil(t, auth.PendingConfirmation())
 
@@ -1759,7 +1762,7 @@ func TestOIDCConfirmationRejectsWrongRequestKind(t *testing.T) {
 				authID, _ = b.pendingSSHCheck(t)
 			}
 
-			status, _, _ := b.get(t, b.publicURL+"/"+path+"/"+authID.String())
+			status, _, _ := b.get(t, b.publicURL+"/"+path+"/"+authID.Raw())
 			require.Equal(t, http.StatusBadRequest, status)
 
 			auth, ok := b.app.state.GetAuthCacheEntry(authID)
@@ -1820,7 +1823,7 @@ func TestRegisterConfirmShowsExistingNode(t *testing.T) {
 			Subject: "existing-device", PreferredUsername: "device-owner",
 		})
 
-		status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+		status, landed, body := b.get(t, b.publicURL+"/register/"+authID.Raw())
 		require.Equal(t, http.StatusOK, status)
 
 		row := existingRow.FindStringSubmatch(body)
@@ -1866,7 +1869,7 @@ func TestRegisterConfirmShowsRequestedTags(t *testing.T) {
 	})))
 	b.idp.QueueUser(&mockoidc.MockUser{Subject: ownerName, PreferredUsername: ownerName})
 
-	status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+	status, landed, body := b.get(t, b.publicURL+"/register/"+authID.Raw())
 	require.Equal(t, http.StatusOK, status)
 
 	registered := regexp.MustCompile(`>Registered to</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
@@ -1908,7 +1911,7 @@ func TestRegisterConfirmShowsRequestedTags(t *testing.T) {
 		Hostname:   "different-client-name",
 	})))
 	b.idp.QueueUser(&mockoidc.MockUser{Subject: ownerName, PreferredUsername: ownerName})
-	status, _, body = b.get(t, b.publicURL+"/register/"+reloginID.String())
+	status, _, body = b.get(t, b.publicURL+"/register/"+reloginID.Raw())
 	require.Equal(t, http.StatusOK, status)
 
 	existing := regexp.MustCompile(`>Existing node</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
@@ -1935,7 +1938,7 @@ func TestRegisterConfirmEscapesAndRejectsUnownedTags(t *testing.T) {
 				Hostinfo:   &tailcfg.Hostinfo{RequestTags: []string{tt.tag}},
 			})))
 
-			status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+			status, landed, body := b.get(t, b.publicURL+"/register/"+authID.Raw())
 			require.Equal(t, http.StatusOK, status)
 
 			row := regexp.MustCompile(`>Registered to</td><td[^>]*>(.*?)</td>`).FindStringSubmatch(body)
@@ -1995,4 +1998,230 @@ func TestOIDCRegistrationRejectsOversizedMergedHostinfo(t *testing.T) {
 	assert.Equal(t, before.NodeKey(), after.NodeKey())
 	assert.Equal(t, before.Hostname(), after.Hostname())
 	assert.True(t, before.Hostinfo().AsStruct().Equal(after.Hostinfo().AsStruct()))
+}
+
+// confirmPage logs username in through the OIDC flow of link, and returns
+// the POST of the confirmation page it lands on, which answers the request.
+func (b *oidcBrowser) confirmPage(t *testing.T, link, username string) func() int {
+	t.Helper()
+
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: username, PreferredUsername: username})
+
+	status, landed, body := b.get(t, link)
+	require.Equal(t, http.StatusOK, status, body)
+
+	csrf := csrfInputRe.FindStringSubmatch(body)
+	require.Len(t, csrf, 2)
+
+	form := url.Values{registerConfirmCSRFCookie: {csrf[1]}}
+
+	return func() int {
+		//nolint:noctx // test client
+		resp, err := b.client.PostForm(landed.String(), form)
+		if err != nil {
+			return 0
+		}
+
+		resp.Body.Close()
+
+		return resp.StatusCode
+	}
+}
+
+// answerPaths are the ways to answer an auth request other than v0's own
+// register, by name, each returning the HTTP status it answered; the
+// timeout answers 0.
+func answerPaths(t *testing.T, b *oidcBrowser, id types.AuthID, confirm func() int) map[string]func() int {
+	t.Helper()
+
+	api := b.app.SocketHandler()
+	v1 := func(verb string) func() int {
+		return func() int {
+			return callHandler(api, http.MethodPost, "/api/v1/auth/"+verb, fmt.Appendf(nil, `{"authId":%q}`, id.Raw())).status
+		}
+	}
+	v0 := func(verb string) func() int {
+		return func() int {
+			return callHandler(api, http.MethodPost, apiv0.Prefix+"/auth-requests/"+id.Raw()+"/"+verb, nil).status
+		}
+	}
+
+	return map[string]func() int{
+		"v0 approve":   v0("approve"),
+		"v0 reject":    v0("reject"),
+		"v1 approve":   v1("approve"),
+		"v1 reject":    v1("reject"),
+		"oidc confirm": confirm,
+		// The cache's eviction runs what its timeout runs.
+		"timeout": func() int { b.app.state.DeleteAuthCacheEntry(id); return 0 },
+	}
+}
+
+// startInside runs answer while an answer to the same request holds it,
+// and fails t if answer ends before the holder: every path takes the
+// claim. The timeout never waits, so it runs here and must leave no verdict.
+func startInside(t *testing.T, name string, answer func() int, req *types.AuthRequest) <-chan int {
+	t.Helper()
+
+	done := make(chan int, 1)
+
+	if name == "timeout" {
+		done <- answer()
+
+		if req.IsFinished() {
+			t.Error("the timeout answered a request an answer held")
+		}
+
+		return done
+	}
+
+	go func() { done <- answer() }()
+
+	for range 1000 {
+		runtime.Gosched()
+	}
+
+	if len(done) > 0 {
+		t.Errorf("%s answered while another answer held the request", name)
+	}
+
+	return done
+}
+
+// TestAuthRequestAnsweredOnceByEveryPath: one answer, whoever gives it, and
+// the machine is told that one. No sleep: the first answer is held at a
+// point where it decided, and every other way to answer is started inside
+// it; each must wait, then answer that the request is gone.
+func TestAuthRequestAnsweredOnceByEveryPath(t *testing.T) {
+	gone := map[string]int{
+		"v0 approve": http.StatusNotFound, "v0 reject": http.StatusNotFound,
+		"v1 approve": http.StatusNotFound, "v1 reject": http.StatusNotFound,
+		"oidc confirm": http.StatusGone, "timeout": 0,
+	}
+
+	// The reviewer's first probe: a node for a machine told "rejected".
+	t.Run("a v0 register held after its row committed", func(t *testing.T) {
+		for _, other := range []string{"v1 reject", "v1 approve", "oidc confirm", "timeout"} {
+			t.Run(other, func(t *testing.T) {
+				b := newOIDCBrowser(t)
+				alice := b.app.state.CreateUserForTest("alice")
+				id, link := b.pendingNode(t)
+				req, ok := b.app.state.GetAuthCacheEntry(id)
+				require.True(t, ok)
+
+				var confirm func() int
+				if other == "oidc confirm" {
+					confirm = b.confirmPage(t, link, "registrant")
+				}
+
+				var done <-chan int
+
+				b.app.state.SetNodeInsertedHookForTesting(func() {
+					b.app.state.SetNodeInsertedHookForTesting(nil)
+					done = startInside(t, other, answerPaths(t, b, id, confirm)[other], req)
+				})
+
+				res := callHandler(b.app.SocketHandler(), http.MethodPost, apiv0.Prefix+"/auth-requests/"+id.Raw()+"/register",
+					fmt.Appendf(nil, `{"userId":"%d"}`, alice.ID))
+				require.Equal(t, http.StatusCreated, res.status, string(res.body))
+				require.Equal(t, gone[other], <-done, "the other answer is told the request is gone")
+
+				verdict := <-req.WaitForAuth()
+				require.True(t, verdict.Node.Valid(), "the machine is told its node: %v", verdict.Err)
+			})
+		}
+	})
+
+	// The reviewer's second probe: a session let in while a reject
+	// answered success. The test holds the claim as a v0 reject does
+	// between its check and its verdict.
+	t.Run("an SSH check held by a reject", func(t *testing.T) {
+		for _, other := range []string{"v0 approve", "v1 approve", "v1 reject", "oidc confirm", "timeout"} {
+			t.Run(other, func(t *testing.T) {
+				b := newOIDCBrowser(t)
+				id, nodes := b.pendingSSHCheck(t)
+				req, ok := b.app.state.GetAuthCacheEntry(id)
+				require.True(t, ok)
+
+				var confirm func() int
+				if other == "oidc confirm" {
+					confirm = b.confirmPage(t, b.publicURL+"/auth/"+id.Raw(), nodes[0].User.Name)
+				}
+
+				release, ok := req.Claim()
+				require.True(t, ok)
+
+				done := startInside(t, other, answerPaths(t, b, id, confirm)[other], req)
+
+				require.True(t, req.FinishAuth(types.AuthVerdict{Err: state.ErrAuthRequestRejected}))
+				release()
+
+				require.Equal(t, gone[other], <-done, "the other answer is told the request is gone")
+				require.False(t, (<-req.WaitForAuth()).Accept(), "the machine is told no")
+			})
+		}
+	})
+}
+
+// TestAuthRequestAnswersRace: every way to answer one SSH check at once,
+// for many rounds. Exactly one answers; the machine is told that one; each
+// other is told the request is gone.
+func TestAuthRequestAnswersRace(t *testing.T) {
+	b := newOIDCBrowser(t)
+
+	for round := range 20 {
+		id, nodes := b.pendingSSHCheck(t)
+		req, ok := b.app.state.GetAuthCacheEntry(id)
+		require.True(t, ok)
+
+		paths := answerPaths(t, b, id, b.confirmPage(t, b.publicURL+"/auth/"+id.Raw(), nodes[0].User.Name))
+
+		var (
+			wg     sync.WaitGroup
+			mu     sync.Mutex
+			status = map[string]int{}
+		)
+
+		start := make(chan struct{})
+
+		for name, answer := range paths {
+			wg.Go(func() {
+				<-start
+
+				got := answer()
+
+				mu.Lock()
+				status[name] = got
+				mu.Unlock()
+			})
+		}
+
+		close(start)
+		wg.Wait()
+
+		var winners []string
+
+		for name, got := range status {
+			switch got {
+			case http.StatusOK, http.StatusNoContent:
+				winners = append(winners, name)
+			case http.StatusNotFound, http.StatusGone, 0:
+			default:
+				t.Errorf("round %d: %s answered %d", round, name, got)
+			}
+		}
+
+		require.LessOrEqual(t, len(winners), 1, "round %d: one answer: %v", round, status)
+
+		verdict := <-req.WaitForAuth()
+
+		switch {
+		case len(winners) == 0:
+			require.ErrorIs(t, verdict.Err, state.ErrRegistrationExpired, "round %d: the timeout answered", round)
+		case strings.Contains(winners[0], "reject"):
+			require.False(t, verdict.Accept(), "round %d: %s won", round, winners[0])
+		default:
+			require.True(t, verdict.Accept(), "round %d: %s won", round, winners[0])
+		}
+	}
 }

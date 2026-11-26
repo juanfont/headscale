@@ -473,10 +473,7 @@ func checkUserFields(raw []byte, patch bool) []error {
 		case types.ValidateUserText(*fields[name]) != nil:
 			errs = append(
 				errs,
-				FieldError{
-					Location: "body." + name,
-					Message:  "has a control character or a bidirectional formatting character",
-				},
+				FieldError{Location: "body." + name, Message: hasControlCharacter},
 			)
 		case c.check(*fields[name]) != nil:
 			errs = append(
