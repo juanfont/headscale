@@ -435,7 +435,7 @@ func TestConfigSourceDottedOverlap(t *testing.T) {
 			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(tt.file), 0o600))
 
 			for range 50 {
-				_, err := newConfigSource(dir, false, nil)
+				_, err := newConfigSource(dir, false, read{}, nil)
 				require.ErrorContains(t, err, "is set both as")
 				require.ErrorContains(t, err, tt.a)
 				require.ErrorContains(t, err, tt.b)
@@ -451,7 +451,7 @@ func TestConfigSourceDottedKeyAlone(t *testing.T) {
 		[]byte("log.level: debug\ndns:\n  magic_dns: false\ndns.nameservers.global: [1.1.1.1]\n"), 0o600))
 
 	for range 50 {
-		s, err := newConfigSource(dir, false, nil)
+		s, err := newConfigSource(dir, false, read{}, nil)
 		require.NoError(t, err)
 
 		cfg, err := s.decode()
@@ -515,7 +515,7 @@ func TestConfigSourceDottedNoOverlap(t *testing.T) {
 			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(tt.file), 0o600))
 
 			for range 50 {
-				s, err := newConfigSource(dir, false, nil)
+				s, err := newConfigSource(dir, false, read{}, nil)
 				require.NoError(t, err)
 
 				cfg, err := s.decode()
@@ -536,7 +536,7 @@ func TestConfigSourceShapeErrorsHideValues(t *testing.T) {
 		"list under database.sqlite": "database:\n  sqlite: [marker-secret]\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := newConfigSource(writeConfig(t, file), true, nil)
+			_, err := newConfigSource(writeConfig(t, file), true, read{}, nil)
 			require.ErrorContains(t, err, "must be a mapping")
 			assert.NotContains(t, err.Error(), "marker-secret")
 		})
@@ -548,7 +548,7 @@ func TestConfigSourceStrictBeforeExpansion(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("log:\n  format:\n    typo: json\nlog.format: json\n"), 0o600))
 
 	for range 50 {
-		_, err := newConfigSource(dir, false, nil)
+		_, err := newConfigSource(dir, false, read{}, nil)
 		require.ErrorContains(t, err, "unknown configuration key log.format.typo")
 	}
 }
@@ -687,7 +687,7 @@ func decodeInput(t *testing.T, name, content string, env ...string) (*types.Conf
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
 	}
 
-	s, err := newConfigSource(dir, false, env)
+	s, err := newConfigSource(dir, false, read{}, env)
 	require.NoError(t, err)
 
 	return s.decode()
@@ -1410,7 +1410,7 @@ func TestPositionBounded(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := newConfigSource(path, true, nil)
+		_, err := newConfigSource(path, true, read{}, nil)
 		done <- err
 	}()
 

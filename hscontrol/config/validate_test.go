@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -339,4 +341,61 @@ func TestValidateCORS(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidateRefusesARedactedCopy: a configuration printed with its
+// secrets removed, then loaded again, is refused for each secret, so serve
+// exits 78 on it and is not restarted for ever.
+func TestValidateRefusesARedactedCopy(t *testing.T) {
+	const file = `server_url: https://headscale.example.com
+oidc:
+  issuer: https://sso.example.com
+  client_id: headscale
+  client_secret: marker-client-secret
+database:
+  type: postgres
+  postgres:
+    host: db.example.com
+    name: headscale
+    user: headscale
+    pass: marker-pass
+dns:
+  base_domain: tailnet.example.com
+  challenge:
+    provider:
+      name: rfc2136
+      server: ns.example.com:53
+      key_name: marker-key-name
+      key_alg: hmac-sha256
+      key: marker-key
+cli:
+  api_key: marker-api-key
+`
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(file), 0o600))
+
+	l, err := Load(path, true, nil)
+	require.NoError(t, err)
+	require.NotContains(t, fmt.Sprint(Validate(l.Config)), redactedValue, "the original")
+
+	out, err := GenerateExample(l.Config, ExampleOptions{Redact: true, OmitClientOnly: true})
+	require.NoError(t, err)
+	require.NotContains(t, string(out), "marker")
+	require.NoError(t, os.WriteFile(path, out, 0o600))
+
+	l, err = Load(path, true, nil)
+	require.NoError(t, err)
+
+	err = Validate(l.Config)
+	require.ErrorIs(t, err, types.ErrConfig)
+
+	for _, key := range []string{
+		"oidc.client_secret", "database.postgres.pass",
+		"dns.challenge.provider.key", "dns.challenge.provider.key_alg", "dns.challenge.provider.key_name", "dns.challenge.provider.server",
+	} {
+		require.ErrorContains(t, err, key+" is <redacted>: this is a redacted copy of a configuration\n  hint: set "+key+" to its real value, or to file:<path>")
+	}
+
+	require.NotContains(t, err.Error(), "dns.challenge.provider.name")
 }

@@ -40,6 +40,9 @@ in
 var (
 	errNoNixType = errors.New("no NixOS type")
 
+	// ErrNotRelease is a binary that cannot stamp a release.
+	ErrNotRelease = errors.New("--release needs a binary built from a clean, known commit")
+
 	recordsType = reflect.TypeFor[[]tailcfg.DNSRecord]()
 	secretType  = reflect.TypeFor[types.Secret]()
 	nixIdent    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_'-]*$`)
@@ -50,6 +53,16 @@ var (
 	// escaped itself.
 	nixIndented = strings.NewReplacer("'${", `''\'''${`, "''", "'''", "${", "''${")
 )
+
+// ReleaseStamp is v, if it can stamp a release: built from a known commit
+// without local changes.
+func ReleaseStamp(v *types.VersionInfo) (*types.VersionInfo, error) {
+	if v.Dirty || v.Commit == "unknown" {
+		return nil, fmt.Errorf("%w: commit %s, dirty %t", ErrNotRelease, v.Commit, v.Dirty)
+	}
+
+	return v, nil
+}
 
 // GenerateNixOptions is the NixOS options of services.headscale.settings:
 // a function of lib only, one option per key, nested as the file nests
