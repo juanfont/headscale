@@ -9,6 +9,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
@@ -1097,9 +1098,11 @@ func sameUserSources(
 	return perSrc, union
 }
 
-// viaDstsForNode returns the destinations node serves for a via grant: none
-// unless it matches a via tag and has approved routes that match them, or is an
-// exit node under autogroup:internet.
+// viaDstsForNode returns the destinations of a via grant that node's packet
+// filter holds: none unless it matches a via tag and an approved route of
+// its overlaps them, or it is an exit node under autogroup:internet. An exit
+// route counts as it does when a rule is reduced to a node; whether the
+// node then serves the sources is [viaServes].
 func viaDstsForNode(
 	cg *compiledGrant,
 	node types.NodeView,
@@ -1108,27 +1111,13 @@ func viaDstsForNode(
 		return nil, false
 	}
 
-	// Check if node matches any via tag.
-	matchesVia := false
-
-	for _, viaTag := range cg.via.viaTags {
-		if node.HasTag(string(viaTag)) {
-			matchesVia = true
-
-			break
-		}
-	}
-
-	if !matchesVia {
+	if !slices.ContainsFunc(cg.via.viaTags, func(tag Tag) bool {
+		return node.HasTag(string(tag))
+	}) {
 		return nil, false
 	}
 
-	// [types.NodeView.SubnetRoutes] excludes exit routes, so the overlap
-	// gate below sees only subnet advertisements. autogroup:internet on
-	// a via-tagged exit advertiser is handled separately because its
-	// eligibility is per-node ([types.NodeView.IsExitNode]) rather than
-	// per-prefix overlap.
-	nodeSubnetRoutes := node.SubnetRoutes()
+	routes := node.AllApprovedRoutes()
 
 	var viaDstPrefixes []netip.Prefix
 
@@ -1140,7 +1129,7 @@ func viaDstsForNode(
 		// on a router covering more than the operator asked for. The
 		// rule emits the literal dst either way because that is what
 		// the policy authorised.
-		if slices.ContainsFunc(nodeSubnetRoutes, dstPrefix.Overlaps) {
+		if slices.ContainsFunc(routes, dstPrefix.Overlaps) {
 			viaDstPrefixes = append(viaDstPrefixes, dstPrefix)
 		}
 	}
@@ -1152,6 +1141,23 @@ func viaDstsForNode(
 	// [policyutil.ReduceFilterRules] strips the rule from the wire format
 	// on non-exit advertisers, preserving SaaS PacketFilter encoding.
 	return viaDstPrefixes, cg.via.hasAutoGroupInternet && node.IsExitNode()
+}
+
+// viaServes reports whether node carries the sources' traffic for a via
+// grant, which makes it their peer: through a subnet route for any
+// destination, through an exit route only for one on the internet, as for a
+// rule without via.
+func viaServes(cg *compiledGrant, node types.NodeView) bool {
+	prefixes, internet := viaDstsForNode(cg, node)
+	if internet {
+		return true
+	}
+
+	subnets := node.SubnetRoutes()
+
+	return slices.ContainsFunc(prefixes, func(dst netip.Prefix) bool {
+		return slices.ContainsFunc(subnets, dst.Overlaps) || util.TheInternet().OverlapsPrefix(dst)
+	})
 }
 
 // compileViaForNode produces via-grant filter rules for a specific
@@ -1216,7 +1222,7 @@ func viaPeerRule(
 	cg *compiledGrant,
 	node types.NodeView,
 ) []tailcfg.FilterRule {
-	if prefixes, internet := viaDstsForNode(cg, node); len(prefixes) == 0 && !internet {
+	if !viaServes(cg, node) {
 		return nil
 	}
 

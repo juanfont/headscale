@@ -1759,12 +1759,12 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			}
 		}
 
-		// Per-viewer steering for autogroup:internet: a peer advertising
+		// Per-viewer steering for internet destinations: a peer advertising
 		// approved exit routes is the via-tagged node's analogue of
 		// "advertises the destination". The downstream Include/Exclude
 		// split below restricts the viewer to exit nodes carrying the
-		// via tag.
-		if autogroupInternet[i] {
+		// via tag. A public prefix is on the internet as autogroup:internet is.
+		if autogroupInternet[i] || prefixesReachInternet(resolvedDstPrefixes[i]) {
 			matchedPrefixes = append(matchedPrefixes, peer.OfferedExitRoutes()...)
 		}
 
@@ -1969,15 +1969,11 @@ func grantReachesInternet(grant Grant, dsts []netip.Prefix) bool {
 		return true
 	}
 
-	var b netipx.IPSetBuilder
-	for _, p := range dsts {
-		b.AddPrefix(p)
-	}
+	return prefixesReachInternet(dsts)
+}
 
-	// Resolved prefixes are valid, so the builder cannot fail.
-	set, _ := b.IPSet()
-
-	return util.HasInternetDestination(set)
+func prefixesReachInternet(dsts []netip.Prefix) bool {
+	return slices.ContainsFunc(dsts, util.TheInternet().OverlapsPrefix)
 }
 
 func (pm *PolicyManager) Version() int {
