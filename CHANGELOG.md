@@ -261,6 +261,7 @@ maps each one to its replacement.
 - A policy without `acls` or `grants` allows only tailnet addresses and approved routes. Hosts outside the tailnet cannot connect to nodes. Use `autogroup:danger-all` to allow all addresses. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - A user's devices are always peers of each other. The packet filter still controls access. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - SSH `dst` rejects `autogroup:member`, as Tailscale does. Use `autogroup:self`, tags, or the source's own user. A policy file that still uses it stops headscale at startup. [#3343](https://github.com/juanfont/headscale/pull/3343)
+- `tagOwners` rejects `user:*@domain`, as Tailscale does. List the users, or use a group. [#3757](https://github.com/juanfont/headscale/pull/3757)
 
 #### Nodes and routes
 

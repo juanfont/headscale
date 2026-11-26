@@ -177,6 +177,7 @@ var (
 	ErrInvalidAlias                = errors.New("invalid alias format")
 	ErrInvalidAutoApprover         = errors.New("invalid auto approver format")
 	ErrInvalidOwner                = errors.New("invalid owner format")
+	ErrTagOwnerUserWildcard        = errors.New("only tag:name, group:name, role autogroups, or user@domain are allowed")
 	ErrGroupNotDefined             = errors.New("group not found")
 	ErrInvalidGroupMember          = errors.New("invalid group member type")
 	ErrGroupValueNotArray          = errors.New("group value must be an array of users")
@@ -3021,6 +3022,11 @@ func (p *Policy) validate() error {
 				if _, ok := p.TagOwners[*tagOwner]; !ok {
 					errs = append(errs, fmt.Errorf("tagOwners[%q]: %q: %w",
 						string(tag), string(*tagOwner), ErrUndefinedTagReference))
+				}
+			case *Username:
+				if strings.HasPrefix(string(*tagOwner), "user:*@") {
+					errs = append(errs, fmt.Errorf("tagOwners[%q]: %q: %w",
+						string(tag), string(*tagOwner), ErrTagOwnerUserWildcard))
 				}
 			}
 		}
