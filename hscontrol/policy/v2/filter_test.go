@@ -367,6 +367,8 @@ func TestParsing(t *testing.T) {
 			}
 
 			if err != nil {
+				requireSentences(t, []byte(tt.acl), err)
+
 				return
 			}
 

@@ -148,6 +148,8 @@ type PolicyTestResult struct {
 	// Errors are non-assertion problems: src failed to resolve, dst was
 	// malformed, etc. These cause the test to fail.
 	Errors []string `json:"errors,omitempty"`
+	// sourceErr is why Src did not resolve, for [Explain].
+	sourceErr error
 
 	// AcceptOK / AcceptFail / DenyOK / DenyFail partition the per-dst
 	// outcomes for diagnostics.
@@ -268,10 +270,14 @@ type TestFailure struct {
 }
 
 // TestsFailedError is a failed tests or sshTests run. It reads as the whole
-// breakdown; Failures holds it per entry.
+// breakdown; Failures holds it per entry, and [Explain] reads it as data.
 type TestsFailedError struct {
 	err      error
 	Failures []TestFailure
+
+	failed []FailedTest
+	// unevaluated are the entries that could not be run, by entry.
+	unevaluated []testError
 }
 
 func (e *TestsFailedError) Error() string { return e.err.Error() }
@@ -297,6 +303,7 @@ func (r PolicyTestResults) failures() []TestFailure {
 type testReport interface {
 	Errors() string
 	failures() []TestFailure
+	data() ([]FailedTest, []testError)
 }
 
 // wrapTestResult returns nil when every test passed, otherwise wraps the
@@ -307,10 +314,43 @@ func wrapTestResult(sentinel error, allPassed bool, r testReport) error {
 		return nil
 	}
 
+	failed, unevaluated := r.data()
+
 	return &TestsFailedError{
-		err:      fmt.Errorf("%w:\n%s", sentinel, r.Errors()),
-		Failures: r.failures(),
+		err:         fmt.Errorf("%w:\n%s", sentinel, r.Errors()),
+		Failures:    r.failures(),
+		failed:      failed,
+		unevaluated: unevaluated,
 	}
+}
+
+// data is every assertion that did not hold, and every entry that could not
+// be run, by its index in tests.
+func (r PolicyTestResults) data() ([]FailedTest, []testError) {
+	var (
+		failed      []FailedTest
+		unevaluated []testError
+	)
+
+	for i, res := range r.Results {
+		for _, e := range res.Errors {
+			if res.sourceErr != nil {
+				e = sourceSentence(res.Src, res.sourceErr)
+			}
+
+			unevaluated = append(unevaluated, testError{block: "tests", index: i, message: e})
+		}
+
+		for _, dst := range res.AcceptFail {
+			failed = append(failed, FailedTest{Kind: "acl", Index: i, Src: res.Src, Dst: dst, Want: testAccept, Got: testDeny})
+		}
+
+		for _, dst := range res.DenyFail {
+			failed = append(failed, FailedTest{Kind: "acl", Index: i, Src: res.Src, Dst: dst, Want: testDeny, Got: testAccept})
+		}
+	}
+
+	return failed, unevaluated
 }
 
 // RunTests evaluates the policy's own `tests` block against the live compiled
@@ -394,6 +434,7 @@ func runPolicyTest(
 	if err != nil {
 		res.Passed = false
 		res.Errors = append(res.Errors, fmt.Sprintf("failed to resolve source %q: %v", test.Src, err))
+		res.sourceErr = err
 
 		return res
 	}
@@ -807,26 +848,9 @@ func CheckPolicy(b []byte) error {
 // against users and nodes. It runs the [PolicyManager.SetPolicy] write
 // boundary, `tests` and `sshTests` included, on a throwaway manager.
 func ValidatePolicy(b []byte, users types.Users, nodes views.Slice[types.NodeView]) error {
-	pm, err := NewPolicyManager(nil, users, nodes)
-	if err != nil {
-		return fmt.Errorf("creating policy manager: %w", err)
-	}
+	_, err := PreparePolicy(b, users, nodes)
 
-	_, err = pm.SetPolicy(b)
-	if err != nil {
-		return err
-	}
-
-	// SSH rules compile per node, so without nodes this cannot catch every
-	// case. The base URL only fills check-action URLs, which nothing reads.
-	if nodes.Len() > 0 {
-		_, err = pm.SSHPolicy("", nodes.At(0))
-		if err != nil {
-			return fmt.Errorf("verifying SSH rules: %w", err)
-		}
-	}
-
-	return nil
+	return err
 }
 
 // standIns returns the users and nodes [CheckPolicy] evaluates pol
@@ -1026,4 +1050,24 @@ func (pol *Policy) walkNames(fn func(any)) {
 			fn(a)
 		}
 	}
+}
+
+// sourceSentence says why the source src of a test did not resolve, without
+// the steps that wrap the reason.
+func sourceSentence(src string, err error) string {
+	switch {
+	case errors.Is(err, ErrUserNotFound):
+		return fmt.Sprintf("the source %q matches no user", src)
+	case errors.Is(err, ErrMultipleUsersFound):
+		return fmt.Sprintf("the source %q matches more than one user", src)
+	case errors.Is(err, errTestSourceUnknown):
+		return fmt.Sprintf("the source %q names no user or host", src)
+	}
+
+	inner := errors.Unwrap(err)
+	if inner != nil {
+		err = inner
+	}
+
+	return fmt.Sprintf("the source %q cannot be resolved: %v", src, err)
 }

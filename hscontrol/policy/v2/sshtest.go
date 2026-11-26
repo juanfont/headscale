@@ -28,6 +28,8 @@ type SSHPolicyTestResult struct {
 	Src    string   `json:"src"`
 	Passed bool     `json:"passed"`
 	Errors []string `json:"errors,omitempty"`
+	// sourceErr is why Src did not resolve, for [Explain].
+	sourceErr error
 
 	AcceptOK   map[string][]string `json:"accept_ok,omitempty"`
 	AcceptFail map[string][]string `json:"accept_fail,omitempty"`
@@ -40,6 +42,10 @@ type SSHPolicyTestResult struct {
 	// all. A dst alias can cover nodes that fail in different ways, and one
 	// node not reached makes the alias DENIED.
 	CheckDenied map[string][]string `json:"check_denied,omitempty"`
+
+	// DenyViaCheck holds the deny failures where the node was reached only
+	// through a check-action rule.
+	DenyViaCheck map[string][]string `json:"deny_via_check,omitempty"`
 }
 
 // SSHPolicyTestResults aggregates one evaluation run.
@@ -120,6 +126,51 @@ func (r SSHPolicyTestResults) failures() []TestFailure {
 	}
 
 	return out
+}
+
+// data is every assertion that did not hold, and every entry that could not
+// be run, by its index in sshTests.
+func (r SSHPolicyTestResults) data() ([]FailedTest, []testError) {
+	var (
+		failed      []FailedTest
+		unevaluated []testError
+	)
+
+	for i, res := range r.Results {
+		for _, e := range res.Errors {
+			if res.sourceErr != nil {
+				e = sourceSentence(res.Src, res.sourceErr)
+			}
+
+			unevaluated = append(unevaluated, testError{block: "sshTests", index: i, message: e})
+		}
+
+		add := func(m map[string][]string, want string, got func(user, dst string) string) {
+			for _, user := range sortedUsers(m) {
+				for _, dst := range m[user] {
+					failed = append(failed, FailedTest{Kind: "ssh", Index: i, Src: res.Src, Dst: dst, User: user, Want: want, Got: got(user, dst)})
+				}
+			}
+		}
+
+		add(res.AcceptFail, testAccept, func(string, string) string { return testDeny })
+		add(res.DenyFail, testDeny, func(user, dst string) string {
+			if slices.Contains(res.DenyViaCheck[user], dst) {
+				return testCheck
+			}
+
+			return testAccept
+		})
+		add(res.CheckFail, testCheck, func(user, dst string) string {
+			if slices.Contains(res.CheckDenied[user], dst) {
+				return testDeny
+			}
+
+			return testAccept
+		})
+	}
+
+	return failed, unevaluated
 }
 
 func sortedUsers(m map[string][]string) []string {
@@ -233,6 +284,7 @@ func runSSHPolicyTest(
 		res.Passed = false
 		res.Errors = append(res.Errors,
 			fmt.Sprintf("failed to resolve source %q: %v", srcLabel, err))
+		res.sourceErr = err
 
 		return res
 	}
@@ -314,7 +366,7 @@ func evaluateAssertion(
 
 		o, ok := seen[key]
 		if !ok {
-			passed, notReached, err := sshTestAliasOutcome(
+			passed, notReached, onlyCheck, err := sshTestAliasOutcome(
 				cache, srcAddrs, dst.nodes, user, kind,
 			)
 			if err != nil {
@@ -323,7 +375,7 @@ func evaluateAssertion(
 					fmt.Sprintf("compiling SSH policy for %s: %v", dst.label, err))
 			}
 
-			o = sshTestOutcome{passed, notReached, err != nil}
+			o = sshTestOutcome{passed, notReached, onlyCheck, err != nil}
 			seen[key] = o
 		}
 
@@ -344,6 +396,10 @@ func evaluateAssertion(
 			res.DenyOK = appendUserDst(res.DenyOK, user, dst.label)
 		case kind == assertDeny:
 			res.DenyFail = appendUserDst(res.DenyFail, user, dst.label)
+
+			if o.onlyCheck {
+				res.DenyViaCheck = appendUserDst(res.DenyViaCheck, user, dst.label)
+			}
 		case o.passed:
 			res.CheckOK = appendUserDst(res.CheckOK, user, dst.label)
 		default:
@@ -361,11 +417,12 @@ type sshTestKey struct{ user, dst string }
 
 // sshTestOutcome is what evaluating an [sshTestKey] found; failed means it
 // could not be evaluated.
-type sshTestOutcome struct{ passed, notReached, failed bool }
+type sshTestOutcome struct{ passed, notReached, onlyCheck, failed bool }
 
 // sshTestAliasOutcome reports whether user's assertion holds on every node
-// of one dst alias from every src address, and whether a failing node was
-// not reached at all. All src addresses must agree: the first
+// of one dst alias from every src address, whether a failing node was not
+// reached at all, and whether every failing node of a deny was reached only
+// through a check-action rule. All src addresses must agree: the first
 // counter-example fails the node.
 func sshTestAliasOutcome(
 	cache *sshTestCache,
@@ -373,21 +430,21 @@ func sshTestAliasOutcome(
 	dstNodes []types.NodeView,
 	user string,
 	kind sshAssertion,
-) (bool, bool, error) {
+) (bool, bool, bool, error) {
 	if len(dstNodes) == 0 {
-		return kind == assertDeny, true, nil
+		return kind == assertDeny, true, false, nil
 	}
 
-	passed, notReached := true, false
+	passed, notReached, onlyCheck := true, false, true
 
 	for _, dst := range dstNodes {
 		dstRules, err := compiledSSHPolicy(cache, dst)
 		if err != nil {
-			return false, false, err
+			return false, false, false, err
 		}
 
 		for _, srcAddr := range srcAddrs {
-			a, c := reachability(dstRules[srcAddr], user)
+			a, c, plain := reachability(dstRules[srcAddr], user)
 
 			var holds bool
 
@@ -403,13 +460,14 @@ func sshTestAliasOutcome(
 			if !holds {
 				passed = false
 				notReached = notReached || !a
+				onlyCheck = onlyCheck && c && !plain
 
 				break
 			}
 		}
 	}
 
-	return passed, notReached, nil
+	return passed, notReached, !passed && onlyCheck, nil
 }
 
 // appendUserDst appends dst to m[user], allocating m on first use.
@@ -672,8 +730,9 @@ func compiledSSHPolicy(
 //
 //   - any of its rules (acceptHit, satisfies accept assertions)
 //   - a check-action rule (checkHit, satisfies check assertions)
-func reachability(rules []*tailcfg.SSHRule, user string) (bool, bool) {
-	var acceptHit, checkHit bool
+//   - a rule that is not a check (plainHit)
+func reachability(rules []*tailcfg.SSHRule, user string) (bool, bool, bool) {
+	var acceptHit, checkHit, plainHit bool
 
 	for _, rule := range rules {
 		if !sshUserMapAllows(rule.SSHUsers, user) {
@@ -688,16 +747,18 @@ func reachability(rules []*tailcfg.SSHRule, user string) (bool, bool) {
 
 		if rule.Action.HoldAndDelegate != "" {
 			checkHit = true
+		} else {
+			plainHit = true
 		}
 
-		// Early-out only when both bits are set: a rule satisfying
+		// Early-out only when every bit is set: a rule satisfying
 		// accept does not always satisfy check.
-		if acceptHit && checkHit {
-			return acceptHit, checkHit
+		if checkHit && plainHit {
+			return acceptHit, checkHit, plainHit
 		}
 	}
 
-	return acceptHit, checkHit
+	return acceptHit, checkHit, plainHit
 }
 
 // sshUserMapAllows reports whether [SSHUsers] permits user. The [SSHUsers]

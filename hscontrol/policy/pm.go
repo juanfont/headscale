@@ -26,6 +26,13 @@ type PolicyManager interface {
 	// client-provided URL params.
 	SSHCheckParams(srcNodeID, dstNodeID types.NodeID, localUser string) (time.Duration, bool)
 	SetPolicy(pol []byte) (bool, error)
+	// PolicyInForce is the policy in force, for RestorePolicy.
+	PolicyInForce() *policyv2.PreparedPolicy
+	// InstallPolicy puts a policy from [PreparePolicy] in force; see
+	// [policyv2.PolicyManager.InstallPolicy].
+	InstallPolicy(p *policyv2.PreparedPolicy) (bool, error)
+	// RestorePolicy puts back what PolicyInForce returned, unchecked.
+	RestorePolicy(p *policyv2.PreparedPolicy) (bool, error)
 	// DERPMap returns the policy's derpMap, nil without one.
 	DERPMap() *tailcfg.DERPMap
 	// SetUsers replaces the user list. policyChanged reports whether clients
@@ -117,6 +124,10 @@ type PolicyManager interface {
 	// drain cannot lose the policy-reload diff.
 	NodesWithChangedCapMap() []types.NodeID
 
+	// AmbiguousUsers returns every user token of the policy that more than
+	// one user matches, sorted. Such a token matches nobody.
+	AmbiguousUsers() []string
+
 	Version() int
 	DebugString() string
 }
@@ -140,6 +151,12 @@ func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.No
 // against users and nodes; see [policyv2.ValidatePolicy].
 func ValidatePolicy(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) error {
 	return policyv2.ValidatePolicy(pol, users, nodes)
+}
+
+// PreparePolicy runs every check of a policy write of pol, tests included,
+// for [PolicyManager.InstallPolicy]; see [policyv2.PreparePolicy].
+func PreparePolicy(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) (*policyv2.PreparedPolicy, error) {
+	return policyv2.PreparePolicy(pol, users, nodes)
 }
 
 // PolicyManagersForTest returns all available [PolicyManager] implementations to
