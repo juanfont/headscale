@@ -241,3 +241,38 @@ func ownedByTags(pm *PolicyManager, tags, ownerTags []string) bool {
 func allTags(tags []string, ok func(string) bool) bool {
 	return len(tags) > 0 && !slices.ContainsFunc(tags, func(tag string) bool { return !ok(tag) })
 }
+
+// TestTagOwnerWildcardCompat holds headscale to the policies SaaS refused
+// for naming every user of a domain as a tag owner.
+func TestTagOwnerWildcardCompat(t *testing.T) {
+	t.Parallel()
+
+	c, err := testcapture.Read(filepath.Join("..", "..", "servertest", "testdata", "steps", "tag-wildcard.hujson"))
+	require.NoError(t, err)
+
+	refused := 0
+
+	for _, step := range c.Steps {
+		for _, a := range step.Actions {
+			if a.Kind != "policy" || a.Status != http.StatusBadRequest {
+				continue
+			}
+
+			refused++
+
+			var resp struct {
+				Message string `json:"message"`
+			}
+			require.NoError(t, json.Unmarshal(a.Response, &resp), "%s: response", step.Name)
+
+			pol, err := unmarshalPolicy(a.Body)
+			if err == nil {
+				err = pol.validate()
+			}
+
+			require.ErrorContains(t, err, resp.Message, step.Name)
+		}
+	}
+
+	require.Positive(t, refused, "the capture holds no refused policy")
+}
