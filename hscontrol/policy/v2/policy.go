@@ -1687,7 +1687,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	resolved := make([]bool, len(grants))
 	viewerMatchesGrant := make([]bool, len(grants))
 	resolvedDstPrefixes := make([][]netip.Prefix, len(grants))
-	grantHasAutoGroupInternet := make([]bool, len(grants))
+	autogroupInternet := make([]bool, len(grants))
 
 	matchViewer := func(i int) bool {
 		if resolved[i] {
@@ -1719,7 +1719,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		}
 
 		if viewerMatchesGrant[i] {
-			resolvedDstPrefixes[i], grantHasAutoGroupInternet[i] = resolveViaDestinations(
+			resolvedDstPrefixes[i], autogroupInternet[i] = resolveViaDestinations(
 				pm.resolvedPol, pm.users, pm.nodes, grants[i].Destinations,
 			)
 		}
@@ -1750,8 +1750,11 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		// the passes below walk Include and Exclude per grant, so their
 		// size must be bounded by the peer's routes, not by the grant's
 		// destinations.
+		// autogroup:internet names every public prefix, so a subnet route
+		// to one is steered as a route to a listed destination is.
 		for _, route := range peerSubnetRoutes {
-			if slices.ContainsFunc(resolvedDstPrefixes[i], route.Overlaps) {
+			if slices.ContainsFunc(resolvedDstPrefixes[i], route.Overlaps) ||
+				(autogroupInternet[i] && util.TheInternet().OverlapsPrefix(route)) {
 				matchedPrefixes = append(matchedPrefixes, route)
 			}
 		}
@@ -1761,7 +1764,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		// "advertises the destination". The downstream Include/Exclude
 		// split below restricts the viewer to exit nodes carrying the
 		// via tag.
-		if grantHasAutoGroupInternet[i] {
+		if autogroupInternet[i] {
 			matchedPrefixes = append(matchedPrefixes, peer.OfferedExitRoutes()...)
 		}
 
