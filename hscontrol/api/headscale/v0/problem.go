@@ -38,6 +38,8 @@ const (
 	CodeNameTaken            Code = "name_taken"
 	CodeEmailTaken           Code = "email_taken"
 	CodeUserManagedByOIDC    Code = "user_managed_by_oidc"
+	CodeUserHasNodes         Code = "user_has_nodes"
+	CodeUserChanged          Code = "user_changed"
 	CodeOwnerConflict        Code = "owner_conflict"
 	CodeTagsRequired         Code = "tags_required"
 	CodeTagsNotPermitted     Code = "tags_not_permitted"
@@ -145,6 +147,18 @@ var codes = map[Code]codeInfo{
 		http.StatusConflict,
 		"The identity provider owns this user",
 		"A change to a user from OIDC, whose fields the identity provider owns. `object` is the user.",
+		nil,
+	},
+	CodeUserHasNodes: {
+		http.StatusConflict,
+		"The user still owns nodes",
+		"A delete of a user that owns nodes, without `withNodes=true`. Nothing is removed. `object` is the user.",
+		[]string{"`nodes`: every node the user owns, `{id, name}`, in ID order"},
+	},
+	CodeUserChanged: {
+		http.StatusConflict,
+		"The user changed",
+		"A delete of a user with `expect`, when a node or a key of the user came or went since the dry run. Nothing is removed; run the dry run again. `object` is the user.",
 		nil,
 	},
 	CodeOwnerConflict: {
@@ -350,9 +364,21 @@ func onError(err error, c Code, detail string) answer {
 
 // mapError is the one path from a handler error to the wire. A *Problem
 // with a code the operation declared passes, and so does an error that one
-// of own maps; anything else is logged and answered as internal, without
-// its text.
+// of own maps; a request that ended answers internal quietly; anything else
+// is logged and answered as internal, without its text.
 func mapError(ctx context.Context, err error, declared []Code, own []answer) error {
+	// A request whose client hung up is no fault of the server. No one reads
+	// the answer, so it keeps the code every operation has, and no error is
+	// logged.
+	if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+		log.Debug().
+			Err(err).
+			Str(zf.RequestID, middleware.GetReqID(ctx)).
+			Msg("api v0: request ended before its answer")
+
+		return newProblem(CodeInternal, "")
+	}
+
 	p, ok := errors.AsType[*Problem](err)
 	if !ok && errors.Is(err, db.ErrCredentialEnded) {
 		// The credential was revoked while its request ran; the write it

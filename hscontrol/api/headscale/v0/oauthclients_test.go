@@ -381,9 +381,16 @@ func TestDeleteOAuthClient(t *testing.T) {
 	t.Run("a client whose maker is deleted stays, made by no one", func(t *testing.T) {
 		require.Equal(t, "bob", got.CreatedBy.LoginName)
 
-		// bob owns the API key of the request, which then has no owner.
-		_, err := b.State.DeleteUser(types.UserID(bob.ID))
+		// bob owns the API key of the request, which goes with him.
+		other, _, err := b.State.CreateAPIKey(nil)
 		require.NoError(t, err)
+
+		_, err = b.State.DeleteUser(types.UserID(bob.ID))
+		require.NoError(t, err)
+
+		decodeProblem(t, api.Get(Prefix+"/me", auth), CodeUnauthorized)
+
+		auth = "Authorization: Bearer " + other
 
 		after := getClient(t, api, auth, c.ID)
 		require.Nil(t, after.CreatedBy)
