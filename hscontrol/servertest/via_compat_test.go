@@ -107,6 +107,8 @@ var viaCompatTests = []struct {
 	{"via-grant-v107", "two via grants from one source through one router"},
 	{"via-grant-v108", "a grant and an ACL with the same sources and IPProto"},
 	{"grant-app-wildcard-destination", "capability grant from members to the wildcard"},
+	{"grant-via-internet-one-family-exit", "the internet via an exit node approved for IPv4 only"},
+	{"grant-via-internet-exit-is-source", "the internet via tag:exit with the exit nodes among the sources"},
 	{"grant-app-destination-repeated", "capability grant naming the wildcard twice"},
 }
 
@@ -172,7 +174,12 @@ var aclMapCompatTests = []string{
 // same way. A listed check that matches fails, so a fix must delete its entry.
 var viaCompatSkipReasons = map[string]string{
 	"acl-self-routed-by-other-user/ivysaur/peers": "SaaS lists the node whose address a same-user router routes, one way only and under no rule; the cause is not known",
+
+	"grant-via-internet-one-family-exit/charmander/peers": oneFamilyExitListed,
+	"grant-via-internet-one-family-exit/wartortle/peers":  oneFamilyExitListed,
 }
+
+const oneFamilyExitListed = "SaaS lists the exit node approved for one family on the other exit nodes of the via grant, one way only; the cause is not known"
 
 // TestRoutesMapCompat replays routesMapCompatTests through
 // [runViaMapCompat].
