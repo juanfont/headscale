@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"sync"
@@ -94,7 +95,13 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 		return nil, fmt.Errorf("reading DERP map: %w", err)
 	}
 
-	derpMap, err := util.UnmarshalByExtStrict[tailcfg.DERPMap](path, data)
+	return ParseDERPMap(path, filepath.Ext(path), data)
+}
+
+// ParseDERPMap is [loadDERPMapFromPath] of data that the caller read: path
+// names it in messages, ext names its format.
+func ParseDERPMap(path, ext string, data []byte) (*tailcfg.DERPMap, error) {
+	derpMap, err := util.UnmarshalAs[tailcfg.DERPMap](path, ext, data, true)
 	if err != nil {
 		return nil, fmt.Errorf("reading DERP map: %w", err)
 	}

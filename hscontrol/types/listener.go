@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"syscall"
 )
 
 var errEmptyListenAddr = errors.New("address is empty")
@@ -57,4 +58,40 @@ func PortFromAddr(addr string) (int, error) {
 	}
 
 	return int(p), nil
+}
+
+// ExplainBindError augments specific error classes with operator
+// hints. The underlying chain is left intact so errors.Is / errors.As
+// continue to walk to ListenerBindError, syscall.EADDRINUSE, etc.
+func ExplainBindError(err error) error {
+	var bindErr *ListenerBindError
+	if !errors.As(err, &bindErr) {
+		return err
+	}
+
+	switch {
+	case errors.Is(err, syscall.EADDRINUSE):
+		port, perr := PortFromAddr(bindErr.Addr)
+		if perr != nil {
+			return fmt.Errorf(
+				"%w\n\nHint: another process on this host is bound to the same address. "+
+					"Find it with: sudo ss -tlnp",
+				err)
+		}
+
+		return fmt.Errorf(
+			"%w\n\nHint: another process on this host is bound to the same address. "+
+				"Find it with: sudo ss -tlnp 'sport = :%d'",
+			err, port)
+
+	case errors.Is(err, syscall.EACCES):
+		return fmt.Errorf(
+			"%w\n\nHint: binding to a privileged port (<1024) requires root or "+
+				"CAP_NET_BIND_SERVICE. The shipped systemd unit grants this capability; "+
+				"if running manually, use sudo or "+
+				"`setcap cap_net_bind_service=+ep ./headscale`",
+			err)
+	}
+
+	return err
 }

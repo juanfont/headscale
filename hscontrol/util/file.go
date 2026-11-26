@@ -41,22 +41,25 @@ var ErrUnknownFileFormat = errors.New("unknown file format, want .json, .hujson,
 // JSON syntax, so sniffing cannot tell the two apart. YAML keys are the
 // lowercased Go field names.
 func UnmarshalByExt[T any](name string, data []byte) (T, error) {
-	return unmarshalByExt[T](name, data, false)
+	return UnmarshalAs[T](name, filepath.Ext(name), data, false)
 }
 
 // UnmarshalByExtStrict is [UnmarshalByExt] that fails on a key T has no
 // field for, so a misspelt key is an error rather than silently dropped.
 func UnmarshalByExtStrict[T any](name string, data []byte) (T, error) {
-	return unmarshalByExt[T](name, data, true)
+	return UnmarshalAs[T](name, filepath.Ext(name), data, true)
 }
 
-func unmarshalByExt[T any](name string, data []byte, strict bool) (T, error) {
+// UnmarshalAs is [UnmarshalByExt] in the format ext names, for data whose
+// name names none, such as stdin; name is only for errors. strict is
+// [UnmarshalByExtStrict]'s.
+func UnmarshalAs[T any](name, ext string, data []byte, strict bool) (T, error) {
 	var (
 		v   T
 		err error
 	)
 
-	switch ext := strings.ToLower(filepath.Ext(name)); ext {
+	switch strings.ToLower(ext) {
 	case ".json", ".hujson":
 		data, err = hujson.Standardize(data)
 		if err == nil {

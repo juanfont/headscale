@@ -242,10 +242,21 @@ func ReadExtraRecordsFromPath(path string) ([]tailcfg.DNSRecord, [32]byte, error
 	// Hash first: decoding HuJSON may rewrite comments in b.
 	hash := sha256.Sum256(b)
 
-	records, err := util.UnmarshalByExt[[]tailcfg.DNSRecord](path, b)
+	records, err := ParseExtraRecords(path, filepath.Ext(path), b)
 	if err != nil {
-		return nil, zero, fmt.Errorf("unmarshalling records: %w", err)
+		return nil, zero, err
 	}
 
 	return records, hash, nil
+}
+
+// ParseExtraRecords decodes extra records in the format ext names; name
+// names them in errors.
+func ParseExtraRecords(name, ext string, b []byte) ([]tailcfg.DNSRecord, error) {
+	records, err := util.UnmarshalAs[[]tailcfg.DNSRecord](name, ext, b, false)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshalling records: %w", err)
+	}
+
+	return records, nil
 }
