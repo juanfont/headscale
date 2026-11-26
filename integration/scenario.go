@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -524,7 +526,7 @@ func (s *Scenario) CreatePreAuthKey(
 	user uint64,
 	reusable bool,
 	ephemeral bool,
-) (*clientv1.PreAuthKey, error) {
+) (*clientv0.CreatedAuthKey, error) {
 	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		key, err := headscale.CreateAuthKey(user, reusable, ephemeral)
 		if err != nil {
@@ -539,7 +541,7 @@ func (s *Scenario) CreatePreAuthKey(
 
 // CreatePreAuthKeyWithOptions creates a "pre authorised key" with the specified options
 // to be created in the Headscale instance on behalf of the [Scenario].
-func (s *Scenario) CreatePreAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*clientv1.PreAuthKey, error) {
+func (s *Scenario) CreatePreAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*clientv0.CreatedAuthKey, error) {
 	headscale, err := s.Headscale()
 	if err != nil {
 		return nil, fmt.Errorf("creating preauth key with options: %w", errNoHeadscaleAvailable)
@@ -560,7 +562,7 @@ func (s *Scenario) CreatePreAuthKeyWithTags(
 	reusable bool,
 	ephemeral bool,
 	tags []string,
-) (*clientv1.PreAuthKey, error) {
+) (*clientv0.CreatedAuthKey, error) {
 	headscale, err := s.Headscale()
 	if err != nil {
 		return nil, fmt.Errorf("creating preauth key with tags: %w", errNoHeadscaleAvailable)
@@ -576,7 +578,7 @@ func (s *Scenario) CreatePreAuthKeyWithTags(
 
 // CreateUser creates a [User] to be created in the
 // Headscale instance on behalf of the [Scenario].
-func (s *Scenario) CreateUser(user string) (*clientv1.User, error) {
+func (s *Scenario) CreateUser(user string) (*clientv0.User, error) {
 	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		u, err := headscale.CreateUser(user)
 		if err != nil {
@@ -929,7 +931,7 @@ func (s *Scenario) createHeadscaleEnvWithTags(
 	}
 
 	for _, user := range s.spec.Users {
-		var u *clientv1.User
+		var u *clientv0.User
 
 		if s.spec.OIDCSkipUserCreation {
 			// Only register locally — OIDC login will create the headscale user.
@@ -968,7 +970,7 @@ func (s *Scenario) createHeadscaleEnvWithTags(
 			}
 		} else {
 			// Use tagged PreAuthKey if tags are provided (tags-as-identity model)
-			var key *clientv1.PreAuthKey
+			var key *clientv0.CreatedAuthKey
 			if len(preAuthKeyTags) > 0 {
 				key, err = s.CreatePreAuthKeyWithTags(mustParseID(u.Id), true, false, preAuthKeyTags)
 			} else {
@@ -1348,25 +1350,22 @@ func submitConfirmForm(
 
 var errParseAuthPage = errors.New("parsing auth page")
 
+// authIDPattern is an auth ID, as the login and SSH-check pages print it.
+var authIDPattern = regexp.MustCompile(`hskey-authreq-[0-9a-f]{24}`)
+
+// runHeadscaleRegister answers the registration that a login page names, as
+// an admin would, for userStr.
 func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
-	// see api.go HTML template
-	codeSep := strings.Split(body, "</code>")
-	if len(codeSep) != 2 {
+	key := authIDPattern.FindString(body)
+	if key == "" {
 		return errParseAuthPage
 	}
 
-	keySep := strings.Split(codeSep[0], "--auth-id ")
-	if len(keySep) != 2 {
-		return errParseAuthPage
-	}
-
-	key := keySep[1]
-	key = strings.SplitN(key, " ", 2)[0]
 	log.Printf("registering node %s", key)
 
 	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		_, err = headscale.Execute(
-			[]string{"headscale", "auth", "register", "--user", userStr, "--auth-id", key},
+			[]string{"headscale", "auth", "register", key, userStr},
 		)
 		if err != nil {
 			log.Printf("registering node: %s", err)
@@ -1378,6 +1377,24 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 	}
 
 	return fmt.Errorf("finding headscale: %w", errNoHeadscaleAvailable)
+}
+
+// pageCommand is the command a login or SSH-check page tells the admin to
+// run, as words, with user in place of the page's placeholder for one.
+func pageCommand(body, user string) ([]string, error) {
+	_, rest, ok := strings.Cut(body, "<code>")
+	if !ok {
+		return nil, errParseAuthPage
+	}
+
+	code, _, ok := strings.Cut(rest, "</code>")
+	if !ok {
+		return nil, errParseAuthPage
+	}
+
+	code = strings.ReplaceAll(html.UnescapeString(code), "USERNAME", user)
+
+	return strings.Fields(code), nil
 }
 
 type LoggingRoundTripper struct {
@@ -1611,7 +1628,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 
 	mockOidcOptions := &dockertest.RunOptions{
 		Name:         hostname,
-		Cmd:          []string{"headscale", "mockoidc"},
+		Cmd:          []string{"headscale", "debug", "mockoidc"},
 		ExposedPorts: []string{portNotation},
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			docker.Port(portNotation): {{HostPort: strconv.Itoa(port)}},

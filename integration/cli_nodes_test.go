@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -35,65 +35,14 @@ func TestNodeCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	regIDs := []string{
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
+	nodes := make([]*clientv0.Node, 5)
+
+	for index := range nodes {
+		nodes[index] = registerFakeNode(t, headscale, fmt.Sprintf("node-%d", index+1), "node-user")
 	}
-	nodes := make([]*clientv1.Node, len(regIDs))
-
-	require.NoError(t, err)
-
-	for index, regID := range regIDs {
-		_, err := headscale.Execute(
-			[]string{
-				"headscale",
-				"debug",
-				"create-node",
-				"--name",
-				fmt.Sprintf("node-%d", index+1),
-				"--user",
-				"node-user",
-				"--key",
-				regID,
-				"--output",
-				"json",
-			},
-		)
-		require.NoError(t, err)
-
-		var node clientv1.Node
-
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			err = executeAndUnmarshal(
-				headscale,
-				[]string{
-					"headscale",
-					"auth",
-					"register",
-					"--user",
-					"node-user",
-					"--auth-id",
-					regID,
-					"--output",
-					"json",
-				},
-				&node,
-			)
-			assert.NoError(c, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node registration")
-
-		nodes[index] = &node
-	}
-
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		assert.Len(ct, nodes, len(regIDs), "Should have correct number of nodes after CLI operations")
-	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 
 	// Test list all nodes after added seconds
-	var listAll []clientv1.Node
+	var listAll []clientv0.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(
@@ -108,7 +57,7 @@ func TestNodeCommand(t *testing.T) {
 			&listAll,
 		)
 		assert.NoError(ct, err)
-		assert.Len(ct, listAll, len(regIDs), "Should list all nodes after CLI operations")
+		assert.Len(ct, listAll, len(nodes), "Should list all nodes after CLI operations")
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
 	assert.Equal(t, "1", listAll[0].Id)
@@ -117,68 +66,20 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, "4", listAll[3].Id)
 	assert.Equal(t, "5", listAll[4].Id)
 
-	assert.Equal(t, "node-1", listAll[0].Name)
-	assert.Equal(t, "node-2", listAll[1].Name)
-	assert.Equal(t, "node-3", listAll[2].Name)
-	assert.Equal(t, "node-4", listAll[3].Name)
-	assert.Equal(t, "node-5", listAll[4].Name)
+	assert.Equal(t, "node-1", listAll[0].Hostname)
+	assert.Equal(t, "node-2", listAll[1].Hostname)
+	assert.Equal(t, "node-3", listAll[2].Hostname)
+	assert.Equal(t, "node-4", listAll[3].Hostname)
+	assert.Equal(t, "node-5", listAll[4].Hostname)
 
-	otherUserRegIDs := []string{
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
+	otherUserMachines := make([]*clientv0.Node, 2)
+
+	for index := range otherUserMachines {
+		otherUserMachines[index] = registerFakeNode(t, headscale, fmt.Sprintf("otheruser-node-%d", index+1), "other-user")
 	}
-	otherUserMachines := make([]*clientv1.Node, len(otherUserRegIDs))
-
-	require.NoError(t, err)
-
-	for index, regID := range otherUserRegIDs {
-		_, err := headscale.Execute(
-			[]string{
-				"headscale",
-				"debug",
-				"create-node",
-				"--name",
-				fmt.Sprintf("otheruser-node-%d", index+1),
-				"--user",
-				"other-user",
-				"--key",
-				regID,
-				"--output",
-				"json",
-			},
-		)
-		require.NoError(t, err)
-
-		var node clientv1.Node
-
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			err = executeAndUnmarshal(
-				headscale,
-				[]string{
-					"headscale",
-					"auth",
-					"register",
-					"--user",
-					"other-user",
-					"--auth-id",
-					regID,
-					"--output",
-					"json",
-				},
-				&node,
-			)
-			assert.NoError(c, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for other-user node registration")
-
-		otherUserMachines[index] = &node
-	}
-
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		assert.Len(ct, otherUserMachines, len(otherUserRegIDs), "Should have correct number of otherUser machines after CLI operations")
-	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 
 	// Test list all nodes after added otherUser
-	var listAllWithotherUser []clientv1.Node
+	var listAllWithotherUser []clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -201,11 +102,11 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, "6", listAllWithotherUser[5].Id)
 	assert.Equal(t, "7", listAllWithotherUser[6].Id)
 
-	assert.Equal(t, "otheruser-node-1", listAllWithotherUser[5].Name)
-	assert.Equal(t, "otheruser-node-2", listAllWithotherUser[6].Name)
+	assert.Equal(t, "otheruser-node-1", listAllWithotherUser[5].Hostname)
+	assert.Equal(t, "otheruser-node-2", listAllWithotherUser[6].Hostname)
 
 	// Test list all nodes after added otherUser
-	var listOnlyotherUserMachineUser []clientv1.Node
+	var listOnlyotherUserMachineUser []clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -214,8 +115,8 @@ func TestNodeCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"list",
-				"--user",
-				"other-user",
+				"--filter",
+				"owner=other-user",
 				"--output",
 				"json",
 			},
@@ -232,12 +133,12 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(
 		t,
 		"otheruser-node-1",
-		listOnlyotherUserMachineUser[0].Name,
+		listOnlyotherUserMachineUser[0].Hostname,
 	)
 	assert.Equal(
 		t,
 		"otheruser-node-2",
-		listOnlyotherUserMachineUser[1].Name,
+		listOnlyotherUserMachineUser[1].Hostname,
 	)
 
 	// Delete a nodes
@@ -246,18 +147,14 @@ func TestNodeCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"delete",
-			"--identifier",
-			// Delete the last added machine
 			"4",
-			"--output",
-			"json",
 			"--force",
 		},
 	)
 	require.NoError(t, err)
 
 	// Test: list main user after node is deleted
-	var listOnlyMachineUserAfterDelete []clientv1.Node
+	var listOnlyMachineUserAfterDelete []clientv0.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(
@@ -266,8 +163,8 @@ func TestNodeCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"list",
-				"--user",
-				"node-user",
+				"--filter",
+				"owner=node-user",
 				"--output",
 				"json",
 			},
@@ -296,60 +193,13 @@ func TestNodeExpireCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	regIDs := []string{
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-	}
-	nodes := make([]*clientv1.Node, len(regIDs))
+	nodes := make([]*clientv0.Node, 5)
 
-	for index, regID := range regIDs {
-		_, err := headscale.Execute(
-			[]string{
-				"headscale",
-				"debug",
-				"create-node",
-				"--name",
-				fmt.Sprintf("node-%d", index+1),
-				"--user",
-				"node-expire-user",
-				"--key",
-				regID,
-				"--output",
-				"json",
-			},
-		)
-		require.NoError(t, err)
-
-		var node clientv1.Node
-
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			err = executeAndUnmarshal(
-				headscale,
-				[]string{
-					"headscale",
-					"auth",
-					"register",
-					"--user",
-					"node-expire-user",
-					"--auth-id",
-					regID,
-					"--output",
-					"json",
-				},
-				&node,
-			)
-			assert.NoError(c, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node-expire-user node registration")
-
-		nodes[index] = &node
+	for index := range nodes {
+		nodes[index] = registerFakeNode(t, headscale, fmt.Sprintf("node-%d", index+1), "node-expire-user")
 	}
 
-	assert.Len(t, nodes, len(regIDs))
-
-	var listAll []clientv1.Node
+	var listAll []clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -368,11 +218,11 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	// With node.expiry defaulting to 0, non-tagged nodes have zero expiry
-	// (never expire unless explicitly expired).
+	// With node.expiry defaulting to 0, non-tagged nodes never expire unless
+	// explicitly expired.
 	for i := range 5 {
-		assert.True(t, listAll[i].Expiry == nil || listAll[i].Expiry.IsZero(),
-			"node %d should have zero expiry (no default node.expiry)", i)
+		assert.True(t, listAll[i].Expiry.IsNull(),
+			"node %d should not expire (no default node.expiry)", i)
 	}
 
 	for idx := range 3 {
@@ -381,14 +231,13 @@ func TestNodeExpireCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"expire",
-				"--identifier",
 				listAll[idx].Id,
 			},
 		)
 		require.NoError(t, err)
 	}
 
-	var listAllAfterExpiry []clientv1.Node
+	var listAllAfterExpiry []clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -407,14 +256,15 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterExpiry, 5)
 
-	require.NotNil(t, listAllAfterExpiry[0].Expiry)
-	require.NotNil(t, listAllAfterExpiry[1].Expiry)
-	require.NotNil(t, listAllAfterExpiry[2].Expiry)
-	assert.True(t, listAllAfterExpiry[0].Expiry.Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[1].Expiry.Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[2].Expiry.Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[3].Expiry == nil || listAllAfterExpiry[3].Expiry.IsZero())
-	assert.True(t, listAllAfterExpiry[4].Expiry == nil || listAllAfterExpiry[4].Expiry.IsZero())
+	for i := range 3 {
+		expiry, err := listAllAfterExpiry[i].Expiry.Get()
+		require.NoError(t, err, "node %d should have an expiry", i)
+		assert.True(t, expiry.Before(time.Now()))
+		assert.True(t, listAllAfterExpiry[i].Expired)
+	}
+
+	assert.True(t, listAllAfterExpiry[3].Expiry.IsNull())
+	assert.True(t, listAllAfterExpiry[4].Expiry.IsNull())
 }
 
 func TestNodeRenameCommand(t *testing.T) {
@@ -435,62 +285,13 @@ func TestNodeRenameCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	regIDs := []string{
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-		types.MustAuthID().Raw(),
-	}
-	nodes := make([]*clientv1.Node, len(regIDs))
+	nodes := make([]*clientv0.Node, 5)
 
-	require.NoError(t, err)
-
-	for index, regID := range regIDs {
-		_, err := headscale.Execute(
-			[]string{
-				"headscale",
-				"debug",
-				"create-node",
-				"--name",
-				fmt.Sprintf("node-%d", index+1),
-				"--user",
-				"node-rename-command",
-				"--key",
-				regID,
-				"--output",
-				"json",
-			},
-		)
-		require.NoError(t, err)
-
-		var node clientv1.Node
-
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			err = executeAndUnmarshal(
-				headscale,
-				[]string{
-					"headscale",
-					"auth",
-					"register",
-					"--user",
-					"node-rename-command",
-					"--auth-id",
-					regID,
-					"--output",
-					"json",
-				},
-				&node,
-			)
-			assert.NoError(c, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node-rename-command node registration")
-
-		nodes[index] = &node
+	for index := range nodes {
+		nodes[index] = registerFakeNode(t, headscale, fmt.Sprintf("node-%d", index+1), "node-rename-command")
 	}
 
-	assert.Len(t, nodes, len(regIDs))
-
-	var listAll []clientv1.Node
+	var listAll []clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -509,29 +310,29 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	assert.Contains(t, listAll[0].GivenName, "node-1")
-	assert.Contains(t, listAll[1].GivenName, "node-2")
-	assert.Contains(t, listAll[2].GivenName, "node-3")
-	assert.Contains(t, listAll[3].GivenName, "node-4")
-	assert.Contains(t, listAll[4].GivenName, "node-5")
+	assert.Contains(t, listAll[0].Name, "node-1")
+	assert.Contains(t, listAll[1].Name, "node-2")
+	assert.Contains(t, listAll[2].Name, "node-3")
+	assert.Contains(t, listAll[3].Name, "node-4")
+	assert.Contains(t, listAll[4].Name, "node-5")
 
 	for idx := range 3 {
 		res, err := headscale.Execute(
 			[]string{
 				"headscale",
 				"nodes",
-				"rename",
-				"--identifier",
+				"set",
 				listAll[idx].Id,
+				"--name",
 				fmt.Sprintf("newnode-%d", idx+1),
 			},
 		)
 		require.NoError(t, err)
 
-		assert.Contains(t, res, "Node renamed")
+		assert.Contains(t, res, fmt.Sprintf("(newnode-%d) was node-%d.", idx+1, idx+1))
 	}
 
-	var listAllAfterRename []clientv1.Node
+	var listAllAfterRename []clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -550,26 +351,26 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterRename, 5)
 
-	assert.Equal(t, "newnode-1", listAllAfterRename[0].GivenName)
-	assert.Equal(t, "newnode-2", listAllAfterRename[1].GivenName)
-	assert.Equal(t, "newnode-3", listAllAfterRename[2].GivenName)
-	assert.Contains(t, listAllAfterRename[3].GivenName, "node-4")
-	assert.Contains(t, listAllAfterRename[4].GivenName, "node-5")
+	assert.Equal(t, "newnode-1", listAllAfterRename[0].Name)
+	assert.Equal(t, "newnode-2", listAllAfterRename[1].Name)
+	assert.Equal(t, "newnode-3", listAllAfterRename[2].Name)
+	assert.Contains(t, listAllAfterRename[3].Name, "node-4")
+	assert.Contains(t, listAllAfterRename[4].Name, "node-5")
 
 	// Test failure for too long names
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"nodes",
-			"rename",
-			"--identifier",
+			"set",
 			listAll[4].Id,
+			"--name",
 			strings.Repeat("t", 64),
 		},
 	)
-	require.ErrorContains(t, err, "is too long, max length is 63 bytes")
+	require.ErrorContains(t, err, "--name: expected length <= 63")
 
-	var listAllAfterRenameAttempt []clientv1.Node
+	var listAllAfterRenameAttempt []clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -588,11 +389,11 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterRenameAttempt, 5)
 
-	assert.Equal(t, "newnode-1", listAllAfterRenameAttempt[0].GivenName)
-	assert.Equal(t, "newnode-2", listAllAfterRenameAttempt[1].GivenName)
-	assert.Equal(t, "newnode-3", listAllAfterRenameAttempt[2].GivenName)
-	assert.Contains(t, listAllAfterRenameAttempt[3].GivenName, "node-4")
-	assert.Contains(t, listAllAfterRenameAttempt[4].GivenName, "node-5")
+	assert.Equal(t, "newnode-1", listAllAfterRenameAttempt[0].Name)
+	assert.Equal(t, "newnode-2", listAllAfterRenameAttempt[1].Name)
+	assert.Equal(t, "newnode-3", listAllAfterRenameAttempt[2].Name)
+	assert.Contains(t, listAllAfterRenameAttempt[3].Name, "node-4")
+	assert.Contains(t, listAllAfterRenameAttempt[4].Name, "node-5")
 }
 
 func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
@@ -616,40 +417,39 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("cli-paklogin"),
+		hsic.WithACLPolicy(allowAllWithTagOwners(user2, "tag:test1", "tag:test2")),
 	)
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	u2, err := headscale.CreateUser(user2)
+	_, err = headscale.CreateUser(user2)
 	require.NoError(t, err)
 
-	var user2Key clientv1.PreAuthKey
+	// A key has one owner: the tags. user2 does not own it, as a user cannot
+	// own a node that tags own.
+	var user2Key clientv0.CreatedAuthKey
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err = executeAndUnmarshal(
-			headscale,
-			[]string{
-				"headscale",
-				"preauthkeys",
-				"--user",
-				u2.Id,
-				"create",
-				"--reusable",
-				"--expiration",
-				"24h",
-				"--output",
-				"json",
-				"--tags",
-				"tag:test1,tag:test2",
-			},
-			&user2Key,
-		)
-		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user2 preauth key creation")
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"auth",
+			"keys",
+			"create",
+			"tag:test1,tag:test2",
+			"--reusable",
+			"--expiry",
+			"24h",
+			"--output",
+			"json",
+		},
+		&user2Key,
+	)
+	require.NoError(t, err)
 
-	var listNodes []*clientv1.Node
+	var listNodes []*clientv0.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -659,7 +459,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.Len(ct, listNodes, 1, "Should have exactly 1 node for user1")
 
 		if len(listNodes) == 1 {
-			assert.Equal(ct, user1, listNodes[0].User.Name, "Node should belong to user1")
+			assert.Equal(ct, user1, integrationutil.OwnerUser(listNodes[0].Owner).Name, "Node should belong to user1")
 		}
 	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 	require.Len(t, listNodes, 1)
@@ -706,13 +506,13 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err)
 		// A tagged key converts the machine's user-owned node in place,
-		// whoever made the key, so it shows as "tagged-devices".
+		// whoever made the key, so its tags own it.
 		assert.Len(ct, listNodes, 1, "Should still have 1 node after re-login with a tagged key")
 
 		if len(listNodes) == 1 {
 			assert.Equal(ct, userNodeID, listNodes[0].Id, "The node should be converted, not replaced")
-			assert.Equal(ct, "tagged-devices", listNodes[0].User.Name, "The node should be tagged-devices")
-			assert.ElementsMatch(ct, []string{"tag:test1", "tag:test2"}, listNodes[0].Tags)
+			assert.True(ct, listNodes[0].Owner.MustGet().User.IsNull(), "a tagged node has no user: its tags own it")
+			assert.ElementsMatch(ct, []string{"tag:test1", "tag:test2"}, integrationutil.OwnerTags(listNodes[0].Owner))
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 }
@@ -736,39 +536,37 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("tagcli"),
+		hsic.WithACLPolicy(allowAllWithTagOwners(user2, "tag:test1", "tag:test2")),
 	)
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	u2, err := headscale.CreateUser(user2)
+	_, err = headscale.CreateUser(user2)
 	require.NoError(t, err)
 
-	var user2Key clientv1.PreAuthKey
+	// A key has one owner: the tags. user2 does not own it, as a user cannot
+	// own a node that tags own.
+	var user2Key clientv0.CreatedAuthKey
 
-	// Create a tagged PreAuthKey for user2
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err = executeAndUnmarshal(
-			headscale,
-			[]string{
-				"headscale",
-				"preauthkeys",
-				"--user",
-				u2.Id,
-				"create",
-				"--reusable",
-				"--expiration",
-				"24h",
-				"--output",
-				"json",
-				"--tags",
-				"tag:test1,tag:test2",
-			},
-			&user2Key,
-		)
-		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user2 tagged preauth key creation")
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"auth",
+			"keys",
+			"create",
+			"tag:test1,tag:test2",
+			"--reusable",
+			"--expiry",
+			"24h",
+			"--output",
+			"json",
+		},
+		&user2Key,
+	)
+	require.NoError(t, err)
 
 	var userNodeID string
 
@@ -803,7 +601,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 			"Expected node to be logged out, backend state: %s", status.BackendState)
 	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
-	// Log in with the tagged PreAuthKey (from user2, with tags)
+	// Log in with the tagged PreAuthKey
 	err = client.Login(headscale.GetEndpoint(), user2Key.Key)
 	require.NoError(t, err)
 
@@ -824,7 +622,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 
 		if len(listNodes) == 1 {
 			assert.Equal(ct, userNodeID, listNodes[0].Id, "The node should be converted, not replaced")
-			assert.Equal(ct, "tagged-devices", listNodes[0].User.Name, "The node should be tagged-devices")
+			assert.True(ct, listNodes[0].Owner.MustGet().User.IsNull(), "a tagged node has no user: its tags own it")
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
@@ -841,188 +639,122 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 }
 
-// TestNodeExpireFlagsCommand covers the two `nodes expire` flags that the basic
-// expire test does not: --expiry (set a future expiry) and --disable (clear
-// expiry so the node never expires).
+// TestNodeExpireFlagsCommand covers the expiry that `nodes set --expiry` sets:
+// a time in the future, and never, so the node never expires.
 func TestNodeExpireFlagsCommand(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario, headscale := setupCLIScenario(t, "cli-nodeexpireflags", []string{"expire-flags-user"}, 0)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	regID := types.MustAuthID().Raw()
+	nodeID := registerFakeNode(t, headscale, "flagnode", "expire-flags-user").Id
 
-	_, err := headscale.Execute([]string{
-		"headscale", "debug", "create-node",
-		"--name", "flagnode",
-		"--user", "expire-flags-user",
-		"--key", regID,
-		"--output", "json",
-	})
-	require.NoError(t, err)
-
-	var node clientv1.Node
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err := executeAndUnmarshal(headscale,
-			[]string{
-				"headscale", "auth", "register",
-				"--user", "expire-flags-user",
-				"--auth-id", regID,
-				"--output", "json",
-			},
-			&node,
-		)
-		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node registration")
-
-	nodeID := node.Id
-
-	// listNodeByID returns the node with the given id from `nodes list`. The
-	// expire mutations are verified by reading the node back (authoritative,
+	// The mutations are verified by reading the node back (authoritative,
 	// eventually-consistent) rather than trusting the mutation's immediate
 	// response.
-	listNodeByID := func(ct *assert.CollectT) *clientv1.Node {
-		var nodes []clientv1.Node
+	getNode := func(ct *assert.CollectT) *clientv0.Node {
+		var node clientv0.Node
 
 		err := executeAndUnmarshal(headscale,
-			[]string{"headscale", "nodes", "list", "--output", "json"},
-			&nodes,
+			[]string{"headscale", "nodes", "get", nodeID, "--output", "json"},
+			&node,
 		)
-		require.NoError(ct, err)
-
-		for i := range nodes {
-			if nodes[i].Id == node.Id {
-				return &nodes[i]
-			}
+		if !assert.NoError(ct, err) {
+			return nil
 		}
 
-		assert.Fail(ct, "node not found in list", "id %s", nodeID)
-
-		return nil
+		return &node
 	}
 
 	// Set a future expiry, then confirm the node reports it.
 	future := time.Now().Add(2 * time.Hour).UTC()
 
-	_, err = headscale.Execute([]string{
-		"headscale", "nodes", "expire",
-		"--identifier", nodeID,
+	_, err := headscale.Execute([]string{
+		"headscale", "nodes", "set", nodeID,
 		"--expiry", future.Format(time.RFC3339),
 		"--output", "json",
 	})
 	require.NoError(t, err)
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		n := listNodeByID(ct)
+		n := getNode(ct)
 		if n == nil {
 			return
 		}
 
-		assert.True(ct, n.Expiry != nil && !n.Expiry.IsZero(), "expiry should be set")
-		assert.True(ct, n.Expiry != nil && n.Expiry.After(time.Now()), "expiry should be in the future")
+		expiry, err := n.Expiry.Get()
+		if assert.NoError(ct, err, "expiry should be set") {
+			assert.True(ct, expiry.After(time.Now()), "expiry should be in the future")
+		}
 	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second, "Waiting for future expiry to apply")
 
 	// Disable expiry entirely; the node should then report no expiry.
 	_, err = headscale.Execute([]string{
-		"headscale", "nodes", "expire",
-		"--identifier", nodeID,
-		"--disable",
+		"headscale", "nodes", "set", nodeID,
+		"--expiry", "never",
 		"--output", "json",
 	})
 	require.NoError(t, err)
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		n := listNodeByID(ct)
+		n := getNode(ct)
 		if n == nil {
 			return
 		}
 
-		// --disable turns key expiry off, so v1 shows no expiry and the node
-		// never expires. A nil expiry deserialises to the Unix
-		// epoch rather than the zero time, so assert "not in the future"
-		// rather than IsZero.
-		assert.False(ct, n.Expiry != nil && n.Expiry.After(time.Now()),
-			"disabled node should not have a future expiry")
-	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second, "Waiting for --disable to clear expiry")
+		assert.True(ct, n.Expiry.IsNull(), "a node that never expires has a null expiry")
+		assert.False(ct, n.Expired)
+	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second, "Waiting for --expiry never to clear expiry")
 }
 
 // TestNodeCommandValidation exercises the validation and error permutations of
-// the node subcommands and their flags against a single populated server: a
-// missing required --identifier, non-existent identifiers, and malformed flag
-// values (bad expiry time, bad tag, bad CIDR). One real node is registered so
-// the "valid id, bad value" paths reach the server.
+// the node subcommands against a single populated server: a missing node,
+// non-existent nodes, and malformed values (bad expiry time, bad tag, bad
+// CIDR). One real node is registered so the "valid id, bad value" paths
+// reach the server.
 func TestNodeCommandValidation(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario, headscale := setupCLIScenario(t, "cli-nodeval", []string{"user1"}, 0)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	regID := types.MustAuthID().Raw()
+	id := registerFakeNode(t, headscale, "valnode", "user1").Id
 
-	_, err := headscale.Execute([]string{
-		"headscale", "debug", "create-node",
-		"--name", "valnode", "--user", "user1", "--key", regID, "--output", "json",
-	})
-	require.NoError(t, err)
-
-	var node clientv1.Node
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err := executeAndUnmarshal(headscale,
-			[]string{"headscale", "auth", "register", "--user", "user1", "--auth-id", regID, "--output", "json"},
-			&node,
-		)
-		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node registration")
-
-	id := node.Id
-
-	// wantErr is matched with ErrorContains; an empty wantErr only requires
-	// that the command fails (used where the exact message is not load-bearing).
 	tests := []struct {
 		name    string
 		args    []string
 		wantErr string
 	}{
-		{"delete missing identifier", []string{"nodes", "delete", "--force"}, "identifier"},
-		{"delete nonexistent", []string{"nodes", "delete", "--identifier", "99999", "--force"}, "node not found"},
-		{"rename missing identifier", []string{"nodes", "rename", "newname"}, "identifier"},
-		{"rename nonexistent", []string{"nodes", "rename", "--identifier", "99999", "newname"}, ""},
-		{"rename too long", []string{"nodes", "rename", "--identifier", id, strings.Repeat("t", 64)}, "too long"},
-		{"expire missing identifier", []string{"nodes", "expire"}, "identifier"},
-		{"expire nonexistent", []string{"nodes", "expire", "--identifier", "99999"}, ""},
-		{"expire invalid time", []string{"nodes", "expire", "--identifier", id, "--expiry", "not-a-time"}, "parsing expiry"},
-		{"tag missing identifier", []string{"nodes", "tag", "--tags", "tag:x"}, "identifier"},
-		{"tag empty", []string{"nodes", "tag", "--identifier", id}, "cannot remove all tags"},
-		{"tag invalid format", []string{"nodes", "tag", "--identifier", id, "--tags", "notatag"}, "tag must start"},
-		{"tag unpermitted", []string{"nodes", "tag", "--identifier", id, "--tags", "tag:undefined"}, "invalid or not permitted"},
-		{"approve missing identifier", []string{"nodes", "approve-routes", "--routes", "10.0.0.0/24"}, "identifier"},
-		{"approve nonexistent", []string{"nodes", "approve-routes", "--identifier", "99999", "--routes", "10.0.0.0/24"}, ""},
-		{"approve invalid cidr", []string{"nodes", "approve-routes", "--identifier", id, "--routes", "notacidr"}, "parsing route"},
-		// The deprecated `nodes register` alias drives its own RegisterNode path;
-		// cover its error cases (the happy path is covered via `auth register`).
-		{"register nonexistent user", []string{"nodes", "register", "--user", "ghost", "--key", types.MustAuthID().Raw()}, ""},
-		{"register invalid key", []string{"nodes", "register", "--user", "user1", "--key", "badkey"}, ""},
+		{"delete missing node", []string{"nodes", "delete", "--force"}, "`nodes delete` needs 1 argument, got 0."},
+		{"delete nonexistent", []string{"nodes", "delete", "99999", "--force"}, `no node matches "99999"`},
+		{"set missing node", []string{"nodes", "set", "--name", "newname"}, "`nodes set` needs 1 argument, got 0."},
+		{"set nonexistent", []string{"nodes", "set", "99999", "--name", "newname"}, `no node matches "99999"`},
+		{"set name too long", []string{"nodes", "set", id, "--name", strings.Repeat("t", 64)}, "expected length <= 63"},
+		{"set invalid time", []string{"nodes", "set", id, "--expiry", "not-a-time"}, `"not-a-time" is not a valid --expiry`},
+		{"expire missing node", []string{"nodes", "expire"}, "`nodes expire` needs 1 argument, got 0."},
+		{"expire nonexistent", []string{"nodes", "expire", "99999"}, `no node matches "99999"`},
+		{"tags missing node", []string{"nodes", "tags", "set", "--force"}, "`nodes tags set` needs 2 arguments, got 0."},
+		{"tags empty", []string{"nodes", "tags", "set", id, "", "--force"}, "the tag list is empty"},
+		{"tags not in policy", []string{"nodes", "tags", "set", id, "tag:undefined", "--force"}, "these tags are not in the policy: tag:undefined."},
+		{"routes missing node", []string{"nodes", "routes", "set", "10.0.0.0/24"}, "`nodes routes set` needs 2 arguments, got 1."},
+		{"routes nonexistent", []string{"nodes", "routes", "set", "99999", "10.0.0.0/24"}, `no node matches "99999"`},
+		{"routes invalid cidr", []string{"nodes", "routes", "set", id, "notacidr"}, `"notacidr" is not a route`},
+		// `nodes register` is gone; `auth register` answers a registration.
+		{"register nonexistent user", []string{"auth", "register", types.MustAuthID().Raw(), "ghost"}, `no user matches "ghost"`},
+		{"register invalid auth id", []string{"auth", "register", "badkey", "user1"}, "<auth-id> is not an auth ID"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := headscale.Execute(append([]string{"headscale"}, tt.args...))
-			if tt.wantErr == "" {
-				require.Error(t, err)
-
-				return
-			}
-
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }
 
-// TestNodeTagCommand exercises `headscale nodes tag` against a live node: it
-// sets tags (converting a user-owned node into a tagged node) and validates the
-// error paths (no tags, invalid tag format).
+// TestNodeTagCommand exercises `headscale nodes tags set` against a live node:
+// it sets tags (converting a user-owned node into a tagged node) and validates
+// the error paths (no tags, a tag the policy does not name).
 func TestNodeTagCommand(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -1037,8 +769,7 @@ func TestNodeTagCommand(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	// tag:test1 / tag:test2 must be defined in the policy and owned by user1,
-	// otherwise the admin `nodes tag` command is rejected as "invalid or not
-	// permitted" — tags must exist in tagOwners.
+	// otherwise `nodes tags set` is refused: tags must exist in tagOwners.
 	policy := &policyv2.Policy{
 		ACLs: []policyv2.ACL{
 			{
@@ -1077,7 +808,7 @@ func TestNodeTagCommand(t *testing.T) {
 
 		if len(nodes) == 1 {
 			nodeID = nodes[0].Id
-			assert.Equal(ct, "user1", nodes[0].User.Name, "node should start user-owned")
+			assert.Equal(ct, "user1", integrationutil.OwnerUser(nodes[0].Owner).Name, "node should start user-owned")
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
@@ -1086,44 +817,58 @@ func TestNodeTagCommand(t *testing.T) {
 	// Set two tags. The command response is round-tripped (transport check);
 	// the resulting tag state is asserted via the authoritative list read-back
 	// below rather than the immediate mutation response.
-	tagged := assertJSONRoundtrip[*clientv1.Node](t, headscale, []string{
-		"headscale", "nodes", "tag",
-		"--identifier", idStr,
-		"--tags", "tag:test1,tag:test2",
+	tagged := assertJSONRoundtrip[*clientv0.Node](t, headscale, []string{
+		"headscale", "nodes", "tags", "set", idStr, "tag:test1,tag:test2",
+		"--force",
 		"--output", "json",
 	})
 	assert.Equal(t, nodeID, tagged.Id, "tag response should be for the same node")
 
-	// The node is now a tagged node, presented as the tagged-devices user.
+	// The node is now a tagged node, owned by its tags.
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, nodes, 1)
 
 		if len(nodes) == 1 {
-			assert.Equal(ct, "tagged-devices", nodes[0].User.Name, "tagged node shows as tagged-devices")
-			assert.ElementsMatch(ct, []string{"tag:test1", "tag:test2"}, nodes[0].Tags)
+			assert.True(ct, nodes[0].Owner.MustGet().User.IsNull(), "a tagged node has no user: its tags own it")
+			assert.ElementsMatch(ct, []string{"tag:test1", "tag:test2"}, integrationutil.OwnerTags(nodes[0].Owner))
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
 	// Error: tagged nodes must keep at least one tag, so an empty tag set is
 	// rejected.
 	_, err = headscale.Execute([]string{
-		"headscale", "nodes", "tag",
-		"--identifier", idStr,
+		"headscale", "nodes", "tags", "set", idStr, "", "--force",
 	})
-	require.ErrorContains(t, err, "cannot remove all tags")
+	require.ErrorContains(t, err, "A tagged node needs at least one tag.")
 
 	// Error: malformed tag (missing the "tag:" prefix).
 	_, err = headscale.Execute([]string{
-		"headscale", "nodes", "tag",
-		"--identifier", idStr,
-		"--tags", "not-a-valid-tag",
+		"headscale", "nodes", "tags", "set", idStr, "not-a-valid-tag", "--force",
 	})
-	require.Error(t, err, "an invalid tag format must be rejected")
+	// What it says today does not name the form of a tag; it says the policy
+	// does not name this one.
+	require.ErrorContains(t, err, "these tags are not in the policy: not-a-valid-tag.")
+
+	// Neither refusal changed the tags. The tag list shows the tags and the
+	// node that has them.
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var tags []clientv0.Tag
+
+		err := executeAndUnmarshal(headscale, []string{"headscale", "nodes", "tags", "list", idStr, "--output", "json"}, &tags)
+		assert.NoError(ct, err)
+
+		names := make([]string, 0, len(tags))
+		for _, tag := range tags {
+			names = append(names, tag.Tag)
+		}
+
+		assert.ElementsMatch(ct, []string{"tag:test1", "tag:test2"}, names)
+	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 }
 
-// TestNodeRouteCommands exercises `nodes approve-routes` and `nodes list-routes`
+// TestNodeRouteCommands exercises `nodes routes set`, `clear` and `list`
 // end-to-end against a client that advertises a subnet route.
 func TestNodeRouteCommands(t *testing.T) {
 	IntegrationSkip(t)
@@ -1165,101 +910,55 @@ func TestNodeRouteCommands(t *testing.T) {
 	var nodeID string
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		var nodes []clientv1.Node
+		var nodes []clientv0.Node
 
 		err := executeAndUnmarshal(headscale,
-			[]string{"headscale", "nodes", "list-routes", "--output", "json"},
+			[]string{"headscale", "nodes", "routes", "list", "--output", "json"},
 			&nodes,
 		)
 		assert.NoError(ct, err)
-		assert.Len(ct, nodes, 1, "list-routes should show the route-advertising node")
+		assert.Len(ct, nodes, 1, "routes list should show the route-advertising node")
 
 		if len(nodes) == 1 {
 			nodeID = nodes[0].Id
-			assert.Contains(ct, nodes[0].AvailableRoutes, route)
-			assert.Empty(ct, nodes[0].ApprovedRoutes)
+			assert.Contains(ct, nodes[0].AdvertisedRoutes, route)
+			assert.Empty(ct, nodes[0].EnabledRoutes)
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
 	idStr := nodeID
 
 	// Approve the route via the CLI.
-	approved := assertJSONRoundtrip[*clientv1.Node](t, headscale, []string{
-		"headscale", "nodes", "approve-routes",
-		"--identifier", idStr,
-		"--routes=" + route,
+	approved := assertJSONRoundtrip[*clientv0.Node](t, headscale, []string{
+		"headscale", "nodes", "routes", "set", idStr, route,
 		"--output", "json",
 	})
-	assert.Contains(t, approved.ApprovedRoutes, route)
+	assert.Contains(t, approved.EnabledRoutes, route)
 
-	// list-routes filtered by the identifier should report the approved route
-	// as a primary subnet route.
+	// routes list of the node should report the approved route as one it
+	// serves.
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		var nodes []clientv1.Node
+		var nodes []clientv0.Node
 
 		err := executeAndUnmarshal(headscale,
-			[]string{"headscale", "nodes", "list-routes", "--identifier", idStr, "--output", "json"},
+			[]string{"headscale", "nodes", "routes", "list", idStr, "--output", "json"},
 			&nodes,
 		)
 		assert.NoError(ct, err)
 		assert.Len(ct, nodes, 1)
 
 		if len(nodes) == 1 {
-			assert.Contains(ct, nodes[0].ApprovedRoutes, route)
-			assert.Contains(ct, nodes[0].SubnetRoutes, route)
+			assert.Contains(ct, nodes[0].EnabledRoutes, route)
+			assert.Contains(ct, nodes[0].ServingRoutes, route)
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
-	// Remove all approved routes by passing an empty --routes value.
-	cleared := assertJSONRoundtrip[*clientv1.Node](t, headscale, []string{
-		"headscale", "nodes", "approve-routes",
-		"--identifier", idStr,
-		"--routes=",
+	// Remove all approved routes.
+	cleared := assertJSONRoundtrip[*clientv0.Node](t, headscale, []string{
+		"headscale", "nodes", "routes", "clear", idStr,
 		"--output", "json",
 	})
-	assert.Empty(t, cleared.ApprovedRoutes, "approved routes should be cleared")
-}
-
-// TestNodeBackfillIPsCommand exercises `nodes backfillips` against live nodes.
-// With both IPv4 and IPv6 prefixes configured (the integration default) the
-// command is a no-op for IP assignment, but it must still run cleanly and the
-// nodes must retain their addresses.
-func TestNodeBackfillIPsCommand(t *testing.T) {
-	IntegrationSkip(t)
-
-	scenario, headscale := setupCLIScenario(t, "cli-backfillips", []string{"user1"}, 2)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	require.NoError(t, scenario.WaitForTailscaleSync())
-
-	var before []*clientv1.Node
-
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		var err error
-
-		before, err = headscale.ListNodes()
-		assert.NoError(ct, err)
-		assert.Len(ct, before, 2)
-
-		for _, n := range before {
-			assert.NotEmpty(ct, n.IpAddresses, "node should have IPs before backfill")
-		}
-	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
-
-	out, err := headscale.Execute([]string{"headscale", "nodes", "backfillips", "--force"})
-	require.NoError(t, err)
-	assert.Contains(t, out, "backfilled")
-
-	// Nodes must still have their IP addresses afterwards.
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		after, err := headscale.ListNodes()
-		assert.NoError(ct, err)
-		assert.Len(ct, after, 2)
-
-		for _, n := range after {
-			assert.NotEmpty(ct, n.IpAddresses, "node should still have IPs after backfill")
-		}
-	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
+	assert.Empty(t, cleared.EnabledRoutes, "approved routes should be cleared")
 }
 
 // TestNodeUpdateClientCommand verifies that `headscale nodes update-client`
@@ -1290,7 +989,7 @@ func TestNodeUpdateClientCommand(t *testing.T) {
 	allClients, err := scenario.ListTailscaleClients()
 	require.NoError(t, err)
 
-	var nodes []*clientv1.Node
+	var nodes []*clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
@@ -1298,7 +997,7 @@ func TestNodeUpdateClientCommand(t *testing.T) {
 		assert.Len(c, nodes, len(allClients))
 
 		for _, node := range nodes {
-			assert.True(c, node.Online, "node %s should be online", node.Name)
+			assert.True(c, node.ConnectedToControl, "node %s should be online", node.Hostname)
 		}
 	}, integrationutil.ScaledTimeout(30*time.Second), integrationutil.FastPoll, "Waiting for all nodes to be online")
 
@@ -1307,11 +1006,10 @@ func TestNodeUpdateClientCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"update-client",
-			"--identifier",
 			node.Id,
 		})
-		require.Error(t, err, "node %s has auto-updates off and must be refused", node.Name)
-		assert.Contains(t, err.Error(), "api error (404): not found", "node %s", node.Name)
+		require.Error(t, err, "node %s has auto-updates off and must be refused", node.Hostname)
+		assert.Contains(t, err.Error(), "does not allow remote updates", "node %s", node.Hostname)
 	}
 
 	// Unknown nodes are rejected before anything is sent.
@@ -1319,9 +1017,7 @@ func TestNodeUpdateClientCommand(t *testing.T) {
 		"headscale",
 		"nodes",
 		"update-client",
-		"--identifier",
 		"9999",
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "api error (404): no manageable device matching this ID found")
+	require.ErrorContains(t, err, `no node matches "9999"`)
 }

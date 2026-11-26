@@ -490,11 +490,11 @@ func (k *K3sInContainer) DumpDiagnostics() {
 		label := strings.Join(c, " ")
 
 		if err != nil {
-			log.Printf("[k3s diag] %s failed: %v (stderr: %s)", label, err, stderr)
+			log.Printf("[k3s diag] %s failed: %v (stderr: %s)", label, err, dockertestutil.Redact(stderr))
 			continue
 		}
 
-		log.Printf("[k3s diag] %s:\n%s", label, out)
+		log.Printf("[k3s diag] %s:\n%s", label, dockertestutil.Redact(out))
 	}
 }
 

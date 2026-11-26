@@ -192,7 +192,7 @@ at function scope. Inside the block, assign with `=`, not `:=` — `:=`
 creates a shadow invisible to the outer scope:
 
 ```go
-var nodes []*v1.Node
+var nodes []*clientv0.Node
 var err error
 assert.EventuallyWithT(t, func(c *assert.CollectT) {
     nodes, err = headscale.ListNodes()   // = not :=
@@ -228,14 +228,13 @@ hostname, or tag:
 
 ```go
 // WRONG — relies on array position
-require.Len(t, nodes[0].GetAvailableRoutes(), 1)
+require.Len(t, nodes[0].AdvertisedRoutes, 1)
 
 // CORRECT — find the node that should have the route
 expectedRoutes := map[string]string{"1": "10.33.0.0/16"}
 for _, node := range nodes {
-    nodeIDStr := fmt.Sprintf("%d", node.GetId())
-    if route, shouldHaveRoute := expectedRoutes[nodeIDStr]; shouldHaveRoute {
-        assert.Contains(t, node.GetAvailableRoutes(), route)
+    if route, shouldHaveRoute := expectedRoutes[node.Id]; shouldHaveRoute {
+        assert.Contains(t, node.AdvertisedRoutes, route)
     }
 }
 ```
@@ -273,30 +272,30 @@ func TestRouteAdvertisementBasic(t *testing.T) {
     require.NoErrorf(t, err, "advertising route: %s", err)
 
     // --- Eventually: headscale should see the announced route ---
-    var nodes []*v1.Node
+    var nodes []*clientv0.Node
     assert.EventuallyWithT(t, func(c *assert.CollectT) {
         nodes, err = headscale.ListNodes()
         assert.NoError(c, err)
         assert.Len(c, nodes, 2)
 
         for _, node := range nodes {
-            if node.GetName() == router.Hostname() {
+            if node.Hostname == router.Hostname() {
                 requireNodeRouteCountWithCollect(c, node, 1, 0, 0)
             }
         }
     }, 10*time.Second, 500*time.Millisecond, "route should be announced")
 
     // --- Blocking: approve the route via headscale CLI ---
-    var routerNode *v1.Node
+    var routerNode *clientv0.Node
     for _, node := range nodes {
-        if node.GetName() == router.Hostname() {
+        if node.Hostname == router.Hostname() {
             routerNode = node
             break
         }
     }
     require.NotNil(t, routerNode)
 
-    _, err = headscale.ApproveRoutes(routerNode.GetId(), []string{"10.33.0.0/16"})
+    _, err = headscale.ApproveRoutes(mustParseID(routerNode.Id), []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")})
     require.NoError(t, err)
 
     // --- Eventually: a peer should see the approved route ---

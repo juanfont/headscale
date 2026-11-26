@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/integration"
 	"github.com/juanfont/headscale/integration/androidic"
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -31,7 +31,7 @@ const user = "user1"
 
 // authIDRe finds the auth ID in the command that headscale's register page
 // shows; only its prefix is a promise.
-var authIDRe = regexp.MustCompile(`--auth-id (hskey-authreq-\S+)`)
+var authIDRe = regexp.MustCompile(`hskey-authreq-\S+`)
 
 // androidSkip skips unless running under hi with an APK to test, which
 // also means the host was set up with KVM for it.
@@ -245,10 +245,10 @@ func (e *env) setControlURL(t *testing.T) {
 }
 
 // androidNode waits for the Android node to be registered and online.
-func (e *env) androidNode(t *testing.T) *clientv1.Node {
+func (e *env) androidNode(t *testing.T) *clientv0.Node {
 	t.Helper()
 
-	var node *clientv1.Node
+	var node *clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := e.headscale.ListNodes()
@@ -258,25 +258,25 @@ func (e *env) androidNode(t *testing.T) *clientv1.Node {
 
 		for _, n := range nodes {
 			// Linux peers are tsic containers, named ts-*.
-			if !strings.HasPrefix(n.Name, "ts-") {
+			if !strings.HasPrefix(n.Hostname, "ts-") {
 				node = n
 			}
 		}
 
 		if assert.NotNil(c, node, "android node not registered") {
-			assert.True(c, node.Online, "android node not online")
+			assert.True(c, node.ConnectedToControl, "android node not online")
 		}
 	}, 2*time.Minute, 2*time.Second)
 
 	require.NotNil(t, node)
-	require.NotEmpty(t, node.IpAddresses)
+	require.NotEmpty(t, node.Addresses)
 
 	return node
 }
 
 // assertReachable checks the data plane end to end: the Linux peer pings
 // the Android node through the tailnet.
-func (e *env) assertReachable(t *testing.T, node *clientv1.Node) {
+func (e *env) assertReachable(t *testing.T, node *clientv0.Node) {
 	t.Helper()
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -287,7 +287,7 @@ func (e *env) assertReachable(t *testing.T, node *clientv1.Node) {
 
 		// The emulator sits behind NAT, so the path may be direct or
 		// relayed; tsic's modes each reject the other, so try both.
-		ip := node.IpAddresses[0]
+		ip := node.Addresses[0]
 		timeout := tsic.WithPingTimeout(5 * time.Second)
 
 		err := e.peer.Ping(ip, timeout, tsic.WithPingUntilDirect(false))
@@ -338,7 +338,7 @@ func TestAndroidLoginCustomControlURL(t *testing.T) {
 
 // loginInteractive logs in through the alternate server dialog and the
 // interactive registration it starts, returning the registered node.
-func (e *env) loginInteractive(t *testing.T) *clientv1.Node {
+func (e *env) loginInteractive(t *testing.T) *clientv0.Node {
 	t.Helper()
 
 	require.NoError(t, e.android.Launch())
@@ -351,7 +351,7 @@ func (e *env) loginInteractive(t *testing.T) *clientv1.Node {
 	require.NoError(t, err, "the register page never showed its command")
 
 	_, err = e.headscale.Execute([]string{
-		"headscale", "auth", "register", "--user", user, "--auth-id", authID,
+		"headscale", "auth", "register", authID, user,
 	})
 	require.NoError(t, err)
 
@@ -364,7 +364,7 @@ func (e *env) loginInteractive(t *testing.T) *clientv1.Node {
 // twoNamedPeers adds a second Linux peer, gives both peers recognisable
 // names and waits until the app lists them. It returns their nodes, the
 // scenario's clients and the names, in the same order as the nodes.
-func (e *env) twoNamedPeers(t *testing.T) ([]*clientv1.Node, []integration.TailscaleClient, []string) {
+func (e *env) twoNamedPeers(t *testing.T) ([]*clientv0.Node, []integration.TailscaleClient, []string) {
 	t.Helper()
 
 	require.NoError(t, e.scenario.CreateTailscaleNodesInUser(
@@ -385,10 +385,10 @@ func (e *env) twoNamedPeers(t *testing.T) ([]*clientv1.Node, []integration.Tails
 	nodes, err := e.headscale.ListNodes()
 	require.NoError(t, err)
 
-	var peers []*clientv1.Node
+	var peers []*clientv0.Node
 
 	for _, n := range nodes {
-		if strings.HasPrefix(n.Name, "ts-") {
+		if strings.HasPrefix(n.Hostname, "ts-") {
 			peers = append(peers, n)
 		}
 	}
@@ -399,7 +399,7 @@ func (e *env) twoNamedPeers(t *testing.T) ([]*clientv1.Node, []integration.Tails
 
 	for i, p := range peers {
 		_, err := e.headscale.Execute([]string{
-			"headscale", "nodes", "rename", "--identifier", p.Id, names[i],
+			"headscale", "nodes", "set", p.Id, "--name", names[i],
 		})
 		require.NoError(t, err)
 	}
@@ -442,8 +442,8 @@ func TestAndroidPeerRemovedWhileOffline(t *testing.T) {
 		assert.NoError(c, err)
 
 		for _, n := range nodes {
-			if !strings.HasPrefix(n.Name, "ts-") {
-				assert.False(c, n.Online, "device still has a map session")
+			if !strings.HasPrefix(n.Hostname, "ts-") {
+				assert.False(c, n.ConnectedToControl, "device still has a map session")
 			}
 		}
 	}, 3*time.Minute, 5*time.Second)
@@ -488,7 +488,7 @@ func TestAndroidPeerChanges(t *testing.T) {
 		// drop the peer too; if it does and the app does not, headscale
 		// delivered the removal and the fault is in the app.
 		if i == 0 {
-			witness := clientFor(t, clients, peers[1].Name)
+			witness := clientFor(t, clients, peers[1].Hostname)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				status, err := witness.Status()
@@ -497,7 +497,7 @@ func TestAndroidPeerChanges(t *testing.T) {
 				}
 
 				for _, k := range status.Peers() {
-					assert.NotEqual(c, p.Name, status.Peer[k].HostName)
+					assert.NotEqual(c, p.Hostname, status.Peer[k].HostName)
 				}
 			}, time.Minute, 2*time.Second, "Linux witness still has deleted peer %s", names[i])
 		}
@@ -545,7 +545,7 @@ func TestAndroidLoginMDM(t *testing.T) {
 
 // loginMDM logs in with a managed LoginURL and AuthKey, the way fleets
 // enrol devices, returning the registered node.
-func (e *env) loginMDM(t *testing.T) *clientv1.Node {
+func (e *env) loginMDM(t *testing.T) *clientv0.Node {
 	t.Helper()
 
 	key := e.authKey(t)
@@ -650,14 +650,14 @@ func TestAndroidLoginTLS(t *testing.T) {
 }
 
 // peerNode returns e.peer's headscale node.
-func (e *env) peerNode(t *testing.T) *clientv1.Node {
+func (e *env) peerNode(t *testing.T) *clientv0.Node {
 	t.Helper()
 
 	nodes, err := e.headscale.ListNodes()
 	require.NoError(t, err)
 
 	for _, n := range nodes {
-		if n.Name == e.peer.Hostname() {
+		if n.Hostname == e.peer.Hostname() {
 			return n
 		}
 	}
@@ -810,7 +810,7 @@ func TestAndroidExitNode(t *testing.T) {
 
 	// The intent matches peers by display name, the node's given name.
 	// Sent once: each intent replaces the app's pending selection.
-	name := e.peerNode(t).GivenName
+	name := e.peerNode(t).Name
 	require.NoError(t, e.android.UseExitNode(name))
 
 	e.assertFetch(t, url, "cannot reach %s through exit node %s", target, name)
@@ -836,7 +836,7 @@ func TestAndroidTaildrop(t *testing.T) {
 
 	go func() {
 		_, stderr, err := e.peer.Execute(
-			[]string{"tailscale", "file", "cp", "/tmp/" + file, node.IpAddresses[0] + ":"},
+			[]string{"tailscale", "file", "cp", "/tmp/" + file, node.Addresses[0] + ":"},
 			dockertestutil.ExecuteCommandTimeout(3*time.Minute),
 		)
 		if err != nil {
@@ -876,7 +876,7 @@ func TestAndroidNetworkChange(t *testing.T) {
 	require.NoError(t, e.android.SetNetwork(false))
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Error(c, e.peer.Ping(node.IpAddresses[0], tsic.WithPingTimeout(3*time.Second)))
+		assert.Error(c, e.peer.Ping(node.Addresses[0], tsic.WithPingTimeout(3*time.Second)))
 	}, time.Minute, 3*time.Second, "device still reachable with its network off")
 
 	require.NoError(t, e.android.SetNetwork(true))

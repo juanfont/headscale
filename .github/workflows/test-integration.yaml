@@ -54,7 +54,7 @@ jobs:
           # Build once for the native worker architecture. Static binaries
           # also run in the minimal Headscale image without a Go toolchain.
           go build -o hi ./cmd/hi
-          CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale
+          CGO_ENABLED=0 GOOS=linux go build -tags newcli -o headscale ./cmd/headscale
           CGO_ENABLED=0 GOOS=linux go test -c ./integration -o integration.test
       - name: Upload hi binary
         if: steps.changed-files.outputs.files == 'true'
@@ -249,7 +249,7 @@ jobs:
           - TestCLIWithConfigAuthenticationBypass
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
-          - TestAuthKeyLogoutAndReloginSameUserExpiredKey
+          - TestAuthKeyLogoutAndReloginSameUserRevokedKey
           - TestAuthKeyDeleteKey
           - TestAuthKeyLogoutAndReloginRoutesPreserved
           - TestOIDCAuthenticationPingAll
@@ -267,6 +267,7 @@ jobs:
           - TestAuthWebFlowLogoutAndReloginSameUser
           - TestAuthWebFlowReloginExpiredNode
           - TestAuthWebFlowLogoutAndReloginNewUser
+          - TestAuthWebFlowPageCommand
           - TestTailscaleCert
           - TestTLSCertificateReload
           - TestApiKeyCommand
@@ -281,13 +282,14 @@ jobs:
           - TestNodeCommandValidation
           - TestNodeTagCommand
           - TestNodeRouteCommands
-          - TestNodeBackfillIPsCommand
           - TestNodeUpdateClientCommand
           - TestOAuthClientCommand
           - TestOAuthClientCommandValidation
           - TestSSHTestsRejectFailingPolicy
           - TestPolicyCommand
           - TestPolicyBrokenConfigCommand
+          - TestPolicyFileModeCommand
+          - TestPolicyBypassCommand
           - TestPreAuthKeyCommand
           - TestPreAuthKeyCommandWithoutExpiry
           - TestPreAuthKeyCommandReusableEphemeral
@@ -356,6 +358,7 @@ jobs:
           - TestSSHCheckModeAutoApprove
           - TestSSHCheckModeSessionLossReDelegates
           - TestSSHCheckModeNegativeCLI
+          - TestSSHCheckPageCommand
           - TestSSHLocalpart
           - TestTagsAuthKeyWithTagRequestDifferentTag
           - TestTagsAuthKeyWithTagNoAdvertiseFlag

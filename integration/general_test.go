@@ -10,7 +10,8 @@ import (
 	"testing"
 	"time"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -21,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/util/cmpver"
 	"tailscale.com/util/dnsname"
@@ -387,8 +389,18 @@ func TestTaildrop(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
+	// Every node may reach every other, as with no policy; a key for tags
+	// needs tags the policy names.
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("taildrop"),
+		hsic.WithACLPolicy(&policyv2.Policy{
+			ACLs: []policyv2.ACL{{
+				Action:       "accept",
+				Sources:      []policyv2.Alias{wildcard()},
+				Destinations: []policyv2.AliasWithPorts{aliasWithPorts(wildcard(), tailcfg.PortRangeAny)},
+			}},
+			TagOwners: policyv2.TagOwners{policyv2.Tag("tag:server"): policyv2.Owners{usernameOwner("user1@")}},
+		}),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -768,8 +780,8 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	// Pre-rewrite these were rejected by ApplyHostnameFromHostInfo with
 	// "invalid characters" and the node was stuck on an invalid-<rand>
 	// GivenName with the HostName update dropped. The assertions below
-	// verify both raw preservation ([clientv1.Node.Name]) and SaaS-matching sanitisation
-	// ([clientv1.Node.GivenName]) for each awkward input.
+	// verify both raw preservation ([clientv0.Node.Name]) and SaaS-matching sanitisation
+	// ([clientv0.Node.GivenName]) for each awkward input.
 	hostnames := map[string]string{
 		"1": "Joe's Mac mini",
 		"2": "Test@Host",
@@ -815,13 +827,13 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 
 	// Wait for nodestore batch processing to complete
 	// [state.NodeStore] batching timeout is 500ms, so we wait up to 1 second
-	var nodes []*clientv1.Node
+	var nodes []*clientv0.Node
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(
 			headscale,
 			[]string{
 				"headscale",
-				"node",
+				"nodes",
 				"list",
 				"--output",
 				"json",
@@ -833,10 +845,10 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 
 		for _, node := range nodes {
 			hostname := hostnames[node.Id]
-			assert.Equal(ct, hostname, node.Name, "Node name should match hostname")
+			assert.Equal(ct, hostname, node.Hostname, "Node name should match hostname")
 
 			// GivenName is sanitised via [dnsname.SanitizeHostname] (SaaS algorithm).
-			assert.Equal(ct, dnsname.SanitizeHostname(hostname), node.GivenName,
+			assert.Equal(ct, dnsname.SanitizeHostname(hostname), node.Name,
 				"Given name should match SaaS hostname-sanitisation rules")
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
@@ -847,11 +859,11 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		_, err = headscale.Execute(
 			[]string{
 				"headscale",
-				"node",
-				"rename",
-				givenName,
-				"--identifier",
+				"nodes",
+				"set",
 				node.Id,
+				"--name",
+				givenName,
 			})
 		require.NoError(t, err)
 	}
@@ -919,7 +931,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 			headscale,
 			[]string{
 				"headscale",
-				"node",
+				"nodes",
 				"list",
 				"--output",
 				"json",
@@ -934,7 +946,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		for _, node := range nodes {
 			hostname := hostnames[node.Id]
 			givenName := fmt.Sprintf("%s-givenname", node.Id)
-			if node.Name != hostname+"NEW" || node.GivenName != givenName {
+			if node.Hostname != hostname+"NEW" || node.Name != givenName {
 				return false
 			}
 		}
@@ -1212,10 +1224,10 @@ func TestExpireNode(t *testing.T) {
 			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "client must report its own status before expiry")
 
 			result, err := headscale.Execute([]string{
-				"headscale", "nodes", "expire", "--identifier", selfID, "--output", "json",
+				"headscale", "nodes", "expire", selfID, "--output", "json",
 			})
 			require.NoError(t, err)
-			var node clientv1.Node
+			var node clientv0.Node
 			require.NoError(t, json.Unmarshal([]byte(result), &node))
 
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1234,12 +1246,15 @@ func TestExpireNode(t *testing.T) {
 				}
 				for _, current := range nodes {
 					if current.Id == node.Id {
-						assert.False(c, current.Online, "expired node must be offline in the admin API")
+						// The expired node keeps its control session, which the
+						// batcher and its peers below see too.
+						assert.True(c, current.Expired, "expired node must be expired in the admin API")
+						assert.True(c, current.ConnectedToControl, "expired node keeps its control session in the admin API")
 						return
 					}
 				}
 				c.Errorf("expired node %s disappeared", node.Id)
-			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "Headscale must report the expired node offline")
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "Headscale must report the expired node expired and connected")
 
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				info, err := headscale.DebugBatcher()
@@ -1276,7 +1291,7 @@ func TestExpireNode(t *testing.T) {
 				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "peer must see the expired node expired and online")
 
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
-					_, stderr, _ := peer.Execute([]string{"tailscale", "ping", node.Name})
+					_, stderr, _ := peer.Execute([]string{"tailscale", "ping", node.Hostname})
 					assert.Contains(c, stderr, "node key has expired")
 				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "expired node must not be reachable")
 			}
@@ -1284,7 +1299,7 @@ func TestExpireNode(t *testing.T) {
 			// No tailscale up/login: restoring expiry must recover the client
 			// using its existing node key and control connection.
 			_, err = headscale.Execute([]string{
-				"headscale", "nodes", "expire", "--identifier", node.Id, "--disable",
+				"headscale", "nodes", "set", node.Id, "--expiry", "never",
 			})
 			require.NoError(t, err)
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1303,7 +1318,7 @@ func TestExpireNode(t *testing.T) {
 				}
 				for _, current := range nodes {
 					if current.Id == node.Id {
-						assert.True(c, current.Online)
+						assert.True(c, current.ConnectedToControl)
 						return
 					}
 				}
@@ -1362,27 +1377,28 @@ func TestSetNodeExpiryInFuture(t *testing.T) {
 
 	result, err := headscale.Execute(
 		[]string{
-			"headscale", "nodes", "expire",
-			"--identifier", "1",
+			"headscale", "nodes", "set", "1",
 			"--output", "json",
 			"--expiry", targetExpiry.Format(time.RFC3339),
 		},
 	)
 	require.NoError(t, err)
 
-	var node clientv1.Node
+	var node clientv0.Node
 	err = json.Unmarshal([]byte(result), &node)
 	require.NoError(t, err)
 
-	require.True(t, node.Expiry.After(time.Now()))
-	require.WithinDuration(t, targetExpiry, *node.Expiry, 2*time.Second)
+	expiry, err := node.Expiry.Get()
+	require.NoError(t, err)
+	require.True(t, expiry.After(time.Now()))
+	require.WithinDuration(t, targetExpiry, expiry, 2*time.Second)
 
 	var nodeKey key.NodePublic
 	err = nodeKey.UnmarshalText([]byte(node.NodeKey))
 	require.NoError(t, err)
 
 	for _, client := range allClients {
-		if client.Hostname() == node.Name {
+		if client.Hostname() == node.Hostname {
 			continue
 		}
 
@@ -1459,39 +1475,34 @@ func TestDisableNodeExpiry(t *testing.T) {
 	// First set an expiry on the node.
 	result, err := headscale.Execute(
 		[]string{
-			"headscale", "nodes", "expire",
-			"--identifier", "1",
+			"headscale", "nodes", "set", "1",
 			"--output", "json",
 			"--expiry", time.Now().Add(time.Hour).Format(time.RFC3339),
 		},
 	)
 	require.NoError(t, err)
 
-	var node clientv1.Node
+	var node clientv0.Node
 	err = json.Unmarshal([]byte(result), &node)
 	require.NoError(t, err)
-	require.NotNil(t, node.Expiry, "node should have an expiry set")
+	require.False(t, node.Expiry.IsNull(), "node should have an expiry set")
 
 	// Now disable the expiry.
 	result, err = headscale.Execute(
 		[]string{
-			"headscale", "nodes", "expire",
-			"--identifier", "1",
+			"headscale", "nodes", "set", "1",
 			"--output", "json",
-			"--disable",
+			"--expiry", "never",
 		},
 	)
 	require.NoError(t, err)
 
-	var nodeDisabled clientv1.Node
+	var nodeDisabled clientv0.Node
 	err = json.Unmarshal([]byte(result), &nodeDisabled)
 	require.NoError(t, err)
 
-	// Expiry should be nil (or zero time) when disabled.
-	if nodeDisabled.Expiry != nil {
-		require.True(t, nodeDisabled.Expiry.IsZero(),
-			"node expiry should be zero/nil after disabling")
-	}
+	// Expiry is null when disabled.
+	require.True(t, nodeDisabled.Expiry.IsNull(), "node expiry should be null after disabling")
 
 	var nodeKey key.NodePublic
 	err = nodeKey.UnmarshalText([]byte(nodeDisabled.NodeKey))
@@ -1499,7 +1510,7 @@ func TestDisableNodeExpiry(t *testing.T) {
 
 	// Verify peers see the node as not expired.
 	for _, client := range allClients {
-		if client.Hostname() == nodeDisabled.Name {
+		if client.Hostname() == nodeDisabled.Hostname {
 			continue
 		}
 
@@ -1591,7 +1602,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 			return
 		}
 
-		var nodes []*clientv1.Node
+		var nodes []*clientv0.Node
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 			result, err := headscale.Execute([]string{
 				"headscale", "nodes", "list", "--output", "json",
@@ -1606,9 +1617,9 @@ func TestNodeOnlineStatus(t *testing.T) {
 				// All nodes should be online
 				assert.Truef(
 					ct,
-					node.Online,
+					node.ConnectedToControl,
 					"expected %s to have online status in Headscale, marked as offline %s after start",
-					node.Name,
+					node.Hostname,
 					time.Since(start),
 				)
 			}
@@ -1813,7 +1824,7 @@ func TestNodeDeletionEndsLongPoll(t *testing.T) {
 		ids := make(map[string]uint64, len(nodes))
 
 		for _, node := range nodes {
-			ids[node.Name] = mustParseID(node.Id)
+			ids[node.Hostname] = mustParseID(node.Id)
 		}
 
 		for _, client := range allClients {
@@ -1888,7 +1899,7 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test list all nodes after added otherUser
-	var nodeList []clientv1.Node
+	var nodeList []clientv0.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1902,8 +1913,8 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Len(t, nodeList, 2)
-	assert.True(t, nodeList[0].Online)
-	assert.True(t, nodeList[1].Online)
+	assert.True(t, nodeList[0].ConnectedToControl)
+	assert.True(t, nodeList[1].ConnectedToControl)
 
 	// Delete the first node, which is online
 	_, err = headscale.Execute(
@@ -1911,18 +1922,14 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 			"headscale",
 			"nodes",
 			"delete",
-			"--identifier",
-			// Delete the last added machine
 			nodeList[0].Id,
-			"--output",
-			"json",
 			"--force",
 		},
 	)
 	require.NoError(t, err)
 
 	// Ensure that the node has been deleted, this did not occur due to a panic.
-	var nodeListAfter []clientv1.Node
+	var nodeListAfter []clientv0.Node
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err = executeAndUnmarshal(
 			headscale,
@@ -1952,6 +1959,6 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Len(t, nodeListAfter, 1)
-	assert.True(t, nodeListAfter[0].Online)
+	assert.True(t, nodeListAfter[0].ConnectedToControl)
 	assert.Equal(t, nodeList[1].Id, nodeListAfter[0].Id)
 }

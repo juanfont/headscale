@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -218,16 +218,16 @@ func TestK8sOperator(t *testing.T) {
 }
 
 // hasNodeWithTag reports whether any node carries the given tag.
-func hasNodeWithTag(nodes []*clientv1.Node, tag string) bool {
+func hasNodeWithTag(nodes []*clientv0.Node, tag string) bool {
 	return countNodesWithTag(nodes, tag) > 0
 }
 
 // countNodesWithTag counts the nodes carrying the given tag.
-func countNodesWithTag(nodes []*clientv1.Node, tag string) int {
+func countNodesWithTag(nodes []*clientv0.Node, tag string) int {
 	count := 0
 
 	for _, node := range nodes {
-		if slices.Contains(node.Tags, tag) {
+		if slices.Contains(integrationutil.OwnerTags(node.Owner), tag) {
 			count++
 		}
 	}
@@ -238,13 +238,13 @@ func countNodesWithTag(nodes []*clientv1.Node, tag string) int {
 // nodeIPv4ByName returns the IPv4 of the first node whose given name contains
 // substr, identifying an operator-registered proxy by the Service/Connector it
 // fronts (e.g. "echo" matches the default-echo-ts ingress proxy).
-func nodeIPv4ByName(nodes []*clientv1.Node, substr string) (string, bool) {
+func nodeIPv4ByName(nodes []*clientv0.Node, substr string) (string, bool) {
 	for _, node := range nodes {
-		if !strings.Contains(node.GivenName, substr) {
+		if !strings.Contains(node.Name, substr) {
 			continue
 		}
 
-		for _, ip := range node.IpAddresses {
+		for _, ip := range node.Addresses {
 			addr, err := netip.ParseAddr(ip)
 			if err == nil && addr.Is4() {
 				return ip, true
@@ -256,10 +256,10 @@ func nodeIPv4ByName(nodes []*clientv1.Node, substr string) (string, bool) {
 }
 
 // describeNodes renders a compact name->tags summary for failure messages.
-func describeNodes(nodes []*clientv1.Node) string {
+func describeNodes(nodes []*clientv0.Node) string {
 	parts := make([]string, 0, len(nodes))
 	for _, node := range nodes {
-		parts = append(parts, fmt.Sprintf("%s%v", node.Name, node.Tags))
+		parts = append(parts, fmt.Sprintf("%s%v", node.Hostname, integrationutil.OwnerTags(node.Owner)))
 	}
 
 	return "[" + strings.Join(parts, " ") + "]"

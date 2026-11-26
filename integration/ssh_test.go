@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -821,10 +820,8 @@ const sshCheckStderr = "/tmp/ssh-check.stderr"
 func sshCheckAuthIDs(client TailscaleClient) ([]string, error) {
 	stdout, _, err := client.Execute([]string{"cat", sshCheckStderr})
 
-	return sshAuthIDPattern.FindAllString(stdout, -1), err
+	return authIDPattern.FindAllString(stdout, -1), err
 }
-
-var sshAuthIDPattern = regexp.MustCompile(`hskey-authreq-[0-9a-f]{24}`)
 
 // findSSHCheckAuthID polls the stderr of client's SSH check for the auth
 // ID the check's banner names.
@@ -980,8 +977,7 @@ func TestSSHOneUserToOneCheckModeCLI(t *testing.T) {
 	// Approve via CLI
 	_, err = headscale.Execute(
 		[]string{
-			"headscale", "auth", "approve",
-			"--auth-id", authID,
+			"headscale", "auth", "approve", authID,
 		},
 	)
 	require.NoError(t, err)
@@ -1244,8 +1240,7 @@ func TestSSHCheckModeCheckPeriodCLI(t *testing.T) {
 
 	_, err = headscale.Execute(
 		[]string{
-			"headscale", "auth", "approve",
-			"--auth-id", firstAuthID,
+			"headscale", "auth", "approve", firstAuthID,
 		},
 	)
 	require.NoError(t, err)
@@ -1282,8 +1277,7 @@ func TestSSHCheckModeCheckPeriodCLI(t *testing.T) {
 
 	_, err = headscale.Execute(
 		[]string{
-			"headscale", "auth", "approve",
-			"--auth-id", secondAuthID,
+			"headscale", "auth", "approve", secondAuthID,
 		},
 	)
 	require.NoError(t, err)
@@ -1331,8 +1325,7 @@ func TestSSHCheckModeAutoApprove(t *testing.T) {
 
 	_, err = headscale.Execute(
 		[]string{
-			"headscale", "auth", "approve",
-			"--auth-id", firstAuthID,
+			"headscale", "auth", "approve", firstAuthID,
 		},
 	)
 	require.NoError(t, err)
@@ -1415,8 +1408,7 @@ func TestSSHCheckModeSessionLossReDelegates(t *testing.T) {
 	// complete instead of hanging until it times out.
 	_, err = headscale.Execute(
 		[]string{
-			"headscale", "auth", "approve",
-			"--auth-id", secondAuthID,
+			"headscale", "auth", "approve", secondAuthID,
 		},
 	)
 	require.NoError(t, err)
@@ -1464,8 +1456,7 @@ func TestSSHCheckModeNegativeCLI(t *testing.T) {
 	// Reject via CLI
 	_, err = headscale.Execute(
 		[]string{
-			"headscale", "auth", "reject",
-			"--auth-id", authID,
+			"headscale", "auth", "reject", authID, "--force",
 		},
 	)
 	require.NoError(t, err)
@@ -1476,6 +1467,53 @@ func TestSSHCheckModeNegativeCLI(t *testing.T) {
 		assert.Empty(t, result.stdout, "no command output expected on rejection")
 	case <-time.After(30 * time.Second):
 		t.Fatal("SSH did not complete after auth rejection")
+	}
+}
+
+// TestSSHCheckPageCommand approves an SSH check with the command its page
+// prints, as an admin who opens the link of the banner and copies it does.
+func TestSSHCheckPageCommand(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := sshScenario(t, sshCheckPolicy(), "ssh-checkpage", 2)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	requireNoErrListClients(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	requireNoErrListFQDN(t, err)
+
+	require.Len(t, user1Clients, 2)
+	client, peer := user1Clients[0], user1Clients[1]
+
+	sshResult := doSSHCheck(t, client, peer)
+	authID := findSSHCheckAuthID(t, client)
+
+	pageURL, err := url.Parse(headscale.GetEndpoint() + "/auth/" + authID)
+	require.NoError(t, err)
+
+	body, err := doLoginURL(client.Hostname(), pageURL)
+	require.NoError(t, err)
+
+	runPageCommand(t, headscale, body, "user1")
+
+	select {
+	case result := <-sshResult:
+		require.NoError(t, result.err)
+		require.Contains(
+			t,
+			peer.ContainerID(),
+			strings.ReplaceAll(result.stdout, "\n", ""),
+		)
+	case <-time.After(30 * time.Second):
+		t.Fatal("SSH did not complete after the page's command approved it")
 	}
 }
 

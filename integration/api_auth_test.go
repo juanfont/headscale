@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -53,9 +54,10 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 		apiKeyOutput, err := headscale.Execute(
 			[]string{
 				"headscale",
-				"apikeys",
+				"api",
+				"keys",
 				"create",
-				"--expiration",
+				"--expiry",
 				"24h",
 			},
 		)
@@ -259,9 +261,10 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 	apiKeyOutput, err := headscale.Execute(
 		[]string{
 			"headscale",
-			"apikeys",
+			"api",
+			"keys",
 			"create",
-			"--expiration",
+			"--expiry",
 			"24h",
 		},
 	)
@@ -444,9 +447,10 @@ func TestRemoteCLIAuthenticationBypass(t *testing.T) {
 	apiKeyOutput, err := headscale.Execute(
 		[]string{
 			"headscale",
-			"apikeys",
+			"api",
+			"keys",
 			"create",
-			"--expiration",
+			"--expiry",
 			"24h",
 		},
 	)
@@ -488,14 +492,8 @@ func TestRemoteCLIAuthenticationBypass(t *testing.T) {
 			"remote connection with invalid API key should fail")
 
 		// Should contain authentication error message
-		outputStr := strings.ToLower(output)
-		assert.True(t,
-			strings.Contains(outputStr, "unauthorized") ||
-				strings.Contains(outputStr, "unauthenticated") ||
-				strings.Contains(outputStr, "invalid token") ||
-				strings.Contains(outputStr, "validating token") ||
-				strings.Contains(outputStr, "authentication"),
-			"Error should indicate authentication failure, got: %s", output)
+		assert.Contains(t, output, "the server did not accept the credential of this CLI",
+			"Error should indicate authentication failure")
 
 		// Should NOT leak user data
 		assert.NotContains(t, output, "grpcuser1",
@@ -519,7 +517,7 @@ func TestRemoteCLIAuthenticationBypass(t *testing.T) {
 
 		// CLI outputs the users array directly, not wrapped in a response object
 		// Parse as JSON array (CLI uses [json.Marshal])
-		var users []*clientv1.User
+		var users []*clientv0.User
 
 		err = json.Unmarshal([]byte(output), &users)
 		require.NoError(t, err, "Response should be valid JSON array")
@@ -532,6 +530,19 @@ func TestRemoteCLIAuthenticationBypass(t *testing.T) {
 
 		assert.Contains(t, userNames, "grpcuser1")
 		assert.Contains(t, userNames, "grpcuser2")
+
+		// whoami says the CLI is connected as the API key.
+		output, err = headscale.Execute(
+			[]string{
+				"sh", "-c",
+				fmt.Sprintf("HEADSCALE_CLI_ADDRESS=%s HEADSCALE_CLI_API_KEY=%s HEADSCALE_CLI_INSECURE=true headscale api whoami --output json", remoteAddr, validAPIKey),
+			},
+		)
+		require.NoError(t, err)
+
+		var me clientv0.Me
+		require.NoError(t, json.Unmarshal([]byte(output), &me))
+		assert.Equal(t, clientv0.PrincipalKindApiKey, me.Principal.Kind)
 	})
 }
 
@@ -565,9 +576,10 @@ func TestCLIWithConfigAuthenticationBypass(t *testing.T) {
 	apiKeyOutput, err := headscale.Execute(
 		[]string{
 			"headscale",
-			"apikeys",
+			"api",
+			"keys",
 			"create",
-			"--expiration",
+			"--expiry",
 			"24h",
 		},
 	)
@@ -641,14 +653,8 @@ cli:
 			"CLI with invalid API key should fail")
 
 		// Should indicate authentication failure
-		outputStr := strings.ToLower(output)
-		assert.True(t,
-			strings.Contains(outputStr, "unauthorized") ||
-				strings.Contains(outputStr, "unauthenticated") ||
-				strings.Contains(outputStr, "invalid token") ||
-				strings.Contains(outputStr, "validating token") ||
-				strings.Contains(outputStr, "authentication"),
-			"Error should indicate authentication failure, got: %s", output)
+		assert.Contains(t, output, "the server did not accept the credential of this CLI",
+			"Error should indicate authentication failure")
 
 		// Should NOT leak user data
 		assert.NotContains(t, output, "cliuser1",
@@ -678,7 +684,7 @@ cli:
 
 		// CLI outputs the users array directly, not wrapped in a response object
 		// Parse as JSON array (CLI uses [json.Marshal])
-		var users []*clientv1.User
+		var users []*clientv0.User
 
 		err = json.Unmarshal([]byte(output), &users)
 		require.NoError(t, err, "Response should be valid JSON array")

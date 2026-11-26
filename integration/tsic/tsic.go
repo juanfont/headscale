@@ -660,7 +660,7 @@ func (t *TailscaleInContainer) Execute(
 		// log.Printf("command issued: %s", strings.Join(command, " "))
 		// log.Printf("command stderr: %s\n", stderr)
 		if stdout != "" {
-			log.Printf("command stdout: %s\n", stdout)
+			log.Printf("command stdout: %s\n", dockertestutil.Redact(stdout))
 		}
 
 		if strings.Contains(stderr, "NeedsLogin") {
@@ -728,8 +728,9 @@ func (t *TailscaleInContainer) Login(
 	command := t.buildLoginCommand(loginServer, authKey)
 
 	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil { //nolint:noinlineerr
-		return fmt.Errorf(
-			"%s failed to join tailscale client (%s): %w",
+		// The command carries the auth key.
+		return dockertestutil.Redactf(err,
+			"%s failed to join tailscale client (%s): %v",
 			t.hostname,
 			strings.Join(command, " "),
 			err,
@@ -785,15 +786,16 @@ func startLogin(
 		defer close(l.done)
 
 		exitCode, err := exec(command, dockertest.ExecOptions{StdOut: l, StdErr: l})
-		log.Printf("%v finished (exit %d): %s", command, exitCode, l.output.String())
+		// The command carries the auth key, and its output may echo it.
+		log.Printf("%s", dockertestutil.Redact(fmt.Sprintf("%v finished (exit %d): %s", command, exitCode, l.output.String())))
 
 		switch {
 		case err != nil:
-			l.err = fmt.Errorf("tailscale up: %s: %w", l.output.String(), err)
+			l.err = dockertestutil.Redactf(err, "tailscale up: %s: %v", l.output.String(), err)
 		case exitCode != 0:
-			l.err = fmt.Errorf("tailscale up exited %d: %s: %w", exitCode, l.output.String(), dockertestutil.ErrDockertestCommandFailed)
+			l.err = dockertestutil.Redactf(dockertestutil.ErrDockertestCommandFailed, "tailscale up exited %d: %s: %v", exitCode, l.output.String(), dockertestutil.ErrDockertestCommandFailed)
 		case !l.foundURL:
-			l.err = fmt.Errorf("tailscale up: %s: %w", l.output.String(), util.ErrNoURLFound)
+			l.err = dockertestutil.Redactf(util.ErrNoURLFound, "tailscale up: %s: %v", l.output.String(), util.ErrNoURLFound)
 		}
 	}()
 

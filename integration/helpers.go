@@ -18,7 +18,7 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/google/go-cmp/cmp"
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -566,17 +566,20 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 	t.Logf("requireAllClientsNetInfoAndDERP: Completed NetInfo/DERP validation for %d nodes at %s - Duration: %v - %s", len(expectedNodes), endTime.Format(TimestampFormat), duration, message)
 }
 
-// assertLastSeenSet validates that a node has a non-nil LastSeen timestamp.
+// assertLastSeenSet validates that a node has a LastSeen timestamp.
 // Critical for ensuring node activity tracking is functioning properly.
-func assertLastSeenSet(t *testing.T, node *clientv1.Node) {
+func assertLastSeenSet(t *testing.T, node *clientv0.Node) {
 	t.Helper()
-	assert.NotNil(t, node)
-	assert.NotNil(t, node.LastSeen)
+
+	if assert.NotNil(t, node) {
+		assert.False(t, node.LastSeen.IsNull(), "lastSeen is null")
+	}
 }
 
-func assertLastSeenSetWithCollect(c *assert.CollectT, node *clientv1.Node) {
-	assert.NotNil(c, node)
-	assert.NotNil(c, node.LastSeen)
+func assertLastSeenSetWithCollect(c *assert.CollectT, node *clientv0.Node) {
+	if assert.NotNil(c, node) {
+		assert.False(c, node.LastSeen.IsNull(), "lastSeen is null")
+	}
 }
 
 // assertCurlSuccessWithCollect asserts that a curl request succeeds with
@@ -1086,7 +1089,7 @@ func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
 
 // GetUserByName retrieves a user by name from the headscale server.
 // This is a common pattern used when creating preauth keys or managing users.
-func GetUserByName(headscale ControlServer, username string) (*clientv1.User, error) {
+func GetUserByName(headscale ControlServer, username string) (*clientv0.User, error) {
 	users, err := headscale.ListUsers()
 	if err != nil {
 		return nil, fmt.Errorf("listing users: %w", err)
@@ -1103,7 +1106,7 @@ func GetUserByName(headscale ControlServer, username string) (*clientv1.User, er
 
 // findNode returns the first node in nodes for which match returns true,
 // or nil if no node matches.
-func findNode(nodes []*clientv1.Node, match func(*clientv1.Node) bool) *clientv1.Node {
+func findNode(nodes []*clientv0.Node, match func(*clientv0.Node) bool) *clientv0.Node {
 	for _, n := range nodes {
 		if match(n) {
 			return n

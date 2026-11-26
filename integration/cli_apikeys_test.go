@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -33,294 +33,152 @@ func TestApiKeyCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	keys := make([]string, count)
+	keys := make([]*clientv0.CreatedAPIKey, count)
 
 	for idx := range count {
-		apiResult, err := headscale.Execute(
+		var key clientv0.CreatedAPIKey
+
+		err := executeAndUnmarshal(headscale,
 			[]string{
 				"headscale",
-				"apikeys",
+				"api",
+				"keys",
 				"create",
-				"--expiration",
+				"--expiry",
 				"24h",
 				"--output",
 				"json",
 			},
+			&key,
 		)
 		require.NoError(t, err)
-		assert.NotEmpty(t, apiResult)
+		assert.NotEmpty(t, key.Key)
 
-		keys[idx] = apiResult
+		keys[idx] = &key
 	}
 
-	assert.Len(t, keys, 5)
+	listAPIKeys := func(all bool) []clientv0.APIKey {
+		command := []string{"headscale", "api", "keys", "list", "--output", "json"}
+		if all {
+			command = append(command, "--all")
+		}
 
-	var listedAPIKeys []clientv1.ApiKey
+		var listed []clientv0.APIKey
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err = executeAndUnmarshal(headscale,
-			[]string{
-				"headscale",
-				"apikeys",
-				"list",
-				"--output",
-				"json",
-			},
-			&listedAPIKeys,
-		)
-		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list")
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			err := executeAndUnmarshal(headscale, command, &listed)
+			assert.NoError(c, err)
+		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list")
 
-	assert.Len(t, listedAPIKeys, 5)
+		return listed
+	}
+
+	listedAPIKeys := listAPIKeys(false)
+	require.Len(t, listedAPIKeys, 5)
 
 	// IDs are drawn from the shared credentials table, so they are not
 	// guaranteed to start at 1 (pre-auth keys created during env setup take the
 	// first ids). They are still listed in strictly increasing creation order.
 	var prevID uint64
 
-	for _, key := range listedAPIKeys {
+	for i, key := range listedAPIKeys {
 		id, err := strconv.ParseUint(key.Id, 10, 64)
 		require.NoError(t, err)
 		assert.Greater(t, id, prevID, "API key ids must be strictly increasing")
 		prevID = id
+
+		assert.Equal(t, keys[i].Id, key.Id)
+		assert.NotEmpty(t, key.Prefix)
+
+		expiry, err := key.Expiry.Get()
+		require.NoError(t, err)
+		assert.True(t, expiry.After(time.Now()))
+		assert.True(t, expiry.Before(time.Now().Add(time.Hour*26)))
 	}
 
-	assert.NotEmpty(t, listedAPIKeys[0].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[1].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[2].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[3].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[4].Prefix)
+	// Revoke three keys by prefix: they stop working at once, and the list of
+	// keys that work no longer shows them.
+	revokedIDs := make(map[string]bool)
 
-	assert.True(t, listedAPIKeys[0].Expiration.After(time.Now()))
-	assert.True(t, listedAPIKeys[1].Expiration.After(time.Now()))
-	assert.True(t, listedAPIKeys[2].Expiration.After(time.Now()))
-	assert.True(t, listedAPIKeys[3].Expiration.After(time.Now()))
-	assert.True(t, listedAPIKeys[4].Expiration.After(time.Now()))
-
-	assert.True(
-		t,
-		listedAPIKeys[0].Expiration.Before(time.Now().Add(time.Hour*26)),
-	)
-	assert.True(
-		t,
-		listedAPIKeys[1].Expiration.Before(time.Now().Add(time.Hour*26)),
-	)
-	assert.True(
-		t,
-		listedAPIKeys[2].Expiration.Before(time.Now().Add(time.Hour*26)),
-	)
-	assert.True(
-		t,
-		listedAPIKeys[3].Expiration.Before(time.Now().Add(time.Hour*26)),
-	)
-	assert.True(
-		t,
-		listedAPIKeys[4].Expiration.Before(time.Now().Add(time.Hour*26)),
-	)
-
-	expiredPrefixes := make(map[string]bool)
-
-	// Expire three keys
 	for idx := range 3 {
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
-				"apikeys",
-				"expire",
-				"--prefix",
+				"api",
+				"keys",
+				"delete",
 				listedAPIKeys[idx].Prefix,
+				"--force",
 			},
 		)
 		require.NoError(t, err)
 
-		expiredPrefixes[listedAPIKeys[idx].Prefix] = true
+		revokedIDs[listedAPIKeys[idx].Id] = true
 	}
 
-	var listedAfterExpireAPIKeys []clientv1.ApiKey
+	assert.Len(t, listAPIKeys(false), 2)
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err = executeAndUnmarshal(headscale,
-			[]string{
-				"headscale",
-				"apikeys",
-				"list",
-				"--output",
-				"json",
-			},
-			&listedAfterExpireAPIKeys,
-		)
-		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list after expire")
+	listedAfterRevoke := listAPIKeys(true)
+	assert.Len(t, listedAfterRevoke, 5)
 
-	for index := range listedAfterExpireAPIKeys {
-		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].Prefix]; ok {
-			// Expired
-			assert.True(
-				t,
-				listedAfterExpireAPIKeys[index].Expiration.Before(time.Now()),
-			)
+	for _, key := range listedAfterRevoke {
+		if revokedIDs[key.Id] {
+			assert.Equal(t, clientv0.APIKeyStateRevoked, key.State)
+			assert.False(t, key.Revoked.IsNull())
 		} else {
-			// Not expired
-			assert.False(
-				t,
-				listedAfterExpireAPIKeys[index].Expiration.Before(time.Now()),
-			)
+			assert.Equal(t, clientv0.APIKeyStateValid, key.State)
 		}
 	}
 
+	// Revoke by ID.
+	deletedKeyID := listedAPIKeys[3].Id
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
-			"apikeys",
+			"api",
+			"keys",
 			"delete",
-			"--prefix",
-			listedAPIKeys[0].Prefix,
-		})
-	require.NoError(t, err)
-
-	var listedAPIKeysAfterDelete []clientv1.ApiKey
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err = executeAndUnmarshal(headscale,
-			[]string{
-				"headscale",
-				"apikeys",
-				"list",
-				"--output",
-				"json",
-			},
-			&listedAPIKeysAfterDelete,
-		)
-		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list after delete")
-
-	assert.Len(t, listedAPIKeysAfterDelete, 4)
-
-	// Test expire by ID (using key at index 0)
-	_, err = headscale.Execute(
-		[]string{
-			"headscale",
-			"apikeys",
-			"expire",
-			"--id",
-			listedAPIKeysAfterDelete[0].Id,
-		})
-	require.NoError(t, err)
-
-	var listedAPIKeysAfterExpireByID []clientv1.ApiKey
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err = executeAndUnmarshal(headscale,
-			[]string{
-				"headscale",
-				"apikeys",
-				"list",
-				"--output",
-				"json",
-			},
-			&listedAPIKeysAfterExpireByID,
-		)
-		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list after expire by ID")
-
-	// Verify the key was expired
-	for idx := range listedAPIKeysAfterExpireByID {
-		if listedAPIKeysAfterExpireByID[idx].Id == listedAPIKeysAfterDelete[0].Id {
-			assert.True(t, listedAPIKeysAfterExpireByID[idx].Expiration.Before(time.Now()),
-				"Key expired by ID should have expiration in the past")
-		}
-	}
-
-	// Test delete by ID (using key at index 1)
-	deletedKeyID := listedAPIKeysAfterExpireByID[1].Id
-	_, err = headscale.Execute(
-		[]string{
-			"headscale",
-			"apikeys",
-			"delete",
-			"--id",
 			deletedKeyID,
+			"--force",
 		})
 	require.NoError(t, err)
 
-	var listedAPIKeysAfterDeleteByID []clientv1.ApiKey
+	listedAfterDeleteByID := listAPIKeys(false)
+	require.Len(t, listedAfterDeleteByID, 1)
+	assert.Equal(t, listedAPIKeys[4].Id, listedAfterDeleteByID[0].Id)
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err = executeAndUnmarshal(headscale,
-			[]string{
-				"headscale",
-				"apikeys",
-				"list",
-				"--output",
-				"json",
-			},
-			&listedAPIKeysAfterDeleteByID,
-		)
-		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list after delete by ID")
+	// get finds a revoked key too.
+	var got clientv0.APIKey
 
-	assert.Len(t, listedAPIKeysAfterDeleteByID, 3)
-
-	// Verify the specific key was deleted
-	for idx := range listedAPIKeysAfterDeleteByID {
-		assert.NotEqual(t, deletedKeyID, listedAPIKeysAfterDeleteByID[idx].Id,
-			"Deleted key should not be present in the list")
-	}
+	err = executeAndUnmarshal(headscale, []string{"headscale", "api", "keys", "get", deletedKeyID, "--output", "json"}, &got)
+	require.NoError(t, err)
+	assert.Equal(t, clientv0.APIKeyStateRevoked, got.State)
 }
 
-// TestApiKeyCommandValidation covers the validation permutations of
-// `apikeys expire` and `apikeys delete`: the mutually-exclusive --id/--prefix
-// flags (neither / both), a non-existent prefix, and an invalid --expiration on
-// create. A real key is created so the "both flags" path has a valid prefix.
+// TestApiKeyCommandValidation covers the validation permutations of `api keys
+// create` and `api keys delete`: an invalid --expiry, no key, and a key that
+// does not exist by prefix or by ID.
 func TestApiKeyCommandValidation(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario, headscale := setupCLIScenario(t, "cli-apikeyval", []string{"user1"}, 0)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	// Create a real key so a valid prefix exists. `apikeys create` prints the
-	// raw secret, not JSON of the key, so list to discover the prefix.
-	_, err := headscale.Execute([]string{"headscale", "apikeys", "create", "--output", "json"})
-	require.NoError(t, err)
-
-	var listed []clientv1.ApiKey
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err := executeAndUnmarshal(headscale,
-			[]string{"headscale", "apikeys", "list", "--output", "json"},
-			&listed,
-		)
-		assert.NoError(c, err)
-		assert.Len(c, listed, 1)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API key list")
-
-	prefix := listed[0].Prefix
-	id := listed[0].Id
-
 	tests := []struct {
 		name    string
 		args    []string
 		wantErr string
 	}{
-		{name: "create invalid expiration", args: []string{"apikeys", "create", "--expiration", "not-a-duration"}},
-		{name: "expire neither selector", args: []string{"apikeys", "expire"}, wantErr: "either --id or --prefix must be provided"},
-		{name: "expire both selectors", args: []string{"apikeys", "expire", "--id", id, "--prefix", prefix}, wantErr: "only one of --id or --prefix can be provided"},
-		{name: "expire nonexistent prefix", args: []string{"apikeys", "expire", "--prefix", "nonexistent"}},
-		{name: "delete neither selector", args: []string{"apikeys", "delete"}, wantErr: "either --id or --prefix must be provided"},
-		{name: "delete both selectors", args: []string{"apikeys", "delete", "--id", id, "--prefix", prefix}, wantErr: "only one of --id or --prefix can be provided"},
-		{name: "delete nonexistent id", args: []string{"apikeys", "delete", "--id", "99999"}},
+		{name: "create invalid expiry", args: []string{"api", "keys", "create", "--expiry", "not-a-duration"}, wantErr: `"not-a-duration" is not a valid --expiry`},
+		{name: "delete missing key", args: []string{"api", "keys", "delete", "--force"}, wantErr: "`api keys delete` needs 1 argument, got 0."},
+		{name: "delete nonexistent prefix", args: []string{"api", "keys", "delete", "nonexistent", "--force"}, wantErr: `no API key matches "nonexistent"`},
+		{name: "delete nonexistent id", args: []string{"api", "keys", "delete", "99999", "--force"}, wantErr: `no API key matches "99999"`},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := headscale.Execute(append([]string{"headscale"}, tt.args...))
-			if tt.wantErr != "" {
-				require.ErrorContains(t, err, tt.wantErr)
-
-				return
-			}
-
-			require.Error(t, err)
+			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }

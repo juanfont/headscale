@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -263,4 +264,30 @@ func BuildExpectedOnlineMap(all map[types.NodeID][]tailcfg.MapResponse) map[type
 	}
 
 	return res
+}
+
+// OwnerUser is the user of an owner in the v0 API: a node's, an auth key's.
+// It is the zero user when tags own it.
+func OwnerUser(o clientv0.UserOrTags) clientv0.OwnerUser {
+	owner, err := o.Get()
+	if err != nil {
+		return clientv0.OwnerUser{}
+	}
+
+	u, err := owner.User.Get()
+	if err != nil {
+		return clientv0.OwnerUser{}
+	}
+
+	return u
+}
+
+// OwnerTags are the tags of an owner in the v0 API; none when a user owns it.
+func OwnerTags(o clientv0.UserOrTags) []string {
+	owner, err := o.Get()
+	if err != nil {
+		return nil
+	}
+
+	return owner.Tags
 }

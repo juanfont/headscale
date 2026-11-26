@@ -11,8 +11,10 @@ import (
 	"go/token"
 	gotypes "go/types"
 	"io"
+	"maps"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -1191,5 +1193,288 @@ func TestUntestedCredit(t *testing.T) {
 				{words: []string{"widgets", "second"}},
 			},
 		),
+	)
+}
+
+// dockerExempt are the commands that no test of the Docker integration
+// suite calls, each with why that is enough.
+var dockerExempt = map[string]string{
+	"serve":                  "every test starts it: the entrypoint hsic builds runs headscale serve",
+	"completion":             "local: prints a script; the real-shell and kit tests run it in each shell",
+	"check derp-map":         "local: the test config names no DERP map file; the real-shell and check tests run it",
+	"check extra-records":    "local: the test config names no extra records file; the real-shell and check tests run it",
+	"generate nixos-options": "local: prints the options of the config; the check of generated files runs it",
+	"generate cli-reference": "local: prints the reference page of the tree; the check of generated files runs it",
+	"generate man":           "local: prints the man page of the tree; the check of generated files runs it",
+}
+
+// shellSplit cuts a shell line into its simple commands.
+var shellSplit = regexp.MustCompile(`&&|\|\||[;|\n]`)
+
+// dockerCalls reads the call sites of the CLI in f, the source of the
+// integration suite: a []string literal that starts with "headscale" or the
+// constant binHeadscale, up to its first word that is not a literal; and a
+// []string literal that runs a shell with -c, whose line (a literal, or the
+// format of fmt.Sprintf) has simple commands that start with headscale. It
+// returns the command each reaches, and the sites that reach none: a call of
+// a command the tree lacks. A site counts whether or not its test runs.
+func dockerCalls(
+	tree *command.Tree,
+	fset *token.FileSet,
+	f *ast.File,
+) (map[string]bool, []string) {
+	ran := map[string]bool{}
+
+	var wrong []string
+
+	reach := func(pos token.Pos, argv []string) {
+		if path := tree.Reached(argv); isLeaf(tree, path) {
+			ran[path] = true
+		} else {
+			wrong = append(
+				wrong,
+				fmt.Sprintf(
+					"%s: headscale %s",
+					fset.Position(pos),
+					strings.Join(argv, " "),
+				),
+			)
+		}
+	}
+
+	ast.Inspect(f, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok || len(lit.Elts) < 2 {
+			return true
+		}
+
+		words := literals(lit.Elts)
+
+		switch {
+		case isHeadscale(lit.Elts[0]):
+			if len(words) > 1 {
+				reach(lit.Pos(), words[1:])
+			}
+		case len(words) >= 2 && slices.Contains([]string{"sh", "bash", "/bin/sh", "/bin/bash"}, words[0]) && words[1] == "-c" && len(lit.Elts) > 2:
+			line, ok := shellLine(lit.Elts[2])
+			if !ok {
+				return true
+			}
+
+			for _, simple := range shellSplit.Split(line, -1) {
+				fields := strings.Fields(simple)
+				for len(fields) > 0 && strings.Contains(fields[0], "=") {
+					fields = fields[1:]
+				}
+
+				if len(fields) == 0 || path.Base(fields[0]) != "headscale" {
+					continue
+				}
+
+				argv := fields[1:]
+				for i, w := range argv {
+					if strings.ContainsAny(w, "<>") {
+						argv = argv[:i]
+
+						break
+					}
+				}
+
+				reach(lit.Pos(), argv)
+			}
+		}
+
+		return true
+	})
+
+	return ran, wrong
+}
+
+// literals are the leading string literals of elts, unquoted.
+func literals(elts []ast.Expr) []string {
+	var out []string
+
+	for _, e := range elts {
+		if isHeadscale(e) && len(out) == 0 {
+			out = append(out, "headscale")
+
+			continue
+		}
+
+		lit, ok := e.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			break
+		}
+
+		s, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			break
+		}
+
+		out = append(out, s)
+	}
+
+	return out
+}
+
+// shellLine is the text of a shell's -c argument: a literal, or the format
+// of fmt.Sprintf.
+func shellLine(e ast.Expr) (string, bool) {
+	if call, ok := e.(*ast.CallExpr); ok {
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Sprintf" || len(call.Args) == 0 {
+			return "", false
+		}
+
+		e = call.Args[0]
+	}
+
+	lit, ok := e.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+
+	s, err := strconv.Unquote(lit.Value)
+
+	return s, err == nil
+}
+
+func isHeadscale(e ast.Expr) bool {
+	switch e := e.(type) {
+	case *ast.BasicLit:
+		return e.Value == `"headscale"`
+	case *ast.Ident:
+		return e.Name == "binHeadscale"
+	}
+
+	return false
+}
+
+func isLeaf(tree *command.Tree, path string) bool {
+	return slices.ContainsFunc(
+		tree.Commands(),
+		func(c command.Command) bool { return c.Path == path },
+	)
+}
+
+// TestEveryCommandHasAnIntegrationCallSite fails when a command of the tree
+// has no call site in the source of the Docker integration suite and is not
+// in dockerExempt, and when a call site names a command the tree lacks. It
+// measures call sites, not runs: a site in a test that skips still counts.
+// The suite runs as one CI job a test, and no job sees what another ran.
+func TestEveryCommandHasAnIntegrationCallSite(t *testing.T) {
+	t.Parallel()
+
+	tree := Tree()
+	fset := token.NewFileSet()
+	ran := map[string]bool{}
+
+	var wrong []string
+
+	err := filepath.WalkDir(
+		filepath.Join("..", "..", "..", "integration"),
+		func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+				return err
+			}
+
+			f, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return err
+			}
+
+			// The unit tests of the container helpers run no command.
+			if f.Name.Name == "hsic" && strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+
+			r, w := dockerCalls(tree, fset, f)
+			maps.Copy(ran, r)
+
+			wrong = append(wrong, w...)
+
+			return nil
+		},
+	)
+	require.NoError(t, err)
+
+	require.Empty(t, wrong, "these call sites reach no command of the tree")
+
+	var missing, stale []string
+
+	for _, c := range tree.Commands() {
+		_, exempt := dockerExempt[c.Path]
+
+		switch {
+		case !ran[c.Path] && !exempt:
+			missing = append(missing, c.Path)
+		case ran[c.Path] && exempt:
+			stale = append(stale, c.Path)
+		}
+	}
+
+	for path := range dockerExempt {
+		if !isLeaf(tree, path) {
+			stale = append(stale, path)
+		}
+	}
+
+	require.Empty(
+		t,
+		missing,
+		"no call site of the integration suite runs these commands: call each in a test, or exempt it with the reason",
+	)
+	require.Empty(
+		t,
+		stale,
+		"these exemptions name a command the suite calls, or no command",
+	)
+}
+
+func TestDockerCalls(t *testing.T) {
+	t.Parallel()
+
+	const src = `package x
+
+const binHeadscale = "headscale"
+
+var (
+	a = []string{"headscale", "nodes", "list", "--output", "json"}
+	b = []string{binHeadscale, "auth", "keys", "create", owner, "--reusable"}
+	c = []string{"headscale", "preauthkeys", "list"}
+	d = append([]string{"headscale"}, args...)
+	e = []string{"sh", "-c", fmt.Sprintf("HEADSCALE_CLI_ADDRESS=%s headscale api whoami --output json 2>&1", addr)}
+	f = []string{"sh", "-c", "headscale --config /tmp/example.yaml users list --output json"}
+	g = []string{"sh", "-c", "HEADSCALE_CLI_API_KEY=x headscale apikeys list | cat"}
+	h = []string{"bash", "-c", "true; /usr/local/bin/headscale debug health"}
+	i = "/usr/local/bin/headscale serve"
+	j = "headscale nodes list shows every node"
+	k = []string{"tailscale", "status"}
+)
+`
+
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "x.go", src, 0)
+	require.NoError(t, err)
+
+	ran, wrong := dockerCalls(Tree(), fset, f)
+	require.Equal(
+		t,
+		map[string]bool{
+			"nodes list":       true,
+			"auth keys create": true,
+			"api whoami":       true,
+			"users list":       true,
+			"debug health":     true,
+		},
+		ran,
+	)
+	require.Equal(
+		t,
+		[]string{
+			"x.go:8:6: headscale preauthkeys list",
+			"x.go:12:6: headscale apikeys list",
+		},
+		wrong,
 	)
 }

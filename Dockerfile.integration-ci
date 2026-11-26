@@ -12,6 +12,9 @@ RUN mkdir -p /var/run/headscale
 # Copy pre-built headscale binary from build context
 COPY headscale /usr/local/bin/headscale
 
+# Only the new CLI knows --version: an image of the old one fails here.
+RUN headscale --version
+
 ENTRYPOINT []
 EXPOSE 8080/tcp
 CMD ["/usr/local/bin/headscale"]

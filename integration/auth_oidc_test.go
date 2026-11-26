@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -92,11 +92,12 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	listUsers, err := headscale.ListUsers()
 	require.NoError(t, err)
 
-	want := []*clientv1.User{
+	want := []*clientv0.User{
 		{
-			Id:    "1",
-			Name:  "user1",
-			Email: "user1@test.no",
+			Id:       "1",
+			Name:     "user1",
+			Email:    "user1@test.no",
+			Provider: "local",
 		},
 		{
 			Id:         "2",
@@ -106,9 +107,10 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
 		},
 		{
-			Id:    "3",
-			Name:  "user2",
-			Email: "user2@test.no",
+			Id:       "3",
+			Name:     "user2",
+			Email:    "user2@test.no",
+			Provider: "local",
 		},
 		{
 			Id:         "4",
@@ -123,7 +125,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 	})
 
-	if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+	if diff := cmp.Diff(want, listUsers, oidcUserCmpOpts...); diff != "" {
 		t.Fatalf("unexpected users: %s", diff)
 	}
 }
@@ -251,19 +253,20 @@ func TestOIDC024UserCreation(t *testing.T) {
 		emailVerified bool
 		cliUsers      []string
 		oidcUsers     []string
-		want          func(iss string) []*clientv1.User
+		want          func(iss string) []*clientv0.User
 	}{
 		{
 			name:          "no-migration-verified-email",
 			emailVerified: true,
 			cliUsers:      []string{"user1", "user2"},
 			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []*clientv1.User {
-				return []*clientv1.User{
+			want: func(iss string) []*clientv0.User {
+				return []*clientv0.User{
 					{
-						Id:    "1",
-						Name:  "user1",
-						Email: "user1@test.no",
+						Id:       "1",
+						Name:     "user1",
+						Email:    "user1@test.no",
+						Provider: "local",
 					},
 					{
 						Id:         "2",
@@ -273,9 +276,10 @@ func TestOIDC024UserCreation(t *testing.T) {
 						ProviderId: iss + "/user1",
 					},
 					{
-						Id:    "3",
-						Name:  "user2",
-						Email: "user2@test.no",
+						Id:       "3",
+						Name:     "user2",
+						Email:    "user2@test.no",
+						Provider: "local",
 					},
 					{
 						Id:         "4",
@@ -292,12 +296,13 @@ func TestOIDC024UserCreation(t *testing.T) {
 			emailVerified: false,
 			cliUsers:      []string{"user1", "user2"},
 			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []*clientv1.User {
-				return []*clientv1.User{
+			want: func(iss string) []*clientv0.User {
+				return []*clientv0.User{
 					{
-						Id:    "1",
-						Name:  "user1",
-						Email: "user1@test.no",
+						Id:       "1",
+						Name:     "user1",
+						Email:    "user1@test.no",
+						Provider: "local",
 					},
 					{
 						Id:         "2",
@@ -306,9 +311,10 @@ func TestOIDC024UserCreation(t *testing.T) {
 						ProviderId: iss + "/user1",
 					},
 					{
-						Id:    "3",
-						Name:  "user2",
-						Email: "user2@test.no",
+						Id:       "3",
+						Name:     "user2",
+						Email:    "user2@test.no",
+						Provider: "local",
 					},
 					{
 						Id:         "4",
@@ -324,12 +330,13 @@ func TestOIDC024UserCreation(t *testing.T) {
 			emailVerified: false,
 			cliUsers:      []string{"user1.headscale.net", "user2.headscale.net"},
 			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []*clientv1.User {
-				return []*clientv1.User{
+			want: func(iss string) []*clientv0.User {
+				return []*clientv0.User{
 					{
-						Id:    "1",
-						Name:  "user1.headscale.net",
-						Email: "user1.headscale.net@test.no",
+						Id:       "1",
+						Name:     "user1.headscale.net",
+						Email:    "user1.headscale.net@test.no",
+						Provider: "local",
 					},
 					{
 						Id:         "2",
@@ -338,9 +345,10 @@ func TestOIDC024UserCreation(t *testing.T) {
 						ProviderId: iss + "/user1",
 					},
 					{
-						Id:    "3",
-						Name:  "user2.headscale.net",
-						Email: "user2.headscale.net@test.no",
+						Id:       "3",
+						Name:     "user2.headscale.net",
+						Email:    "user2.headscale.net@test.no",
+						Provider: "local",
 					},
 					{
 						Id:         "4",
@@ -402,7 +410,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 				return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 			})
 
-			if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+			if diff := cmp.Diff(want, listUsers, oidcUserCmpOpts...); diff != "" {
 				t.Errorf("unexpected users: %s", diff)
 			}
 		})
@@ -515,7 +523,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		assert.NoError(ct, err, "Failed to list users during initial validation")
 		assert.Len(ct, listUsers, 1, "Expected exactly 1 user after first login, got %d", len(listUsers))
 
-		wantUsers := []*clientv1.User{
+		wantUsers := []*clientv0.User{
 			{
 				Id:         "1",
 				Name:       "user1",
@@ -529,14 +537,14 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, oidcUserCmpOpts...); diff != "" {
 			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating user1 creation after initial OIDC login")
 
 	t.Logf("Validating initial node creation at %s", time.Now().Format(TimestampFormat))
 
-	var listNodes []*clientv1.Node
+	var listNodes []*clientv0.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -599,7 +607,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		assert.NoError(ct, err, "Failed to list users after user2 login")
 		assert.Len(ct, listUsers, 2, "Expected exactly 2 users after user2 login, got %d users", len(listUsers))
 
-		wantUsers := []*clientv1.User{
+		wantUsers := []*clientv0.User{
 			{
 				Id:         "1",
 				Name:       "user1",
@@ -620,12 +628,12 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, oidcUserCmpOpts...); diff != "" {
 			ct.Errorf("User validation failed after user2 login - expected both user1 and user2: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating both user1 and user2 exist after second OIDC login")
 
-	var listNodesAfterNewUserLogin []*clientv1.Node
+	var listNodesAfterNewUserLogin []*clientv0.Node
 	// First, wait for the new node to be created
 	t.Logf("Waiting for user2 node creation at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -656,9 +664,9 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	var activeUser2NodeID types.NodeID
 
 	for _, node := range listNodesAfterNewUserLogin {
-		if node.User.Id == "2" { // user2
+		if integrationutil.OwnerUser(node.Owner).Id == "2" { // user2
 			activeUser2NodeID = types.NodeID(mustParseID(node.Id))
-			t.Logf("Active user2 node: %d (User: %s)", mustParseID(node.Id), node.User.Name)
+			t.Logf("Active user2 node: %d (User: %s)", mustParseID(node.Id), integrationutil.OwnerUser(node.Owner).Name)
 
 			break
 		}
@@ -691,9 +699,9 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 		// Validate node stability - ensure no phantom nodes
 		for i, node := range currentNodes {
-			assert.NotEmpty(ct, node.User.Id, "Node %d should have a valid user before logout", i)
+			assert.NotEmpty(ct, integrationutil.OwnerUser(node.Owner).Id, "Node %d should have a valid user before logout", i)
 			assert.NotEmpty(ct, node.MachineKey, "Node %d should have a valid machine key before logout", i)
-			t.Logf("Pre-logout node %d: User=%s, MachineKey=%s", i, node.User.Name, node.MachineKey[:16]+"...")
+			t.Logf("Pre-logout node %d: User=%s, MachineKey=%s", i, integrationutil.OwnerUser(node.Owner).Name, node.MachineKey[:16]+"...")
 		}
 	}, integrationutil.HAConvergeTimeout, 2*time.Second, "validating stable node count and integrity before user2 logout")
 
@@ -736,9 +744,9 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 		// Ensure both nodes are still valid (not cleaned up incorrectly)
 		for i, node := range currentNodes {
-			assert.NotEmpty(ct, node.User.Id, "Node %d should still have a valid user after user2 logout", i)
+			assert.NotEmpty(ct, integrationutil.OwnerUser(node.Owner).Id, "Node %d should still have a valid user after user2 logout", i)
 			assert.NotEmpty(ct, node.MachineKey, "Node %d should still have a valid machine key after user2 logout", i)
-			t.Logf("Post-logout node %d: User=%s, MachineKey=%s", i, node.User.Name, node.MachineKey[:16]+"...")
+			t.Logf("Post-logout node %d: User=%s, MachineKey=%s", i, integrationutil.OwnerUser(node.Owner).Name, node.MachineKey[:16]+"...")
 		}
 	}, integrationutil.HAConvergeTimeout, 2*time.Second, "validating node persistence and integrity after user2 logout")
 
@@ -767,7 +775,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		assert.NoError(ct, err, "Failed to list users during final validation")
 		assert.Len(ct, listUsers, 2, "Should still have exactly 2 users after user1 relogin, got %d", len(listUsers))
 
-		wantUsers := []*clientv1.User{
+		wantUsers := []*clientv0.User{
 			{
 				Id:         "1",
 				Name:       "user1",
@@ -788,12 +796,12 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, oidcUserCmpOpts...); diff != "" {
 			ct.Errorf("Final user validation failed - both users should persist after relogin cycle: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating user persistence after complete relogin cycle (user1->user2->user1)")
 
-	var listNodesAfterLoggingBackIn []*clientv1.Node
+	var listNodesAfterLoggingBackIn []*clientv0.Node
 	// Wait for login to complete and nodes to stabilize
 	t.Logf("Final node validation: checking node stability after user1 relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -817,7 +825,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		assert.Equal(ct, listNodes[0].Id, listNodesAfterNewUserLogin[0].Id, "Original user1 node ID should match user1 node after user switch")
 		assert.Equal(ct, listNodes[0].MachineKey, listNodesAfterNewUserLogin[1].MachineKey, "User1 and user2 nodes should share the same machine key")
 		assert.NotEqual(ct, listNodes[0].Id, listNodesAfterNewUserLogin[1].Id, "User1 and user2 nodes should have different node IDs")
-		assert.NotEqual(ct, listNodes[0].User.Id, listNodesAfterNewUserLogin[1].User.Id, "User1 and user2 nodes should belong to different users")
+		assert.NotEqual(ct, integrationutil.OwnerUser(listNodes[0].Owner).Id, integrationutil.OwnerUser(listNodesAfterNewUserLogin[1].Owner).Id, "User1 and user2 nodes should belong to different users")
 
 		// Even tho we are logging in again with the same user, the previous key has been expired
 		// and a new one has been generated. The node entry in the database should be the same
@@ -838,9 +846,9 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	var activeUser1NodeID types.NodeID
 
 	for _, node := range listNodesAfterLoggingBackIn {
-		if node.User.Id == "1" { // user1
+		if integrationutil.OwnerUser(node.Owner).Id == "1" { // user1
 			activeUser1NodeID = types.NodeID(mustParseID(node.Id))
-			t.Logf("Active user1 node after relogin: %d (User: %s)", mustParseID(node.Id), node.User.Name)
+			t.Logf("Active user1 node after relogin: %d (User: %s)", mustParseID(node.Id), integrationutil.OwnerUser(node.Owner).Name)
 
 			break
 		}
@@ -950,7 +958,7 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, listUsers, 1)
 
-	wantUsers := []*clientv1.User{
+	wantUsers := []*clientv0.User{
 		{
 			Id:         "1",
 			Name:       "user1",
@@ -969,8 +977,7 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 	if diff := cmp.Diff(
 		wantUsers,
 		listUsers,
-		cmpopts.IgnoreUnexported(clientv1.User{}),
-		cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"),
+		oidcUserCmpOpts...,
 	); diff != "" {
 		t.Fatalf("unexpected users: %s", diff)
 	}
@@ -1059,7 +1066,7 @@ func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, listUsers, 1)
 
-	wantUsers := []*clientv1.User{
+	wantUsers := []*clientv0.User{
 		{
 			Id:         "1",
 			Name:       "user1",
@@ -1078,8 +1085,7 @@ func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
 	if diff := cmp.Diff(
 		wantUsers,
 		listUsers,
-		cmpopts.IgnoreUnexported(clientv1.User{}),
-		cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"),
+		oidcUserCmpOpts...,
 	); diff != "" {
 		t.Fatalf("unexpected users: %s", diff)
 	}
@@ -1167,7 +1173,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		assert.NoError(ct, err, "Failed to list users during initial validation")
 		assert.Len(ct, listUsers, 1, "Expected exactly 1 user after first login, got %d", len(listUsers))
 
-		wantUsers := []*clientv1.User{
+		wantUsers := []*clientv0.User{
 			{
 				Id:         "1",
 				Name:       "user1",
@@ -1181,14 +1187,14 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, oidcUserCmpOpts...); diff != "" {
 			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating user1 creation after initial OIDC login")
 
 	t.Logf("Validating initial node creation at %s", time.Now().Format(TimestampFormat))
 
-	var initialNodes []*clientv1.Node
+	var initialNodes []*clientv0.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -1270,7 +1276,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		assert.NoError(ct, err, "Failed to list users during final validation")
 		assert.Len(ct, listUsers, 1, "Should still have exactly 1 user after same-user relogin, got %d", len(listUsers))
 
-		wantUsers := []*clientv1.User{
+		wantUsers := []*clientv0.User{
 			{
 				Id:         "1",
 				Name:       "user1",
@@ -1284,12 +1290,12 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, oidcUserCmpOpts...); diff != "" {
 			ct.Errorf("Final user validation failed - user1 should persist after same-user relogin: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating user1 persistence after same-user OIDC relogin cycle")
 
-	var finalNodes []*clientv1.Node
+	var finalNodes []*clientv0.Node
 
 	t.Logf("Final node validation: checking node stability after same-user relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1397,10 +1403,9 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 		assert.Len(ct, nodes, 1)
 
 		node := nodes[0]
-		assert.NotNil(ct, node.Expiry, "Expiry should be set after OIDC login")
 
-		if node.Expiry != nil {
-			expiryTime := *node.Expiry
+		expiryTime, err := node.Expiry.Get()
+		if assert.NoError(ct, err, "Expiry should be set after OIDC login") {
 			assert.False(ct, expiryTime.IsZero(), "Expiry should not be zero time")
 
 			initialExpiry = expiryTime
@@ -1439,11 +1444,9 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 		assert.Len(ct, nodes, 1, "Should still have exactly 1 node after restart")
 
 		node := nodes[0]
-		assert.NotNil(ct, node.Expiry, "Expiry should NOT be nil after restart")
 
-		if node.Expiry != nil {
-			expiryTime := *node.Expiry
-
+		expiryTime, err := node.Expiry.Get()
+		if assert.NoError(ct, err, "Expiry should NOT be null after restart") {
 			// This is the bug check - expiry should NOT be zero time
 			assert.False(ct, expiryTime.IsZero(),
 				"BUG: Expiry was reset to zero time after tailscaled restart! This is issue #2862")
@@ -1576,8 +1579,8 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 
 		gatewayNode := nodes[0]
 		gatewayNodeID = mustParseID(gatewayNode.Id)
-		assert.Len(ct, gatewayNode.AvailableRoutes, 1)
-		assert.Contains(ct, gatewayNode.AvailableRoutes, advertiseRoute)
+		assert.Len(ct, gatewayNode.AdvertisedRoutes, 1)
+		assert.Contains(ct, gatewayNode.AdvertisedRoutes, advertiseRoute)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "route advertisement should propagate to headscale")
 
 	// Approve the advertised route
@@ -1594,8 +1597,8 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 		assert.Len(ct, nodes, 1)
 
 		gatewayNode := nodes[0]
-		assert.Len(ct, gatewayNode.ApprovedRoutes, 1)
-		assert.Contains(ct, gatewayNode.ApprovedRoutes, advertiseRoute)
+		assert.Len(ct, gatewayNode.EnabledRoutes, 1)
+		assert.Contains(ct, gatewayNode.EnabledRoutes, advertiseRoute)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "route approval should propagate to headscale")
 
 	// NOW create the OIDC user by having them join
@@ -1715,10 +1718,10 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 		assert.GreaterOrEqual(ct, len(users), 2, "Should have at least 2 users (gateway CLI user + oidcuser)")
 
 		// Find gateway CLI user
-		var gatewayUser *clientv1.User
+		var gatewayUser *clientv0.User
 
 		for _, user := range users {
-			if user.Name == "gateway" && user.Provider == "" {
+			if user.Name == "gateway" && user.Provider == clientv0.UserProviderLocal {
 				gatewayUser = user
 				break
 			}
@@ -1731,7 +1734,7 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 		}
 
 		// Find OIDC user
-		var oidcUserFound *clientv1.User
+		var oidcUserFound *clientv0.User
 
 		for _, user := range users {
 			if user.Name == "oidcuser" && user.Provider == "oidc" {
@@ -1842,7 +1845,7 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 	// Step 1: Verify initial route is advertised, approved, and SERVING
 	t.Logf("Step 1: Verifying initial route is advertised, approved, and SERVING at %s", time.Now().Format(TimestampFormat))
 
-	var initialNode *clientv1.Node
+	var initialNode *clientv0.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
@@ -1852,13 +1855,13 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		if len(nodes) == 1 {
 			initialNode = nodes[0]
 			// Check: 1 announced, 1 approved, 1 serving (subnet route)
-			assert.Lenf(c, initialNode.AvailableRoutes, 1,
-				"Node should have 1 available route, got %v", initialNode.AvailableRoutes)
-			assert.Lenf(c, initialNode.ApprovedRoutes, 1,
-				"Node should have 1 approved route, got %v", initialNode.ApprovedRoutes)
-			assert.Lenf(c, initialNode.SubnetRoutes, 1,
-				"Node should have 1 serving (subnet) route, got %v - THIS IS THE BUG if empty", initialNode.SubnetRoutes)
-			assert.Contains(c, initialNode.SubnetRoutes, advertiseRoute,
+			assert.Lenf(c, initialNode.AdvertisedRoutes, 1,
+				"Node should have 1 available route, got %v", initialNode.AdvertisedRoutes)
+			assert.Lenf(c, initialNode.EnabledRoutes, 1,
+				"Node should have 1 approved route, got %v", initialNode.EnabledRoutes)
+			assert.Lenf(c, initialNode.ServingRoutes, 1,
+				"Node should have 1 serving (subnet) route, got %v - THIS IS THE BUG if empty", initialNode.ServingRoutes)
+			assert.Contains(c, initialNode.ServingRoutes, advertiseRoute,
 				"Subnet routes should contain %s", advertiseRoute)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "initial route should be serving")
@@ -1866,7 +1869,7 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 	require.NotNil(t, initialNode, "Initial node should be found")
 	initialNodeID := initialNode.Id
 	t.Logf("Initial node ID: %s, Available: %v, Approved: %v, Serving: %v",
-		initialNodeID, initialNode.AvailableRoutes, initialNode.ApprovedRoutes, initialNode.SubnetRoutes)
+		initialNodeID, initialNode.AdvertisedRoutes, initialNode.EnabledRoutes, initialNode.ServingRoutes)
 
 	// Step 2: Logout
 	t.Logf("Step 2: Logging out at %s", time.Now().Format(TimestampFormat))
@@ -1919,19 +1922,19 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		if len(nodes) == 1 {
 			node := nodes[0]
 			t.Logf("After relogin - Available: %v, Approved: %v, Serving: %v",
-				node.AvailableRoutes, node.ApprovedRoutes, node.SubnetRoutes)
+				node.AdvertisedRoutes, node.EnabledRoutes, node.ServingRoutes)
 
 			// This is where issue #2896 manifests:
 			// - Available shows the route (from [tailcfg.Hostinfo.RoutableIPs])
 			// - Approved shows the route (from [tailcfg.Node.ApprovedRoutes])
 			// - BUT Serving ([tailcfg.Node.SubnetRoutes]/[ipnstate.PeerStatus.PrimaryRoutes]) is EMPTY!
-			assert.Lenf(c, node.AvailableRoutes, 1,
-				"Node should have 1 available route after relogin, got %v", node.AvailableRoutes)
-			assert.Lenf(c, node.ApprovedRoutes, 1,
-				"Node should have 1 approved route after relogin, got %v", node.ApprovedRoutes)
-			assert.Lenf(c, node.SubnetRoutes, 1,
-				"BUG #2896: Node should have 1 SERVING route after relogin, got %v", node.SubnetRoutes)
-			assert.Contains(c, node.SubnetRoutes, advertiseRoute,
+			assert.Lenf(c, node.AdvertisedRoutes, 1,
+				"Node should have 1 available route after relogin, got %v", node.AdvertisedRoutes)
+			assert.Lenf(c, node.EnabledRoutes, 1,
+				"Node should have 1 approved route after relogin, got %v", node.EnabledRoutes)
+			assert.Lenf(c, node.ServingRoutes, 1,
+				"BUG #2896: Node should have 1 SERVING route after relogin, got %v", node.ServingRoutes)
+			assert.Contains(c, node.ServingRoutes, advertiseRoute,
 				"BUG #2896: Subnet routes should contain %s after relogin", advertiseRoute)
 
 			// Also verify node ID was preserved (same node, not new registration)
@@ -1942,4 +1945,10 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		"BUG #2896: routes should remain SERVING after OIDC logout/relogin with same user")
 
 	t.Logf("Test completed - verifying issue #2896 fix for OIDC")
+}
+
+// oidcUserCmpOpts compare users on who they are: the ID, the names, the
+// email and where they come from.
+var oidcUserCmpOpts = []cmp.Option{
+	cmpopts.IgnoreFields(clientv0.User{}, "Created", "LoginName", "NodeCount", "Nodes"),
 }

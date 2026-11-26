@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -1061,8 +1061,8 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		// Get the current policy and check
-		// if it is the same as the one we set.
+		// Get the current policy and check if it is the same as the one we
+		// set. policy get prints the stored text, which is the JSON we set.
 		var output *policyv2.Policy
 
 		err = executeAndUnmarshal(
@@ -1071,8 +1071,6 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 				"headscale",
 				"policy",
 				"get",
-				"--output",
-				"json",
 			},
 			&output,
 		)
@@ -2007,7 +2005,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 		// Get the node list and find the newest node (highest ID)
 		var (
-			nodeList         []*clientv1.Node
+			nodeList         []*clientv0.Node
 			nodeToDeleteID   uint64
 			nodeToDeleteName string
 		)
@@ -2021,7 +2019,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 			for _, node := range nodeList {
 				if mustParseID(node.Id) > nodeToDeleteID {
 					nodeToDeleteID = mustParseID(node.Id)
-					nodeToDeleteName = node.Name
+					nodeToDeleteName = node.Hostname
 				}
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "iteration %d: Phase 2b - listing nodes before deletion", iteration)
@@ -2289,7 +2287,7 @@ func TestACLTagPropagation(t *testing.T) {
 				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				tagged := findNode(allNodes, func(n *clientv1.Node) bool { return len(n.Tags) > 0 })
+				tagged := findNode(allNodes, func(n *clientv0.Node) bool { return len(integrationutil.OwnerTags(n.Owner)) > 0 })
 				require.NotNil(t, tagged, "expected a tagged node")
 
 				return user2Node, user1Node, mustParseID(tagged.Id)
@@ -2382,7 +2380,7 @@ func TestACLTagPropagation(t *testing.T) {
 				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				tagged := findNode(allNodes, func(n *clientv1.Node) bool { return len(n.Tags) > 0 })
+				tagged := findNode(allNodes, func(n *clientv0.Node) bool { return len(integrationutil.OwnerTags(n.Owner)) > 0 })
 				require.NotNil(t, tagged, "expected a tagged node")
 
 				return user2Node, user1Node, mustParseID(tagged.Id)
@@ -2475,7 +2473,7 @@ func TestACLTagPropagation(t *testing.T) {
 				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				tagged := findNode(allNodes, func(n *clientv1.Node) bool { return len(n.Tags) > 0 })
+				tagged := findNode(allNodes, func(n *clientv0.Node) bool { return len(integrationutil.OwnerTags(n.Owner)) > 0 })
 				require.NotNil(t, tagged, "expected a tagged node")
 
 				return user2Node, user1Node, mustParseID(tagged.Id)
@@ -2610,11 +2608,11 @@ func TestACLTagPropagation(t *testing.T) {
 				allNodes, err := headscale.ListNodes()
 				assert.NoError(c, err)
 
-				node := findNode(allNodes, func(n *clientv1.Node) bool { return mustParseID(n.Id) == targetNodeID })
+				node := findNode(allNodes, func(n *clientv0.Node) bool { return mustParseID(n.Id) == targetNodeID })
 				assert.NotNil(c, node, "Node should still exist")
 
 				if node != nil {
-					assert.ElementsMatch(c, tt.tagChange, node.Tags, "Tags should be updated")
+					assert.ElementsMatch(c, tt.tagChange, integrationutil.OwnerTags(node.Owner), "Tags should be updated")
 				}
 			}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "verifying tag change applied")
 
@@ -2793,7 +2791,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	allNodes, err := headscale.ListNodes()
 	require.NoError(t, err)
 
-	tagged := findNode(allNodes, func(n *clientv1.Node) bool { return len(n.Tags) > 0 })
+	tagged := findNode(allNodes, func(n *clientv0.Node) bool { return len(integrationutil.OwnerTags(n.Owner)) > 0 })
 	require.NotNil(t, tagged, "expected a tagged node")
 
 	targetNodeID := mustParseID(tagged.Id)
@@ -2822,11 +2820,11 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 		allNodes, err := headscale.ListNodes()
 		assert.NoError(c, err) //nolint:testifylint // CollectT requires assert
 
-		node := findNode(allNodes, func(n *clientv1.Node) bool { return mustParseID(n.Id) == targetNodeID })
+		node := findNode(allNodes, func(n *clientv0.Node) bool { return mustParseID(n.Id) == targetNodeID })
 		assert.NotNil(c, node, "Node should still exist")
 
 		if node != nil {
-			assert.ElementsMatch(c, []string{"tag:sshonly"}, node.Tags, "Tags should be updated to sshonly")
+			assert.ElementsMatch(c, []string{"tag:sshonly"}, integrationutil.OwnerTags(node.Owner), "Tags should be updated to sshonly")
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "verifying tag change applied")
 

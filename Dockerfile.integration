@@ -18,7 +18,7 @@ RUN go mod download
 COPY . .
 
 # Build debug binary with debug symbols for delve
-RUN CGO_ENABLED=0 GOOS=linux go build -gcflags="all=-N -l" -o /go/bin/headscale ./cmd/headscale
+RUN CGO_ENABLED=0 GOOS=linux go build -tags newcli -gcflags="all=-N -l" -o /go/bin/headscale ./cmd/headscale
 
 # Runtime stage
 FROM debian:trixie-slim
@@ -32,6 +32,9 @@ RUN mkdir -p /var/run/headscale
 # Copy binaries from builder
 COPY --from=builder /go/bin/headscale /usr/local/bin/headscale
 COPY --from=builder /go/bin/dlv /usr/local/bin/dlv
+
+# Only the new CLI knows --version: an image of the old one fails here.
+RUN headscale --version
 
 # Copy source code for delve source-level debugging
 COPY --from=builder /go/src/headscale /go/src/headscale

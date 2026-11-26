@@ -142,8 +142,8 @@ func TestTailscaleRustAxum(t *testing.T) {
 
 		// Find the tailscale-rs node by hostname prefix
 		for _, n := range nodes {
-			if strings.HasPrefix(n.GivenName, "tsrs-") {
-				addrs := n.IpAddresses
+			if strings.HasPrefix(n.Name, "tsrs-") {
+				addrs := n.Addresses
 				if len(addrs) > 0 {
 					rustNodeIPv4 = addrs[0]
 				}
@@ -152,7 +152,7 @@ func TestTailscaleRustAxum(t *testing.T) {
 					rustNodeIPv6 = addrs[1]
 				}
 
-				rustNodeName = n.GivenName
+				rustNodeName = n.Name
 			}
 		}
 
