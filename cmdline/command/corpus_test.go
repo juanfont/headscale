@@ -1,5 +1,7 @@
 package command
 
+// Rows re-express behaviour recorded in the tests and trackers named in `src`.
+
 import (
 	"bufio"
 	"bytes"
@@ -17,10 +19,10 @@ import (
 
 	gocmp "github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/cmdline"
+	"github.com/juanfont/headscale/cmdline/table"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/stretchr/testify/require"
 )
-
-// Rows re-express behaviour recorded in the tests and trackers named in `src`.
 
 // The corpus carries what other parsers learnt into Headscale's tests: each
 // row of testdata/corpus.jsonl is a case of an upstream test or issue,
@@ -41,49 +43,7 @@ func (text[W]) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Direc
 	return cmdline.Words(prefix, w.Words()...), cmdline.NoFiles
 }
 
-// row is the row of a list: it names its columns.
-type row interface{ Columns() []string }
-
-// column is a column of R, as --columns and --sort take it: it may carry a
-// + or - sign, and Tab completes after the sign.
-type column[R row] string
-
-func (c *column[R]) UnmarshalText(b []byte) error { *c = column[R](b); return nil }
-
-func (column[R]) Complete(
-	_ *cmdline.Line,
-	prefix string,
-) ([]string, cmdline.Directive) {
-	sign := ""
-	if prefix != "" && (prefix[0] == '+' || prefix[0] == '-') {
-		sign, prefix = prefix[:1], prefix[1:]
-	}
-
-	var r R
-
-	words := cmdline.Words(prefix, r.Columns()...)
-	for i := range words {
-		words[i] = sign + words[i]
-	}
-
-	return words, cmdline.NoFiles
-}
-
-// cond is one condition of --filter; Tab completes its column and leaves
-// no space, because the operator follows.
-type cond[R row] string
-
-func (c *cond[R]) UnmarshalText(b []byte) error { *c = cond[R](b); return nil }
-
-func (cond[R]) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Directive) {
-	var r R
-
-	return cmdline.Words(prefix, r.Columns()...), cmdline.NoFiles | cmdline.NoSpace
-}
-
 type (
-	nodeRow    struct{}
-	abcRow     struct{}
 	tagWords   struct{}
 	shellWords struct{}
 	abWords    struct{}
@@ -93,20 +53,49 @@ type (
 	works      struct{}
 )
 
-func (nodeRow) Columns() []string {
-	return []string{
-		"id",
-		"name",
-		"owner",
-		"ip",
-		"version",
-		"online",
-		"last-seen",
-		"expiry",
-		"hostname",
-	}
+// nodeRow is a node as the kit's nodes list shows it, with 001's columns,
+// so its list flags are the builder's.
+type nodeRow struct {
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	Owner     clientv0.Owner `json:"owner"`
+	Addresses []string       `json:"addresses"`
+	Version   string         `json:"clientVersion"`
+	Online    bool           `json:"connectedToControl"`
+	LastSeen  time.Time      `json:"lastSeen"`
+	Expiry    time.Time      `json:"expiry"`
+	Hostname  string         `json:"hostname"`
 }
-func (abcRow) Columns() []string { return []string{"a", "b", "c"} }
+
+var nodeColumns = table.Columns[nodeRow]{
+	{Name: "id", Field: "id", Default: true, Help: "Node ID"},
+	{Name: "name", Field: "name", Default: true, Help: "Name"},
+	{Name: "owner", Field: "owner", Default: true, Help: "Owning user, or the tags"},
+	{Name: "ip", Field: "addresses", Default: true, Help: "Tailnet IP addresses"},
+	{
+		Name:    "version",
+		Field:   "clientVersion",
+		Default: true,
+		Kind:    table.Version,
+		Help:    "Client version",
+	},
+	{
+		Name:    "online",
+		Field:   "connectedToControl",
+		Default: true,
+		Help:    "Whether the node is connected",
+	},
+	{Name: "last-seen", Field: "lastSeen", Default: true, Help: "Time of last contact"},
+	{
+		Name:    "expiry",
+		Field:   "expiry",
+		Default: true,
+		Ahead:   true,
+		Help:    "When the node key expires",
+	},
+	{Name: "hostname", Field: "hostname", Help: "Hostname the node reports"},
+}
+
 func (tagWords) Words() []string { return []string{"tag:ci", "tag:prod"} }
 
 func (shellWords) Words() []string { return []string{"bash", "zsh", "fish", "powershell"} }
@@ -118,14 +107,6 @@ func (works) Words() []string      { return []string{"works"} }
 
 // The kit's tree: the hard cases of the CLI proposal, twelve commands.
 type (
-	nodesListIn struct {
-		// The flags a list will get from the builder; until it does, the
-		// tree declares them itself.
-		Columns     []column[nodeRow]               `flag:"columns"      help:"Columns to show"`
-		Sort        column[nodeRow]                 `flag:"sort"         help:"Column to sort by"`
-		Filter      cmdline.Repeat[[]cond[nodeRow]] `flag:"filter"       help:"Rows to keep"`
-		ListColumns bool                            `flag:"list-columns" help:"List the columns"`
-	}
 	nodesDeleteIn struct {
 		Node  string `arg:"node"`
 		Force bool   `flag:"force" help:"Do not ask"`
@@ -180,13 +161,9 @@ type (
 		String  Opt[text[abWords]] `flag:"string"  help:"A string" short:"s"`
 		List    []text[xyzWords]   `flag:"list"    help:"A list"   short:"l"`
 		File    string             `flag:"file"    help:"A string" short:"f"`
-
-		// The flags a list will get from the builder; until it does, the
-		// tree declares them itself.
-		Columns     []column[abcRow]               `flag:"columns"      help:"Columns to show"`
-		Sort        column[abcRow]                 `flag:"sort"         help:"Column to sort by"`
-		Filter      cmdline.Repeat[[]cond[abcRow]] `flag:"filter"       help:"Rows to keep"`
-		ListColumns bool                           `flag:"list-columns" help:"List the columns"`
+		// Filter stands in for a repeated flag of text, as pflag's
+		// StringArray and Go's flag.Value are: it is no list's --filter.
+		Filter cmdline.Repeat[[]string] `flag:"filter" help:"A repeated string"`
 	}
 	pfSubIn struct {
 		A Opt[text[oneTwo]] `arg:"a"`
@@ -227,6 +204,20 @@ func cmd[In any](name, short string, server, config bool, aliases ...string) Nod
 	})
 }
 
+// list is a list of a test tree, with the builder's list flags; like cmd
+// it is never run.
+func list[In, R any](
+	name, short string,
+	cols table.Columns[R],
+	aliases ...string,
+) Node {
+	return NewList(ListSpec[testS, In, R]{
+		Name: name, Short: short, Long: short + ".", Example: []string{name},
+		Aliases: aliases, Columns: cols, NoRows: "No rows.",
+		Run: func(Ctx[testS], In) ([]R, error) { return nil, errNotRun },
+	})
+}
+
 var (
 	errNotRun   = errors.New("the commands of a test tree do not run")
 	errNoAnswer = errors.New("no completion answer")
@@ -253,7 +244,7 @@ var testTrees = map[string][]Node{
 			false,
 		),
 		group("nodes", "Manage nodes",
-			cmd[nodesListIn]("list", "List the nodes", true, true, "ls"),
+			list[NoInput]("list", "List the nodes", nodeColumns, "ls"),
 			cmd[nodesDeleteIn]("delete", "Delete a node", true, true, "rm"),
 			cmd[nodesSetIn]("set", "Change the name or expiry of a node", true, true),
 			group(
@@ -819,10 +810,11 @@ func TestCorpus(t *testing.T) { //nolint:tparallel // the cases are counted in o
 	}
 }
 
-// The test trees declare --columns, --sort, --filter, --list-columns and
-// --force as plain fields, because the builder does not give them yet.
-// The day it does, this fails, so that the trees take the builder's.
-func TestBuilderLacksListFlagsAndPrompt(t *testing.T) {
+// The lists of the test trees are the builder's, with its list flags; the
+// trees still declare --force as a plain field, because the builder has no
+// prompt yet. The day a spec gets one, this fails, so that the trees take
+// the builder's --force.
+func TestBuilderLacksPrompt(t *testing.T) {
 	t.Parallel()
 
 	tree, err := testBuild("prog", "Prog",
@@ -832,8 +824,8 @@ func TestBuilderLacksListFlagsAndPrompt(t *testing.T) {
 			Long:    "List items.",
 			Example: []string{"prog list"},
 			Columns: itemColumns,
-
-			Run: noop[NoInput, []item],
+			NoRows:  "No items.",
+			Run:     noop[NoInput, []item],
 		}),
 		New(Spec[testS, getIn, NoOutput]{
 			Name:    "delete",
@@ -846,18 +838,36 @@ func TestBuilderLacksListFlagsAndPrompt(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	flags := tree.parser.Root().Commands[0].Flags
+	names := func(c int) []string {
+		flags := tree.parser.Root().Commands[c].Flags
 
-	names := make([]string, 0, len(flags))
-	for _, f := range flags {
-		names = append(names, f.Name)
+		out := make([]string, 0, len(flags))
+		for _, f := range flags {
+			out = append(out, f.Name)
+		}
+
+		return out
 	}
 
 	require.ElementsMatch(
 		t,
-		[]string{"output", "config", "help"},
-		names,
-		"a list has new flags: make the list commands of testTrees use them, drop their own fields, and update this test",
+		[]string{
+			"columns",
+			"list-columns",
+			"filter",
+			"sort",
+			"output",
+			"config",
+			"help",
+		},
+		names(0),
+		"the list flags changed: the lists of testTrees take them from the builder",
+	)
+	require.ElementsMatch(
+		t,
+		[]string{"count", "output", "config", "help"},
+		names(1),
+		"the builder gives a command a flag of its own: if it is --force, make testTrees use it in place of their own field, and update this test",
 	)
 
 	fields := func(typ reflect.Type) []string {
@@ -879,16 +889,19 @@ func TestBuilderLacksListFlagsAndPrompt(t *testing.T) {
 		"Local",
 		"NeedsServer",
 		"ReadsConfig",
+		"NeedsChange",
 		"Columns",
+		"NoRows",
 		"Run",
 		"Done",
+		"End",
 	}
 	for _, typ := range []reflect.Type{reflect.TypeFor[Spec[testS, NoInput, NoOutput]](), reflect.TypeFor[ListSpec[testS, NoInput, item]]()} {
 		require.Subset(
 			t,
 			known,
 			fields(typ),
-			"%s has a new field: if it is the prompt (and --force) or the list flags, make testTrees use it in place of their own fields; then add it here",
+			"%s has a new field: if it is the prompt (and --force), make testTrees use it in place of their own field; then add it here",
 			typ.Name(),
 		)
 	}

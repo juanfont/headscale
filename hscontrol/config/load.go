@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/juanfont/headscale/cmdline/duration"
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -27,7 +28,6 @@ import (
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/v2"
-	"github.com/prometheus/common/model"
 	"github.com/tailscale/hujson"
 )
 
@@ -1323,8 +1323,6 @@ func scalarHook(from, to reflect.Value) (any, error) {
 }
 
 func toDuration(v reflect.Value) (any, error) {
-	unit := &types.ConfigError{Reason: "needs a unit", Hint: `write the unit, e.g. "30s", "5m" or "90d"`}
-
 	if v.Kind() != reflect.String {
 		if _, ok := util.ScalarText(v); !ok || v.Kind() == reflect.Bool {
 			return v.Interface(), nil
@@ -1334,27 +1332,36 @@ func toDuration(v reflect.Value) (any, error) {
 			return time.Duration(0), nil
 		}
 
-		return nil, unit
+		return nil, noUnit()
 	}
 
-	s := v.String()
+	d, err := ParseDuration(v.String())
+	if err != nil {
+		return nil, err
+	}
 
-	d, err := time.ParseDuration(s)
-	if err == nil {
+	return d, nil
+}
+
+const unitHint = `write the unit, e.g. "30s", "5m" or "90d"`
+
+func noUnit() error { return &types.ConfigError{Reason: "needs a unit", Hint: unitHint} }
+
+// ParseDuration reads a duration as the config file writes it, in the
+// grammar of the CLI's time values (duration.Parse), so a duration
+// means the same in both.
+func ParseDuration(s string) (time.Duration, error) {
+	d, ok := duration.Parse(s)
+	if ok {
 		return d, nil
 	}
 
-	md, err := model.ParseDuration(s)
+	_, err := strconv.ParseFloat(s, 64)
 	if err == nil {
-		return time.Duration(md), nil
+		return 0, noUnit()
 	}
 
-	_, err = strconv.ParseFloat(s, 64)
-	if err == nil {
-		return nil, unit
-	}
-
-	return nil, &types.ConfigError{Reason: "is not a duration", Hint: unit.Hint}
+	return 0, &types.ConfigError{Reason: "is not a duration", Hint: unitHint}
 }
 
 func toBool(v reflect.Value) (any, error) {

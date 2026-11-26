@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestImportsNoProgram: the library and its table engine
+// TestImportsNoProgram: the library, its table engine and its durations
 // are for any program: they import no package of Headscale but the
 // parser's own. What is a program's comes in through its Program.
 func TestImportsNoProgram(t *testing.T) {
 	t.Parallel()
 
-	for _, dir := range []string{".", "../table"} {
+	for _, dir := range []string{".", "../table", "../duration"} {
 		pkg, err := gobuild.ImportDir(dir, 0)
 		require.NoError(t, err)
 

@@ -8,14 +8,16 @@
 package table
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"reflect"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Kind says how a column is shown, filtered and sorted.
@@ -43,7 +45,10 @@ type Column[R any] struct {
 	// when empty. A sheet always labels a line by the name.
 	Header string
 	// Kind is needed only where the Go type of the field cannot say it.
-	Kind    Kind
+	Kind Kind
+	// Ahead is a time that looks forward from now, such as an expiry: a
+	// duration in a filter is then the time left, not the age.
+	Ahead   bool
 	Default bool
 	Help    string
 }
@@ -57,12 +62,18 @@ var (
 	errNoName       = errors.New("a column with no name")
 	errTwice        = errors.New("is declared twice")
 	errWrongKind    = errors.New("cannot show")
+	errAhead        = errors.New("is no time, so it cannot look ahead")
+	errSayKind      = errors.New(
+		"is named like an ID or a version: say its Kind, which may be text",
+	)
 )
 
 // Check reports a column with no name or a name given twice, a field the
-// type R does not have, a kind that cannot be derived, and a Kind that the
-// type of the field contradicts. Building the command tree calls it for
-// every declaration.
+// type R does not have, a kind that cannot be derived, a Kind that the
+// type of the field contradicts, and Ahead on a column that is no time. A
+// text field whose key ends in Id or Version needs its Kind said: the type
+// cannot tell an ID or a version from text, and the wrong guess sorts 1.100
+// before 1.80. Building the command tree calls it for every declaration.
 func (cs Columns[R]) Check() error {
 	var errs []error
 
@@ -97,10 +108,29 @@ func (cs Columns[R]) Check() error {
 			)
 		case derived == "" && c.Kind == "":
 			errs = append(errs, fmt.Errorf("column %q: %w %v", c.Name, errNoKind, t))
+		case c.Kind == "" && derived == Text && namedLikeKind(c.Field):
+			errs = append(
+				errs,
+				fmt.Errorf("column %q: field %q %w", c.Name, c.Field, errSayKind),
+			)
+		}
+
+		if c.Ahead && c.kind(t) != Time {
+			errs = append(errs, fmt.Errorf("column %q %w", c.Name, errAhead))
 		}
 	}
 
 	return errors.Join(errs...)
+}
+
+// namedLikeKind is a key that reads as an ID or a version: authKeyId,
+// clientVersion.
+func namedLikeKind(field string) bool {
+	key := field[strings.LastIndex(field, ".")+1:]
+
+	return strings.HasSuffix(key, "Id") || strings.HasSuffix(key, "ID") ||
+		strings.EqualFold(key, "version") ||
+		strings.HasSuffix(key, "Version")
 }
 
 // text folds the kinds that are all a string in the API.
@@ -135,35 +165,99 @@ func (c Column[R]) kind(t reflect.Type) Kind {
 	return ""
 }
 
-// Render writes rows as a table of the default columns, for a pipe: no
-// colour, no truncation, one line per row.
-func Render[R any](w io.Writer, rows []R, cols Columns[R], now time.Time) error {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.TabIndent)
+// Render writes rows as a table of shown, for a pipe: no colour, no
+// truncation, one line per row. [Columns.Pick] chooses the columns.
+func Render[R any](w io.Writer, rows []R, shown Columns[R], now time.Time) error {
+	lines := make([][]string, 0, len(rows)+1)
 
-	var shown Columns[R]
-
-	for _, c := range cols {
-		if c.Default {
-			shown = append(shown, c)
-		}
-	}
-
-	line := make([]string, len(shown))
+	header := make([]string, len(shown))
 	for i, c := range shown {
-		line[i] = c.header()
+		header[i] = c.header()
 	}
 
-	fmt.Fprintln(tw, strings.Join(line, "\t"))
+	lines = append(lines, header)
 
 	for _, r := range rows {
+		line := make([]string, len(shown))
 		for i, c := range shown {
 			line[i] = c.cell(r, now, false)
 		}
 
-		fmt.Fprintln(tw, strings.Join(line, "\t"))
+		lines = append(lines, line)
 	}
 
-	return tw.Flush()
+	return aligned(w, lines)
+}
+
+// aligned writes lines of cells in columns: each as wide as its widest
+// cell on the screen, two spaces apart. The last cell of a line is not
+// padded, nor is a cell that only empty cells follow, so a line ends in
+// what its cells hold.
+func aligned(w io.Writer, lines [][]string) error {
+	var widths []int
+
+	for _, line := range lines {
+		for i, cell := range line {
+			if i == len(widths) {
+				widths = append(widths, 0)
+			}
+
+			widths[i] = max(widths[i], width(cell))
+		}
+	}
+
+	var b strings.Builder
+
+	for _, line := range lines {
+		last := len(line) - 1
+		for last > 0 && line[last] == "" {
+			last--
+		}
+
+		for i, cell := range line[:last+1] {
+			b.WriteString(cell)
+
+			if i < last {
+				b.WriteString(strings.Repeat(" ", widths[i]-width(cell)+2))
+			}
+		}
+
+		b.WriteByte('\n')
+	}
+
+	_, err := io.WriteString(w, b.String())
+
+	return err
+}
+
+// width is the cells s takes on a terminal: two for the wide characters of
+// East Asian scripts and for emoji, none for a mark that joins the one
+// before it. The ranges are those of wcwidth that a table of names meets.
+func width(s string) int {
+	n := 0
+
+	for _, r := range s {
+		switch {
+		case unicode.In(r, unicode.Mn, unicode.Me) || r == 0x200d || r >= 0xfe00 && r <= 0xfe0f:
+		case r >= 0x1100 && r <= 0x115f,
+			r >= 0x2e80 && r <= 0xa4cf && r != 0x303f,
+			r >= 0xac00 && r <= 0xd7a3,
+			r >= 0xf900 &&
+				r <= 0xfaff,
+			r >= 0xfe30 && r <= 0xfe4f,
+			r >= 0xff00 && r <= 0xff60,
+			r >= 0xffe0 && r <= 0xffe6,
+			r >= 0x1f300 &&
+				r <= 0x1f6ff,
+			r >= 0x1f900 && r <= 0x1faff,
+			r >= 0x20000 && r <= 0x3fffd:
+			n += 2
+		default:
+			n++
+		}
+	}
+
+	return n
 }
 
 // Sheet writes one object, one "Label: value" line for every column, also
@@ -226,6 +320,10 @@ func (c Column[R]) label() string {
 // cell is the text of the column for row. A null field is "never" for a
 // time and "-" for any other kind.
 func (c Column[R]) cell(row R, now time.Time, sheet bool) string {
+	return Visible(c.text(row, now, sheet), "")
+}
+
+func (c Column[R]) text(row R, now time.Time, sheet bool) string {
 	v, ok := field(reflect.ValueOf(row), c.Field)
 	if !ok {
 		t, _ := fieldType(reflect.TypeFor[R](), c.Field)
@@ -258,16 +356,12 @@ func (c Column[R]) cell(row R, now time.Time, sheet bool) string {
 
 		return Ago(t, now)
 	case List:
-		var items []string
-		for i := range v.Len() {
-			items = append(items, fmt.Sprint(v.Index(i).Interface()))
-		}
-
-		if len(items) == 0 && sheet {
+		entries := items(v)
+		if len(entries) == 0 && sheet {
 			return "-"
 		}
 
-		return strings.Join(items, ", ")
+		return strings.Join(entries, ", ")
 	case Owner:
 		return ownerCell(v, sheet)
 	default:
@@ -303,6 +397,76 @@ func ownerCell(v reflect.Value, sheet bool) string {
 	return strings.Join(out, ", ")
 }
 
+// Visible is s with every control character and every bidirectional
+// control made visible as an escape, and a backslash doubled so that the
+// text \x1b cannot pass for an escape, except the runes in keep. Text from
+// the server, which a caller with a narrow token may have set, cannot then
+// move the cursor, recolour or reorder an admin's terminal, nor end a line
+// and forge the next: every place where such text enters a sentence or a
+// cell passes it through Visible with nothing kept.
+func Visible(s, keep string) string {
+	escaped := func(r rune) bool { return (hidden(r) || r == '\\') && !strings.ContainsRune(keep, r) }
+	if !strings.ContainsFunc(s, escaped) {
+		return s
+	}
+
+	var b strings.Builder
+
+	for _, r := range s {
+		switch {
+		case !escaped(r):
+			b.WriteRune(r)
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r <= 0xff:
+			fmt.Fprintf(&b, "\\x%02x", r)
+		default:
+			fmt.Fprintf(&b, "\\u%04x", r)
+		}
+	}
+
+	return b.String()
+}
+
+// VisibleJSON is raw JSON with every control that JSON does not escape
+// itself, DEL, C1 and the bidirectional controls, written as \uXXXX. Such a
+// rune stands only inside a string, so the JSON stays valid and every
+// value the same, but no terminal acts on it.
+func VisibleJSON(raw []byte) []byte {
+	if !bytes.ContainsFunc(raw, hidden) {
+		return raw
+	}
+
+	var b bytes.Buffer
+
+	for len(raw) > 0 {
+		r, n := utf8.DecodeRune(raw)
+		if hidden(r) && r >= 0x7f {
+			fmt.Fprintf(&b, "\\u%04x", r)
+		} else {
+			b.Write(raw[:n])
+		}
+
+		raw = raw[n:]
+	}
+
+	return b.Bytes()
+}
+
+// hidden is a rune that a terminal acts on rather than shows: the C0 and
+// C1 controls, DEL, and the marks, embeddings, overrides and isolates of
+// bidirectional text.
+func hidden(r rune) bool {
+	switch {
+	case unicode.IsControl(r), r == 0x061c, r == 0x200e, r == 0x200f:
+		return true
+	case r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+		return true
+	}
+
+	return false
+}
+
 // Entity names an entity as every message does: the kind, the ID, and in
 // brackets the name that tables show for it. kind is the kind of a problem
 // object of v0.
@@ -321,6 +485,8 @@ func Entity(kind, id, name string) string {
 	if !ok {
 		w = kind
 	}
+
+	id, name = Visible(id, ""), Visible(name, "")
 
 	if name == "" || kind == "oauthClient" {
 		return w + " " + id

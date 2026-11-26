@@ -110,7 +110,12 @@ func (t *Tree) commandHelp(w io.Writer, c *cmdline.Info, l *leaf) {
 			name += " " + typeWord(f.Type)
 		}
 
-		fmt.Fprintf(tw, "  %s%s\t%s\n", short, name, f.Help)
+		help := f.Help
+		if f.Name == "filter" && l.filter != "" {
+			help = strings.Replace(help, "match;", "match, such as "+l.filter+";", 1)
+		}
+
+		fmt.Fprintf(tw, "  %s%s\t%s\n", short, name, help)
 	}
 
 	tw.Flush()

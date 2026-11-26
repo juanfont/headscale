@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
@@ -144,6 +145,13 @@ func (u *User) Display() string {
 	return cmp.Or(u.DisplayName, u.Username())
 }
 
+// FromIdentityProvider reports whether an identity provider owns the user.
+// The provider identifier decides it, as it decides the unique index on the
+// name; Provider is a label that older rows can lack.
+func (u *User) FromIdentityProvider() bool {
+	return u.ProviderIdentifier.Valid
+}
+
 // Username returns the user's login name via the view; see [User.Username].
 func (v UserView) Username() string {
 	if !v.Valid() {
@@ -153,6 +161,11 @@ func (v UserView) Username() string {
 	return v.ж.Username()
 }
 
+// FromIdentityProvider reports it via the view; see [User.FromIdentityProvider].
+func (v UserView) FromIdentityProvider() bool {
+	return v.Valid() && v.ж.FromIdentityProvider()
+}
+
 // Display returns the user's display name via the view; see [User.Display].
 func (v UserView) Display() string {
 	if !v.Valid() {
@@ -160,6 +173,60 @@ func (v UserView) Display() string {
 	}
 
 	return v.ж.Display()
+}
+
+var (
+	ErrUserEmailInvalid         = errors.New("email is not an email address")
+	ErrUserProfilePicURLInvalid = errors.New("profile picture URL is not an absolute http or https URL")
+	ErrUserTextInvalid          = errors.New("text has a control or bidirectional formatting character")
+)
+
+// ValidateUserText refuses a text of a user that could change how a terminal
+// or a page shows what follows it: a control character, and the
+// bidirectional embedding, override and isolate characters. Every peer and
+// the admin's terminal show these texts.
+func ValidateUserText(s string) error {
+	for _, r := range s {
+		if unicode.IsControl(r) || (r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069') {
+			return ErrUserTextInvalid
+		}
+	}
+
+	return nil
+}
+
+// ValidateEmail checks the email of a local user: empty, or one bare
+// address. A name or comment around it ("Alice <a@b>") is refused, because
+// the policy matches the stored text.
+func ValidateEmail(email string) error {
+	if email == "" {
+		return nil
+	}
+
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Name != "" || addr.Address != email {
+		return ErrUserEmailInvalid
+	}
+
+	return nil
+}
+
+// ValidateProfilePicURL checks the picture URL of a local user: empty, or an
+// absolute http or https URL with a host and no user info. Clients show it
+// as an image, so a relative path or another scheme such as javascript: is
+// refused, and so is a credential in the URL. An IP literal is a host: a
+// self-hosted setup may serve its pictures from one.
+func ValidateProfilePicURL(raw string) error {
+	if raw == "" {
+		return nil
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
+		return ErrUserProfilePicURLInvalid
+	}
+
+	return nil
 }
 
 // CreatedAt returns when the user was created.

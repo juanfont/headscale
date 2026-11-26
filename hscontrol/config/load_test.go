@@ -1269,6 +1269,37 @@ func TestPlainMap(t *testing.T) {
 	assert.NotContains(t, plainProvider, "nothing", "a typed nil is left out")
 }
 
+// TestParseDurationSum: time.ParseDuration adds its components in a uint64
+// that wraps, so a sum past the range came back as a small duration.
+func TestParseDurationSum(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range []string{
+		"9223372036854775808ns9223372036854775808ns",
+		"9223372036854775807ns9223372036854775807ns2ns",
+		"9223372036854775807ns1ns",
+		"-9223372036854775808ns1ns",
+	} {
+		_, err := ParseDuration(s)
+		require.Error(t, err, s)
+	}
+
+	for s, want := range map[string]time.Duration{
+		"9223372036854775807ns":  math.MaxInt64,
+		"-9223372036854775808ns": math.MinInt64,
+		"1h30m":                  90 * time.Minute,
+		"-1h30m":                 -90 * time.Minute,
+		"+1.5h":                  90 * time.Minute,
+		".5s1ms":                 501 * time.Millisecond,
+		"0":                      0,
+		"1d12h":                  36 * time.Hour,
+	} {
+		got, err := ParseDuration(s)
+		require.NoError(t, err, s)
+		require.Equal(t, want, got, s)
+	}
+}
+
 // TestFormatDuration: a duration prints without trailing zero units and
 // parses back to itself.
 func TestFormatDuration(t *testing.T) {

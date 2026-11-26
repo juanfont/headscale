@@ -1,5 +1,5 @@
 LINE: headscale |
-  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [version     (Print the version)]
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [users       (Manage users)] [version     (Print the version)]
 LINE: headscale ve|
   [version ]
 LINE: headscale api |
@@ -43,18 +43,32 @@ LINE: headscale -o json -c x debug health --|
 LINE: headscale version -o json --|
   [--config  (Config file)] [--help    (Show this help)]
 LINE: headscale -c -o |
-  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [version     (Print the version)]
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [users       (Manage users)] [version     (Print the version)]
 LINE: headscale -c x ve|
   [version ]
 LINE: headscale nodez |
-  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [version     (Print the version)]
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [users       (Manage users)] [version     (Print the version)]
 LINE: headscale versoin --|
   [--config   (Config file)] [--help     (Show this help)] [--output   (Output format: json (the API object))] [--version  (Print the version line)]
 LINE: headscale version --bogus --|
   [--config  (Config file)] [--help    (Show this help)] [--output  (Output format: json)]
 LINE: headscale completion bash -c|
   THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale users |
+  [create  (Create a local user)] [get     (Show one user)] [list    (List the users)] [set     (Change a local user)]
+LINE: headscale users list --|
+  [--columns       (Columns to show: a list, or +name and -name to change the default)] [--config        (Config file)] [--filter        (Keep the rows that match; may be repeated)] [--help          (Show this help)] [--list-columns  (List the columns, the API field behind each, and exit)] [--output        (Output format: json (the API object))] [--sort          (Column to sort by; -name sorts in reverse)]
+LINE: headscale users list --columns id,na|
+  [id`,name]
+LINE: headscale users list --columns +lo|
+  [+login-name ]
+LINE: headscale users list --sort -co|
+  [-count ]
+LINE: headscale users list --filter=pro|
+  [--filter=profile-pic-url] [--filter=provider] [--filter=provider-id]
+LINE: headscale users set alice --|
+  [--config        (Config file)] [--display-name  (New display name; "" clears it)] [--email         (New email address; "" clears it)] [--help          (Show this help)] [--name          (New username)] [--output        (Output format: json (the API object))] [--picture-url   (New profile picture URL; "" clears it)]
 LINE: headscale -h ve|
   [version ]
 LINE: headscale --version |
-  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [version     (Print the version)]
+  [api         (Authentication towards the headscale API)] [completion  (Print the completion script of a shell)] [debug       (A health check and test tools)] [users       (Manage users)] [version     (Print the version)]

@@ -37,6 +37,17 @@ type leaf struct {
 	local, output, config bool
 	// own is a result that is the CLI's own object, not one of the API.
 	own bool
+	// list is a list: it takes the list flags. info is its columns, and
+	// checkList checks the values of the list flags against them.
+	list      bool
+	info      []table.ColumnInfo
+	checkList func(line *cmdline.Line, command string) (int, error)
+	// noRows is what a list with no rows says on a terminal; filter is an
+	// example of --filter for its help.
+	noRows, filter string
+	// set is a command that changes the fields its Opt flags name, so a
+	// line gives at least one of them: NeedsChange.
+	set bool
 	// server reports whether this line talks to the server.
 	server func(*cmdline.Line) bool
 	// session is the S of its spec, the session it runs with.
@@ -76,6 +87,7 @@ var (
 		"both Columns and Done; Done is printed in place of the sheet",
 	)
 	errNoDefault = errors.New("a list with no Default column")
+	errNoRows    = errors.New("a list with no NoRows sentence")
 )
 
 // specError is a spec that is wrong, named by its path.
@@ -125,6 +137,12 @@ func (format) Complete(_ *cmdline.Line, prefix string) ([]string, cmdline.Direct
 	return cmdline.Words(prefix, "json"), cmdline.NoFiles
 }
 
+// cloneColumns is a copy of a declaration the tree keeps, so that a
+// caller's later change of it does not change the tree.
+func cloneColumns[R any](cols table.Columns[R]) table.Columns[R] {
+	return slices.Clone(cols)
+}
+
 // New makes the command of a spec.
 func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	noOut := reflect.TypeFor[Out]() == reflect.TypeFor[NoOutput]()
@@ -159,6 +177,8 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 
 		return errors.Join(append(errs, s.Columns.Check())...)
 	}
+	l.set = s.NeedsChange
+
 	l.cmd = func(flags []any) cmdline.Node {
 		return cmdline.Command[In]{
 			Name:    s.Name,
@@ -168,9 +188,13 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 			Run: func(ctx context.Context, in In) error {
 				c := ctxOf[S](ctx)
 
+				if c.server {
+					c.guard.Store(guardOf(in))
+				}
+
 				out, err := s.Run(c, in)
 				if err != nil {
-					return c.errorOf(err)
+					return c.fields(c.errorOf(err), reflect.TypeFor[In]())
 				}
 
 				return printOne(c.run, out, s.Columns, func() string {
@@ -189,6 +213,7 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 
 // NewList makes the command of a list spec.
 func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
+	s.Columns = cloneColumns(s.Columns)
 	l := common(
 		s.Name,
 		s.Short,
@@ -201,6 +226,11 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 		s.ReadsConfig,
 	)
 	l.output = true
+	l.list = true
+	l.info = s.Columns.Info()
+	l.noRows = s.NoRows
+	l.filter = filterExample(s.Example)
+	l.checkList = func(line *cmdline.Line, command string) (int, error) { return listCheck(s.Columns, line, command) }
 	l.session = reflect.TypeFor[S]()
 	l.check = func(*program) error {
 		var errs []error
@@ -216,6 +246,10 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 			errs = append(errs, errNoDefault)
 		}
 
+		if s.NoRows == "" {
+			errs = append(errs, errNoRows)
+		}
+
 		return errors.Join(append(errs, s.Columns.Check())...)
 	}
 	l.cmd = func(flags []any) cmdline.Node {
@@ -226,13 +260,24 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 			Flags:   flags,
 			Run: func(ctx context.Context, in In) error {
 				c := ctxOf[S](ctx)
+				f, _ := cmdline.Get[listFlags](c.line)
 
-				rows, err := s.Run(c, in)
+				conds, err := filters(c.run, ctx, s.Columns, f)
 				if err != nil {
 					return err
 				}
 
-				return printList(c.run, rows, s.Columns)
+				rows, err := s.Run(c, in)
+				if err != nil {
+					return c.fields(c.errorOf(err), reflect.TypeFor[In]())
+				}
+
+				rows, err = listOf(c.run, s.Columns, rows, conds, f.Sort)
+				if err != nil {
+					return err
+				}
+
+				return printList(c.run, rows, s.Columns.Pick(f.words()), s.NoRows)
 			},
 		}
 	}
@@ -272,10 +317,15 @@ func common[In any](
 	}
 }
 
-// flags are the structs of flags the builder gives the command: --output
-// and --config as its spec derives them, and --help.
+// flags are the structs of flags the builder gives the command: the list
+// flags of a list, --output and --config as its spec derives them, and
+// --help.
 func (l *leaf) flags() []any {
 	var f []any
+
+	if l.list {
+		f = append(f, listFlags{})
+	}
 
 	switch {
 	case l.output && l.own:
@@ -444,6 +494,7 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 	}
 
 	errs = append(errs, t.checkFlags()...)
+
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
@@ -461,6 +512,22 @@ func (t *Tree) checkFlags() []error {
 	var walk func(*cmdline.Info)
 
 	walk = func(c *cmdline.Info) {
+		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok && l.set &&
+			!slices.ContainsFunc(
+				c.Flags,
+				func(f cmdline.Flag) bool { return f.Optional },
+			) {
+			errs = append(
+				errs,
+				specError(
+					strings.Join(
+						c.Path,
+						" ",
+					)+": NeedsChange and no Opt flag that changes a field",
+				),
+			)
+		}
+
 		for _, f := range c.Flags {
 			if f.Name == rootOnly {
 				if len(c.Path) > 0 {

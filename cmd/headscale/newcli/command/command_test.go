@@ -44,8 +44,35 @@ func noop[In, Out any](Ctx, In) (Out, error) {
 
 var errBroken = errors.New("it broke")
 
+func words(line string) []string {
+	w := strings.Fields(line)
+	for i := range w {
+		if w[i] == "''" {
+			w[i] = ""
+		}
+	}
+
+	return w
+}
+
 // allowedAliases are Headscale's aliases.
 func allowedAliases() []string { return []string{"ls", "rm", "approve"} }
+
+// build is a tree of Headscale's program with the aliases it may use and
+// the entities it looks up: a test of the retry needs a type of its own.
+//
+//nolint:unparam // the name of a tree, which a test may change
+func build(
+	name, short string,
+	aliases []string,
+	ents []lib.Entity,
+	nodes ...Node,
+) (*Tree, error) {
+	p := program(name, short)
+	p.Aliases, p.Entities = aliases, ents
+
+	return lib.Build(p, nodes...)
+}
 
 // connectTest is connect with the warnings of the run on env's stderr.
 func connectTest(cfg *types.Config, env Env) (*API, error) {
@@ -108,6 +135,31 @@ func fakeServer(t *testing.T) string {
 
 func listItems(c Ctx) ([]item, error) { return listOfPath(c, "items") }
 
+func listOfPath(c Ctx, path string) ([]item, error) {
+	return walkOf[item, anySuccess](
+		c.API,
+		path,
+		func(cl *clientv0.Client, p page) (*http.Response, error) {
+			token := ""
+			if p.token != nil {
+				token = *p.token
+			}
+
+			req, err := http.NewRequestWithContext(
+				c,
+				http.MethodGet,
+				cl.Server+path+"?pageToken="+token,
+				nil,
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			return cl.Client.Do(req)
+		},
+	)
+}
+
 // TestJSONIsTheAnswer: -o json prints the answer that Run's value came
 // from, and a value that no answer holds is an error in every mode.
 func TestJSONIsTheAnswer(t *testing.T) {
@@ -168,7 +220,7 @@ func TestJSONIsTheAnswer(t *testing.T) {
 			Long:    "S.",
 			Example: []string{"prog items"},
 			Columns: itemColumns,
-
+			NoRows:  "No items.",
 			Run: func(c Ctx, _ NoInput) ([]item, error) {
 				rows, err := listItems(c)
 				slices.Reverse(rows)
@@ -182,8 +234,8 @@ func TestJSONIsTheAnswer(t *testing.T) {
 			Long:    "S.",
 			Example: []string{"prog broken"},
 			Columns: itemColumns,
-
-			Run: func(c Ctx, _ NoInput) ([]item, error) { return listOfPath(c, "broken") },
+			NoRows:  "No items.",
+			Run:     func(c Ctx, _ NoInput) ([]item, error) { return listOfPath(c, "broken") },
 		}),
 		New(Spec[NoInput, item]{
 			Name:    "item",
@@ -366,45 +418,4 @@ func TestSentence(t *testing.T) {
 		"listing: it broke",
 		sentence(fmt.Errorf("listing: %w", errBroken)),
 	)
-}
-
-func listOfPath(c Ctx, path string) ([]item, error) {
-	return walkOf[item, anySuccess](
-		c.API,
-		path,
-		func(cl *clientv0.Client, p page) (*http.Response, error) {
-			token := ""
-			if p.token != nil {
-				token = *p.token
-			}
-
-			req, err := http.NewRequestWithContext(
-				c,
-				http.MethodGet,
-				cl.Server+path+"?pageToken="+token,
-				nil,
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			return cl.Client.Do(req)
-		},
-	)
-}
-
-// build is a tree of Headscale's program with the aliases it may use and
-// the entities it looks up: a test of the retry needs a type of its own.
-//
-//nolint:unparam // the name of a tree, which a test may change
-func build(
-	name, short string,
-	aliases []string,
-	ents []lib.Entity,
-	nodes ...Node,
-) (*Tree, error) {
-	p := program(name, short)
-	p.Aliases, p.Entities = aliases, ents
-
-	return lib.Build(p, nodes...)
 }

@@ -224,7 +224,7 @@ others-007	ours	unknown-flag [nodes delete] "no-force"
 others-008	ours	unknown-flag [run] "shello"
 others-009	up	run api keys create [] user=["hello"]
 others-010	ours	flag-repeated [nodes list] "sort"
-others-011	up	run nodes list [] filter=["id,name" "ip,owner"]
+others-011	up	run nodes list [] filter=["id=1,name:a" "ip:b,owner:x"]
 others-012	up	run nodes list [] config=["p"]
 others-013	up	run check config ["-"]
 others-014	up	run nodes set ["n"] name=["-"]
@@ -236,7 +236,7 @@ others-019	up	run run [] file=["-foo"]
 others-020	up	run run [] file=["-foo"]
 others-021	up	run run [] file=["-oo"]
 others-022	ours	run nodes set ["n"] name=["-foo"]
-others-023	up	run nodes list [] filter=["-id" "-name"]
+others-023	up	run run [] filter=["-foo" "-bar"]
 others-024	ours	run run ["x"] file=["--"]
 others-025	ours	run run [] string=["xxx"]
 others-026	up	run run ["ls" "-lart"]
@@ -295,10 +295,10 @@ others-078	ours	unknown-flag [] "undefined"
 others-079	ours	unknown-flag [] "undefined"
 others-080	ours	unknown-flag [nodes list] "undefined"
 others-081	up	unknown-flag [nodes list] "undefined"
-others-082	up	run nodes list [] filter=["id" "name" "ip"]
+others-082	up	run nodes list [] filter=["id=1" "name:a" "ip:b"]
 others-083	up	run nodes list [] config=["hello"] output=["json"]
 others-084	ours	flag-repeated [nodes list] "config"
-others-085	up	run nodes list [] filter=["id" "name"] sort=["id"]
+others-085	up	run nodes list [] filter=["id=1" "name:a"] sort=["id"]
 others-086	up	flag-repeated [nodes set] "name"
 others-087	up	flag-repeated [auth keys create] "tags"
 others-088	up	flag-repeated [nodes delete] "force"
@@ -328,7 +328,7 @@ others-111	ours	unknown-flag [run] "10"
 others-112	up	run run ["arg1" "arg2"] bool=["true"] file=["value"]
 others-113	ours	unknown-flag [nodes delete] "no-force"
 others-114	ours	unknown-flag [test] "ab"
-others-115	up	run nodes list [] filter=["id,name,ip" "owner" "online"]
+others-115	up	run nodes list [] filter=["id=1,name:a,ip:b" "owner:x" "online=true"]
 others-116	up	[delete list routes set] files=false nospace=false
 others-117	up	[--config --expiry --help --name --output] files=false nospace=false
 others-118	up	[--columns --config --filter --help --list-columns --output --sort] files=false nospace=false

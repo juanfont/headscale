@@ -34,8 +34,13 @@ type Program[S any] struct {
 	// <Target>".
 	Target func(s S) string
 
+	// Fields names, in err, the flags and arguments of the input type in
+	// that filled the fields of the body the server refused.
+	Fields func(err error, in reflect.Type) error
 	// Entities are the types of target a lookup finds.
 	Entities []Entity
+	// Owner is the ID of the user word names, for a filter owner=<user>.
+	Owner func(ctx context.Context, word string) (string, error)
 
 	// Aliases are the aliases a command may have.
 	Aliases []string
@@ -60,7 +65,8 @@ type program struct {
 func erase[S any](p Program[S]) program {
 	e := program{
 		Name: p.Name, Short: p.Short, Version: p.Version,
-		Sentence: p.Sentence, Entities: p.Entities,
+		Sentence: p.Sentence, Fields: p.Fields,
+		Entities: p.Entities, Owner: p.Owner,
 		Aliases: p.Aliases, ConfigEnv: p.ConfigEnv, Server: p.Server,
 		sessionType: reflect.TypeFor[S](),
 	}

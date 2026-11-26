@@ -17,13 +17,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/juanfont/headscale/client/shape"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/net/memnet"
 )
 
 // versioned is h, but a success that h gives GET /version is the 200 and
@@ -270,7 +273,7 @@ func TestAnswerFieldNames(t *testing.T) {
 	}))
 	t.Cleanup(s.Close)
 
-	got, err := me(t.Context(), bare(t, s.URL))
+	got, err := me(t.Context(), bare(t, s.URL, maxPage))
 	require.NoError(t, err)
 
 	cred, err := got.Credential.Get()
@@ -280,6 +283,26 @@ func TestAnswerFieldNames(t *testing.T) {
 		[]string{"7", "user"},
 		[]string{cred.Id, string(got.Principal.Kind)},
 	)
+}
+
+// TestPageFieldNames: a row of a walk is read by the exact member names.
+func TestPageFieldNames(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(versioned(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(
+			w,
+			`{"users":[`+rowOf[clientv0.User](
+				`{"id":"1","name":"alpha","Name":"beta","ID":"2"}`,
+			)+`]}`,
+		)
+	}))
+	t.Cleanup(s.Close)
+
+	users, err := listUsers(t.Context(), bare(t, s.URL, 1))
+	require.NoError(t, err)
+	require.Len(t, users, 1)
+	require.Equal(t, []string{"1", "alpha"}, []string{users[0].Id, users[0].Name})
 }
 
 func TestVersionCheck(t *testing.T) {
@@ -857,8 +880,11 @@ func TestShape(t *testing.T) {
 		{name: "a problem in a 200", status: 200, body: `{"status": 403, "title": "Access denied"}`, want: "it has no id."},
 		{name: "a 204 for no output", none: true, status: 204},
 		{name: "a body for no output", none: true, status: 201, body: `{"id": "1"}`, want: "it is not the 204 No Content this operation answers."},
+		{name: "a write answered null", method: http.MethodPost, status: 201, body: "null", want: "it is not an object.\nThe change may have been made"},
 		// What the type refuses is refused while the request is at hand, so
 		// a write keeps the lines of a change that may have been made.
+		{name: "a write answered with a member of another type", method: http.MethodPost, status: 201, body: `{"id": 3}`, want: "\nThe change may have been made"},
+		{name: "a write answered with a required member null", method: http.MethodPost, status: 201, body: `{"id": null}`, want: "its id is null.\nThe change may have been made"},
 		// Left out is absent: a null is no string of its type.
 		{name: "a member that may be left out, null", status: 200, body: `{"id": "1", "note": null}`, want: "its note is null."},
 		{name: "a dry run answered with a member of another type", method: http.MethodPost, dryRun: true, status: 200, body: `{"id": 3}`, notWant: "The change may have been made"},
@@ -943,7 +969,7 @@ func TestStatus(t *testing.T) {
 
 	const (
 		healthy = `{"healthy": true, "databaseConnectivity": true, "warnings": []}`
-		written = ""
+		written = "\nThe change may have been made: look before you run the command again."
 	)
 
 	getHealth := func(a *API) error { _, err := health(t.Context(), a); return err }
@@ -1037,8 +1063,542 @@ func TestStatus(t *testing.T) {
 	}
 }
 
+// TestPages: every page of every list of the API, found by walking the
+// generated client for an answer that is a page, is read by the one rule:
+// the rows are a list, each row an object of the row's type with every
+// required member there and not null, the token a string. A list of the
+// document that the CLI calls (a method of API of the same name) and this
+// test does not cover fails here.
+func TestPages(t *testing.T) {
+	t.Parallel()
+
+	client := reflect.TypeFor[clientv0.ClientWithResponsesInterface]()
+	api := reflect.TypeFor[*API]()
+	tested := 0
+
+	for m := range client.Methods() {
+		op := strings.TrimSuffix(m.Name, "WithResponse")
+
+		answer := m.Type.Out(0).Elem()
+
+		ok200, ok := answer.FieldByName("JSON200")
+		if !ok || ok200.Type.Elem().Kind() != reflect.Struct {
+			continue
+		}
+
+		pageType := ok200.Type.Elem()
+		if _, paged := pageType.FieldByName("NextPageToken"); !paged {
+			continue
+		}
+
+		call, _ := api.MethodByName(op + "All")
+
+		if !call.Func.IsValid() {
+			continue // the CLI does not call this list yet
+		}
+
+		var items, required string
+
+		var rowType reflect.Type
+
+		for f := range pageType.Fields() {
+			if f.Type.Kind() == reflect.Slice {
+				items, _, _ = strings.Cut(f.Tag.Get("json"), ",")
+				rowType = f.Type.Elem()
+			}
+		}
+
+		var nonNull string
+
+		for f := range rowType.Fields() {
+			name, opts, _ := strings.Cut(f.Tag.Get("json"), ",")
+			if strings.Contains(opts, "omitempty") {
+				continue
+			}
+
+			if required == "" {
+				required = name
+			}
+
+			if nonNull == "" && !strings.HasPrefix(f.Type.Name(), "Nullable[") {
+				nonNull = name
+			}
+		}
+
+		row := rowOfType(rowType, `{}`)
+		nulled := rowOfType(rowType, `{"`+nonNull+`": null}`)
+
+		for _, tt := range []struct{ name, body, want string }{
+			{"a good page", `{"` + items + `": [` + row + `]}`, ""},
+			{"an empty page", `{"` + items + `": []}`, ""},
+			{"a member this build does not know", `{"` + items + `": [` + row + `], "new": 1}`, ""},
+			{"the rows null", `{"` + items + `": null}`, "its " + items + " is null."},
+			{"no rows member", `{}`, "it has no " + items + "."},
+			{"the rows an object", `{"` + items + `": {}}`, "its " + items + " is not a list."},
+			{"a row null", `{"` + items + `": [null]}`, "its " + items + "[0] is null."},
+			{"a row empty", `{"` + items + `": [{}]}`, "it has no " + items + "[0]." + required + "."},
+			{"a row whose required member is null", `{"` + items + `": [` + row + `, ` + nulled + `]}`, "its " + items + "[1]." + nonNull + " is null."},
+			{"a token not a string", `{"` + items + `": [], "nextPageToken": 3}`, "its nextPageToken is not a string."},
+			// A page that is no object is no page, whatever the walk would
+			// read of its token.
+			{"a list", `[]`, "it is not an object."},
+			{"a number", `17`, "it is not an object."},
+			{"no body", ``, "it is not JSON."},
+			{"not JSON", `{`, "it is not JSON."},
+		} {
+			t.Run(op+"/"+tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				s := httptest.NewServer(
+					versioned(func(w http.ResponseWriter, _ *http.Request) {
+						w.Header().Set("Headscale-Version", "dev")
+						_, _ = w.Write([]byte(tt.body))
+					}),
+				)
+				t.Cleanup(s.Close)
+
+				a, err := connectTest(
+					&types.Config{
+						CLI: types.CLIConfig{
+							Address: s.URL,
+							APIKey:  "key",
+							Timeout: time.Minute,
+						},
+					},
+					Env{Stderr: io.Discard, Version: types.GetVersionInfo()},
+				)
+				require.NoError(t, err)
+
+				args := []reflect.Value{
+					reflect.ValueOf(a),
+					reflect.ValueOf(t.Context()),
+				}
+				// The variadic request editors are left out.
+				for i := 2; i < call.Type.NumIn()-1; i++ {
+					args = append(args, reflect.Zero(call.Type.In(i)))
+				}
+
+				out := call.Func.Call(args)
+				err, _ = reflect.TypeAssert[error](out[1])
+				err = a.errorOf(err)
+
+				if tt.want == "" {
+					require.NoError(t, err)
+
+					return
+				}
+
+				require.EqualError(
+					t,
+					err,
+					"the server at "+strings.TrimPrefix(
+						s.URL,
+						"http://",
+					)+" sent an answer this CLI cannot read: "+tt.want,
+				)
+			})
+		}
+
+		tested++
+	}
+
+	require.Positive(t, tested, "no list of the document is called by the CLI")
+}
+
+// TestWalk: a walk asks for its page size, reads every page, and starts
+// again once when the server refuses a token, as after a restart.
+func TestWalk(t *testing.T) {
+	t.Parallel()
+
+	users := func(ids ...string) string {
+		rows := make([]string, 0, len(ids))
+		for _, id := range ids {
+			rows = append(
+				rows,
+				rowOf[clientv0.User](`{"id": "`+id+`", "name": "u`+id+`"}`),
+			)
+		}
+
+		return `"users": [` + strings.Join(rows, ", ") + `]`
+	}
+
+	walkOf := func(t *testing.T, refuse int) ([]clientv0.User, []string, error) {
+		t.Helper()
+
+		var (
+			mu      sync.Mutex
+			asked   []string
+			refused int
+		)
+
+		s := httptest.NewServer(versioned(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			q := r.URL.Query()
+			asked = append(asked, q.Get("pageSize")+" "+q.Get("pageToken"))
+
+			switch q.Get("pageToken") {
+			case "":
+				_, _ = w.Write(
+					[]byte(`{` + users("1", "2") + `, "nextPageToken": "t2"}`),
+				)
+			case "t2":
+				if refused < refuse {
+					refused++
+
+					w.WriteHeader(http.StatusUnprocessableEntity)
+					_, _ = w.Write(
+						[]byte(
+							`{"code": "invalid_page_token", "status": 422, "title": "The page token is not valid"}`,
+						),
+					)
+
+					return
+				}
+
+				_, _ = w.Write([]byte(`{` + users("3") + `}`))
+			}
+		}))
+		t.Cleanup(s.Close)
+
+		got, err := listUsers(t.Context(), bare(t, s.URL, 2))
+
+		return got, asked, err
+	}
+
+	ids := func(us []clientv0.User) []string {
+		out := make([]string, 0, len(us))
+		for _, u := range us {
+			out = append(out, u.Id)
+		}
+
+		return out
+	}
+
+	got, asked, err := walkOf(t, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"1", "2", "3"}, ids(got))
+	require.Equal(t, []string{"2 ", "2 t2"}, asked)
+
+	got, asked, err = walkOf(t, 1)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		[]string{"1", "2", "3"},
+		ids(got),
+		"the restart keeps no row twice",
+	)
+	require.Equal(t, []string{"2 ", "2 t2", "2 ", "2 t2"}, asked)
+
+	_, _, err = walkOf(t, 2)
+	require.EqualError(
+		t,
+		err,
+		"the server restarted while the list was read. Run the command again.",
+	)
+}
+
+// TestWalkEnds: a token that leads nowhere new is a fault of the server,
+// said at once, not a walk that asks until the time is up.
+func TestWalkEnds(t *testing.T) {
+	t.Parallel()
+
+	for next, want := range map[string]string{
+		`"same"`: "the server at x sent a page token it had sent before, so the list would never end. This is a fault of the server.",
+		`""`:     "the server at x sent an empty page token. This is a fault of the server.",
+		`null`:   "the server at x sent an empty page token. This is a fault of the server.",
+	} {
+		var asked atomic.Int32
+
+		s := httptest.NewServer(versioned(func(w http.ResponseWriter, _ *http.Request) {
+			asked.Add(1)
+
+			_, _ = w.Write(
+				[]byte(
+					`{"users": [` + rowOf[clientv0.User](
+						`{"id": "1"}`,
+					) + `], "nextPageToken": ` + next + `}`,
+				),
+			)
+		}))
+		t.Cleanup(s.Close)
+
+		_, err := listUsers(t.Context(), bare(t, s.URL, 2))
+		require.EqualError(t, err, want, next)
+
+		require.LessOrEqual(t, asked.Load(), int32(2), next)
+	}
+}
+
+// TestTimeout: cli.timeout bounds each request, not the command, and a
+// request that runs out of it says what the CLI knows: a write may have
+// been made, a slow page is no stopped server. The client and the server
+// run in a synctest bubble over an in-memory network, so time passes only
+// when both wait: every margin below is exact on a machine of any speed.
+func TestTimeout(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const timeout = 300 * time.Millisecond
+
+		// Each page takes half the timeout, so four of them take two.
+		ln := memnet.Listen("hs.test:80")
+		//nolint:gosec // an in-memory server, on a fake clock
+		s := &http.Server{
+			Handler: versioned(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Headscale-Version", "dev")
+
+				token := r.URL.Query().Get("pageToken")
+
+				// The server is slow on purpose; a request the CLI gave up on ends
+				// the wait.
+				wait := func(d time.Duration) {
+					select {
+					case <-time.After(d):
+					case <-r.Context().Done():
+					}
+				}
+
+				switch {
+				case r.URL.Path == "/api/headscale/v0/version":
+					wait(2 * timeout / 3)
+				case r.Method == http.MethodPost && r.URL.Path == "/api/headscale/v0/users":
+					wait(2 * timeout / 3)
+
+					w.WriteHeader(http.StatusCreated)
+					_ = json.NewEncoder(w).
+						Encode(clientv0.User{Id: "3", Name: "alice", Nodes: []clientv0.NodeReference{}})
+				case r.Method == http.MethodPatch:
+					wait(2 * timeout)
+				case r.URL.Path == "/api/headscale/v0/users" && token == "slow":
+					wait(2 * timeout)
+				case r.URL.Path == "/api/headscale/v0/users":
+					wait(timeout / 2)
+
+					next := map[string]string{"": "p2", "p2": "p3", "p3": "p4"}[token]
+					if r.URL.Query().Get("pageSize") == "1" && token == "p2" {
+						next = "slow"
+					}
+
+					if next == "" {
+						//nolint:gosec // a test server echoes its own tokens
+						_, _ = w.Write(
+							[]byte(
+								`{"users": [` + rowOf[clientv0.User](
+									`{"id": "`+token+`"}`,
+								) + `]}`,
+							),
+						)
+
+						return
+					}
+
+					//nolint:gosec // a test server echoes its own tokens
+					_, _ = w.Write(
+						[]byte(
+							`{"users": [` + rowOf[clientv0.User](
+								`{"id": "`+token+`"}`,
+							) + `], "nextPageToken": "` + next + `"}`,
+						),
+					)
+				}
+			}),
+		}
+
+		go func() { _ = s.Serve(ln) }()
+
+		// Every goroutine of the bubble must end before it does.
+		defer s.Close()
+
+		api := func(t *testing.T, size int) *API {
+			t.Helper()
+
+			a, err := connectTest(
+				&types.Config{
+					CLI: types.CLIConfig{
+						Address: "http://hs.test",
+						APIKey:  "key",
+						Timeout: timeout,
+					},
+				},
+				Env{
+					Stderr:    io.Discard,
+					Version:   types.GetVersionInfo(),
+					PageSize:  size,
+					Transport: &http.Transport{DialContext: ln.Dial},
+				},
+			)
+			require.NoError(t, err)
+
+			return a
+		}
+
+		start := time.Now()
+		rows, err := listUsers(t.Context(), api(t, 2))
+		require.NoError(t, err)
+		require.Len(t, rows, 4)
+		require.Equal(
+			t,
+			2*timeout,
+			time.Since(start),
+			"the walk took longer than one timeout and was not cut",
+		)
+
+		start = time.Now()
+		_, err = listUsers(t.Context(), api(t, 1))
+		require.EqualError(
+			t,
+			err,
+			"the server at hs.test did not send the next page of the list in 300ms.\n"+
+				"Run the command again, or wait longer with HEADSCALE_CLI_TIMEOUT or cli.timeout.",
+		)
+		require.Equal(
+			t,
+			2*timeout,
+			time.Since(start),
+			"two pages, then the slow one cut at its own timeout",
+		)
+
+		start = time.Now()
+		err = updateUser(t.Context(), api(t, 2))
+		require.EqualError(
+			t,
+			err,
+			"the server at hs.test did not answer the change: no answer in time.\n"+
+				"The change may have been made: look before you run the command again.",
+		)
+		require.Equal(
+			t,
+			2*timeout/3+timeout,
+			time.Since(start),
+			"the probe, then the change cut at its own timeout",
+		)
+
+		start = time.Now()
+		user, err := createUser(t.Context(), api(t, 2), "alice")
+		require.NoError(t, err, "the probe and the write each get their own timeout")
+		require.Equal(t, "3", user.Id)
+		require.Equal(
+			t,
+			4*timeout/3,
+			time.Since(start),
+			"the probe and the write each took two thirds of the timeout",
+		)
+
+		// The same holds for a command, which run connects: a walk and then
+		// a write take longer than one timeout together and are not cut.
+		tree, err := Build("prog", "A program", New(Spec[NoInput, NoOutput]{
+			Name: "sync", Short: "Sync", Long: "Sync.", Example: []string{"prog sync"},
+			Run: func(c Ctx, _ NoInput) (NoOutput, error) {
+				_, err := listUsers(c, c.API)
+				if err != nil {
+					return NoOutput{}, err
+				}
+
+				_, err = createUser(c, c.API, "alice")
+
+				return NoOutput{}, err
+			},
+		}))
+		require.NoError(t, err)
+
+		file := filepath.Join(t.TempDir(), "config.yaml")
+		require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+		var stderr bytes.Buffer
+
+		start = time.Now()
+		code := Run(tree, []string{"sync"}, Env{
+			Stdout:    io.Discard,
+			Stderr:    &stderr,
+			PageSize:  2,
+			Transport: &http.Transport{DialContext: ln.Dial},
+			Environ: []string{
+				"HEADSCALE_CONFIG=" + file,
+				"HEADSCALE_CLI_ADDRESS=http://hs.test",
+				"HEADSCALE_CLI_API_KEY=key",
+				"HEADSCALE_CLI_TIMEOUT=300ms",
+			},
+		})
+		require.Empty(t, stderr.String())
+		require.Zero(t, code)
+		require.Equal(
+			t,
+			2*timeout+2*timeout/3,
+			time.Since(start),
+			"four pages and the write, which the walk's answers spared the probe",
+		)
+	})
+}
+
 // The calls a test makes, each said as the CLI says it: the generated
 // client's call, through errorOf, as a command's call is.
+
+func health(ctx context.Context, a *API) (clientv0.Health, error) {
+	ctx = reading(ctx, a)
+
+	h, err := clientv0.Got(a.GetHealthWithResponse(ctx))
+
+	return h, a.errorOf(err)
+}
+
+func me(ctx context.Context, a *API) (clientv0.Me, error) {
+	ctx = reading(ctx, a)
+
+	m, err := clientv0.Got(a.GetMeWithResponse(ctx))
+
+	return m, a.errorOf(err)
+}
+
+func listUsers(ctx context.Context, a *API) ([]clientv0.User, error) {
+	ctx = reading(ctx, a)
+
+	rows, err := a.ListUsersAll(ctx, &clientv0.ListUsersParams{PageSize: a.PageSize})
+
+	return rows, a.errorOf(err)
+}
+
+func createUser(ctx context.Context, a *API, name string) (clientv0.User, error) {
+	ctx = reading(ctx, a)
+
+	u, err := clientv0.Got(
+		a.CreateUserWithResponse(ctx, clientv0.CreateUserBody{Name: name}),
+	)
+
+	return u, a.errorOf(err)
+}
+
+// updateUser is PATCH /users/3.
+func updateUser(ctx context.Context, a *API) error {
+	ctx = reading(ctx, a)
+
+	_, err := clientv0.Got(
+		a.UpdateUserWithApplicationMergePatchPlusJSONBodyWithResponse(
+			ctx,
+			"3",
+			clientv0.UpdateUserBody{},
+		),
+	)
+
+	return a.errorOf(err)
+}
+
+// bare is an API on url with no version check, as a test of how an answer
+// is read makes it: a fake that sends no Headscale-Version still answers.
+// Messages name it x.
+func bare(tb testing.TB, url string, pageSize int64) *API {
+	tb.Helper()
+
+	a := &API{target: "x", PageSize: new(pageSize), read: &reads{}}
+
+	c, err := clientv0.NewClientWithResponses(url)
+	require.NoError(tb, err)
+
+	a.ClientWithResponses = c
+
+	return a
+}
 
 // The harness of a call of a made-up operation, read as the generated
 // client reads an answer and said through errorOf: a test of a sentence
@@ -1123,26 +1683,14 @@ func answer(
 	return nil
 }
 
-// page is the request of one page of a walk: the token of the page
-// before; nil for the first.
-type page struct {
-	token *string
-}
+// send is a request whose answer is a success of want.
+func (a *API) send(
+	want success,
+	do func(*clientv0.Client) (*http.Response, error),
+) error {
+	err := answer(a, want, do, nil)
 
-func health(ctx context.Context, a *API) (clientv0.Health, error) {
-	ctx = reading(ctx, a)
-
-	h, err := clientv0.Got(a.GetHealthWithResponse(ctx))
-
-	return h, a.errorOf(err)
-}
-
-func me(ctx context.Context, a *API) (clientv0.Me, error) {
-	ctx = reading(ctx, a)
-
-	m, err := clientv0.Got(a.GetMeWithResponse(ctx))
-
-	return m, a.errorOf(err)
+	return a.errorOf(err)
 }
 
 // callOf is a request whose success of R is read as T: NoOutput a 204,
@@ -1184,40 +1732,11 @@ func callOf[T, R any](
 	return out, a.errorOf(err)
 }
 
-// bare is an API on url with no version check, as a test of how an answer
-// is read makes it: a fake that sends no Headscale-Version still answers.
-// Messages name it x.
-func bare(tb testing.TB, url string) *API {
-	tb.Helper()
-
-	a := &API{target: "x", read: &reads{}}
-
-	c, err := clientv0.NewClientWithResponses(url)
-	require.NoError(tb, err)
-
-	a.ClientWithResponses = c
-
-	return a
-}
-
-// reading is ctx with the reads of a, as the run's context carries them:
-// what the client reads in a call made with it is there for -o json.
-func reading(ctx context.Context, a *API) context.Context {
-	if a.read == nil {
-		return ctx
-	}
-
-	return clientv0.WithDecoded(ctx, a.read.decoded)
-}
-
-// send is a request whose answer is a success of want.
-func (a *API) send(
-	want success,
-	do func(*clientv0.Client) (*http.Response, error),
-) error {
-	err := answer(a, want, do, nil)
-
-	return a.errorOf(err)
+// page is the request of one page of a walk: its size, and the token of
+// the page before; nil for the first.
+type page struct {
+	size  int64
+	token *string
 }
 
 // walkOf reads every page of a made-up list whose rows are under items,
@@ -1231,8 +1750,7 @@ func walkOf[Row, R any](
 	pages := func() ([]Row, error) {
 		var rows []Row
 
-		var p page
-
+		p := page{size: *a.PageSize}
 		seen := map[string]bool{}
 
 		for {
@@ -1306,5 +1824,58 @@ func walkOf[Row, R any](
 
 	rows, err := pages()
 
+	re, ok := errors.AsType[*clientv0.ResponseError](err)
+	if ok && re.Problem != nil &&
+		re.Problem.Code == clientv0.ProblemCodeInvalidPageToken {
+		rows, err = pages()
+	}
+
 	return rows, a.errorOf(err)
+}
+
+// reading is ctx with the reads of a, as the run's context carries them:
+// what the client reads in a call made with it is there for -o json.
+func reading(ctx context.Context, a *API) context.Context {
+	if a.read == nil {
+		return ctx
+	}
+
+	return clientv0.WithDecoded(ctx, a.read.decoded)
+}
+
+// TestJSONOfARow: -o json of a row is the bytes of that row in the list
+// member of its page, not of an equal object elsewhere in an answer: a
+// later page that echoes the row, in a member this build does not know,
+// with members of its own, changes nothing.
+func TestJSONOfARow(t *testing.T) {
+	t.Parallel()
+
+	one := rowOf[clientv0.User](`{"id": "1", "mark": "actual"}`)
+	echo := rowOf[clientv0.User](`{"id": "1", "mark": "echo"}`)
+	two := rowOf[clientv0.User](`{"id": "2"}`)
+
+	s := httptest.NewServer(versioned(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.URL.Query().Get("pageToken") == "" {
+			_, _ = w.Write([]byte(`{"users": [` + one + `], "nextPageToken": "p"}`))
+
+			return
+		}
+
+		_, _ = w.Write(
+			[]byte(`{"users": [` + two + `], "previousUsers": [` + echo + `]}`),
+		)
+	}))
+	t.Cleanup(s.Close)
+
+	a := bare(t, s.URL, 1)
+
+	users, err := listUsers(t.Context(), a)
+	require.NoError(t, err)
+	require.Len(t, users, 2)
+
+	raw, ok := a.answerOf(users[0])
+	require.True(t, ok)
+	require.JSONEq(t, one, string(raw))
 }

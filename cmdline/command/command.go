@@ -16,6 +16,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/juanfont/headscale/cmdline"
@@ -49,6 +50,9 @@ type Spec[S, In, Out any] struct {
 	NeedsServer func(in In) bool
 	// ReadsConfig gives a Local command --config.
 	ReadsConfig bool
+	// NeedsChange is a command whose Opt flags each change a field, such as
+	// a set: a line that gives none of them is refused before any call.
+	NeedsChange bool
 
 	// Columns show Out as a sheet.
 	Columns table.Columns[Out]
@@ -74,7 +78,9 @@ type ListSpec[S, In, Row any] struct {
 
 	// Columns are required: a list without columns cannot be written.
 	Columns table.Columns[Row]
-	Run     func(c Ctx[S], in In) ([]Row, error)
+	// NoRows is what a terminal shows when no row is left: "No users.".
+	NoRows string
+	Run    func(c Ctx[S], in In) ([]Row, error)
 }
 
 // NoInput is the input of a command that takes nothing.
@@ -116,6 +122,10 @@ type run struct {
 	stdout   io.Writer
 	stderr   io.Writer
 	terminal bool
+	// screen is a stdout that is a terminal.
+	screen bool
+	// line is the command line, for the flags the builder adds.
+	line *cmdline.Line
 
 	json bool
 	now  func() time.Time
@@ -124,6 +134,9 @@ type run struct {
 	// api is the session, Ctx.API; server says the line talks to a server.
 	api    any
 	server bool
+	// guard is the guard of the target, which every write on it sends;
+	// see revision.
+	guard atomic.Pointer[revision]
 }
 
 // Note writes a line for the human to stderr. With -o json it writes

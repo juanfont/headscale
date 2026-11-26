@@ -43,6 +43,26 @@ components:
       type:
         - object
         - "null"
+    CreateUserBody:
+      additionalProperties: false
+      properties:
+        displayName:
+          maxLength: 128
+          type: string
+        email:
+          maxLength: 254
+          type: string
+        name:
+          description: The username.
+          maxLength: 254
+          type: string
+        profilePicUrl:
+          description: An absolute http or https URL.
+          maxLength: 2048
+          type: string
+      required:
+        - name
+      type: object
     Credential:
       properties:
         client:
@@ -172,6 +192,16 @@ components:
         - credential
         - authorization
       type: object
+    NodeReference:
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      required:
+        - id
+        - name
+      type: object
     Owner:
       properties:
         tags:
@@ -285,17 +315,22 @@ components:
     ProblemCode:
       description: The stable code of the problem. Clients branch on this.
       enum:
+        - email_taken
+        - empty_patch
         - forbidden
         - internal
         - invalid_field
+        - invalid_page_token
         - invalid_request
         - method_not_allowed
+        - name_taken
         - not_found
         - request_timeout
         - too_large
         - unauthorized
         - unhealthy
         - unsupported_media_type
+        - user_managed_by_oidc
       type: string
     ProblemObject:
       properties:
@@ -323,6 +358,94 @@ components:
         - apiKey
         - oauthClient
         - authRequest
+      type: string
+    UpdateUserBody:
+      additionalProperties: false
+      properties:
+        displayName:
+          description: "\"\" clears it."
+          maxLength: 128
+          type: string
+        email:
+          description: "\"\" clears it."
+          maxLength: 254
+          type: string
+        name:
+          description: The username; it cannot be empty.
+          maxLength: 254
+          type: string
+        profilePicUrl:
+          description: An absolute http or https URL; "" clears it.
+          maxLength: 2048
+          type: string
+      type: object
+    User:
+      properties:
+        created:
+          format: date-time
+          type: string
+        displayName:
+          type: string
+        email:
+          type: string
+        id:
+          type: string
+        loginName:
+          description: "What Headscale shows for the user: the email, else the name, else the provider ID. Read-only."
+          type: string
+        name:
+          description: The stored username; it can be empty for a user from OIDC.
+          type: string
+        nodeCount:
+          description: Nodes the user owns; tagged nodes are owned by their tags and not counted.
+          format: int64
+          type: integer
+        nodes:
+          description: The same nodes, in ID order.
+          items:
+            $ref: "#/components/schemas/NodeReference"
+          type: array
+        profilePicUrl:
+          type: string
+        provider:
+          anyOf:
+            - $ref: "#/components/schemas/UserProvider"
+            - type: string
+          description: Where the user comes from. A client must accept a value it does not know.
+          x-go-type: UserProvider
+        providerId:
+          description: The identifier at the identity provider; empty for a local user.
+          type: string
+      required:
+        - id
+        - name
+        - loginName
+        - displayName
+        - email
+        - profilePicUrl
+        - provider
+        - providerId
+        - nodeCount
+        - nodes
+        - created
+      type: object
+    UserList:
+      properties:
+        nextPageToken:
+          description: Present when more rows can follow; send it back as pageToken. Missing on the last page.
+          type: string
+        users:
+          items:
+            $ref: "#/components/schemas/User"
+          type: array
+      required:
+        - users
+      type: object
+    UserProvider:
+      description: Where the user comes from. A client must accept a value it does not know.
+      enum:
+        - local
+        - oidc
       type: string
     UserReference:
       properties:
@@ -553,6 +676,733 @@ paths:
         - invalid_field
         - unauthorized
         - unhealthy
+  /api/headscale/v0/users:
+    get:
+      operationId: listUsers
+      parameters:
+        - description: Rows on one page.
+          explode: false
+          in: query
+          name: pageSize
+          schema:
+            default: 25
+            description: Rows on one page.
+            format: int64
+            maximum: 1000
+            minimum: 1
+            type: integer
+        - description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+          explode: false
+          in: query
+          name: pageToken
+          schema:
+            description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+            type: string
+        - description: Only users with exactly this name. More than one user can have a name.
+          explode: false
+          in: query
+          name: name
+          schema:
+            description: Only users with exactly this name. More than one user can have a name.
+            type: string
+        - description: Only users with exactly this email.
+          explode: false
+          in: query
+          name: email
+          schema:
+            description: Only users with exactly this email.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field, invalid_page_token"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - users:read
+      summary: List users
+      tags:
+        - Users
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_page_token
+        - unauthorized
+        - unhealthy
+    post:
+      description: "The name and the email must not equal the name, the email or the provider identifier of another user, without regard to case: a policy names a user by these texts."
+      operationId: createUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: Created
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+            Location:
+              required: true
+              schema:
+                type: string
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Bad Request: invalid_request"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "408":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Timeout: request_timeout"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Conflict: email_taken, name_taken"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Entity Too Large: too_large"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unsupported Media Type: unsupported_media_type"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - users
+      summary: Create a local user
+      tags:
+        - Users
+      x-problem-codes:
+        - email_taken
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_request
+        - name_taken
+        - request_timeout
+        - too_large
+        - unauthorized
+        - unhealthy
+        - unsupported_media_type
+  /api/headscale/v0/users/{id}:
+    get:
+      operationId: getUser
+      parameters:
+        - description: The ID of the user.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the user.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - users:read
+      summary: Read one user
+      tags:
+        - Users
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - unauthorized
+        - unhealthy
+    patch:
+      description: Changes the fields that are sent and leaves the others, as JSON Merge Patch (RFC 7396). A user from OIDC cannot be changed. A new name or email must not equal the name, the email or the provider identifier of another user, without regard to case. An OAuth access token cannot change the name or the email.
+      operationId: updateUser
+      parameters:
+        - description: The ID of the user.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the user.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Bad Request: invalid_request"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "408":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Timeout: request_timeout"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Conflict: email_taken, name_taken, user_managed_by_oidc"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Entity Too Large: too_large"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unsupported Media Type: unsupported_media_type"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: empty_patch, invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - users
+      summary: Change a local user
+      tags:
+        - Users
+      x-problem-codes:
+        - email_taken
+        - empty_patch
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_request
+        - name_taken
+        - not_found
+        - request_timeout
+        - too_large
+        - unauthorized
+        - unhealthy
+        - unsupported_media_type
+        - user_managed_by_oidc
+      x-token-rules:
+        - token_cannot_change_user_name_or_email
   /api/headscale/v0/version:
     get:
       operationId: getVersion

@@ -65,6 +65,9 @@ type Env struct {
 	// Context is the context of the run; nil is context.Background().
 	Context context.Context //nolint:containedctx // the run's own, by design
 
+	// PageSize is the rows of one page of a list walk; 0 is 1000, the most
+	// v0 takes. A test sets it small, to walk many pages.
+	PageSize int
 	// Transport, when set, carries the requests to cli.address, so a test
 	// can run the client on the fake clock of testing/synctest.
 	Transport http.RoundTripper
@@ -165,6 +168,21 @@ func program(name, short string) lib.Program[*API] {
 		Sentence: sentence,
 		Answer:   func(a *API, v any) (json.RawMessage, bool) { return a.answerOf(v) },
 		Target:   func(a *API) string { return a.target },
+		Fields:   flagsOf,
+
+		Entities: []lib.Entity{
+			lib.EntityOf(
+				"user",
+				findUser,
+				userCandidates(),
+				func(u clientv0.User) string { return u.LoginName },
+			),
+		},
+		Owner: func(ctx context.Context, word string) (string, error) {
+			u, err := findUser(ctx, word)
+
+			return u.Id, err
+		},
 
 		Aliases:   []string{"ls", "rm", "approve"},
 		ConfigEnv: "HEADSCALE_CONFIG",

@@ -40,12 +40,16 @@ type cliCase struct {
 	args string
 	// env is added to the fixture's environment.
 	env []string
-	// stdin is what the case types; terminal says whether stdin is one.
+	// stdin is what the case types; terminal says whether stdin and stdout
+	// are one.
 	stdin    string
 	terminal bool
 	// release is the version the binary claims to be; "" is the test
 	// binary's, which is no release.
 	release string
+	// pageSize is the rows of a page of a walk: 0 is 2, so a walk of more
+	// than two rows reads more than one page; cliPages is the CLI's own.
+	pageSize int
 	// stdout and stderr are compared whole, after {name} is replaced with
 	// the fixture's var of that name. want gives stdout where a literal
 	// cannot, such as the JSON that the server sent in this run; a case
@@ -61,8 +65,10 @@ type cliCase struct {
 type result struct {
 	stdout, stderr string
 	code           int
-	// answers are the bodies the server sent in this run, by path.
-	answers map[string][]byte
+	// answers are the bodies the server sent in this run, by path, in the
+	// order sent; asked are the requests, as "METHOD path?query".
+	answers map[string][][]byte
+	asked   []string
 }
 
 // fixture is the server of one case, reached over its socket and its TCP
@@ -135,23 +141,36 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 	var (
 		out, errOut bytes.Buffer
 		mu          sync.Mutex
-		answers     = map[string][]byte{}
+		answers     = map[string][][]byte{}
+		asked       []string
 	)
 
+	pageSize := tc.pageSize
+	if pageSize == 0 {
+		pageSize = 2
+	}
+
+	if tc.pageSize == cliPages {
+		pageSize = 0
+	}
+
 	code := command.Run(Tree(), words(f.expand(tc.args)), command.Env{
-		Stdin:    strings.NewReader(f.expand(tc.stdin)),
-		Stdout:   &out,
-		Stderr:   &errOut,
-		Environ:  env,
-		Terminal: tc.terminal,
-		Now:      func() time.Time { return f.now },
-		Version:  build,
-		Releases: func(context.Context) ([]string, error) { return f.releases, nil },
+		Stdin:          strings.NewReader(f.expand(tc.stdin)),
+		Stdout:         &out,
+		Stderr:         &errOut,
+		Environ:        env,
+		Terminal:       tc.terminal,
+		StdoutTerminal: tc.terminal,
+		PageSize:       pageSize,
+		Now:            func() time.Time { return f.now },
+		Version:        build,
+		Releases:       func(context.Context) ([]string, error) { return f.releases, nil },
 		Answered: func(req *http.Request, body []byte) {
 			mu.Lock()
 			defer mu.Unlock()
 
-			answers[req.URL.Path] = body
+			answers[req.URL.Path] = append(answers[req.URL.Path], body)
+			asked = append(asked, req.Method+" "+req.URL.RequestURI())
 		},
 	})
 
@@ -160,7 +179,27 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		stderr:  errOut.String(),
 		code:    code,
 		answers: answers,
+		asked:   asked,
 	}
+}
+
+// cliPages is a case that walks with the page size of the CLI.
+const cliPages = -1
+
+// token is an access token of an OAuth client with scopes, for a case that
+// calls as a credential with less than the socket may do.
+func (f *fixture) token(tb testing.TB, scopes ...string) string {
+	tb.Helper()
+
+	_, client, err := f.srv.State().CreateOAuthClient(scopes, nil, "ci", nil)
+	require.NoError(tb, err)
+
+	expiry := f.now.Add(time.Hour)
+	token, _, err := f.srv.State().
+		MintAccessToken(client.ClientID, scopes, nil, &expiry)
+	require.NoError(tb, err)
+
+	return token
 }
 
 // runCases runs the cases of a table, in parallel, each on a server of its
@@ -213,20 +252,89 @@ func runCases(t *testing.T, setup func(testing.TB, *fixture), cases []cliCase) {
 	}
 }
 
+// listAt is a list of the API: its path, and the key of the rows in a
+// page.
+type listAt struct{ path, items string }
+
 // answer is the body that the server sent for path in this run, as -o json
 // prints it.
 func answer(path string) func(testing.TB, *fixture, result) string {
 	return func(tb testing.TB, _ *fixture, r result) string {
 		tb.Helper()
 
-		body, ok := r.answers[path]
-		require.True(tb, ok, "no answer for %s", path)
+		bodies := r.answers[path]
+		require.NotEmpty(tb, bodies, "no answer for %s", path)
 
-		var b bytes.Buffer
-		require.NoError(tb, json.Indent(&b, bytes.TrimSpace(body), "", "  "))
-
-		return b.String() + "\n"
+		return indent(tb, bodies[len(bodies)-1])
 	}
+}
+
+// rows is what -o json prints for a list: the rows of every page the
+// server sent for it, as they came, that keep says to keep.
+func (l listAt) rows(
+	keep func(row map[string]any) bool,
+) func(testing.TB, *fixture, result) string {
+	return func(tb testing.TB, _ *fixture, r result) string {
+		tb.Helper()
+
+		b, err := json.Marshal(l.kept(tb, r, keep))
+		require.NoError(tb, err)
+
+		return indent(tb, b)
+	}
+}
+
+// row is what -o json prints for one row of a list: a target that a walk
+// found.
+func (l listAt) row(
+	keep func(row map[string]any) bool,
+) func(testing.TB, *fixture, result) string {
+	return func(tb testing.TB, _ *fixture, r result) string {
+		tb.Helper()
+
+		found := l.kept(tb, r, keep)
+		require.Len(tb, found, 1)
+
+		return indent(tb, found[0])
+	}
+}
+
+func (l listAt) kept(
+	tb testing.TB,
+	r result,
+	keep func(row map[string]any) bool,
+) []json.RawMessage {
+	tb.Helper()
+
+	out := []json.RawMessage{}
+
+	for _, body := range r.answers[l.path] {
+		var page map[string]json.RawMessage
+		require.NoError(tb, json.Unmarshal(body, &page))
+
+		var list []json.RawMessage
+		require.NoError(tb, json.Unmarshal(page[l.items], &list))
+
+		for _, raw := range list {
+			var row map[string]any
+			require.NoError(tb, json.Unmarshal(raw, &row))
+
+			if keep(row) {
+				out = append(out, raw)
+			}
+		}
+	}
+
+	return out
+}
+
+func indent(tb testing.TB, body []byte) string {
+	tb.Helper()
+
+	var b bytes.Buffer
+	require.NoError(tb, json.Indent(&b, bytes.TrimSpace(body), "", "  "))
+
+	return b.String() + "\n"
 }
 
 // words splits a line as a shell does, for the quotes the examples use.
@@ -567,7 +675,7 @@ func TestOneRule(t *testing.T) {
 		}
 	}
 
-	require.Contains(t, raw, "GetMe")
+	require.Contains(t, raw, "GetUser")
 
 	// allowed are the reads round the rule, by file and the text of the
 	// expression, with why.
@@ -685,6 +793,10 @@ Local commands (no server needed):
 
 Server commands (talk to a running headscale):
 
+  users list   List the users (alias: ls)
+  users get <user>   Show one user
+  users create <name>   Create a local user
+  users set <user>   Change a local user
   api whoami   Show who the server sees calling
 
 Debug:

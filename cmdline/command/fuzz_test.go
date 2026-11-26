@@ -9,6 +9,7 @@ package command
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"math/rand/v2"
 	"slices"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/cmdline"
+	"github.com/stretchr/testify/require"
 )
 
 // The limits of an input, and of the time one line may take.
@@ -406,29 +408,222 @@ func FuzzTab(f *testing.F) {
 		}
 
 		words, cur := argv[:len(argv)-1], argv[len(argv)-1]
-		before := outcome(t0, words)
 
 		for _, cand := range w1 {
-			word := cand
-			if n, _, ok := strings.Cut(cur, "="); ok && strings.HasPrefix(cur, "-") {
-				word = n + "=" + cand // the scripts put "--x=" back
-			}
-
-			o := outcome(t0, append(slices.Clone(words), word))
-			isCmd := o.kind == "unknown-command" && o.word == word
-			isFlag := strings.HasPrefix(word, "-") && o.word == t0.long(word) &&
-				(o.kind == "unknown-flag" || o.kind == "flag-repeated" || o.kind == "bad-value")
-
-			if (isCmd || isFlag) && before.word != o.word {
-				t.Fatalf(
-					"Tab offered %q after %q; the run refuses it: %s",
-					word,
-					words,
-					o,
-				)
+			if msg, bad := tabReport(t0, words, cur, cand, d1); bad {
+				t.Fatal(msg)
 			}
 		}
 	})
+}
+
+// TestTabReport holds FuzzTab's decision for one candidate to offers Tab
+// does not make, so that its strength is tested without fuzzing. Each row
+// asks of a branch of the decision which wrong offer it would let through.
+func TestTabReport(t *testing.T) {
+	t.Parallel()
+
+	t0 := corpusTree(t, "")
+	list := []string{"nodes", "ls"}
+	split := append(slices.Clone(list), "--filter")
+
+	for _, tt := range []struct {
+		words     []string
+		cur, cand string
+		dir       cmdline.Directive
+		report    bool
+	}{
+		// A --filter column with no space after it, for the operator.
+		{list, "--filter=", "expiry", cmdline.NoSpace, false},
+		{list, "--filter=", "id=1,expiry", cmdline.NoSpace, true},
+		{split, "", "expiry", cmdline.NoSpace, false},
+		{split, "", "id=1,expiry", cmdline.NoSpace, true},
+		// Not a column of the list, in either spelling.
+		{list, "--filter=", "expiryy", cmdline.NoSpace, true},
+		{list, "--filter=", "expiery", cmdline.NoSpace, true},
+		{list, "--filter=id=1,", "id=1,expiryy", cmdline.NoSpace, true},
+		{split, "", "expiryy", cmdline.NoSpace, true},
+		{split, "id=1,", "id=1,expiryy", cmdline.NoSpace, true},
+		// Not a bare name: an operator is there already.
+		{list, "--filter=", "name:", cmdline.NoSpace, true},
+		{split, "", "name:", cmdline.NoSpace, true},
+		{list, "--filter=", "expiry<", cmdline.NoSpace, true},
+		{list, "--filter=", "=never", cmdline.NoSpace, true},
+		{list, "--filter=", "expiry:never", cmdline.NoSpace, true},
+		// A sealed item the run refuses.
+		{list, "--filter=", "earlier,expiry", cmdline.NoSpace, true},
+		// A whole word, with a space after it, is held to the run as it is.
+		{list, "--filter=", "expiry", 0, true},
+		{split, "", "expiry", 0, true},
+		{list, "--filter=", "name:x", 0, false},
+		// The mix of plain and signed items is Tab's rule (Q35); a wrong
+		// column in it is not.
+		{list, "--columns=id,-ho", "id,-hostname", cmdline.NoSpace, false},
+		{list, "--columns=id,-ho", "id,-hostnamee", cmdline.NoSpace, true},
+		// The lead reviewer's row: the split spelling, decided as the inline.
+		{append(slices.Clone(list), "--columns"), "id,-ho", "id,-hostnamee", cmdline.NoSpace, true},
+		{append(slices.Clone(list), "--columns"), "id,-ho", "id,-hostname", cmdline.NoSpace, false},
+		{append(slices.Clone(list), "--sort"), "na", "namee", 0, true},
+		{append(slices.Clone(list), "--sort"), "na", "name", 0, false},
+		{list, "--columns=", "idd", cmdline.NoSpace, true},
+		// Commands and flags.
+		{[]string{"nodes"}, "l", "ls", 0, false},
+		{[]string{"nodes"}, "l", "lss", 0, true},
+		{list, "--fil", "--filterr", 0, true},
+		// The items before the cursor stay as typed.
+		{list, "--filter=id=1,exp", "id=1,expiry", cmdline.NoSpace, false},
+		{list, "--filter=id=1,exp", "expiry", cmdline.NoSpace, true},
+		{list, "--filter=id=1,exp", "id=2,expiry", cmdline.NoSpace, true},
+		{split, "id=1,exp", "id=1,expiry", cmdline.NoSpace, false},
+		{split, "id=1,exp", "id=2,expiry", cmdline.NoSpace, true},
+		{list, "--filter=id=1,exp", "id=1,id=2,expiry", cmdline.NoSpace, true},
+		{split, "id=1,exp", "id=1,id=2,expiry", cmdline.NoSpace, true},
+		{list, "--filter=id=1,exp", "id=1,expiry,id=2", cmdline.NoSpace, true},
+		{list, "--filter=id=1,exp", "id=1, expiry", cmdline.NoSpace, true},
+		{list, "--filter=id=1,EXP", "id=1,expiry", cmdline.NoSpace, true},
+		{list, "--columns=id,ho", "id,+hostname", cmdline.NoSpace, true},
+		{list, "--columns=id,ho", "hostname", cmdline.NoSpace, true},
+		// A line the run refused for the same mistake before the candidate
+		// does not blame it.
+		{[]string{"nodes", "ls", "--filter", "0"}, "--filter=", "expiryy", cmdline.NoSpace, false},
+	} {
+		msg, report := tabReport(t0, tt.words, tt.cur, tt.cand, tt.dir)
+		require.Equal(
+			t,
+			tt.report,
+			report,
+			"%q %q %q: %s",
+			tt.words,
+			tt.cur,
+			tt.cand,
+			msg,
+		)
+	}
+}
+
+// tabReport is FuzzTab's decision for one candidate: whether the run
+// refuses the word that cand makes of cur because of that candidate, as an
+// unknown command or flag, a flag given twice or a value of the flag, and
+// the line was not refused for the same mistake without it. Two refusals
+// are Tab's rule: a list that mixes plain and signed items (003-cmdline E6,
+// kit Q35), and a --filter item that is a bare column name with no space
+// after it, for the operator that follows. That one passes only when the
+// run takes the word with some operator and value after it, which checks
+// the column and the items before it by the run's own rules, not by the
+// list Tab offers from.
+func tabReport(
+	t0 *Tree,
+	words []string,
+	cur, cand string,
+	dir cmdline.Directive,
+) (string, bool) {
+	word := cand
+	if n, _, ok := strings.Cut(cur, "="); ok && strings.HasPrefix(cur, "-") {
+		word = n + "=" + cand // the scripts put "--x=" back
+	}
+
+	line := func(w string) []string { return append(slices.Clone(words), w) }
+
+	if sealedChanged(t0, words, cur, cand) {
+		return fmt.Sprintf(
+			"Tab offered %q for %q: the items before the cursor changed",
+			cand,
+			cur,
+		), true
+	}
+
+	o := outcome(t0, line(word))
+	if before := outcome(t0, words); before.kind == o.kind && before.word == o.word {
+		return "", false
+	}
+
+	flag, _ := valueOf(words, cur)
+	isCmd := o.kind == "unknown-command" && o.word == word
+	isFlag := strings.HasPrefix(word, "-") && o.word == t0.long(word) &&
+		(o.kind == "unknown-flag" || o.kind == "flag-repeated" || o.kind == "bad-value")
+	// The value of the flag being completed, in either spelling.
+	isValue := o.kind == "bad-value" && strings.HasPrefix(flag, "-") &&
+		o.word == t0.long(flag)
+	isFilter := isValue && o.word == "filter"
+
+	if o.kind == "bad-value" {
+		_, _, err := t0.check(line(word))
+		if err != nil && strings.Contains(err.Error(), mixedColumns) {
+			return "", false
+		}
+
+		if isFilter && dir&cmdline.NoSpace != 0 && filterColumn(t0, line, word, cand) {
+			return "", false
+		}
+	}
+
+	if !isCmd && !isFlag && !isValue {
+		return "", false
+	}
+
+	return fmt.Sprintf(
+		"Tab offered %q after %q; the run refuses it: %s",
+		word,
+		words,
+		o,
+	), true
+}
+
+// valueOf is the flag whose value cur is and that value: "--x=v" inline,
+// or "v" after the word "--x". The flag is "" or not a flag for anything
+// else.
+func valueOf(words []string, cur string) (string, string) {
+	if flag, value, ok := strings.Cut(cur, "="); ok && strings.HasPrefix(cur, "-") {
+		return flag, value
+	}
+
+	if len(words) == 0 {
+		return "", cur
+	}
+
+	return words[len(words)-1], cur
+}
+
+// sealedChanged reports whether cand, the value Tab offers for --columns or
+// --filter, changes what was typed: everything through the last comma must
+// be the same on both sides, and the rest must extend the typed item, as
+// one item.
+func sealedChanged(t0 *Tree, words []string, cur, cand string) bool {
+	flag, value := valueOf(words, cur)
+
+	f := t0.long(flag)
+	if (f != "filter" && f != "columns") || !strings.HasPrefix(flag, "-") {
+		return false
+	}
+
+	cut := strings.LastIndex(value, ",") + 1
+	rest, ok := strings.CutPrefix(cand, value[:cut])
+
+	return !ok || !strings.HasPrefix(rest, value[cut:]) || strings.Contains(rest, ",")
+}
+
+// filterColumn reports whether word, whose last item is the bare name of
+// cand, becomes a --filter the run takes with an operator and a value
+// after it: one per kind of column.
+func filterColumn(t0 *Tree, line func(string) []string, word, cand string) bool {
+	items := strings.Split(cand, ",")
+
+	last := strings.TrimSpace(items[len(items)-1])
+	if last == "" || strings.ContainsAny(last, "=:<>") {
+		return false
+	}
+
+	for _, rest := range []string{":x", "=never", "=true", ">1"} {
+		if r := outcome(
+			t0,
+			line(word+rest),
+		); r.kind != "bad-value" ||
+			r.word != "filter" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // infos is every command of the tree, the root first and each group

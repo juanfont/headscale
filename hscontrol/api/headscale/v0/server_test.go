@@ -122,7 +122,11 @@ func TestGetMe(t *testing.T) {
 	}
 
 	t.Run("the socket", func(t *testing.T) {
-		me, err := whoAmI(b, allAccess(principal{kind: PrincipalLocal}, nil))
+		me, err := whoAmI(
+			t.Context(),
+			b,
+			allAccess(principal{kind: PrincipalLocal}, nil),
+		)
 		require.NoError(t, err)
 
 		got, err := json.Marshal(me)

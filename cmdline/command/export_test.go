@@ -56,6 +56,22 @@ func Paths(t *Tree) []string {
 	return out
 }
 
+// build is a tree with the aliases it may use and the entities it looks
+// up, of a program with no session: the tests of the grammar need trees
+// with other aliases than a real program's, and a test of the retry a type
+// of its own. A test tree is checked as a real one is.
+func build(
+	name, short string,
+	aliases []string,
+	ents []Entity,
+	nodes ...Node,
+) (*Tree, error) {
+	p := testProgram()
+	p.Name, p.Short, p.Aliases, p.Entities = name, short, aliases, ents
+
+	return buildOf(erase(p), nodes...)
+}
+
 // testS is the session of a test tree: none, since a tree of the tests
 // calls no server.
 type testS = any
@@ -79,20 +95,4 @@ func testBuild(name, short string, nodes ...Node) (*Tree, error) {
 	p.Name, p.Short = name, short
 
 	return Build(p, nodes...)
-}
-
-// build is a tree with the aliases it may use and the entities it looks
-// up, of a program with no session: the tests of the grammar need trees
-// with other aliases than a real program's. A test tree is checked as a
-// real one is.
-func build(
-	name, short string,
-	aliases []string,
-	ents []Entity,
-	nodes ...Node,
-) (*Tree, error) {
-	p := testProgram()
-	p.Name, p.Short, p.Aliases, p.Entities = name, short, aliases, ents
-
-	return buildOf(erase(p), nodes...)
 }

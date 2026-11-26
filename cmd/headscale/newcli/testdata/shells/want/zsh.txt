@@ -1,5 +1,5 @@
 LINE: headscale |
-LISTED: [headscale <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / version     -- Print the version / $ headscale ]
+LISTED: [headscale <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / users       -- Manage users / version     -- Print the version / $ headscale ]
 FINAL: [headscale ]
 
 LINE: headscale ve|
@@ -87,7 +87,7 @@ LISTED: [headscale version -o json --<BEL> / --config  -- Config file / --help  
 FINAL: [headscale version -o json --]
 
 LINE: headscale -c -o |
-LISTED: [headscale -c -o <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / version     -- Print the version / $ headscale -c -o ]
+LISTED: [headscale -c -o <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / users       -- Manage users / version     -- Print the version / $ headscale -c -o ]
 FINAL: [headscale -c -o ]
 
 LINE: headscale -c x ve|
@@ -95,7 +95,7 @@ LISTED: [headscale -c x version ]
 FINAL: [headscale -c x version]
 
 LINE: headscale nodez |
-LISTED: [headscale nodez <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / version     -- Print the version / $ headscale nodez ]
+LISTED: [headscale nodez <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / users       -- Manage users / version     -- Print the version / $ headscale nodez ]
 FINAL: [headscale nodez ]
 
 LINE: headscale versoin --|
@@ -110,10 +110,38 @@ LINE: headscale completion bash -c|
 LISTED: [headscale completion bash -c<BEL>]
 FINAL: [headscale completion bash -c]
 
+LINE: headscale users |
+LISTED: [headscale users <BEL> / create  -- Create a local user / get     -- Show one user / list    -- List the users / set     -- Change a local user / $ headscale users ]
+FINAL: [headscale users ]
+
+LINE: headscale users list --|
+LISTED: [headscale users list --<BEL> / --columns       -- Columns to show: a list, or +name and -name to change the default / --config        -- Config file / --filter        -- Keep the rows that match; may be repeated / --help          -- Show this help / --list-columns  -- List the columns, the API field behind each, and exit / --output        -- Output format: json (the API object) / --sort          -- Column to sort by; -name sorts in reverse / $ headscale users list --]
+FINAL: [headscale users list --]
+
+LINE: headscale users list --columns id,na|
+LISTED: [headscale users list --columns id,name]
+FINAL: [headscale users list --columns id,name]
+
+LINE: headscale users list --columns +lo|
+LISTED: [headscale users list --columns +login-name ]
+FINAL: [headscale users list --columns +login-name]
+
+LINE: headscale users list --sort -co|
+LISTED: [headscale users list --sort -count ]
+FINAL: [headscale users list --sort -count]
+
+LINE: headscale users list --filter=pro|
+LISTED: [headscale users list --filter=pro<BEL> / profile-pic-url  provider         provider-id     / $ headscale users list --filter=pro]
+FINAL: [headscale users list --filter=pro]
+
+LINE: headscale users set alice --|
+LISTED: [headscale users set alice --<BEL> / --config        -- Config file / --display-name  -- New display name; "" clears it / --email         -- New email address; "" clears it / --help          -- Show this help / --name          -- New username / --output        -- Output format: json (the API object) / --picture-url   -- New profile picture URL; "" clears it / $ headscale users set alice --]
+FINAL: [headscale users set alice --]
+
 LINE: headscale -h ve|
 LISTED: [headscale -h version ]
 FINAL: [headscale -h version]
 
 LINE: headscale --version |
-LISTED: [headscale --version <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / version     -- Print the version / $ headscale --version ]
+LISTED: [headscale --version <BEL> / api         -- Authentication towards the headscale API / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / users       -- Manage users / version     -- Print the version / $ headscale --version ]
 FINAL: [headscale --version ]
