@@ -3393,7 +3393,7 @@ func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 
 // TestTagsAuthKeyWithoutUserCLIRegisterAddsUserDevice covers issue #3038:
 // register a node with a tags-only preauthkey (no user), then log the machine
-// in as a user via "headscale auth register --auth-id <id> --user <user>".
+// in as a user via "headscale auth register <id> <user>".
 // The crash was in the mapper's generateUserProfiles when [types.Node.User]
 // was nil.
 //

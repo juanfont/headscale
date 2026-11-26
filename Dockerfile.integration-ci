@@ -12,7 +12,7 @@ RUN mkdir -p /var/run/headscale
 # Copy pre-built headscale binary from build context
 COPY headscale /usr/local/bin/headscale
 
-# Only the new CLI knows --version: an image of the old one fails here.
+# The cobra CLI before 0.30 had no --version: a revert fails here.
 RUN headscale --version
 
 ENTRYPOINT []

@@ -1105,8 +1105,9 @@ func (j *debugJar) Dump(w io.Writer) {
 	for domain, paths := range j.store {
 		fmt.Fprintf(w, "Domain: %s\n", domain)
 
+		// A cookie's path can hold the auth ID (/register/confirm/<id>).
 		for path, byName := range paths {
-			fmt.Fprintf(w, "  Path: %s\n", path)
+			fmt.Fprintf(w, "  Path: %s\n", dockertestutil.Redact(path))
 
 			for _, c := range byName {
 				fmt.Fprintf(
@@ -1145,7 +1146,7 @@ func newLoginHTTPClient(hostname string) (*http.Client, error) {
 
 // doLoginURL visits the given login URL and returns the body as a string.
 func doLoginURL(hostname string, loginURL *url.URL) (string, error) {
-	log.Printf("%s login url: %s\n", hostname, loginURL.String())
+	log.Printf("%s login url: %s\n", hostname, dockertestutil.Redact(loginURL.String()))
 
 	hc, err := newLoginHTTPClient(hostname)
 	if err != nil {
@@ -1175,13 +1176,13 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 		return "", nil, fmt.Errorf("%s login url is nil", hostname) //nolint:err113
 	}
 
-	log.Printf("%s logging in with url: %s", hostname, loginURL.String())
+	log.Printf("%s logging in with url: %s", hostname, dockertestutil.Redact(loginURL.String()))
 
 	ctx := context.Background()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
 	if err != nil {
-		return "", nil, fmt.Errorf("%s creating http request: %w", hostname, err)
+		return "", nil, dockertestutil.Redactf(err, "%s creating http request: %v", hostname, err)
 	}
 
 	originalRedirect := hc.CheckRedirect
@@ -1197,13 +1198,13 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", nil, fmt.Errorf("%s sending http request: %w", hostname, err)
+		return "", nil, dockertestutil.Redactf(err, "%s sending http request: %v", hostname, err)
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", nil, fmt.Errorf("%s reading response body: %w", hostname, err)
+		return "", nil, dockertestutil.Redactf(err, "%s reading response body: %v", hostname, err)
 	}
 
 	body := string(bodyBytes)
@@ -1212,18 +1213,18 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 	if resp.StatusCode >= http.StatusMultipleChoices && resp.StatusCode < http.StatusBadRequest {
 		redirectURL, err = resp.Location()
 		if err != nil {
-			return body, nil, fmt.Errorf("%s resolving redirect location: %w", hostname, err)
+			return body, nil, dockertestutil.Redactf(err, "%s resolving redirect location: %v", hostname, err)
 		}
 	}
 
 	if followRedirects && resp.StatusCode != http.StatusOK {
-		log.Printf("body: %s", body)
+		log.Printf("body: %s", dockertestutil.Redact(body))
 
 		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode) //nolint:err113
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
-		log.Printf("body: %s", body)
+		log.Printf("body: %s", dockertestutil.Redact(body))
 
 		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode) //nolint:err113
 	}
@@ -1309,10 +1310,10 @@ func submitConfirmForm(
 	// absolute and a relative action both work.
 	confirmURL, err := prevResp.Request.URL.Parse(formAction)
 	if err != nil {
-		return "", nil, fmt.Errorf("%s confirm form: resolving action %q: %w", hostname, formAction, err)
+		return "", nil, dockertestutil.Redactf(err, "%s confirm form: resolving action %q: %v", hostname, formAction, err)
 	}
 
-	log.Printf("%s auto-submitting confirm form: %s", hostname, confirmURL)
+	log.Printf("%s auto-submitting confirm form: %s", hostname, dockertestutil.Redact(confirmURL.String()))
 
 	formData := url.Values{
 		registerConfirmCSRFField: {csrfToken},
@@ -1322,33 +1323,35 @@ func submitConfirmForm(
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, confirmURL.String(), strings.NewReader(formData.Encode()))
 	if err != nil {
-		return "", nil, fmt.Errorf("%s creating confirm request: %w", hostname, err)
+		return "", nil, dockertestutil.Redactf(err, "%s creating confirm request: %v", hostname, err)
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	confirmResp, err := hc.Do(req)
 	if err != nil {
-		return "", nil, fmt.Errorf("%s sending confirm request: %w", hostname, err)
+		return "", nil, dockertestutil.Redactf(err, "%s sending confirm request: %v", hostname, err)
 	}
 	defer confirmResp.Body.Close()
 
 	confirmBytes, err := io.ReadAll(confirmResp.Body)
 	if err != nil {
-		return "", nil, fmt.Errorf("%s reading confirm response: %w", hostname, err)
+		return "", nil, dockertestutil.Redactf(err, "%s reading confirm response: %v", hostname, err)
 	}
 
 	if confirmResp.StatusCode != http.StatusOK {
-		return string(confirmBytes), nil, fmt.Errorf( //nolint:err113
-			"%s confirm returned status %d: %s",
-			hostname, confirmResp.StatusCode, string(confirmBytes),
+		return string(confirmBytes), nil, dockertestutil.Redactf(errConfirmStatus,
+			"%s confirm returned status %d: %s", hostname, confirmResp.StatusCode, string(confirmBytes),
 		)
 	}
 
 	return string(confirmBytes), nil, nil
 }
 
-var errParseAuthPage = errors.New("parsing auth page")
+var (
+	errParseAuthPage = errors.New("parsing auth page")
+	errConfirmStatus = errors.New("confirm form refused")
+)
 
 // authIDPattern is an auth ID, as the login and SSH-check pages print it.
 var authIDPattern = regexp.MustCompile(`hskey-authreq-[0-9a-f]{24}`)
@@ -1361,7 +1364,7 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 		return errParseAuthPage
 	}
 
-	log.Printf("registering node %s", key)
+	log.Printf("registering node %s", dockertestutil.Redact(key))
 
 	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		_, err = headscale.Execute(
@@ -1411,13 +1414,15 @@ func (t LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		return nil, err
 	}
 
+	// The URL and a cookie's path can hold the auth ID. The source check
+	// cannot follow what net/http hands a RoundTripper, so this masks it all.
 	//nolint:gosec // G706: integration-only log of trusted scenario state
-	log.Printf(`
+	log.Print(dockertestutil.Redact(fmt.Sprintf(`
 ---
 %s - method: %s | url: %s
 %s - status: %d | cookies: %+v
 ---
-`, t.Hostname, req.Method, req.URL.String(), t.Hostname, resp.StatusCode, resp.Cookies())
+`, t.Hostname, req.Method, req.URL.String(), t.Hostname, resp.StatusCode, resp.Cookies())))
 
 	return resp, nil
 }

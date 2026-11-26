@@ -57,9 +57,11 @@ func SaveLog(
 
 	stdoutPath := path.Join(basePath, resource.Container.Name+".stdout.log")
 
+	// CI uploads these: a container's own log carries what its program
+	// prints, such as tailscaled's AuthURL with an auth ID.
 	err = os.WriteFile(
 		stdoutPath,
-		stdout.Bytes(),
+		[]byte(Redact(stdout.String())),
 		filePerm,
 	)
 	if err != nil {
@@ -70,7 +72,7 @@ func SaveLog(
 
 	err = os.WriteFile(
 		stderrPath,
-		stderr.Bytes(),
+		[]byte(Redact(stderr.String())),
 		filePerm,
 	)
 	if err != nil {

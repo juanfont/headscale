@@ -3,6 +3,7 @@ package integration
 import (
 	"net/netip"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -479,7 +480,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 		}
 
 		// Register all clients as user1 (this is where cross-user registration happens)
-		// This simulates: headscale auth register --auth-id <id> --user user1
+		// This simulates: headscale auth register <id> user1
 		_ = scenario.runHeadscaleRegister("user1", body)
 	}
 
@@ -548,19 +549,22 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 }
 
 // runPageCommand runs, word for word, the command that a login or SSH-check
-// page tells the admin to run, with user for the page's placeholder. While
-// the pages print the old CLI's --auth-id, which the CLI in the image
-// refuses, the test skips: it wakes when the server prints the new form.
+// page tells the admin to run, with user for the page's placeholder.
 func runPageCommand(t *testing.T, headscale ControlServer, body, user string) {
 	t.Helper()
 
 	words, err := pageCommand(body, user)
 	require.NoError(t, err)
-	t.Logf("the page says to run: %q", words)
 
-	if slices.Contains(words, "--auth-id") {
-		t.Skip("the page prints the old CLI's command")
+	// The auth ID answers the request, so it stays out of the CI logs.
+	shown := slices.Clone(words)
+	for i, w := range shown {
+		if strings.HasPrefix(w, "hskey-authreq-") {
+			shown[i] = "hskey-authreq-***"
+		}
 	}
+
+	t.Logf("the page says to run: %q", shown)
 
 	_, err = headscale.Execute(words)
 	require.NoError(t, err, "the command the page prints must work")
