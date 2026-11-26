@@ -1,0 +1,613 @@
+components:
+  schemas:
+    Authorization:
+      properties:
+        resources:
+          anyOf:
+            - $ref: "#/components/schemas/AuthorizationResources"
+            - type: string
+          description: The resources the scopes apply to. own is reserved; a client that does not know a value must act as limited.
+          x-go-type: AuthorizationResources
+        scopes:
+          description: The scopes the request has. An API key and the unix socket have all.
+          items:
+            type: string
+          type: array
+        tags:
+          description: "The tags the caller may give, with those they own in the policy. null: tags do not limit the caller."
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      required:
+        - scopes
+        - tags
+        - resources
+      type: object
+    AuthorizationResources:
+      description: The resources the scopes apply to. own is reserved; a client that does not know a value must act as limited.
+      enum:
+        - all
+        - own
+      type: string
+    ClientReference:
+      properties:
+        description:
+          type: string
+        id:
+          type: string
+      required:
+        - id
+        - description
+      type:
+        - object
+        - "null"
+    Credential:
+      properties:
+        client:
+          $ref: "#/components/schemas/ClientReference"
+          description: For a token, the OAuth client it was issued to.
+        expiry:
+          format: date-time
+          type:
+            - string
+            - "null"
+        id:
+          description: The ID of the stored credential; for an API key, the ID in /api-keys/{id}.
+          type: string
+        kind:
+          anyOf:
+            - $ref: "#/components/schemas/CredentialKind"
+            - type: string
+          x-go-type: CredentialKind
+        owner:
+          $ref: "#/components/schemas/Owner"
+          description: For an API key, the user recorded on it. It does not say who makes the request.
+        prefix:
+          description: The part of the secret that is not secret.
+          type: string
+      required:
+        - kind
+        - id
+        - prefix
+        - expiry
+        - owner
+        - client
+      type:
+        - object
+        - "null"
+    CredentialKind:
+      enum:
+        - apiKey
+        - oauthToken
+      type: string
+    FieldError:
+      properties:
+        location:
+          description: Where the field is, such as body.tags[2] or query.pageSize.
+          type: string
+        message:
+          type: string
+      required:
+        - location
+        - message
+      type: object
+    GoInfo:
+      properties:
+        arch:
+          type: string
+        os:
+          type: string
+        version:
+          type: string
+      required:
+        - version
+        - os
+        - arch
+      type: object
+    Health:
+      properties:
+        databaseConnectivity:
+          type: boolean
+        healthy:
+          type: boolean
+        warnings:
+          description: What an admin should know; a warning never makes the server unhealthy. New codes may appear.
+          items:
+            $ref: "#/components/schemas/HealthMessage"
+          type: array
+      required:
+        - healthy
+        - databaseConnectivity
+        - warnings
+      type: object
+    HealthMessage:
+      properties:
+        code:
+          anyOf:
+            - $ref: "#/components/schemas/HealthMessageCode"
+            - type: string
+          x-go-type: HealthMessageCode
+        details:
+          additionalProperties: {}
+          description: Data for this code; {} when it has none.
+          type: object
+        message:
+          type: string
+      required:
+        - code
+        - message
+        - details
+      type: object
+    HealthMessageCode:
+      enum:
+        - credential_check_busy
+        - database_unreachable
+        - node_expiry_invalid
+        - node_name_invalid
+      type: string
+    Identity:
+      properties:
+        issuer:
+          type: string
+        subject:
+          type: string
+      required:
+        - issuer
+        - subject
+      type:
+        - object
+        - "null"
+    Me:
+      properties:
+        authorization:
+          $ref: "#/components/schemas/Authorization"
+        credential:
+          $ref: "#/components/schemas/Credential"
+        principal:
+          $ref: "#/components/schemas/Principal"
+      required:
+        - principal
+        - credential
+        - authorization
+      type: object
+    Owner:
+      properties:
+        tags:
+          items:
+            type: string
+          type: array
+        user:
+          $ref: "#/components/schemas/OwnerUser"
+      required:
+        - user
+        - tags
+      type:
+        - object
+        - "null"
+    OwnerUser:
+      properties:
+        displayName:
+          type: string
+        email:
+          type: string
+        id:
+          type: string
+        loginName:
+          type: string
+        name:
+          type: string
+      required:
+        - id
+        - name
+        - loginName
+        - displayName
+        - email
+      type:
+        - object
+        - "null"
+    Principal:
+      properties:
+        identity:
+          $ref: "#/components/schemas/Identity"
+          description: "The identity at an outside identity provider. Reserved: null today."
+        kind:
+          anyOf:
+            - $ref: "#/components/schemas/PrincipalKind"
+            - type: string
+          description: Who or what is authenticated. human and workload are reserved.
+          x-go-type: PrincipalKind
+        user:
+          $ref: "#/components/schemas/UserReference"
+          description: "The Headscale user that has identity. Reserved: null today."
+      required:
+        - kind
+        - identity
+        - user
+      type: object
+    PrincipalKind:
+      description: Who or what is authenticated. human and workload are reserved.
+      enum:
+        - apiKey
+        - oauthClient
+        - local
+        - human
+        - workload
+      type: string
+    Problem:
+      properties:
+        code:
+          anyOf:
+            - $ref: "#/components/schemas/ProblemCode"
+            - type: string
+          description: The stable code of the problem. Clients branch on this.
+          x-go-type: ProblemCode
+        detail:
+          description: A sentence for a person. It may change; programs must not read it.
+          type: string
+        details:
+          additionalProperties: {}
+          description: Data for this code, as its documentation describes.
+          type: object
+        errors:
+          description: "For invalid_field: one entry per field."
+          items:
+            $ref: "#/components/schemas/FieldError"
+          type: array
+        object:
+          $ref: "#/components/schemas/ProblemObject"
+          description: The resource the problem is about, or null.
+        requestId:
+          description: The ID of this request in the server log.
+          type: string
+        status:
+          description: The HTTP status.
+          format: int64
+          type: integer
+        title:
+          description: A short text, the same for every problem with this code.
+          type: string
+        type:
+          description: A URL naming the problem, one per code; it leads to its documentation.
+          type: string
+      required:
+        - type
+        - title
+        - status
+        - code
+        - detail
+        - requestId
+        - object
+        - errors
+        - details
+      type: object
+    ProblemCode:
+      description: The stable code of the problem. Clients branch on this.
+      enum:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_request
+        - method_not_allowed
+        - not_found
+        - request_timeout
+        - too_large
+        - unauthorized
+        - unhealthy
+        - unsupported_media_type
+      type: string
+    ProblemObject:
+      properties:
+        id:
+          type: string
+        kind:
+          anyOf:
+            - $ref: "#/components/schemas/ProblemObjectKind"
+            - type: string
+          x-go-type: ProblemObjectKind
+        name:
+          type: string
+      required:
+        - kind
+        - id
+        - name
+      type:
+        - object
+        - "null"
+    ProblemObjectKind:
+      enum:
+        - node
+        - user
+        - authKey
+        - apiKey
+        - oauthClient
+        - authRequest
+      type: string
+    UserReference:
+      properties:
+        id:
+          type: string
+        loginName:
+          type: string
+      required:
+        - id
+        - loginName
+      type:
+        - object
+        - "null"
+    VersionInfo:
+      properties:
+        buildTime:
+          type: string
+        commit:
+          type: string
+        dirty:
+          type: boolean
+        go:
+          $ref: "#/components/schemas/GoInfo"
+        version:
+          type: string
+      required:
+        - version
+        - commit
+        - buildTime
+        - go
+        - dirty
+      type: object
+  securitySchemes:
+    bearer:
+      scheme: bearer
+      type: http
+info:
+  description: Headscale's own API. It may change in any minor release; every change is in the changelog under "API v0".
+  title: Headscale API
+  version: v0
+openapi: 3.1.0
+paths:
+  /api/headscale/v0/health:
+    get:
+      operationId: getHealth
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer: []
+      summary: The health of the server
+      tags:
+        - Server
+      x-problem-codes:
+        - internal
+        - invalid_field
+        - unauthorized
+        - unhealthy
+  /api/headscale/v0/me:
+    get:
+      operationId: getMe
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer: []
+      summary: Who makes this request, how it is authenticated, and what it may do
+      tags:
+        - Server
+      x-problem-codes:
+        - internal
+        - invalid_field
+        - unauthorized
+        - unhealthy
+  /api/headscale/v0/version:
+    get:
+      operationId: getVersion
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionInfo"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      summary: The version of the server
+      tags:
+        - Server
+      x-problem-codes:
+        - internal
+        - invalid_field
