@@ -3435,6 +3435,126 @@ paths:
         - not_found
         - unauthorized
         - unhealthy
+  /api/headscale/v0/config:
+    get:
+      description: The configuration the server runs with, as a YAML configuration file. Its keys are the keys of the configuration file, so they follow the release of the server; the body has no schema. Each literal secret, and each setting of `dns.challenge.provider` but `name`, is `<redacted>`; `file:` references are kept as written, and the credentials in URLs are removed. The client-only `cli` section is left out.
+      operationId: getConfig
+      parameters:
+        - description: Put the documentation of each key above it, as comments.
+          explode: false
+          in: query
+          name: docs
+          schema:
+            default: true
+            description: Put the documentation of each key above it, as comments.
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/yaml: {}
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - all
+      summary: The configuration the server runs with
+      tags:
+        - Server
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - unauthorized
+        - unhealthy
   /api/headscale/v0/debug/nodes:
     post:
       description: "A test tool. It makes an auth request, not a node: a registration of a made-up machine that advertises routes, which register answers. It has no Location, which would hold the auth ID, a secret. An ID that a request has is invalid_field at body.authId; a server that holds as many auth requests as it may is unhealthy, with the reason auth_requests_full."
