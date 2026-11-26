@@ -501,14 +501,23 @@ var runCases = []runCase{
 		sh("nodes set 12 --name -e"),
 		ran("nodes set", a1, "name", "-e"),
 	},
+	// The lists are the builder's, so --filter, the value of --sort, is a bad
+	// one: no column has that name. F29 keeps the count with a value that is.
 	{
 		"F27",
 		Must,
 		"D20",
 		sh("nodes list --sort --filter x"),
-		usage(ArgCount, "nodes list", "takes no arguments, got 1"),
+		usage(BadValue, "nodes list", "sort"),
 	},
 	{"F28", Observe, "G21 D11", sh("nodes list -ho json"), seen()},
+	{
+		"F29",
+		Must,
+		"D20",
+		sh("nodes list --sort -id x"),
+		usage(ArgCount, "nodes list", "takes no arguments, got 1"),
+	},
 
 	// Bool forms (D9).
 	{
@@ -717,8 +726,8 @@ var runCases = []runCase{
 		"L08",
 		Must,
 		"D6",
-		sh("nodes list --filter a --filter b"),
-		ran("nodes list", nil, "filter", "a", "filter", "b"),
+		sh("nodes list --filter id=1 --filter name:a"),
+		ran("nodes list", nil, "filter", "id=1", "filter", "name:a"),
 	},
 	{
 		"L09",
@@ -880,7 +889,7 @@ var runCases = []runCase{
 		"E23",
 		Must,
 		"D35",
-		sh("nodes list --sort a --sort b -o x -o y"),
+		sh("nodes list --sort id --sort name -o x -o y"),
 		usage(FlagRepeated, "nodes list", "sort"),
 	},
 	{
@@ -897,6 +906,13 @@ var runCases = []runCase{
 		"D35",
 		sh("nodes lst --bogus"),
 		usage(UnknownCommand, "nodes", "lst"),
+	},
+	{
+		"E27",
+		Must,
+		"D35",
+		sh("nodes list --sort a --sort b"),
+		usage(BadValue, "nodes list", "sort"),
 	},
 	// v3: D35, the first mistake on the line, whatever its kind.
 	{
@@ -2093,7 +2109,15 @@ func TestKitTab(t *testing.T) {
 // beyondKit are the commands of Headscale that the kit's tree does not
 // have. A kit command that Headscale gets under another name would leave
 // its rows waiting for ever; here it is a command of neither list.
-var beyondKit = []string{"api whoami", "debug", "debug health"}
+var beyondKit = []string{
+	"api whoami",
+	"debug",
+	"debug health",
+	"users list",
+	"users get",
+	"users create",
+	"users set",
+}
 
 func TestKitKnowsHeadscale(t *testing.T) {
 	t.Parallel()

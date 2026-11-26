@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli/command"
+	"github.com/juanfont/headscale/cmdline/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 )
 
@@ -51,7 +52,7 @@ included, and writes no warning on stderr.`,
 		}
 
 		for _, w := range h.Warnings {
-			c.Note("warning: " + w.Message)
+			c.Note("warning: " + table.Visible(w.Message, ""))
 		}
 
 		return h, nil
