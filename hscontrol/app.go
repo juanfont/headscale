@@ -323,6 +323,49 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound) //nolint:gosec // G710: target prefixed by trusted ServerURL
 }
 
+// watchPolicyFile reloads a policy file when it is saved, so it is in force
+// without a signal; one the server refuses leaves the last valid policy,
+// and GET /health says so.
+func (h *Headscale) watchPolicyFile(ctx context.Context) error {
+	if h.cfg.Policy.Mode != types.PolicyModeFile || h.cfg.Policy.Path == "" {
+		return nil
+	}
+
+	err := util.WatchFile(ctx, h.cfg.AbsPath(h.cfg.Policy.Path), []byte(h.state.Policy().Data), h.reloadPolicyFile)
+	if err != nil {
+		return fmt.Errorf("watching the policy file: %w", err)
+	}
+
+	// A refused file may have been refused because of the users: read it
+	// again when they change.
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-h.state.PolicyFileRetry():
+				h.reloadPolicyFile() //nolint:contextcheck // the policy store has a deadline of its own, under the policy lock
+			}
+		}
+	}()
+
+	return nil
+}
+
+// reloadPolicyFile installs the policy file after it changed.
+func (h *Headscale) reloadPolicyFile() {
+	changes, err := h.state.ReloadPolicy()
+	h.Change(changes...)
+
+	if err != nil {
+		log.Error().Err(err).Msg("the policy file changed and is refused; the last valid policy stays in force")
+
+		return
+	}
+
+	log.Info().Msg("the policy file changed and is in force")
+}
+
 func (h *Headscale) scheduledTasks(ctx context.Context) {
 	expireTicker := time.NewTicker(updateInterval)
 	defer expireTicker.Stop()
@@ -738,6 +781,11 @@ func (h *Headscale) Serve(ctx context.Context) error {
 	// Covers the records from the config too.
 	h.state.WarnNodesHoldingExtraRecords()
 
+	err = h.watchPolicyFile(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
 	// records updates
 	go h.scheduledTasks(ctx)
@@ -977,7 +1025,7 @@ func (h *Headscale) Serve(ctx context.Context) error {
 
 				log.Info().Msg("Reloading ACL policy")
 
-				changes, err := h.state.ReloadPolicy()
+				changes, err := h.state.ReloadPolicy() //nolint:contextcheck // the policy store has a deadline of its own, under the policy lock
 				h.Change(changes...)
 
 				if err != nil {
@@ -1545,6 +1593,17 @@ func (h *Headscale) StartEphemeralGCForTest(tb testing.TB) {
 	go h.ephemeralGC.Start()
 
 	tb.Cleanup(func() { h.ephemeralGC.Close() })
+}
+
+// StartPolicyWatchForTest watches the policy file as [Headscale.Serve] does,
+// until tb ends.
+func (h *Headscale) StartPolicyWatchForTest(tb testing.TB) {
+	tb.Helper()
+
+	err := h.watchPolicyFile(tb.Context())
+	if err != nil {
+		tb.Fatalf("watching the policy file: %v", err)
+	}
 }
 
 // requestID gives each request an ID the server makes, so the ID in a

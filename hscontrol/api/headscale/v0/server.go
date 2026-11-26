@@ -219,11 +219,49 @@ func whoAmI(ctx context.Context, b Backend, c *caller) (Me, error) {
 	return me, nil
 }
 
-// healthWarnings is one warning per failing node check. The scan reads the
-// NodeStore snapshot in memory, so it is cheap enough for every call.
+// The warnings of the policy.
+const (
+	WarningPolicyFileInvalid   HealthCode = "policy_file_invalid"
+	WarningPolicyUserAmbiguous HealthCode = "policy_user_ambiguous"
+	WarningPolicyNotStored     HealthCode = "policy_not_stored"
+	WarningPolicyStoredInvalid HealthCode = "policy_stored_invalid"
+)
+
+// healthWarnings is a warning for a policy in force that is not the stored
+// one, one for a policy file the server refused, one for the texts of the
+// policy that match more than one user, and one per failing node check. Each reads memory, so it is cheap enough for every call.
 func healthWarnings(b Backend) []HealthMessage {
 	problems := b.State.NodeHealthProblems()
-	warnings := make([]HealthMessage, 0, len(problems))
+	warnings := make([]HealthMessage, 0, len(problems)+3)
+
+	if b.State.PolicyNotStored() {
+		warnings = append(warnings, HealthMessage{
+			Code:    WarningPolicyNotStored,
+			Message: "The policy in force may not be the stored one: a policy write failed and the stored policy could not be read, or it holds another text.",
+			Details: map[string]any{},
+		})
+	}
+
+	if b.State.PolicySourceError() != nil {
+		w := HealthMessage{
+			Code:    WarningPolicyFileInvalid,
+			Message: "The policy file is not valid; the last valid policy, or none, is in force.",
+			Details: map[string]any{},
+		}
+		if b.State.Policy().Mode == types.PolicyModeDB {
+			w.Code, w.Message = WarningPolicyStoredInvalid, "The stored policy is not valid; the last valid policy, or none, is in force."
+		}
+
+		warnings = append(warnings, w)
+	}
+
+	if texts := b.State.AmbiguousPolicyUsers(); len(texts) > 0 {
+		warnings = append(warnings, HealthMessage{
+			Code:    WarningPolicyUserAmbiguous,
+			Message: ambiguousWarning(len(texts)),
+			Details: map[string]any{"count": len(texts)},
+		})
+	}
 
 	for _, p := range problems {
 		warnings = append(warnings, HealthMessage{
@@ -257,4 +295,17 @@ func unhealthy(detail string, reason HealthCode) *Problem {
 	}
 
 	return p
+}
+
+// ambiguousWarning is the message of n texts that match more than one user.
+// It names none: any credential reads /health.
+func ambiguousWarning(n int) string {
+	if n == 1 {
+		return "The policy in force names 1 text that more than one user matches; it matches nobody."
+	}
+
+	return fmt.Sprintf(
+		"The policy in force names %d texts that more than one user matches; each matches nobody.",
+		n,
+	)
 }

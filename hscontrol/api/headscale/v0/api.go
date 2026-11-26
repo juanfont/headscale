@@ -92,9 +92,12 @@ func Config(version string) huma.Config {
 	config.Transformers = append(config.Transformers, problemTransformer)
 
 	// A map of v0's own: DefaultConfig hands out huma's package map.
+	// application/hujson is the policy file as a body; requestChecks lets it
+	// through only to an operation that lists it.
 	config.Formats = map[string]huma.Format{
 		"application/json": bodyFormat,
 		"json":             bodyFormat,
+		hujsonContentType:  hujsonBodyFormat,
 	}
 
 	return config
@@ -108,7 +111,7 @@ func NewAPI(router chi.Router, b Backend, version string) huma.API {
 func newAPI(router chi.Router, b Backend, config huma.Config) huma.API {
 	router.Use(strictQuery, joinIfMatch)
 
-	api := humachi.New(router, config)
+	api := hujsonNotAnswered{humachi.New(router, config), config}
 
 	// Once every operation is registered.
 	defer openResponses(api.OpenAPI())
@@ -124,8 +127,31 @@ func newAPI(router chi.Router, b Backend, config huma.Config) huma.API {
 	registerAPIKeys(api, b)
 	registerOAuthClients(api, b)
 	registerAuthRequests(api, b)
+	registerPolicy(api, b)
 
 	return api
+}
+
+// hujsonNotAnswered is an API whose answers are never HuJSON: it is a
+// format of one request body, and an Accept of it is any type the server
+// does not have.
+type hujsonNotAnswered struct {
+	huma.API
+
+	config huma.Config
+}
+
+// Config is what huma reads of the API it wraps, such as the rule on
+// unknown query parameters.
+func (a hujsonNotAnswered) Config() huma.Config { return a.config }
+
+func (a hujsonNotAnswered) Negotiate(accept string) (string, error) {
+	ct, err := a.API.Negotiate(accept)
+	if ct == hujsonContentType {
+		return a.API.Negotiate("")
+	}
+
+	return ct, err
 }
 
 // versionInfo is the version the headers and the served document carry.
@@ -690,13 +716,12 @@ func requestChecks(ctx huma.Context, next func(huma.Context)) {
 		return
 	}
 
-	if op.RequestBody != nil &&
-		!jsonMediaType(ctx.Header("Content-Type"), op.Method == http.MethodPatch) {
+	if op.RequestBody != nil && !jsonMediaType(ctx.Header("Content-Type"), op) {
 		writeHumaProblem(
 			ctx,
 			newProblem(
 				CodeUnsupportedMediaType,
-				"Send the body as application/json, or a PATCH as application/merge-patch+json.",
+				"Send the body as application/json, a PATCH as application/merge-patch+json, or another media type the operation lists.",
 			),
 		)
 
@@ -716,9 +741,9 @@ func booleanQuery(op *huma.Operation, name string) bool {
 }
 
 // jsonMediaType reports whether a body sent as contentType is v0's JSON:
-// application/json, or for a PATCH also RFC 7396's media type, with no
-// parameter but charset=utf-8.
-func jsonMediaType(contentType string, patch bool) bool {
+// application/json, or for a PATCH also RFC 7396's media type, or another
+// media type op lists for its body, with no parameter but charset=utf-8.
+func jsonMediaType(contentType string, op *huma.Operation) bool {
 	mt, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return false
@@ -730,7 +755,11 @@ func jsonMediaType(contentType string, patch bool) bool {
 		}
 	}
 
-	return mt == "application/json" || (patch && mt == mergePatchContentType)
+	_, listed := op.RequestBody.Content[mt]
+
+	return mt == "application/json" ||
+		(op.Method == http.MethodPatch && mt == mergePatchContentType) ||
+		listed
 }
 
 // unknownMember starts the error of a member that the strict decode of a
