@@ -554,8 +554,7 @@ func TestRoutesNodeRangeSingleNotServed(t *testing.T) {
 
 	for name, grant := range map[string]string{
 		"plain": `{"src": ["tag:client"], "dst": ["*"], "ip": ["*"]}`,
-		"via": `{"src": ["tag:client"], "ip": ["*"], "via": ["tag:router"],
-			"dst": ["10.9.0.0/24", "100.64.0.0/10", "fd7a:115c:a1e0::/48", "::ffff:0:0/96"]}`,
+		"via":   `{"src": ["tag:client"], "dst": ["10.9.0.0/24"], "ip": ["*"], "via": ["tag:router"]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
