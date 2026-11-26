@@ -2,6 +2,7 @@ package table
 
 import (
 	"bytes"
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -33,7 +34,15 @@ type row struct {
 	Inner  *struct {
 		Hint string `json:"hint"`
 	} `json:"inner"`
+	Version  string `json:"clientVersion"`
+	AuthKey  string `json:"authKeyId"`
+	Nodes    []ref  `json:"nodes"`
 	Untagged string
+}
+
+type ref struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 var now = time.Date(2026, 11, 10, 9, 14, 0, 0, time.UTC)
@@ -45,7 +54,7 @@ var cols = Columns[row]{
 	{Name: "ip", Field: "addresses", Default: true},
 	{Name: "online", Field: "online", Default: true},
 	{Name: "last-seen", Field: "lastSeen", Default: true},
-	{Name: "expiry", Field: "expiry", Default: true},
+	{Name: "expiry", Field: "expiry", Default: true, Ahead: true},
 	{Name: "count", Field: "count"},
 	{Name: "hint", Field: "inner.hint"},
 }
@@ -94,6 +103,9 @@ func TestCheck(t *testing.T) {
 		{"no name", Column[row]{Field: "name"}, `field "name": a column with no name`},
 		{"a kind the field cannot have", Column[row]{Name: "x", Field: "online", Kind: Time}, `column "x": kind time cannot show bool`},
 		{"a kind of no field", Column[row]{Name: "x", Field: "inner", Kind: Text}, `column "x": kind text cannot show struct { Hint string "json:\"hint\"" }`},
+		{"ahead on no time", Column[row]{Name: "x", Field: "name", Ahead: true}, `column "x" is no time, so it cannot look ahead`},
+		{"a version with no kind", Column[row]{Name: "x", Field: "clientVersion"}, `column "x": field "clientVersion" is named like an ID or a version: say its Kind, which may be text`},
+		{"an ID with no kind", Column[row]{Name: "x", Field: "authKeyId"}, `column "x": field "authKeyId" is named like an ID or a version: say its Kind, which may be text`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -144,7 +156,7 @@ func TestRender(t *testing.T) {
 	t.Parallel()
 
 	var b bytes.Buffer
-	require.NoError(t, Render(&b, rows(), cols, now))
+	require.NoError(t, Render(&b, rows(), cols.Pick(nil), now))
 
 	want := `ID  NAME     OWNER              IP                   ONLINE  LAST SEEN  EXPIRY
 12  mynode   alice              100.64.0.1, fd7a::1  yes     now        in 89d
@@ -153,6 +165,28 @@ func TestRender(t *testing.T) {
 	if diff := cmp.Diff(want, b.String()); diff != "" {
 		t.Errorf("table (-want +got):\n%s", diff)
 	}
+}
+
+// TestAligned: a column is as wide as its widest cell on the screen, a
+// wide character taking two; only padding is left out at the end of a
+// line, never what a cell holds.
+func TestAligned(t *testing.T) {
+	t.Parallel()
+
+	var b bytes.Buffer
+	require.NoError(t, aligned(&b, [][]string{
+		{"NAME", "OWNER", "NOTE"},
+		{"🚀web", "alice", ""},
+		{"\u65e5\u672c", "", "x  "},
+		{"é", "bob", ""},
+	}))
+	require.Equal(
+		t,
+		"NAME   OWNER  NOTE\n🚀web  alice\n\u65e5\u672c          x  \né      bob\n",
+		b.String(),
+	)
+	require.Equal(t, 5, width("🚀web"))
+	require.Equal(t, 1, width("e\u0301"))
 }
 
 func TestSheet(t *testing.T) {
@@ -268,4 +302,55 @@ func TestEntity(t *testing.T) {
 	require.Equal(t, "API key 2 (tr81ys)", Entity("apiKey", "2", "tr81ys"))
 	require.Equal(t, "OAuth client c9f2", Entity("oauthClient", "c9f2", "CI"))
 	require.Equal(t, "widget 7", Entity("widget", "7", ""))
+	require.Equal(
+		t,
+		`User 5 (x\x0afake\u202e)`,
+		Entity("user", "5", "x\nfake\u202e"),
+		"a name of the server is made visible",
+	)
+}
+
+// TestVisible: text of the server cannot drive the terminal, in a cell of a
+// table or a sheet, whatever command shows it.
+func TestVisible(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(
+		t,
+		`a\x1b[2Jb\u202ec\x07\x9b`,
+		Visible("a\x1b[2Jb\u202ec\a\u009b", ""),
+	)
+	require.Equal(t, "line\n\ttab", Visible("line\n\ttab", "\n\t"))
+	require.Equal(t, `line\x0a`, Visible("line\n", ""))
+	require.Equal(t, "plain ünïcode", Visible("plain ünïcode", ""))
+	// The text of an escape cannot pass for one.
+	require.Equal(t, `a\\x1b`, Visible(`a\x1b`, ""))
+	require.Equal(t, `a\x1b\x1b`, Visible("a\\x1b\x1b", "\\"))
+
+	r := rows()[0]
+	r.Name = "evil\x1b]0;owned\x07\u2066"
+
+	var b bytes.Buffer
+	require.NoError(t, Render(&b, []row{r}, cols[1:2], now))
+	require.Equal(t, "NAME\n"+`evil\x1b]0;owned\x07\u2066`+"\n", b.String())
+
+	b.Reset()
+	require.NoError(t, Sheet(&b, r, cols[1:2], now))
+	require.Equal(t, `Name:  evil\x1b]0;owned\x07\u2066`+"\n", b.String())
+}
+
+// TestVisibleJSON: JSON keeps every value, and no control a terminal acts
+// on stays raw.
+func TestVisibleJSON(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte("{\"a\": \"x\u202ey\u0085\u007f\\u001b\u00e9\"}\n")
+	got := VisibleJSON(raw)
+	//nolint:testifylint // the bytes, not the values: the escapes are the point
+	require.Equal(t, `{"a": "x\u202ey\u0085\u007f\u001bé"}`+"\n", string(got))
+
+	var a, b map[string]string
+	require.NoError(t, json.Unmarshal(raw, &a))
+	require.NoError(t, json.Unmarshal(got, &b))
+	require.Equal(t, a, b)
 }
