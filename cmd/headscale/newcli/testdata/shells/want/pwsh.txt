@@ -55,7 +55,7 @@ LINE: headscale version --bogus --|
 LINE: headscale completion bash -c|
   THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
 LINE: headscale users |
-  [create  (Create a local user)] [get     (Show one user)] [list    (List the users)] [set     (Change a local user)]
+  [create  (Create a local user)] [delete  (Delete a user with its keys)] [get     (Show one user)] [list    (List the users)] [set     (Change a local user)]
 LINE: headscale users list --|
   [--columns       (Columns to show: a list, or +name and -name to change the default)] [--config        (Config file)] [--filter        (Keep the rows that match; may be repeated)] [--help          (Show this help)] [--list-columns  (List the columns, the API field behind each, and exit)] [--output        (Output format: json (the API object))] [--sort          (Column to sort by; -name sorts in reverse)]
 LINE: headscale users list --columns id,na|
