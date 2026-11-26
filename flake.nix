@@ -237,7 +237,7 @@
           );
 
           # -race needs cgo; release build and dev shell stay CGO-free.
-          # Test hscontrol recursively; servertest runs in its own workflow, without -race.
+          # Test hscontrol and cmdline recursively; servertest runs in its own workflow, without -race.
           gorace = fc.goTest (
             common
             // {
@@ -246,7 +246,7 @@
               testEnv = "export CGO_ENABLED=1";
               testFlags = [ "-p=2" ];
               goSkip = [ "TestPostgres" ];
-              testPackages = "./hscontrol/...";
+              testPackages = "./hscontrol/... ./cmdline/...";
               testExclude = [ "/hscontrol/servertest" ];
             }
           );

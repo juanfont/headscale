@@ -48,6 +48,7 @@ result
 
 # OpenAPI spec is served live from the code and emitted on demand, not committed
 /openapi/v1/headscale.yaml
+/openapi/v2/headscale.yaml
 
 # MkDocs
 .cache
@@ -58,3 +59,6 @@ __debug_bin
 node_modules/
 package-lock.json
 package.json
+
+# Rapid writes the input of a failed property here; a fix comes with a plain test instead.
+**/testdata/rapid/
