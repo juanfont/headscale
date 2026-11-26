@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.29.8 (202x-xx-xx)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Peers now carry their own capability version, not the version of the node that receives the map. Tailscale v1.106 and newer use it to pick per-peer features such as hybrid WireGuard handshakes; with the wrong version, a v1.106 client could not connect to an older one [#3724](https://github.com/juanfont/headscale/pull/3724)
+
 ## 0.29.7 (2026-10-30)
 
 **Minimum supported Tailscale client version: v1.80.0**
