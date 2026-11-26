@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -143,6 +144,47 @@ func TestLoadedDuplicateNamesAreResolvedInMemory(t *testing.T) {
 		}
 
 		require.NoError(t, s.Close())
+	}
+}
+
+// TestUserReadsTakeTheirContext: a read of users whose request ended does not
+// wait for the database connection: with SQLite's one connection held, it
+// returns at once.
+func TestUserReadsTakeTheirContext(t *testing.T) {
+	s, err := NewState(persistTestConfig(t.TempDir() + "/headscale.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("alice")
+
+	held := s.db.DB.Begin()
+	require.NoError(t, held.Error)
+
+	defer held.Rollback()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	for name, read := range map[string]func() error{
+		"page": func() error {
+			_, err := s.ListUsersPage(ctx, &types.User{}, 0, 10)
+			return err
+		},
+		"by ID": func() error {
+			_, err := s.GetUserByIDContext(ctx, types.UserID(user.ID))
+			return err
+		},
+	} {
+		done := make(chan error, 1)
+
+		go func() { done <- read() }()
+
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, context.Canceled, name)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s waited for the connection", name)
+		}
 	}
 }
 
@@ -1529,10 +1571,11 @@ func TestUpdatePolicyStoreFailure(t *testing.T) {
 	assert.Equal(t, before, after, "an unstored policy must not be installed")
 }
 
-// TestPostgresUpdatePolicyConcurrentWrites runs a second write while the
-// first one's insert is not yet committed. Pruning cannot see that row, so
-// unless writers are serialised up to the install, it outlives the newer one.
-func TestPostgresUpdatePolicyConcurrentWrites(t *testing.T) {
+// newPostgresStateForTest is a State on a fresh PostgreSQL database; the
+// test is skipped where PostgreSQL cannot start.
+func newPostgresStateForTest(t *testing.T) *State {
+	t.Helper()
+
 	srv, err := postgrestest.Start(t.Context())
 	if err != nil {
 		t.Skipf("start postgres: %s", err)
@@ -1567,12 +1610,21 @@ func TestPostgresUpdatePolicyConcurrentWrites(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
+	return s
+}
+
+// TestPostgresUpdatePolicyConcurrentWrites runs a second write while the
+// first one's insert is not yet committed. Pruning cannot see that row, so
+// unless writers are serialised up to the install, it outlives the newer one.
+func TestPostgresUpdatePolicyConcurrentWrites(t *testing.T) {
+	s := newPostgresStateForTest(t)
+
 	const (
 		first  = `{"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]}`
 		second = `{"acls": [{"action": "accept", "src": ["*"], "dst": ["*:22"]}]}`
 	)
 
-	_, _, err = s.UpdatePolicy([]byte(second))
+	_, _, err := s.UpdatePolicy([]byte(second))
 	require.NoError(t, err)
 
 	want, _ := s.Filter()
@@ -3030,4 +3082,236 @@ func TestSetLastControlAddressWritesNodeStoreOutsidePersistMu(t *testing.T) {
 
 	s.persistMu.Unlock()
 	require.NoError(t, <-done)
+}
+
+func TestUpdateLocalUserRefusesOIDC(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	local, _, err := s.CreateUser(types.User{Name: "local-user"})
+	require.NoError(t, err)
+
+	oidc, _, err := s.CreateUser(types.User{Name: "oidc-user", Provider: util.RegisterMethodOIDC, ProviderIdentifier: sql.NullString{String: "/sub", Valid: true}})
+	require.NoError(t, err)
+
+	got, _, err := s.UpdateLocalUser(types.UserID(local.ID), func(u *types.User) { u.Email = "local@example.com" })
+	require.NoError(t, err)
+	assert.Equal(t, "local@example.com", got.Email)
+
+	_, _, err = s.UpdateLocalUser(types.UserID(oidc.ID), func(u *types.User) { u.DisplayName = "x" })
+	require.ErrorIs(t, err, db.ErrCannotChangeOIDCUser)
+
+	stored, err := s.GetUserByID(types.UserID(oidc.ID))
+	require.NoError(t, err)
+	assert.Empty(t, stored.DisplayName)
+}
+
+// TestPostgresUpdateUserRacingDelete: a delete that commits between the read and the
+// write of an update leaves no row, and the update says so rather than
+// answering a user that no longer exists.
+func TestPostgresUpdateUserRacingDelete(t *testing.T) {
+	s := newPostgresStateForTest(t)
+
+	u, _, err := s.CreateUser(types.User{Name: "racer"})
+	require.NoError(t, err)
+
+	_, _, err = s.UpdateUser(types.UserID(u.ID), func(u *types.User) error {
+		// Outside the update's transaction, on another connection.
+		require.NoError(t, s.db.DB.Unscoped().Delete(&types.User{}, u.ID).Error)
+
+		u.DisplayName = "late"
+
+		return nil
+	})
+	require.ErrorIs(t, err, db.ErrUserNotFound)
+}
+
+// TestLocalUserTexts: a local user cannot get a name or an email that
+// another user holds, and old rows that clash already stay editable.
+func TestLocalUserTexts(t *testing.T) {
+	for name, open := range map[string]func(*testing.T) *State{
+		"sqlite": func(t *testing.T) *State {
+			t.Helper()
+
+			_, s, _ := persistTestSetup(t)
+			t.Cleanup(func() { _ = s.Close() })
+
+			return s
+		},
+		"postgres": newPostgresStateForTest,
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := open(t)
+
+			oidc, _, err := s.CreateUser(types.User{
+				Name: "carol", Email: "carol@corp.com", Provider: util.RegisterMethodOIDC,
+				ProviderIdentifier: sql.NullString{String: "https://idp/carol", Valid: true},
+			})
+			require.NoError(t, err)
+
+			taken := func(t *testing.T, err error, want error, holder *types.User) {
+				t.Helper()
+
+				var te *db.UserTakenError
+
+				require.ErrorAs(t, err, &te)
+				require.ErrorIs(t, err, want)
+				require.Equal(t, holder.ID, te.Holder.ID)
+			}
+
+			for _, tt := range []struct {
+				name string
+				user types.User
+				want error
+			}{
+				{"name equals a name", types.User{Name: "Carol"}, db.ErrUserNameTaken},
+				{"name equals an email", types.User{Name: "carol@corp.com"}, db.ErrUserNameTaken},
+				{"email equals an email", types.User{Name: "mallory", Email: "CAROL@corp.com"}, db.ErrUserEmailTaken},
+				{"email equals a provider identifier", types.User{Name: "mallory", Email: "https://idp/carol"}, db.ErrUserEmailTaken},
+				{"name wins when both clash", types.User{Name: "carol", Email: "carol@corp.com"}, db.ErrUserNameTaken},
+			} {
+				t.Run("create "+tt.name, func(t *testing.T) {
+					_, _, err := s.CreateLocalUser(tt.user)
+					taken(t, err, tt.want, oidc)
+				})
+			}
+
+			dave, _, err := s.CreateLocalUser(types.User{Name: "dave", Email: "dave@corp.com"})
+			require.NoError(t, err)
+
+			t.Run("update to another user's email", func(t *testing.T) {
+				_, _, err := s.UpdateLocalUser(types.UserID(dave.ID), func(u *types.User) { u.Email = "carol@corp.com" })
+				taken(t, err, db.ErrUserEmailTaken, oidc)
+			})
+
+			t.Run("a user does not clash with itself", func(t *testing.T) {
+				_, _, err := s.UpdateLocalUser(types.UserID(dave.ID), func(u *types.User) { u.Name, u.Email = "Dave", "DAVE@corp.com" })
+				require.NoError(t, err)
+			})
+
+			// A row from before the rule, through the path that does not check.
+			old, _, err := s.CreateUser(types.User{Name: "erin", Email: "carol@corp.com"})
+			require.NoError(t, err)
+
+			t.Run("an old clash leaves the other fields editable", func(t *testing.T) {
+				_, _, err := s.UpdateLocalUser(types.UserID(old.ID), func(u *types.User) { u.DisplayName = "Erin" })
+				require.NoError(t, err)
+			})
+
+			t.Run("an old clash can be repaired", func(t *testing.T) {
+				_, _, err := s.UpdateLocalUser(types.UserID(old.ID), func(u *types.User) { u.Email = "erin@corp.com" })
+				require.NoError(t, err)
+			})
+		})
+	}
+}
+
+// TestPostgresCreateLocalUserConcurrently: no unique index holds the email,
+// so the check and the insert must not interleave.
+func TestPostgresCreateLocalUserConcurrently(t *testing.T) {
+	s := newPostgresStateForTest(t)
+
+	var (
+		wg      sync.WaitGroup
+		created atomic.Int32
+	)
+
+	for i := range 8 {
+		wg.Go(func() {
+			_, _, err := s.CreateLocalUser(types.User{Name: "racer" + strconv.Itoa(i), Email: "same@corp.com"})
+			if err == nil {
+				created.Add(1)
+
+				return
+			}
+
+			assert.ErrorIs(t, err, db.ErrUserEmailTaken)
+		})
+	}
+
+	wg.Wait()
+	assert.Equal(t, int32(1), created.Load())
+}
+
+// TestLocalUserCannotMovePolicyRules runs the policy's own resolver: a local
+// user with a text of another user either moves that user's rule to itself
+// or makes it match nobody. The path that does not check shows both; the
+// local-user writes refuse them.
+func TestLocalUserCannotMovePolicyRules(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	alice, err := database.CreateUser(types.User{
+		Name: "alice", Email: "alice@corp.com", Provider: util.RegisterMethodOIDC,
+		ProviderIdentifier: sql.NullString{String: "https://idp/alice", Valid: true},
+	})
+	require.NoError(t, err)
+
+	// An Entra UPN: the name is the address, the email is empty.
+	bob, err := database.CreateUser(types.User{
+		Name: "bob@corp.com", Provider: util.RegisterMethodOIDC,
+		ProviderIdentifier: sql.NullString{String: "https://idp/bob", Valid: true},
+	})
+	require.NoError(t, err)
+
+	aliceIP := database.CreateRegisteredNodeForTest(alice, "alice-laptop").IPv4.String()
+	bobIP := database.CreateRegisteredNodeForTest(bob, "bob-laptop").IPv4.String()
+
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, _, err = s.UpdatePolicy([]byte(`{"acls": [
+		{"action": "accept", "src": ["alice@corp.com"], "dst": ["*:22"]},
+		{"action": "accept", "src": ["bob@corp.com"], "dst": ["*:80"]}
+	]}`))
+	require.NoError(t, err)
+
+	sources := func() string {
+		rules, _ := s.Filter()
+
+		var all []string
+		for _, r := range rules {
+			all = append(all, r.SrcIPs...)
+		}
+
+		return strings.Join(all, " ")
+	}
+
+	before := sources()
+	require.Contains(t, before, aliceIP)
+	require.Contains(t, before, bobIP)
+
+	_, _, err = s.CreateLocalUser(types.User{Name: "mallory", Email: "alice@corp.com"})
+	require.ErrorIs(t, err, db.ErrUserEmailTaken)
+
+	_, _, err = s.CreateLocalUser(types.User{Name: "mallory", Email: "bob@corp.com"})
+	require.ErrorIs(t, err, db.ErrUserEmailTaken)
+
+	mallory, _, err := s.CreateLocalUser(types.User{Name: "mallory"})
+	require.NoError(t, err)
+
+	_, _, err = s.UpdateLocalUser(types.UserID(mallory.ID), func(u *types.User) { u.Email = "bob@corp.com" })
+	require.ErrorIs(t, err, db.ErrUserEmailTaken)
+
+	require.Equal(t, before, sources(), "a refused write moves no rule")
+
+	// The same users through the unchecked path, to prove the resolver
+	// would have taken them.
+	_, _, err = s.CreateUser(types.User{Name: "eve", Email: "alice@corp.com"})
+	require.NoError(t, err)
+	require.NotContains(t, sources(), aliceIP, "two users with alice's email: her rule matches nobody")
+
+	_, _, err = s.UpdateUser(types.UserID(mallory.ID), func(u *types.User) error {
+		u.Email = "bob@corp.com"
+
+		return nil
+	})
+	require.NoError(t, err)
+	require.NotContains(t, sources(), bobIP, "mallory's email wins over bob's name: his rule means her")
 }

@@ -1232,6 +1232,24 @@ func (s *NodeStore) RebuildPeerMaps() {
 	<-result
 }
 
+// ListNodesByUsers is [NodeStore.ListNodesByUser] for each of uids, from
+// one snapshot.
+func (s *NodeStore) ListNodesByUsers(uids []types.UserID) map[types.UserID]views.Slice[types.NodeView] {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("list_by_user"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("list_by_user").Inc()
+
+	snap := s.data.Load()
+	out := make(map[types.UserID]views.Slice[types.NodeView], len(uids))
+
+	for _, uid := range uids {
+		out[uid] = views.SliceOf(snap.nodesByUser[uid])
+	}
+
+	return out
+}
+
 // ListNodesByUser returns a slice of all nodes for a given user ID.
 func (s *NodeStore) ListNodesByUser(uid types.UserID) views.Slice[types.NodeView] {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("list_by_user"))

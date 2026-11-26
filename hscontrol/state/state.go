@@ -277,11 +277,15 @@ type State struct {
 	persistMu sync.Mutex
 
 	// userUpdateMu keeps committed user changes and cached copies in the same order.
-	userUpdateMu sync.Mutex
+	userUpdateMu sync.RWMutex
 
 	// policyUsersMu orders user-list reads with SetUsers, so a list read
 	// before a commit cannot replace one read after it.
 	policyUsersMu sync.Mutex
+
+	// policyUsersStale is set while the policy manager may lack a user
+	// write whose refresh failed; see [State.CatchUpPolicyUsers].
+	policyUsersStale atomic.Bool
 
 	// selfRefresh holds nodes whose own DNS config inputs changed (NextDNS
 	// device metadata, given name), drained by [State.DrainSelfRefreshes].
@@ -626,17 +630,51 @@ func (s *State) reloadPolicyLocked() (bool, bool, error) {
 }
 
 // CreateUser creates a new user and updates the policy manager.
-// Returns the created user, change set, and any error.
+// Returns the created user, change set, and any error. It is for a user of
+// an identity provider and for /api/v1; a local user of API v0 is
+// [State.CreateLocalUser], which checks its texts.
 func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) {
-	if err := s.db.DB.Save(&user).Error; err != nil { //nolint:noinlineerr
+	s.userUpdateMu.Lock()
+	err := s.db.DB.Save(&user).Error
+	s.userUpdateMu.Unlock()
+
+	if err != nil {
 		return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
 	}
 
+	return s.userCreated(user)
+}
+
+// CreateLocalUser creates a user that Headscale owns. Its name and email
+// must not equal a text of another user ([hsdb.CheckLocalUserTexts]); the
+// check and the insert run under the lock of every user write, as no unique
+// index holds the rule.
+func (s *State) CreateLocalUser(user types.User) (*types.User, change.Change, error) {
+	s.userUpdateMu.Lock()
+	defer s.userUpdateMu.Unlock()
+
+	created, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
+		err := hsdb.CheckLocalUserTexts(tx, 0, user.Name, user.Email)
+		if err != nil {
+			return nil, err
+		}
+
+		return hsdb.CreateUser(tx, user)
+	})
+	if err != nil {
+		return nil, change.Change{}, err
+	}
+
+	return s.userCreated(*created)
+}
+
+// userCreated brings the policy up to a user that was just stored.
+func (s *State) userCreated(user types.User) (*types.User, change.Change, error) {
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerUsers()
 	if err != nil {
-		// Log the error but don't fail the user creation
-		return &user, change.Change{}, fmt.Errorf("updating policy manager after user creation: %w", err)
+		// The user is stored: peers get what a creation always sends.
+		return &user, change.PolicyChange(), fmt.Errorf("updating policy manager after user creation: %w", err)
 	}
 
 	// Even if the policy manager doesn't detect a filter change, SSH policies
@@ -656,6 +694,12 @@ func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) 
 // UpdateUser modifies an existing user using the provided update function within a transaction.
 // Returns the updated user, change set, and any error.
 func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, change.Change, error) {
+	return s.updateUser(userID, func(_ *gorm.DB, u *types.User) error { return updateFn(u) })
+}
+
+// updateUser is [State.UpdateUser], with the transaction for updateFn's own
+// reads.
+func (s *State) updateUser(userID types.UserID, updateFn func(*gorm.DB, *types.User) error) (*types.User, change.Change, error) {
 	s.userUpdateMu.Lock()
 	defer s.userUpdateMu.Unlock()
 
@@ -669,15 +713,20 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 
 		previous = *user
 
-		if err := updateFn(user); err != nil { //nolint:noinlineerr
+		if err := updateFn(tx, user); err != nil { //nolint:noinlineerr
 			return nil, err
 		}
 
 		// Select every column so cleared fields are written. Save would also
 		// insert the row again if a delete removed it meanwhile.
-		err = tx.Select("*").Updates(user).Error //nolint:unqueryvet // UPDATE, not a read
-		if err != nil {
-			return nil, fmt.Errorf("updating user: %w", err)
+		res := tx.Select("*").Updates(user) //nolint:unqueryvet // UPDATE, not a read
+		if res.Error != nil {
+			return nil, fmt.Errorf("updating user: %w", res.Error)
+		}
+
+		// A delete that committed after the read leaves nothing to update.
+		if res.RowsAffected == 0 {
+			return nil, hsdb.ErrUserNotFound
 		}
 
 		return user, nil
@@ -729,12 +778,13 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerUsers()
-	if err != nil {
-		return user, change.Change{}, fmt.Errorf("updating policy manager after user update: %w", err)
-	}
-
 	if profileChanged {
 		c = change.UserAdded()
+	}
+
+	if err != nil {
+		// The user is stored and the NodeStore has it: peers get the profile.
+		return user, c, fmt.Errorf("updating policy manager after user update: %w", err)
 	}
 
 	return user, c, nil
@@ -818,9 +868,41 @@ func (s *State) RenameUser(userID types.UserID, newName string) (*types.User, ch
 	})
 }
 
+// UpdateLocalUser changes a user that Headscale owns, in one transaction.
+// A user from an identity provider is refused: the provider owns its
+// fields. A name or an email that changes must not equal a text of another
+// user ([hsdb.CheckLocalUserTexts]).
+func (s *State) UpdateLocalUser(userID types.UserID, updateFn func(*types.User)) (*types.User, change.Change, error) {
+	return s.updateUser(userID, func(tx *gorm.DB, user *types.User) error {
+		if user.FromIdentityProvider() {
+			return hsdb.ErrCannotChangeOIDCUser
+		}
+
+		before := *user
+		updateFn(user)
+
+		var name, email string
+		if user.Name != before.Name {
+			name = user.Name
+		}
+
+		if user.Email != before.Email {
+			email = user.Email
+		}
+
+		return hsdb.CheckLocalUserTexts(tx, userID, name, email)
+	})
+}
+
 // GetUserByID retrieves a user by ID.
 func (s *State) GetUserByID(userID types.UserID) (*types.User, error) {
 	return s.db.GetUserByID(userID)
+}
+
+// GetUserByIDContext is [State.GetUserByID] for a request: it gives up when
+// ctx ends.
+func (s *State) GetUserByIDContext(ctx context.Context, userID types.UserID) (*types.User, error) {
+	return hsdb.GetUserByID(s.db.DB.WithContext(ctx), userID)
 }
 
 // GetUserByName retrieves a user by name.
@@ -836,6 +918,29 @@ func (s *State) GetUserByOIDCIdentifier(id string) (*types.User, error) {
 // ListUsersWithFilter retrieves users matching the specified filter criteria.
 func (s *State) ListUsersWithFilter(filter *types.User) ([]types.User, error) {
 	return s.db.ListUsers(filter)
+}
+
+// ListNodesByUsers returns the nodes each user in ids owns, all from one
+// snapshot of the NodeStore, so a page of users shows one moment.
+func (s *State) ListNodesByUsers(ids []types.UserID) map[types.UserID]views.Slice[types.NodeView] {
+	return s.nodeStore.ListNodesByUsers(ids)
+}
+
+// ListUsersPage retrieves at most limit users matching filter, in ID order,
+// after the user with ID after.
+func (s *State) ListUsersPage(ctx context.Context, filter *types.User, after types.UserID, limit int) ([]types.User, error) {
+	return hsdb.ListUsersPage(s.db.DB.WithContext(ctx), filter, after, limit)
+}
+
+// UsersMoment holds off every write of a user until the returned release
+// runs, so the users a read takes from the database, the copies the NodeStore
+// holds of them and the nodes they own are of one moment: that of the
+// NodeStore snapshot it takes. Nodes may come and change meanwhile; they show
+// in a later snapshot. A caller must not hold it twice.
+func (s *State) UsersMoment() func() {
+	s.userUpdateMu.RLock()
+
+	return s.userUpdateMu.RUnlock
 }
 
 // ListAllUsers retrieves all users in the system.
@@ -4120,6 +4225,22 @@ func reloginChanged(before, after types.NodeView, now time.Time) relogin {
 	}
 }
 
+// CatchUpPolicyUsers hands the policy manager the users again after a
+// refresh failed, so a committed user write does not wait for the next one to
+// take effect. It returns what to send, empty when nothing was stale.
+func (s *State) CatchUpPolicyUsers() change.Change {
+	if !s.policyUsersStale.Load() {
+		return change.Change{}
+	}
+
+	c, err := s.updatePolicyManagerUsers()
+	if err != nil {
+		log.Error().Err(err).Msg("updating the policy users after a failed refresh")
+	}
+
+	return c
+}
+
 // updatePolicyManagerUsers pushes the current user list into the policy
 // manager, rebuilds peer adjacency when user identity changed, and returns
 // a PolicyChange when clients need a refresh.
@@ -4129,6 +4250,8 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 
 	users, err := s.ListAllUsers()
 	if err != nil {
+		s.policyUsersStale.Store(true)
+
 		return change.Change{}, fmt.Errorf("listing users for policy update: %w", err)
 	}
 
@@ -4136,8 +4259,13 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 
 	changed, peerMapChanged, err := s.polMan.SetUsers(users)
 	if err != nil {
+		s.policyUsersStale.Store(true)
+
 		return change.Change{}, fmt.Errorf("updating policy manager users: %w", err)
 	}
+
+	// What an earlier failed refresh missed is not known: recompute all.
+	changed = s.policyUsersStale.Swap(false) || changed
 
 	log.Debug().Caller().Bool("policy.changed", changed).Msg("policy manager user update completed because SetUsers operation finished")
 
