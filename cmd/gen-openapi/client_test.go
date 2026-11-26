@@ -458,6 +458,44 @@ func TestStrict(t *testing.T) {
 	require.Equal(t, clientv0.ProblemCodeNotFound, re.Problem.Code)
 }
 
+// TestResult: a success with a status the operation does not answer is an
+// *AnswerError with ErrStatus and the statuses it does; an answer that is
+// not a problem is a *ResponseError with no Problem.
+func TestResult(t *testing.T) {
+	t.Parallel()
+
+	_, err := clientv0.Got(answering(t, http.StatusCreated, user("1")).GetUserWithResponse(t.Context(), "1"))
+
+	var ae *clientv0.AnswerError
+
+	require.ErrorAs(t, err, &ae)
+	require.ErrorIs(t, err, clientv0.ErrStatus)
+	require.Equal(t, []int{200}, ae.Want)
+
+	err = clientv0.Done(answering(t, http.StatusOK, `{}`).DeleteNodeWithResponse(t.Context(), "1", nil))
+	require.ErrorIs(t, err, clientv0.ErrStatus)
+
+	require.NoError(t, clientv0.Done(answering(t, http.StatusNoContent, ``).DeleteNodeWithResponse(t.Context(), "1", nil)))
+
+	// GET /config answers YAML, and only YAML.
+	resp, err := answering(t, http.StatusOK, `{}`).GetConfigWithResponse(t.Context(), nil)
+	require.NoError(t, err)
+	require.ErrorIs(t, resp.Err(), clientv0.ErrContentType)
+
+	// A success whose Content-Type is not JSON is read all the same.
+	u, err := clientv0.Got(answeringAs(t, "text/plain", user("1")).GetUserWithResponse(t.Context(), "1"))
+	require.NoError(t, err)
+	require.Equal(t, "u1", u.Name)
+
+	_, err = clientv0.Got(answering(t, http.StatusBadGateway, `<html>`).GetUserWithResponse(t.Context(), "1"))
+
+	var re *clientv0.ResponseError
+
+	require.ErrorAs(t, err, &re)
+	require.Nil(t, re.Problem)
+	require.Equal(t, http.StatusBadGateway, re.Response.StatusCode)
+}
+
 // doer answers every request with status, kind and body, built by hand as
 // a caller's transport or a test double may: with the request it answers
 // when withRequest, and without.
