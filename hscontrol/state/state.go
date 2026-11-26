@@ -296,6 +296,23 @@ type State struct {
 	// userUpdateMu keeps committed user changes and cached copies in the same order.
 	userUpdateMu sync.RWMutex
 
+	// ownersMu orders every write that gives a user a node or takes one from
+	// it (a registration, the delete of a node, a tag write) against the
+	// delete of a user, which takes it exclusive for one transaction and one
+	// NodeStore write: what the delete reads, removes from the database and
+	// then from the NodeStore stays the user's whole while it runs, and no
+	// node joins a user that is gone. Without it a tag write could commit
+	// between the delete's read and its DELETE, answer success, and lose the
+	// node it had just tagged. Taken after a machine's registration lock and
+	// policyMu, before anything else, and never twice by one goroutine: a
+	// delete queued between the two would hold the second for ever.
+	ownersMu sync.RWMutex
+
+	// nodeInserted, when set, runs after a new node's row commits and
+	// before the node enters the NodeStore; see
+	// [State.SetNodeInsertedHookForTesting].
+	nodeInserted func()
+
 	// policyUsersMu orders user-list reads with SetUsers, so a list read
 	// before a commit cannot replace one read after it.
 	policyUsersMu sync.Mutex
@@ -812,59 +829,220 @@ func credentialCreatedByUser(credential types.CredentialView, userID uint) bool 
 	return credential.Valid() && credential.User().Valid() && credential.User().ID() == userID
 }
 
-func taggedCredentialCreatedByUser(credential types.CredentialView, userID types.UserID) bool {
-	return credential.Valid() && credential.Tags().Len() > 0 && credential.UserID().Valid() &&
-		types.UserID(credential.UserID().Get()) == userID
+// ErrUserChanged refuses the delete of a user whose nodes or keys are not
+// those of the expect it was given.
+var ErrUserChanged = errors.New("the user changed since the dry run")
+
+// UserDeletion is what the delete of a user removes, or in a dry run would.
+type UserDeletion struct {
+	hsdb.UserContents
+
+	// Expect stands for the user and what is removed with it: see
+	// [hsdb.UserContents.Token].
+	Expect string
 }
 
-// DeleteUser permanently removes a user and all associated data (nodes, API keys, etc).
-// This operation is irreversible.
-// It also updates the policy manager to ensure ACL policies referencing the deleted
-// user are re-evaluated immediately, fixing issue #2967.
-func (s *State) DeleteUser(userID types.UserID) (change.Change, error) {
-	err := s.db.DestroyUser(userID)
-	if err != nil {
-		return change.Change{}, err
-	}
+// DeleteUser removes a user with the keys it owns, as [State.DeleteUserIf]
+// without nodes, dry run or expect.
+func (s *State) DeleteUser(userID types.UserID) ([]change.Change, error) {
+	_, changes, err := s.DeleteUserIf(userID, false, false, "")
 
-	// Tagged keys outlive the user that made them; their NodeStore copies
-	// must stop naming it, as the database already does.
-	dropCreator := func(n *types.Node) {
-		k := n.AuthKey
-		if !taggedCredentialCreatedByUser(k.View(), userID) {
-			return
+	return changes, err
+}
+
+// DeleteUserIf removes a user, the auth keys and API keys it owns and, with
+// withNodes, its nodes, in one transaction; tagged nodes and keys it made
+// stay and forget it. A user that owns nodes without withNodes is
+// [hsdb.ErrUserStillHasNodes]; a non-empty expect that is not the
+// deletion's own is [ErrUserChanged]; both remove nothing. A dryRun answers
+// what would be removed and removes nothing; it reads, and locks nothing.
+//
+// It runs under ownersMu and the user's rows ([hsdb.LockUserContents]), so
+// what it reads is what it removes: a node or a key that comes for the user
+// meanwhile waits, then finds the user gone. Once the transaction commits,
+// the nodes leave the NodeStore in one write, their addresses are freed and
+// their peers are told. ownersMu is held exclusive for one transaction and
+// one NodeStore write, however many nodes the user has: every registration
+// in the server waits for it. A failure after the commit is logged; the
+// delete happened, and its answer says what it removed.
+func (s *State) DeleteUserIf(userID types.UserID, withNodes, dryRun bool, expect string) (*UserDeletion, []change.Change, error) {
+	if dryRun {
+		var del *UserDeletion
+
+		err := s.db.Read(func(rx *gorm.DB) error {
+			c, err := hsdb.ReadUserContents(rx, userID)
+			if err != nil {
+				return err
+			}
+
+			del, err = deletionOf(c, withNodes, expect)
+
+			return err
+		})
+		if err != nil {
+			return nil, nil, err
 		}
 
-		key := *k
-		key.UserID, key.User = nil, nil
-		n.AuthKey = &key
+		return del, nil, nil
 	}
+
+	s.ownersMu.Lock()
+
+	unlockOwners := sync.OnceFunc(s.ownersMu.Unlock)
+	defer unlockOwners()
+
+	genBefore := s.polMan.NodesGeneration()
+
+	del, err := s.destroyUser(userID, withNodes, expect)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	changes := s.forgetDeletedUser(del)
+
+	unlockOwners()
+
+	log.Info().Uint64(zf.UserID, uint64(del.User.ID)).Str(zf.UserName, del.User.Name).
+		Int(zf.UserNodeCount, len(del.Nodes)).Int(zf.UserAuthKeyCount, len(del.AuthKeys)).Int(zf.UserAPIKeyCount, len(del.APIKeys)).
+		Msg("user deleted")
+
+	return del, append(changes, s.policyAfterUserDelete(genBefore)...), nil
+}
+
+// deletionOf is the deletion of c, or why it is refused.
+func deletionOf(c *hsdb.UserContents, withNodes bool, expect string) (*UserDeletion, error) {
+	del := &UserDeletion{UserContents: *c, Expect: c.Token()}
+
+	switch {
+	case len(c.Nodes) > 0 && !withNodes:
+		return nil, &hsdb.UserHasNodesError{Nodes: c.Nodes}
+	case expect != "" && expect != del.Expect:
+		return nil, ErrUserChanged
+	}
+
+	return del, nil
+}
+
+// destroyUser is the transaction of [State.DeleteUserIf], under
+// userUpdateMu, which keeps a user write from committing around it.
+func (s *State) destroyUser(userID types.UserID, withNodes bool, expect string) (*UserDeletion, error) {
+	s.userUpdateMu.Lock()
+	defer s.userUpdateMu.Unlock()
+
+	var del *UserDeletion
+
+	err := s.db.Write(func(tx *gorm.DB) error {
+		c, err := hsdb.LockUserContents(tx, userID)
+		if err != nil {
+			return err
+		}
+
+		del, err = deletionOf(c, withNodes, expect)
+		if err != nil {
+			return err
+		}
+
+		return hsdb.DestroyUserContents(tx, c)
+	})
+
+	return del, err
+}
+
+// forgetDeletedUser takes the nodes of a delete that committed out of the
+// NodeStore, and makes the copies of what stays forget the user, as the
+// database did, in one write; then frees their addresses.
+func (s *State) forgetDeletedUser(del *UserDeletion) []change.Change {
+	uid := del.User.ID
+	gone := set.SetOf(del.AuthKeys)
+	removed := nodeIDs(del.Nodes)
+	isRemoved := set.SetOf(removed)
 
 	updates := make(map[types.NodeID]UpdateNodeFunc)
 
 	for _, n := range s.nodeStore.ListNodes().All() {
-		if taggedCredentialCreatedByUser(n.AuthKey(), userID) {
-			updates[n.ID()] = dropCreator
+		if !isRemoved.Contains(n.ID()) && refersTo(n, uid, gone) {
+			updates[n.ID()] = func(n *types.Node) { forgetUser(n, uid, gone) }
 		}
 	}
 
-	s.nodeStore.UpdateNodes(updates)
+	changes := make([]change.Change, 0, len(del.Nodes)+2)
 
-	// Update policy manager with the new user list (without the deleted user)
-	// This ensures that if the policy references the deleted user, it gets
-	// re-evaluated immediately rather than when some other operation triggers it.
-	c, err := s.updatePolicyManagerUsers()
+	if len(removed) == 0 && len(updates) == 0 {
+		return changes
+	}
+
+	peers := s.nodeStore.DeleteNodes(removed, updates)
+
+	for _, n := range del.Nodes {
+		s.ipAlloc.FreeIPs(n.IPs())
+		changes = append(changes, change.NodeRemoved(n.ID, peers[n.ID]...)...)
+	}
+
+	return changes
+}
+
+func nodeIDs(nodes types.Nodes) []types.NodeID {
+	ids := make([]types.NodeID, len(nodes))
+	for i, n := range nodes {
+		ids[i] = n.ID
+	}
+
+	return ids
+}
+
+// policyAfterUserDelete hands the policy manager the nodes and the users
+// after a delete of a user. A failure is logged: the delete happened.
+func (s *State) policyAfterUserDelete(genBefore uint64) []change.Change {
+	policyNodes, err := s.updatePolicyManagerNodes(genBefore)
+
+	policyUsers, usersErr := s.updatePolicyManagerUsers()
+	if policyUsers.IsEmpty() {
+		// Peer lists are refreshed even when the policy did not move.
+		policyUsers = change.UserRemoved()
+	}
+
+	err = errors.Join(err, usersErr)
 	if err != nil {
-		return change.Change{}, fmt.Errorf("updating policy after user deletion: %w", err)
+		log.Error().Err(err).Msg("updating the policy after a user was deleted")
 	}
 
-	// If the policy manager doesn't detect changes, still return UserRemoved
-	// to ensure peer lists are refreshed
-	if c.IsEmpty() {
-		c = change.UserRemoved()
+	return []change.Change{policyNodes, policyUsers}
+}
+
+// refersTo reports whether n names the user uid, other than as its owner,
+// or one of the auth keys gone.
+func refersTo(n types.NodeView, uid uint, gone set.Set[uint64]) bool {
+	k := n.AuthKey()
+
+	return n.CreatedByUserID().Get() == uid || gone.Contains(n.AuthKeyID().Get()) ||
+		k.Valid() && (k.UserID().Get() == uid || k.CreatedByUserID().Get() == uid)
+}
+
+// forgetUser drops from n what [refersTo] finds. The key is replaced, not
+// changed, so earlier snapshots keep theirs.
+func forgetUser(n *types.Node, uid uint, gone set.Set[uint64]) {
+	if n.CreatedByUserID != nil && *n.CreatedByUserID == uid {
+		n.CreatedByUserID = nil
 	}
 
-	return c, nil
+	if n.AuthKeyID != nil && gone.Contains(*n.AuthKeyID) {
+		n.AuthKeyID, n.AuthKey = nil, nil
+	}
+
+	if n.AuthKey == nil {
+		return
+	}
+
+	key := *n.AuthKey
+	if key.UserID != nil && *key.UserID == uid {
+		key.UserID, key.User = nil, nil
+	}
+
+	if key.CreatedByUserID != nil && *key.CreatedByUserID == uid {
+		key.CreatedByUserID = nil
+	}
+
+	n.AuthKey = &key
 }
 
 // RenameUser changes a user's name. The new name must be unique and a valid
@@ -950,15 +1128,19 @@ func (s *State) ListUsersPage(ctx context.Context, filter *types.User, after typ
 	return hsdb.ListUsersPage(s.db.DB.WithContext(ctx), filter, after, limit)
 }
 
-// UsersMoment holds off every write of a user until the returned release
-// runs, so the users a read takes from the database, the copies the NodeStore
-// holds of them and the nodes they own are of one moment: that of the
-// NodeStore snapshot it takes. Nodes may come and change meanwhile; they show
-// in a later snapshot. A caller must not hold it twice.
+// UsersMoment holds off every write and delete of a user until the returned
+// release runs, so the users a read takes from the database, the copies the
+// NodeStore holds of them and the nodes they own are of one moment: that of
+// the NodeStore snapshot it takes. Nodes may come and change meanwhile; they
+// show in a later snapshot. A caller must not hold it twice.
 func (s *State) UsersMoment() func() {
+	s.ownersMu.RLock()
 	s.userUpdateMu.RLock()
 
-	return s.userUpdateMu.RUnlock
+	return func() {
+		s.userUpdateMu.RUnlock()
+		s.ownersMu.RUnlock()
+	}
 }
 
 // ListAllUsers retrieves all users in the system.
@@ -1016,9 +1198,15 @@ func (s *State) persistNodeWith(
 	// Explicitly select all node columns so GORM includes nil/zero-value
 	// fields (e.g. UserID=nil when converting a user-owned node to tagged).
 	err := s.db.Write(func(tx *gorm.DB) error {
-		err := tx.Select(columns).Updates(nodePtr).Error
-		if err != nil {
-			return err
+		res := tx.Select(columns).Updates(nodePtr)
+		if res.Error != nil {
+			return res.Error
+		}
+
+		// The row was deleted after the NodeStore read: the node is gone,
+		// whatever the NodeStore still holds until its delete lands.
+		if res.RowsAffected == 0 {
+			return fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, node.ID())
 		}
 
 		if inTx != nil {
@@ -1229,6 +1417,9 @@ func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.Change, er
 // act once: a call that finds the row already gone returns no changes, and
 // only the call that removed the row frees the addresses.
 func (s *State) DeleteNode(node types.NodeView) ([]change.Change, error) {
+	s.ownersMu.RLock()
+	defer s.ownersMu.RUnlock()
+
 	genBefore := s.polMan.NodesGeneration()
 
 	s.persistMu.Lock()
@@ -1845,6 +2036,9 @@ func (s *State) ExpireNodeIf(nodeID types.NodeID, revision string) (types.NodeVi
 // the row first, that delete frees the addresses and this one answers that
 // the node is gone.
 func (s *State) DeleteNodeIf(nodeID types.NodeID, revision string) ([]change.Change, error) {
+	s.ownersMu.RLock()
+	defer s.ownersMu.RUnlock()
+
 	genBefore := s.polMan.NodesGeneration()
 
 	node, err := s.nodeStore.BeginDeleteIf(nodeID, revision)
@@ -1923,6 +2117,10 @@ func (s *State) SetNodeTagsIf(
 	// writes share a batch of the writer.
 	s.policyMu.RLock()
 	defer s.policyMu.RUnlock()
+
+	// A tag takes the node from its user; see ownersMu.
+	s.ownersMu.RLock()
+	defer s.ownersMu.RUnlock()
 
 	revision, err := check(TagPolicy{s.polMan})
 	if err != nil {
@@ -3003,9 +3201,35 @@ func (s *State) ExpirePreAuthKey(id uint64) error {
 	return s.db.ExpirePreAuthKey(id)
 }
 
-// DeletePreAuthKey permanently deletes a pre-authentication key.
+// DeletePreAuthKey permanently deletes a pre-authentication key. The nodes
+// that joined with it forget it in the NodeStore too, as their rows did; an
+// ephemeral key a node refers to is kept, revoked, and so is the reference.
 func (s *State) DeletePreAuthKey(id uint64) error {
-	return s.db.DeletePreAuthKey(id)
+	err := s.db.DeletePreAuthKey(id)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.GetPreAuthKeyByID(id)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+
+	updates := make(map[types.NodeID]UpdateNodeFunc)
+
+	for _, n := range s.nodeStore.ListNodes().All() {
+		if n.AuthKeyID().Get() == id {
+			updates[n.ID()] = func(n *types.Node) {
+				if n.AuthKeyID != nil && *n.AuthKeyID == id {
+					n.AuthKeyID, n.AuthKey = nil, nil
+				}
+			}
+		}
+	}
+
+	s.nodeStore.UpdateNodes(updates)
+
+	return nil
 }
 
 // CreateOAuthClient creates a new OAuth client-credentials client, returning the
@@ -3682,6 +3906,10 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		return types.NodeView{}, err
 	}
 
+	if s.nodeInserted != nil {
+		s.nodeInserted()
+	}
+
 	// Add to [NodeStore] after database creates the ID
 	node := s.nodeStore.PutNode(*savedNode)
 	if node.Valid() && node.GivenName() != savedNode.GivenName {
@@ -3883,12 +4111,6 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, s.policyChangeSince(genBefore), hsdb.ErrNodeNotFoundRegistrationCache
 	}
 
-	// Get the user
-	user, err := s.db.GetUserByID(userID)
-	if err != nil {
-		return types.NodeView{}, s.policyChangeSince(genBefore), fmt.Errorf("finding user: %w", err)
-	}
-
 	regData := regEntry.RegistrationData()
 
 	// Hostname was already validated/normalised at producer time. Build
@@ -3909,6 +4131,16 @@ func (s *State) HandleNodeFromAuthPath(
 	// Serialise registration for this machine so concurrent auth callbacks
 	// resolve to a single node rather than racing the find-then-create section.
 	defer s.lockRegistration(machineKey)()
+
+	// Before the user is read: a delete of the user then either finishes
+	// first, or waits until the node is the user's to remove with it.
+	s.ownersMu.RLock()
+	defer s.ownersMu.RUnlock()
+
+	user, err := s.db.GetUserByID(userID)
+	if err != nil {
+		return types.NodeView{}, s.policyChangeSince(genBefore), fmt.Errorf("finding user: %w", err)
+	}
 
 	all := s.nodeStore.GetNodesByMachineKeyAllUsers(machineKey)
 
@@ -4238,6 +4470,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// Serialise registration for this machine so concurrent restarts resolve
 	// to a single node rather than racing the find-then-create section.
 	defer s.lockRegistration(machineKey)()
+
+	// Before the key is read: a user deleted meanwhile has taken it along.
+	s.ownersMu.RLock()
+	defer s.ownersMu.RUnlock()
 
 	// Read before any NodeStore write below; see updatePolicyManagerNodes.
 	genBefore := s.polMan.NodesGeneration()
@@ -4834,6 +5070,12 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 	}
 
 	return change.Change{}, nil
+}
+
+// SetNodeInsertedHookForTesting runs fn after each new node's row commits
+// and before the node enters the NodeStore; nil removes it.
+func (s *State) SetNodeInsertedHookForTesting(fn func()) {
+	s.nodeInserted = fn
 }
 
 // UpdatePolicyManagerUsersForTest updates the policy manager's user cache.

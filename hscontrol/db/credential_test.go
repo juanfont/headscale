@@ -1,6 +1,7 @@
 package db
 
 import (
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -348,6 +349,14 @@ func TestMintWaitsForARevoke(t *testing.T) {
 func whileHeld(t *testing.T, db *HSDatabase, hold func(tx *gorm.DB) error, op func() error) error {
 	t.Helper()
 
+	return whileHeldThen(t, db, hold, op, nil)
+}
+
+// whileHeldThen is [whileHeld] where then, when set, writes in the
+// transaction once op waits, before it commits.
+func whileHeldThen(t *testing.T, db *HSDatabase, hold func(tx *gorm.DB) error, op func() error, then func(tx *gorm.DB) error) error {
+	t.Helper()
+
 	sqlDB, err := db.DB.DB()
 	require.NoError(t, err)
 
@@ -388,6 +397,10 @@ func whileHeld(t *testing.T, db *HSDatabase, hold func(tx *gorm.DB) error, op fu
 			t.Fatal("neither waited nor answered")
 		case <-tick.C:
 		}
+	}
+
+	if then != nil {
+		require.NoError(t, then(tx))
 	}
 
 	require.NoError(t, tx.Commit().Error)
@@ -451,4 +464,234 @@ func TestCredentialLockOrder(t *testing.T) {
 			}
 		}
 	}
+}
+
+// pgWaiting reports whether n or more statements wait for a lock.
+func pgWaiting(t *testing.T, db *HSDatabase, n int64) bool {
+	t.Helper()
+
+	var got int64
+
+	require.NoError(t, db.DB.Raw(
+		"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+	).Scan(&got).Error)
+
+	return got >= n
+}
+
+// revokeLongAgo revokes the credentials ids two days back.
+func revokeLongAgo(t *testing.T, db *HSDatabase, ids ...uint64) {
+	t.Helper()
+
+	require.NoError(t, db.DB.Model(&types.Credential{}).Where("id IN ?", ids).
+		Update("revoked", time.Now().Add(-48*time.Hour).UTC()).Error)
+}
+
+// TestRevokedRemovalBesideAUserDelete: the hourly removal of revoked
+// credentials never waits for a row, so it cannot deadlock with the delete
+// of a user, whatever rows the delete locks and in whichever order. The
+// user made a tagged key and a client and owns an API key, all revoked, the
+// ones it made first; the delete holds the user and its key; the removal
+// takes what the user made, skips the key and ends without waiting; the
+// delete then clears what the user made (gone) and removes the key, which
+// it reported. No timing: the test
+// steps the delete's transaction by hand.
+func TestRevokedRemovalBesideAUserDelete(t *testing.T) {
+	db := newPostgresTestDB(t)
+
+	user := db.CreateUserForTest("victim")
+	uid := types.UserID(user.ID)
+
+	// What the user made: a tagged key (created_by_user_id) and a client
+	// (user_id); what it owns: an API key, made last.
+	var (
+		tagged      *types.PreAuthKey
+		client, key *types.Credential
+	)
+
+	require.NoError(t, db.Write(func(tx *gorm.DB) error {
+		var err error
+
+		tagged, _, err = CreatePreAuthKeyFrom(tx, NewPreAuthKey{Tags: []string{"tag:ci"}, CreatedBy: &uid})
+		if err != nil {
+			return err
+		}
+
+		client, _, err = CreateOAuthClientFrom(tx, NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}, CreatedBy: &uid})
+		if err != nil {
+			return err
+		}
+
+		key, _, err = CreateAPIKeyFrom(tx, NewAPIKey{Owner: &uid})
+
+		return err
+	}))
+	require.Less(t, client.ID, key.ID)
+	revokeLongAgo(t, db, tagged.ID, client.ID, key.ID)
+
+	tx := db.DB.Begin()
+	defer tx.Rollback()
+
+	c, err := LockUserContents(tx, uid)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{key.ID}, c.APIKeys)
+
+	type removal struct {
+		n   int64
+		err error
+	}
+
+	removed := make(chan removal, 1)
+
+	go func() {
+		n, err := db.DestroyRevokedCredentialsBefore(time.Now())
+		removed <- removal{n, err}
+	}()
+
+	// Until the removal ends or waits; a removal that waits is then met
+	// by the delete, as the hourly job is in production.
+	var (
+		r      removal
+		ended  bool
+		waited bool
+	)
+
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+
+	deadline := time.After(30 * time.Second)
+
+	for !ended && !waited {
+		select {
+		case r = <-removed:
+			ended = true
+		case <-tick.C:
+			waited = pgWaiting(t, db, 1)
+		case <-deadline:
+			t.Fatal("the removal neither ended nor waited")
+		}
+	}
+
+	require.NoError(t, DestroyUserContents(tx, c), "the delete is not aborted")
+	require.NoError(t, tx.Commit().Error)
+
+	if !ended {
+		r = <-removed
+	}
+
+	require.NoError(t, r.err, "the removal is not aborted")
+	require.False(t, waited, "the removal waited for a row")
+	require.Equal(t, int64(2), r.n, "the removal takes what the user made and leaves the held key")
+
+	var left int64
+
+	require.NoError(t, db.DB.Model(&types.Credential{}).Where("id IN ?", []uint64{tagged.ID, client.ID, key.ID}).Count(&left).Error)
+	require.Zero(t, left)
+}
+
+// TestRevokedRemovalSkipsAHeldRow: a revoked row that another transaction
+// holds is left, and the next run removes it.
+func TestRevokedRemovalSkipsAHeldRow(t *testing.T) {
+	db := newPostgresTestDB(t)
+
+	ids := make([]uint64, 2)
+
+	for i := range ids {
+		require.NoError(t, db.Write(func(tx *gorm.DB) error {
+			k, _, err := CreateAPIKeyFrom(tx, NewAPIKey{})
+			ids[i] = k.ID
+
+			return err
+		}))
+	}
+
+	revokeLongAgo(t, db, ids...)
+
+	hold := db.DB.Begin()
+	require.NoError(t, hold.Exec("SELECT id FROM credentials WHERE id = ? FOR UPDATE", ids[0]).Error)
+
+	n, err := db.DestroyRevokedCredentialsBefore(time.Now())
+	require.NoError(t, err)
+	require.Equal(t, int64(1), n, "the held row is skipped, not waited for")
+
+	require.NoError(t, hold.Commit().Error)
+
+	n, err = db.DestroyRevokedCredentialsBefore(time.Now())
+	require.NoError(t, err)
+	require.Equal(t, int64(1), n, "the next run removes it")
+}
+
+// TestRevokedRemovalInPieces: a backlog of more revoked rows than one
+// statement may bind on either database (SQLite 32766, PostgreSQL 65535) is
+// removed whole, a piece at a time.
+func TestRevokedRemovalInPieces(t *testing.T) {
+	eachDB(t, func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		const backlog = 1<<16 + 1
+
+		revoked := time.Now().Add(-48 * time.Hour).UTC()
+		insertCredentials(t, db, types.CredentialAPIKey, backlog, nil, &revoked)
+
+		n, err := db.DestroyRevokedCredentialsBefore(time.Now())
+		require.NoError(t, err)
+		require.Equal(t, int64(backlog), n)
+
+		var left int64
+
+		require.NoError(t, db.DB.Model(&types.Credential{}).Count(&left).Error)
+		require.Zero(t, left)
+	})
+}
+
+// TestRevokedRemovalOfAnyOffset: the removal takes a row revoked before its
+// cutoff and keeps one revoked at or after it, whatever offset the time was
+// stored with: a database that an older writer filled holds server-zone times,
+// and SQLite compares stored times as text. Revoked rows kept by the cutoff
+// fill whole pieces without stopping the removal of an older row behind them.
+func TestRevokedRemovalOfAnyOffset(t *testing.T) {
+	eachDB(t, func(t *testing.T, db *HSDatabase) {
+		t.Helper()
+
+		for name, loc := range map[string]*time.Location{
+			"west": time.FixedZone("west", -5*60*60),
+			"east": time.FixedZone("east", 9*60*60),
+			"UTC":  time.UTC,
+		} {
+			_, key, err := db.CreateAPIKey(nil)
+			require.NoError(t, err)
+
+			revoked := time.Now().Add(-48 * time.Hour).Truncate(time.Microsecond).In(loc)
+			require.NoError(t, db.DB.Model(&types.Credential{}).Where("id = ?", key.ID).Update("revoked", revoked).Error)
+
+			for _, tc := range []struct {
+				cutoff time.Duration
+				left   int64
+			}{{-time.Minute, 1}, {0, 1}, {time.Microsecond, 0}} {
+				_, err := db.DestroyRevokedCredentialsBefore(revoked.Add(tc.cutoff))
+				require.NoError(t, err)
+
+				var left int64
+
+				require.NoError(t, db.DB.Model(&types.Credential{}).Where("id = ?", key.ID).Count(&left).Error)
+				require.Equal(t, tc.left, left, "%s: cutoff revoked%+v", name, tc.cutoff)
+			}
+		}
+
+		recent := time.Now().UTC()
+		old := recent.Add(-48 * time.Hour)
+
+		rows := make([]types.Credential, idsPerStatement+1)
+		for i := range rows {
+			rows[i] = types.Credential{Kind: types.CredentialAPIKey, Identifier: "piece" + strconv.Itoa(i), Hash: []byte("$x"), Revoked: &recent}
+		}
+
+		rows[idsPerStatement].Revoked = &old
+
+		require.NoError(t, db.DB.Create(&rows).Error)
+
+		n, err := db.DestroyRevokedCredentialsBefore(recent.Add(-time.Hour))
+		require.NoError(t, err)
+		require.Equal(t, int64(1), n, "the old row behind a piece of kept ones")
+	})
 }

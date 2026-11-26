@@ -868,7 +868,7 @@ func TestPersistDuringDeleteDoesNotResurrectNode(t *testing.T) {
 
 	select {
 	case err := <-persistDone:
-		require.NoError(t, err)
+		require.ErrorIs(t, err, ErrNodeNotInNodeStore, "the row is gone")
 	case <-time.After(time.Second):
 		t.Error("persist blocked behind the NodeStore delete")
 	}
@@ -877,6 +877,22 @@ func TestPersistDuringDeleteDoesNotResurrectNode(t *testing.T) {
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 	releaseOnce.Do(func() { close(release) })
 	require.NoError(t, <-deleteDone)
+}
+
+// TestPersistOfAGoneRowFails: a write whose row was deleted after it read
+// the NodeStore, as by the delete of the node's user before the NodeStore
+// learns, says the node is gone; it once said it had written.
+func TestPersistOfAGoneRowFails(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	require.NoError(t, s.db.DB.Unscoped().Delete(&types.Node{}, nodeID).Error)
+
+	_, _, err := s.SetNodeExpiry(nodeID, new(time.Now().Add(time.Hour)))
+	require.ErrorIs(t, err, ErrNodeNotInNodeStore)
+
+	_, err = s.db.GetNodeByID(nodeID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound, "and wrote nothing")
 }
 
 func TestDeleteNodeKeepsStoreOnDBFailure(t *testing.T) {
@@ -1577,6 +1593,17 @@ func TestUpdatePolicyStoreFailure(t *testing.T) {
 func newPostgresStateForTest(t *testing.T) *State {
 	t.Helper()
 
+	s, err := NewState(postgresTestConfig(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	return s
+}
+
+// postgresTestConfig is [persistTestConfig] on a fresh PostgreSQL database.
+func postgresTestConfig(t *testing.T) *types.Config {
+	t.Helper()
+
 	srv, err := postgrestest.Start(t.Context())
 	if err != nil {
 		t.Skipf("start postgres: %s", err)
@@ -1607,11 +1634,7 @@ func newPostgresStateForTest(t *testing.T) *State {
 		},
 	}
 
-	s, err := NewState(cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = s.Close() })
-
-	return s
+	return cfg
 }
 
 // TestPostgresUpdatePolicyConcurrentWrites runs a second write while the

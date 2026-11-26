@@ -108,18 +108,14 @@ func CreatePreAuthKeyFrom(tx *gorm.DB, k NewPreAuthKey) (*types.PreAuthKey, *typ
 		return nil, nil, ErrPreAuthKeyNotTaggedOrOwned
 	}
 
-	err := holdCredential(tx, k.Maker)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	var (
 		user   *types.User
 		userID *uint
+		err    error
 	)
 
 	if k.User != nil {
-		user, err = GetUserByID(tx, *k.User)
+		user, err = holdUser(tx, *k.User)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -132,9 +128,28 @@ func CreatePreAuthKeyFrom(tx *gorm.DB, k NewPreAuthKey) (*types.PreAuthKey, *typ
 		return nil, nil, err
 	}
 
-	var createdBy *uint
+	// A maker deleted while the request ran leaves createdBy null, as its
+	// delete does to every key it made.
+	var (
+		createdBy *uint
+		maker     *types.User
+	)
+
 	if k.CreatedBy != nil {
-		createdBy = new(uint(*k.CreatedBy))
+		maker, err = holdUser(tx, *k.CreatedBy)
+		if err != nil && !errors.Is(err, ErrUserNotFound) {
+			return nil, nil, err
+		}
+
+		if maker != nil {
+			createdBy = &maker.ID
+		}
+	}
+
+	// After the users, as a delete of a user locks them.
+	err = holdCredential(tx, k.Maker)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	now := k.Created
@@ -167,16 +182,6 @@ func CreatePreAuthKeyFrom(tx *gorm.DB, k NewPreAuthKey) (*types.PreAuthKey, *typ
 
 	cred.User = user // nil for system-created keys
 
-	// The maker, read in the write: the answer of a create needs no read after
-	// the commit, which could fail and lose the secret.
-	var maker *types.User
-	if createdBy != nil {
-		maker, err = GetUserByID(tx, types.UserID(*createdBy))
-		if err != nil && !errors.Is(err, ErrUserNotFound) {
-			return nil, nil, err
-		}
-	}
-
 	return credentialToPreAuthKey(&cred), &types.PreAuthKeyNew{
 		ID:         cred.ID,
 		Key:        keyStr,
@@ -186,7 +191,9 @@ func CreatePreAuthKeyFrom(tx *gorm.DB, k NewPreAuthKey) (*types.PreAuthKey, *typ
 		Expiration: cred.Expiration,
 		CreatedAt:  cred.CreatedAt,
 		User:       user,
-		CreatedBy:  maker,
+		// The maker as held: the answer of a create needs no read after the
+		// commit, which could fail and lose the secret.
+		CreatedBy: maker,
 	}, nil
 }
 
