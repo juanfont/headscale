@@ -275,6 +275,7 @@ maps each one to its replacement.
 - Withdrawal removes routes granted only by auto-approval. Manual approvals and approvals made before this upgrade stay. Reapproval needs current policy or administrator approval. Registration rechecks auto-approval only after key rotation or route advertisement changes. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Route APIs and `autoApprovers.routes` reject host bits. Mask prefixes: `10.0.0.1/24` becomes `10.0.0.0/24`. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Exit routes need access to an internet address. Private-only rules no longer offer exit routes. [#3619](https://github.com/juanfont/headscale/pull/3619)
+- A router approved for the address of another user's device gets that user's `autogroup:self` rule for it, and the two are peers, as on Tailscale SaaS. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - An `app` grant to `*` gives its sources the approved subnet routes, as on Tailscale SaaS. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - `app` grants never offer exit routes. Exit nodes list the sources of an `app` grant to an internet address, as on Tailscale SaaS. [#3656](https://github.com/juanfont/headscale/pull/3656)
 - HA and `via` groups choose the healthy, online router with the oldest control session. Reconnecting routers become standby. Routers that keep their session can regain routes. [#3619](https://github.com/juanfont/headscale/pull/3619)

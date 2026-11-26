@@ -891,16 +891,19 @@ func ownSelfRules(
 }
 
 // filterSelfRules returns the autogroup:self rules a node's packet filter
-// holds: its own user's, or, on an exit node, whose exit routes contain
-// every self destination, every user's in user order, as Tailscale sends
-// them. Only the packet filter needs other users' rules: they never make
-// the exit node a peer, so the peer paths use [ownSelfRules].
+// holds: its own user's and, in user order as Tailscale sends them, those of
+// every user with a device its approved routes cover, which on an exit node
+// is every user. Reducing the rules to the node keeps the covered
+// destinations. An exit route makes no peer of a user's device, so the peer
+// paths use [ownSelfRules]; a subnet route does through the rule's
+// destination.
 func filterSelfRules(
 	cg *compiledGrant,
 	node types.NodeView,
 	userIdx userNodeIndex,
 ) keyedRules {
-	if !node.IsExitNode() {
+	routes := slices.Concat(node.SubnetRoutes(), node.ExitRoutes())
+	if len(routes) == 0 {
 		return ownSelfRules(cg, node, userIdx)
 	}
 
@@ -911,12 +914,26 @@ func filterSelfRules(
 	var all keyedRules
 
 	for _, uid := range slices.Sorted(maps.Keys(userIdx)) {
+		own := nodeHasUserIdentity(node) && node.User().ID() == uid
+		if !own && !routesCoverAny(routes, userIdx[uid]) {
+			continue
+		}
+
 		r := userSelfRules(cg, uid, userIdx)
 		all.rules = append(all.rules, r.rules...)
 		all.keys = append(all.keys, r.keys...)
 	}
 
 	return all
+}
+
+// routesCoverAny reports whether a route contains an address of any node.
+func routesCoverAny(routes []netip.Prefix, nodes []types.NodeView) bool {
+	return slices.ContainsFunc(nodes, func(n types.NodeView) bool {
+		return slices.ContainsFunc(n.IPs(), func(ip netip.Addr) bool {
+			return slices.ContainsFunc(routes, func(r netip.Prefix) bool { return r.Contains(ip) })
+		})
+	})
 }
 
 // userSelfRules returns uid's autogroup:self rules, shared from
