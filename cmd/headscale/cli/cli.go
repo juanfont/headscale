@@ -1,0 +1,36 @@
+// Package cli is the command tree of the headscale CLI: one spec per
+// command, run by the builder in package command.
+package cli
+
+import (
+	"github.com/juanfont/headscale/cmd/headscale/cli/command"
+)
+
+// commands is the tree, in the order the root help lists it.
+var commands = []command.Node{
+	serveCmd,
+	versionCmd,
+	checkGroup,
+	generateGroup,
+	completionCmd,
+	nodesGroup,
+	usersGroup,
+	authGroup,
+	apiGroup,
+	policyGroup,
+	debugGroup,
+}
+
+// Tree builds the command tree. It panics on a wrong spec, which is a
+// fault in the program; a test builds the tree first.
+func Tree() *command.Tree {
+	t, err := command.Build(
+		"headscale",
+		"headscale is an open source implementation of the Tailscale control server",
+		commands...)
+	if err != nil {
+		panic(err)
+	}
+
+	return t
+}

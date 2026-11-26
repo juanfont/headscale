@@ -1,324 +1,364 @@
 package cli
 
 import (
-	"cmp"
-	"context"
-	"errors"
-	"fmt"
-	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
+	"time"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
-	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/cobra"
+	"github.com/juanfont/headscale/cmd/headscale/cli/command"
+	"github.com/juanfont/headscale/cmdline/table"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 )
 
-// CLI user errors.
-var (
-	errFlagRequired       = errors.New("--name or --identifier flag is required")
-	errMultipleUsersMatch = errors.New("multiple users match query, specify an ID")
-	errUserNotFound       = errors.New("no user matches query")
-	errInvalidIdentifier  = errors.New("--identifier must be a positive user ID")
-)
-
-func usernameAndIDFlag(cmd *cobra.Command) {
-	cmd.Flags().Int64P("identifier", "i", -1, "User identifier (ID)")
-	cmd.Flags().StringP("name", "n", "", "Username")
+var usersGroup = command.Group{
+	Name:     "users",
+	Short:    "Manage users",
+	OldNames: []string{"user"},
+	Commands: []command.Node{usersList, usersGet, usersCreate, usersSet, usersDelete},
 }
 
-// usernameAndIDFromFlag returns the username and ID from the flags of the command.
-func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string, error) {
-	username, _ := cmd.Flags().GetString("name")
-
-	identifier, _ := cmd.Flags().GetInt64("identifier")
-
-	// An explicit zero or negative identifier never matches a user; the
-	// API treats id=0 as "no filter", which would list every user.
-	if cmd.Flags().Changed("identifier") && identifier <= 0 {
-		return 0, "", errInvalidIdentifier
-	}
-
-	if username == "" && identifier < 0 {
-		return 0, "", errFlagRequired
-	}
-
-	// Normalise unset/negative identifiers to 0 so the uint64
-	// conversion does not produce a bogus large value.
-	identifier = max(identifier, 0)
-
-	return uint64(identifier), username, nil //nolint:gosec // identifier is clamped to >= 0 above
-}
-
-// resolveSingleUser resolves exactly one user from the --name/--id flags,
-// returning the identifier of the matched user and the user itself.
-func resolveSingleUser(
-	ctx context.Context,
-	client *clientv1.ClientWithResponses,
-	cmd *cobra.Command,
-) (string, *clientv1.User, error) {
-	id, username, err := usernameAndIDFromFlag(cmd)
-	if err != nil {
-		return "", nil, err
-	}
-
-	return lookupUser(ctx, client, id, username)
-}
-
-// userIDFromArg resolves a --user value: an ID, or a user name when it is not
-// a number, so a user whose name is all digits must be given by ID.
-func userIDFromArg(
-	ctx context.Context,
-	client *clientv1.ClientWithResponses,
-	arg string,
-) (string, error) {
-	if arg == "" {
-		return "", nil
-	}
-
-	_, err := strconv.ParseUint(arg, util.Base10, 64)
-	if err == nil {
-		return arg, nil
-	}
-
-	id, _, err := lookupUser(ctx, client, 0, arg)
-	if err != nil {
-		return "", fmt.Errorf("--user %q: %w", arg, err)
-	}
-
-	return id, nil
-}
-
-// lookupUser resolves exactly one user by ID and/or name (0 and "" are unset),
-// returning the identifier of the matched user and the user itself.
-func lookupUser(
-	ctx context.Context,
-	client *clientv1.ClientWithResponses,
-	id uint64,
-	username string,
-) (string, *clientv1.User, error) {
-	params := &clientv1.ListUsersParams{}
-	if username != "" {
-		params.Name = &username
-	}
-
-	if id != 0 {
-		idStr := strconv.FormatUint(id, util.Base10)
-		params.Id = &idStr
-	}
-
-	resp, err := client.ListUsersWithResponse(ctx, params)
-	if err != nil {
-		return "", nil, fmt.Errorf("listing users: %w", err)
-	}
-
-	if resp.StatusCode() != http.StatusOK {
-		return "", nil, apiError(resp.StatusCode(), resp.JSONDefault)
-	}
-
-	users := resp.JSON200.Users
-
-	switch len(users) {
-	case 0:
-		return "", nil, errUserNotFound
-	case 1:
-		return users[0].Id, &users[0], nil
-	default:
-		return "", nil, fmt.Errorf("%w: %s", errMultipleUsersMatch, describeUsers(users))
-	}
-}
-
-// describeUsers renders the users that matched an ambiguous query so the
-// operator can pick one by ID.
-func describeUsers(users []clientv1.User) string {
-	parts := make([]string, len(users))
-	for i, user := range users {
-		parts[i] = fmt.Sprintf(
-			"id=%s name=%s email=%s provider=%s",
-			user.Id, user.Name, user.Email, user.Provider,
-		)
-	}
-
-	return strings.Join(parts, "; ")
-}
-
-func init() {
-	rootCmd.AddCommand(userCmd)
-	userCmd.AddCommand(createUserCmd)
-	createUserCmd.Flags().StringP("display-name", "d", "", "Display name")
-	createUserCmd.Flags().StringP("email", "e", "", "Email")
-	createUserCmd.Flags().StringP("picture-url", "p", "", "Profile picture URL")
-	userCmd.AddCommand(listUsersCmd)
-	usernameAndIDFlag(listUsersCmd)
-	listUsersCmd.Flags().StringP("email", "e", "", "Email")
-	userCmd.AddCommand(destroyUserCmd)
-	usernameAndIDFlag(destroyUserCmd)
-	userCmd.AddCommand(renameUserCmd)
-	usernameAndIDFlag(renameUserCmd)
-	renameUserCmd.Flags().StringP("new-name", "r", "", "New username")
-	mustMarkRequired(renameUserCmd, "new-name")
-}
-
-var userCmd = &cobra.Command{
-	Use:     "users",
-	Short:   "Manage the users of Headscale",
-	Aliases: []string{"user"},
-}
-
-var createUserCmd = &cobra.Command{
-	Use:     "create NAME",
-	Short:   "Creates a new user",
-	Aliases: []string{"c", cmdNew},
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return errMissingParameter
-		}
-
-		return nil
+var userColumns = table.Columns[clientv0.User]{
+	{Name: "id", Field: "id", Default: true, Help: "User ID"},
+	{
+		Name:    "name",
+		Field:   "name",
+		Default: true,
+		Help:    "Username; empty for some users from OIDC",
 	},
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		userName := args[0]
+	{Name: "display-name", Field: "displayName", Default: true, Help: "Display name"},
+	{Name: "email", Field: "email", Default: true, Help: "Email address"},
+	{
+		Name:    "provider",
+		Field:   "provider",
+		Default: true,
+		Help:    "Where the user comes from: local or oidc",
+	},
+	{
+		Name:    "count",
+		Field:   "nodeCount",
+		Default: true,
+		Help:    "Nodes the user owns, tagged nodes not counted",
+	},
+	{
+		Name:    "nodes",
+		Field:   "nodes",
+		Default: true,
+		List:    table.Cut,
+		Help:    "Names of the nodes the user owns",
+	},
+	{
+		Name:  "login-name",
+		Field: "loginName",
+		Help:  "What headscale shows for the user: the email, else the username, else the provider identifier",
+	},
+	{
+		Name:  "profile-pic-url",
+		Field: "profilePicUrl",
+		Help:  "URL of the profile picture",
+	},
+	{
+		Name:  "provider-id",
+		Field: "providerId",
+		Kind:  table.Text,
+		Help:  "Identifier at the identity provider",
+	},
+	//nolint:goconst // a column is named as its field
+	{Name: "created", Field: "created", Help: "When the user was created"},
+}
 
-		request := clientv1.CreateUserJSONRequestBody{Name: &userName}
+// user names a user in a message, as tables show it.
+func user(u clientv0.User) string { return table.Entity("user", u.Id, u.LoginName) }
 
-		if displayName, _ := cmd.Flags().GetString("display-name"); displayName != "" {
-			request.DisplayName = &displayName
-		}
+var usersList = command.NewList(command.ListSpec[command.NoInput, clientv0.User]{
+	Name:  "list",
+	Short: "List the users",
+	Long: `List every user, local and from OIDC, with the nodes each one owns.
 
-		if email, _ := cmd.Flags().GetString("email"); email != "" {
-			request.Email = &email
-		}
+NAME is the stored username; a user from OIDC can have none. COUNT and
+NODES are the nodes the user owns; a tagged node is owned by its tags and
+is in neither.
 
-		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
-			if _, err := url.Parse(pictureURL); err != nil { //nolint:noinlineerr
-				return fmt.Errorf("invalid picture URL: %w", err)
+NODES is truncated to fit your terminal. For all nodes of a user:
+
+  headscale users get carol -o json | jq -r '.nodes[].name'
+
+With -o json the command prints an array of the users as the API gives
+them; --filter and --sort apply to it as to the table.`,
+	Example: []string{
+		"headscale users list",
+		"headscale users list --filter provider=oidc --sort -count",
+		"headscale users ls --columns +login-name,-nodes",
+		"headscale users list --filter email=carol@example.com -o json",
+	},
+	Aliases: []string{"ls"},
+	Columns: userColumns,
+	NoRows:  "No users.",
+	Run: func(c command.Ctx, _ command.NoInput) ([]clientv0.User, error) {
+		return c.API.ListUsersAll(
+			c,
+			&clientv0.ListUsersParams{PageSize: c.API.PageSize},
+		)
+	},
+})
+
+type usersGetIn struct {
+	User clientv0.User `arg:"user" help:"<user> is an ID, an email, a username or a provider identifier."`
+}
+
+var usersGet = command.New(command.Spec[usersGetIn, clientv0.User]{
+	Name:  "get",
+	Short: "Show one user",
+	Long: `Show one user, with every column of users list.
+
+An ID wins; the email, the username and the provider identifier are
+searched together, and a word that matches more than one user is an error
+that lists them.
+
+With -o json the command prints the user as the API gives it.`,
+	Example: []string{
+		"headscale users get alice",
+		"headscale users get carol@example.com -o json",
+	},
+	Columns: userColumns,
+	Run: func(_ command.Ctx, in usersGetIn) (clientv0.User, error) {
+		return in.User, nil
+	},
+})
+
+type usersCreateIn struct {
+	Name          string `arg:"name"`
+	DisplayName   string `flag:"display-name" help:"Display name"`
+	Email         string `flag:"email"        help:"Email address"`
+	ProfilePicURL string `flag:"picture-url"  help:"Profile picture: an absolute http or https URL"`
+}
+
+var usersCreate = command.New(command.Spec[usersCreateIn, clientv0.User]{
+	Name:  "create",
+	Short: "Create a local user",
+	Long: `Create a local user with a username.
+
+The server checks the values: the username, --email as one address, and
+--picture-url as an absolute http or https URL. A username or an email
+that equals the username, the email or the provider identifier of another
+user, in any case, is refused: a policy names a user by these texts.
+
+With -o json the command prints the new user.`,
+	Example: []string{
+		"headscale users create dave",
+		`headscale users create dave --display-name "Dave D" --email dave@example.com`,
+	},
+	Run: func(c command.Ctx, in usersCreateIn) (clientv0.User, error) {
+		return clientv0.Got(c.API.CreateUserWithResponse(c, clientv0.CreateUserBody{
+			Name:          in.Name,
+			DisplayName:   given(in.DisplayName),
+			Email:         given(in.Email),
+			ProfilePicUrl: given(in.ProfilePicURL),
+		}))
+	},
+	Done: func(_ usersCreateIn, out clientv0.User, _ time.Time) string {
+		return user(out) + " created."
+	},
+})
+
+// given is a field of a create: left out when the flag gives nothing.
+func given(s string) *string {
+	if s == "" {
+		return nil
+	}
+
+	return &s
+}
+
+type usersSetIn struct {
+	User          clientv0.User       `arg:"user"          help:"<user> is an ID, an email, a username or a provider identifier."`
+	Name          command.Opt[string] `flag:"name"         help:"New username"`
+	DisplayName   command.Opt[string] `flag:"display-name" help:"New display name; \"\" clears it"`
+	Email         command.Opt[string] `flag:"email"        help:"New email address; \"\" clears it"`
+	ProfilePicURL command.Opt[string] `flag:"picture-url"  help:"New profile picture URL; \"\" clears it"`
+}
+
+var usersSet = command.New(command.Spec[usersSetIn, clientv0.User]{
+	Name:  "set",
+	Short: "Change a local user",
+	Long: `Change any field of a local user, the username included.
+
+A flag you do not pass leaves the field alone, and at least one is needed.
+An empty value clears the field; a user needs a username, so --name ""
+is refused. The server checks the values as for users create. All given
+fields change in one call, or none do. An OAuth access token cannot change
+the username or the email; an API key can.
+
+A user from OIDC is refused: the identity provider owns its fields, and the
+next login would overwrite them.
+
+With -o json the command prints the user after the change.`,
+	Example: []string{
+		`headscale users set alice --display-name "Alice A" --email a@b.c`,
+		"headscale users set alice --name alice2",
+		"headscale users set 3 --name alice2 --email a@b.c",
+		`headscale users set alice --picture-url ""`,
+	},
+	NeedsChange: true,
+	Run: func(c command.Ctx, in usersSetIn) (clientv0.User, error) {
+		return clientv0.Got(
+			c.API.UpdateUserWithApplicationMergePatchPlusJSONBodyWithResponse(
+				c,
+				in.User.Id,
+				clientv0.UpdateUserBody{
+					Name:          set(in.Name),
+					DisplayName:   set(in.DisplayName),
+					Email:         set(in.Email),
+					ProfilePicUrl: set(in.ProfilePicURL),
+				},
+			),
+		)
+	},
+	Done: func(in usersSetIn, out clientv0.User, _ time.Time) string {
+		var changed []string
+
+		for _, f := range []struct {
+			flag command.Opt[string]
+			word string
+		}{{in.Name, "name"}, {in.DisplayName, "display name"}, {in.Email, "email"}, {in.ProfilePicURL, "picture URL"}} {
+			if _, ok := f.flag.Get(); ok {
+				changed = append(changed, f.word)
 			}
-
-			request.PictureUrl = &pictureURL
 		}
 
-		log.Trace().Interface(zf.Request, request).Msg("sending CreateUser request")
+		return user(out) + " updated: " + strings.Join(changed, ", ") + "."
+	},
+})
 
-		resp, err := client.CreateUserWithResponse(ctx, request)
-		if err != nil {
-			return fmt.Errorf("creating user: %w", err)
-		}
+// set is a field of a merge patch: left out when the flag is not given.
+func set(o command.Opt[string]) *string {
+	v, ok := o.Get()
+	if !ok {
+		return nil
+	}
 
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), cmp.Or(resp.JSON409, resp.JSONDefault))
-		}
-
-		return printOutput(cmd, resp.JSON200.User, "User created")
-	}),
+	return &v
 }
 
-var destroyUserCmd = &cobra.Command{
-	Use:     "destroy --identifier ID or --name NAME",
-	Short:   "Destroys a user",
-	Aliases: []string{cmdDelete},
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		_, user, err := resolveSingleUser(ctx, client, cmd)
-		if err != nil {
-			return err
-		}
-
-		if !confirmAction(cmd, fmt.Sprintf(
-			"Do you want to remove the user %q (%s) and its pre-auth keys? Nodes owned by the user must be deleted or moved first.",
-			user.Name, user.Id,
-		)) {
-			return printOutput(cmd, map[string]string{colResult: "User not destroyed"}, "User not destroyed")
-		}
-
-		resp, err := client.DeleteUserWithResponse(ctx, user.Id)
-		if err != nil {
-			return fmt.Errorf("destroying user: %w", err)
-		}
-
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.JSONDefault)
-		}
-
-		return printOutput(cmd, resp.JSON200, "User destroyed")
-	}),
+type usersDeleteIn struct {
+	User      clientv0.User `arg:"user"        help:"<user> is an ID, an email, a username or a provider identifier."`
+	WithNodes bool          `flag:"with-nodes" help:"Delete the nodes of the user too"`
 }
 
-var listUsersCmd = &cobra.Command{
-	Use:     cmdList,
-	Short:   "List all the users",
-	Aliases: []string{"ls", cmdShow},
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		params := &clientv1.ListUsersParams{}
+// ownUser follows the question when the CLI calls with an API key of the
+// user: the key goes with the user.
+const ownUser = "This CLI calls with an API key of this user: once the user is deleted, the server refuses the CLI."
 
-		id, _ := cmd.Flags().GetInt64("identifier")
-		username, _ := cmd.Flags().GetString("name")
-		email, _ := cmd.Flags().GetString("email")
+var usersDelete = command.New(command.Spec[usersDeleteIn, clientv0.DeletedUser]{
+	Name:  "delete",
+	Short: "Delete a user with its keys",
+	Long: `Delete a user together with its auth keys and its API keys, revoked and
+expired ones too, so the counts may be more than the lists show by default.
+Tagged keys and OAuth clients the user made stay.
 
-		// filter by one param at most
-		switch {
-		case id > 0:
-			idStr := strconv.FormatInt(id, util.Base10)
-			params.Id = &idStr
-		case username != "":
-			params.Name = &username
-		case email != "":
-			params.Email = &email
-		}
+A user who still owns nodes is refused; --with-nodes deletes the nodes too.
+It is one step on the server: all of it, or nothing.
 
-		resp, err := client.ListUsersWithResponse(ctx, params)
+The command asks the server first what the delete would remove, and shows
+it: the nodes by name, and the keys counted. The delete then removes only
+what was shown. When that changed in between, nothing is removed, and the
+command asks again with what is there now; with --force it tries once more
+without asking. A second change is an error. A node or a key that comes or
+goes is a change; a rename, an expiry or a revoke is not.
+
+With -o json the command prints what was removed.`,
+	Example: []string{
+		"headscale users delete bob",
+		"headscale users delete alice --with-nodes",
+		"headscale users delete alice --with-nodes --force",
+	},
+	Aliases: []string{"rm"},
+	Changed: string(clientv0.ProblemCodeUserChanged),
+	Confirm: func(c command.Ctx, in usersDeleteIn) (command.Prompt, error) {
+		d, err := clientv0.Got(
+			c.API.DeleteUserWithResponse(c, in.User.Id, &clientv0.DeleteUserParams{
+				WithNodes: new(in.WithNodes),
+				DryRun:    new(true),
+				Expect:    c.Expect(in.User.Id),
+			}),
+		)
 		if err != nil {
-			return fmt.Errorf("listing users: %w", err)
+			return command.Prompt{}, err
 		}
 
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.JSONDefault)
+		names := make([]string, 0, len(d.Nodes))
+		for _, n := range d.Nodes {
+			names = append(names, n.Name)
 		}
 
-		users := resp.JSON200.Users
-
-		return printListOutput(cmd, users, func() error {
-			rows := make([][]string, 0, len(users))
-			for _, user := range users {
-				rows = append(
-					rows,
-					[]string{
-						user.Id,
-						user.DisplayName,
-						user.Name,
-						user.Email,
-						user.CreatedAt.Format(HeadscaleDateTimeFormat),
-					},
-				)
-			}
-
-			return renderTable([]string{"ID", "Name", "Username", "Email", colCreated}, rows)
-		})
-	}),
-}
-
-var renameUserCmd = &cobra.Command{
-	Use:     "rename",
-	Short:   "Renames a user",
-	Aliases: []string{"mv"},
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		userId, _, err := resolveSingleUser(ctx, client, cmd)
-		if err != nil {
-			return err
+		q := "Delete " + user(in.User)
+		if r := removed(d); r != "" {
+			q += ", " + r
 		}
 
-		newName, _ := cmd.Flags().GetString("new-name")
+		return command.Prompt{
+			Question: q + "?",
+			Action:   "delete " + user(in.User),
+			List:     names,
+			Guard:    d.Expect,
+			Warning: command.OwnWarning(c, ownUser, func(me clientv0.Me) bool {
+				cred, err := me.Credential.Get()
+				if err != nil || cred.Kind != clientv0.CredentialKindApiKey {
+					return false
+				}
 
-		resp, err := client.RenameUserWithResponse(ctx, userId, newName)
-		if err != nil {
-			return fmt.Errorf("renaming user: %w", err)
+				o, err := cred.Owner.Get()
+				if err != nil {
+					return false
+				}
+
+				u, err := o.User.Get()
+
+				return err == nil && u.Id == in.User.Id
+			}),
+		}, nil
+	},
+	Run: func(c command.Ctx, in usersDeleteIn) (clientv0.DeletedUser, error) {
+		out, err := clientv0.Got(
+			c.API.DeleteUserWithResponse(c, in.User.Id, &clientv0.DeleteUserParams{
+				WithNodes: new(in.WithNodes),
+				DryRun:    new(false),
+				Expect:    c.Expect(in.User.Id),
+			}),
+		)
+
+		// A second try would say no user matches: say how to tell.
+		return out, c.API.MayBeMade(
+			err,
+			"To look: headscale users get "+in.User.Id+"\n"+
+				"If no user matches, the delete was made.\n"+
+				"The delete removes all of it or nothing: a user that is still there lost nothing.",
+		)
+	},
+	Done: func(in usersDeleteIn, out clientv0.DeletedUser, _ time.Time) string {
+		if r := removed(out); r != "" {
+			return user(in.User) + " deleted with " + r + "."
 		}
 
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), cmp.Or(resp.JSON409, resp.JSONDefault))
-		}
+		return user(in.User) + " deleted."
+	},
+})
 
-		return printOutput(cmd, resp.JSON200.User, "User renamed")
-	}),
+// removed is what a delete of a user removes beside it, counted: "3 nodes
+// and 2 auth keys"; a count of zero is left out.
+func removed(d clientv0.DeletedUser) string {
+	var parts []string
+
+	for _, c := range []struct {
+		n    int
+		noun string
+	}{{len(d.Nodes), "node"}, {int(d.AuthKeyCount), "auth key"}, {int(d.ApiKeyCount), "API key"}} {
+		if c.n > 0 {
+			parts = append(parts, table.Count(c.n, c.noun))
+		}
+	}
+
+	if len(parts) < 2 {
+		return strings.Join(parts, "")
+	}
+
+	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
 }

@@ -19,7 +19,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/juanfont/headscale/cmd/headscale/newcli"
+	"github.com/juanfont/headscale/cmd/headscale/cli"
 	"github.com/juanfont/headscale/cmdline"
 	"github.com/juanfont/headscale/cmdline/command"
 	"github.com/stretchr/testify/require"
@@ -1899,10 +1899,10 @@ func judge(tb testing.TB, id string, class Class, ok bool, answer, msg string) s
 func kits(tb testing.TB) map[string]kit {
 	tb.Helper()
 
-	model := command.KitModel(tb, newcli.Tree())
+	model := command.KitModel(tb, cli.Tree())
 
 	return map[string]kit{
-		"headscale": {real: newcli.Tree(), model: model},
+		"headscale": {real: cli.Tree(), model: model},
 		"model":     {real: model, model: model},
 	}
 }
@@ -2159,8 +2159,8 @@ var beyondKit = []string{
 func TestKitKnowsHeadscale(t *testing.T) {
 	t.Parallel()
 
-	model := command.KitModel(t, newcli.Tree())
-	paths := command.Paths(newcli.Tree())
+	model := command.KitModel(t, cli.Tree())
+	paths := command.Paths(cli.Tree())
 
 	for _, p := range paths {
 		inKit := model.Reached(strings.Fields(p)) == p
@@ -2197,7 +2197,7 @@ func TestKitScripts(t *testing.T) {
 				t,
 				0,
 				command.Run(
-					newcli.Tree(),
+					cli.Tree(),
 					[]string{"completion", shell},
 					command.Env{Stdout: &out, Stderr: &errb},
 				),
@@ -2228,7 +2228,7 @@ func TestKitScripts(t *testing.T) {
 	}
 }
 
-// TestShellLines holds ../../cmd/headscale/newcli/testdata/shells/lines.txt, the lines of the
+// TestShellLines holds ../../cmd/headscale/cli/testdata/shells/lines.txt, the lines of the
 // real-shell Tab job, to the trees: a line that waits names a command of
 // the kit's tree that Headscale's lacks, and fails here once Headscale has
 // it, so that it is made active; an active line reaches only commands
@@ -2236,10 +2236,10 @@ func TestKitScripts(t *testing.T) {
 func TestShellLines(t *testing.T) {
 	t.Parallel()
 
-	b, err := os.ReadFile("../../cmd/headscale/newcli/testdata/shells/lines.txt")
+	b, err := os.ReadFile("../../cmd/headscale/cli/testdata/shells/lines.txt")
 	require.NoError(t, err)
 
-	hs, model := newcli.Tree(), command.KitModel(t, newcli.Tree())
+	hs, model := cli.Tree(), command.KitModel(t, cli.Tree())
 	n := 0
 
 	for row := range strings.Lines(string(b)) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juanfont/headscale/cmd/headscale/newcli"
+	"github.com/juanfont/headscale/cmd/headscale/cli"
 	"github.com/juanfont/headscale/cmdline/command"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ import (
 func TestHelpExamples(t *testing.T) {
 	t.Parallel()
 
-	tree := newcli.Tree()
+	tree := cli.Tree()
 	id := "hskey-authreq-" + strings.Repeat("0a", 12)
 
 	for _, path := range command.Paths(tree) {
@@ -56,6 +56,19 @@ func TestHelpExamples(t *testing.T) {
 				got,
 			)
 			require.NoError(t, command.Valid(tree, argv), "%s --help: %q", path, e)
+
+			// A credential is named by what the server mints, whole.
+			for _, sel := range command.CredentialSelectors(tree, argv) {
+				require.True(
+					t,
+					minted(sel),
+					"%s --help: %q names %s %q, which the server never mints",
+					path,
+					e,
+					sel.Kind,
+					sel.Word,
+				)
+			}
 		}
 	}
 }
@@ -75,7 +88,7 @@ func TestHelpWritesNoValue(t *testing.T) {
 		require.NotRegexp(t, writtenValue, fine)
 	}
 
-	tree := newcli.Tree()
+	tree := cli.Tree()
 
 	// What a person wrote, before any formatting: a text cannot pass for
 	// a generated "(default …)".
@@ -147,6 +160,20 @@ func withoutDefaults(tree *command.Tree, s string) string {
 	}
 
 	return s
+}
+
+// minted reports whether a selector is a part the server mints for its
+// kind: an auth key or an API key by its numeric ID or its prefix of 12
+// lowercase hex digits, an OAuth client by its ID of 12 lowercase hex
+// digits only. A lookup matches the whole part, so a shorter one matches
+// nothing.
+func minted(sel command.Selector) bool {
+	hex := len(sel.Word) == 12 && strings.Trim(sel.Word, "0123456789abcdef") == ""
+	if sel.Kind == "OAuth client" {
+		return hex
+	}
+
+	return hex || sel.Word != "" && strings.Trim(sel.Word, "0123456789") == ""
 }
 
 // exampleArgv is the argv after headscale of an example, as a shell splits
@@ -221,4 +248,37 @@ func exampleArgv(tb testing.TB, e, id string) []string {
 	require.NotEmpty(tb, words, "%q: no headscale", e)
 
 	return words[1:]
+}
+
+// TestCredentialSelectors: the guard of the examples looks at the words in
+// the position of a credential only, and holds each to the minted form.
+func TestCredentialSelectors(t *testing.T) {
+	t.Parallel()
+
+	tree := cli.Tree()
+
+	for _, tt := range []struct {
+		line   string
+		sel    []command.Selector
+		minted bool
+	}{
+		{line: "auth keys create alice2 -d build123"},
+		{line: "users get alice2"},
+		{line: "auth keys get ab12cd345678", sel: []command.Selector{{"auth key", "ab12cd345678"}}, minted: true},
+		{line: "auth keys delete 7 --force", sel: []command.Selector{{"auth key", "7"}}, minted: true},
+		{line: "auth keys get ab12cd", sel: []command.Selector{{"auth key", "ab12cd"}}},
+		{line: "api keys get f0e1d2c3b4a5", sel: []command.Selector{{"API key", "f0e1d2c3b4a5"}}, minted: true},
+		{line: "api keys get 7", sel: []command.Selector{{"API key", "7"}}, minted: true},
+		{line: "api keys get tr81ys", sel: []command.Selector{{"API key", "tr81ys"}}},
+		{line: "api oauth-clients get c9f2aa000001", sel: []command.Selector{{"OAuth client", "c9f2aa000001"}}, minted: true},
+		{line: "api oauth-clients get 7", sel: []command.Selector{{"OAuth client", "7"}}},
+		{line: "api oauth-clients delete abcdef --force", sel: []command.Selector{{"OAuth client", "abcdef"}}},
+	} {
+		got := command.CredentialSelectors(tree, strings.Fields(tt.line))
+		require.Equal(t, tt.sel, got, tt.line)
+
+		for _, sel := range got {
+			require.Equal(t, tt.minted, minted(sel), "%s: %q", tt.line, sel.Word)
+		}
+	}
 }

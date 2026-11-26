@@ -1,5 +1,3 @@
-//go:build newcli
-
 package main
 
 import (
@@ -24,7 +22,7 @@ func TestListPagesThroughBinary(t *testing.T) {
 	}
 
 	bin := filepath.Join(t.TempDir(), "headscale")
-	build := exec.CommandContext(t.Context(), "go", "build", "-tags", "newcli", "-o", bin, ".")
+	build := exec.CommandContext(t.Context(), "go", "build", "-o", bin, ".")
 	out, err := build.CombinedOutput()
 	require.NoError(t, err, string(out))
 
