@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -429,4 +430,62 @@ func TestRenameUser(t *testing.T) {
 			tt.test(t, db)
 		})
 	}
+}
+
+// TestCheckLocalUserTextsWithNoText: a write of neither name nor email, such
+// as a change of the display name alone, checks nothing and reads no user.
+func TestCheckLocalUserTextsWithNoText(t *testing.T) {
+	db, err := newSQLiteTestDB(t)
+	require.NoError(t, err)
+
+	db.CreateUsersForTest(3, "other")
+
+	var reads int
+
+	require.NoError(t, db.DB.Callback().Query().After("gorm:query").Register("count", func(*gorm.DB) { reads++ }))
+
+	require.NoError(t, CheckLocalUserTexts(db.DB, 0, "", ""))
+	require.Zero(t, reads)
+
+	var taken *UserTakenError
+	require.ErrorAs(t, CheckLocalUserTexts(db.DB, 0, "other-1", ""), &taken, "control: a name is checked")
+}
+
+func TestListUsersPage(t *testing.T) {
+	db, err := newSQLiteTestDB(t)
+	require.NoError(t, err)
+
+	users := db.CreateUsersForTest(5, "page")
+
+	_, err = db.CreateUser(types.User{Name: "page-1", Email: "oidc@example.com", ProviderIdentifier: sql.NullString{String: "/oidc", Valid: true}})
+	require.NoError(t, err)
+
+	ids := func(us []types.User) []uint {
+		out := make([]uint, len(us))
+		for i, u := range us {
+			out[i] = u.ID
+		}
+
+		return out
+	}
+
+	got, err := ListUsersPage(db.DB, &types.User{}, 0, 2)
+	require.NoError(t, err)
+	assert.Equal(t, []uint{users[0].ID, users[1].ID}, ids(got))
+
+	got, err = ListUsersPage(db.DB, &types.User{}, types.UserID(users[1].ID), 2)
+	require.NoError(t, err)
+	assert.Equal(t, []uint{users[2].ID, users[3].ID}, ids(got))
+
+	got, err = ListUsersPage(db.DB, &types.User{Name: "page-1"}, 0, 10)
+	require.NoError(t, err)
+	assert.Len(t, got, 2, "an OIDC user may share a local user's name")
+
+	got, err = ListUsersPage(db.DB, &types.User{Name: "page-1", Email: "oidc@example.com"}, 0, 10)
+	require.NoError(t, err)
+	assert.Len(t, got, 1, "all filters must match")
+
+	got, err = ListUsersPage(db.DB, &types.User{Name: "page-1"}, types.UserID(users[1].ID), 10)
+	require.NoError(t, err)
+	assert.Len(t, got, 1)
 }
