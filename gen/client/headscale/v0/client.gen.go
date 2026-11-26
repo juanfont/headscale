@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"mime"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -1532,6 +1533,12 @@ type ListAuthKeysParams struct {
 	Tag *string `form:"tag,omitempty" json:"tag,omitempty"`
 }
 
+// GetConfigParams defines parameters for GetConfig.
+type GetConfigParams struct {
+	// Docs Put the documentation of each key above it, as comments.
+	Docs *bool `form:"docs,omitempty" json:"docs,omitempty"`
+}
+
 // ListNodesParams defines parameters for ListNodes.
 type ListNodesParams struct {
 	// PageSize Rows on one page.
@@ -1863,6 +1870,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/headscale/v0/auth-requests/{id}/reject (the `RejectAuthRequest` operationId).
 	RejectAuthRequest(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetConfig The configuration the server runs with
+	//
+	// The configuration the server runs with, as a YAML configuration file. Its keys are the keys of the configuration file, so they follow the release of the server; the body has no schema. Each literal secret, and each setting of `dns.challenge.provider` but `name`, is `<redacted>`; `file:` references are kept as written, and the credentials in URLs are removed. The client-only `cli` section is left out.
+	//
+	// Corresponds with GET /api/headscale/v0/config (the `GetConfig` operationId).
+	GetConfig(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateDebugNodeWithBody Make a registration for a made-up node
 	//
@@ -2393,6 +2407,23 @@ func (c *Client) RegisterAuthRequest(ctx context.Context, id string, body Regist
 // Corresponds with POST /api/headscale/v0/auth-requests/{id}/reject (the `RejectAuthRequest` operationId).
 func (c *Client) RejectAuthRequest(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRejectAuthRequestRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetConfig The configuration the server runs with
+//
+// The configuration the server runs with, as a YAML configuration file. Its keys are the keys of the configuration file, so they follow the release of the server; the body has no schema. Each literal secret, and each setting of `dns.challenge.provider` but `name`, is `<redacted>`; `file:` references are kept as written, and the credentials in URLs are removed. The client-only `cli` section is left out.
+//
+// Corresponds with GET /api/headscale/v0/config (the `GetConfig` operationId).
+func (c *Client) GetConfig(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetConfigRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3550,6 +3581,60 @@ func NewRejectAuthRequestRequest(server string, id string) (*http.Request, error
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetConfigRequest constructs an http.Request for the GetConfig method
+func NewGetConfigRequest(server string, params *GetConfigParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Docs != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "docs", *params.Docs, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5004,6 +5089,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/headscale/v0/auth-requests/{id}/reject (the `RejectAuthRequest` operationId).
 	RejectAuthRequestWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*RejectAuthRequestResponse, error)
+
+	// GetConfigWithResponse The configuration the server runs with
+	//
+	// The configuration the server runs with, as a YAML configuration file. Its keys are the keys of the configuration file, so they follow the release of the server; the body has no schema. Each literal secret, and each setting of `dns.challenge.provider` but `name`, is `<redacted>`; `file:` references are kept as written, and the credentials in URLs are removed. The client-only `cli` section is left out.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/headscale/v0/config (the `GetConfig` operationId).
+	GetConfigWithResponse(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*GetConfigResponse, error)
 
 	// CreateDebugNodeWithBodyWithResponse Make a registration for a made-up node
 	//
@@ -7195,6 +7289,129 @@ func (r RejectAuthRequestResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RejectAuthRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetConfigResponse200Headers the declared response headers of an HTTP 200 response for GetConfig
+type GetConfigResponse200Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetConfigResponse401Headers the declared response headers of an HTTP 401 response for GetConfig
+type GetConfigResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetConfigResponse403Headers the declared response headers of an HTTP 403 response for GetConfig
+type GetConfigResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetConfigResponse422Headers the declared response headers of an HTTP 422 response for GetConfig
+type GetConfigResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetConfigResponse500Headers the declared response headers of an HTTP 500 response for GetConfig
+type GetConfigResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetConfigResponse503Headers the declared response headers of an HTTP 503 response for GetConfig
+type GetConfigResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type GetConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetConfigResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *GetConfigResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *GetConfigResponse403Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *GetConfigResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *GetConfigResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *GetConfigResponse503Headers
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *GetConfigResponse) decodedSuccess() (any, []byte) {
+	return nil, nil
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetConfigResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetConfigResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetConfigResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetConfigResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetConfigResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetConfigResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetConfigResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11537,6 +11754,22 @@ func (c *ClientWithResponses) RejectAuthRequestWithResponse(ctx context.Context,
 	return told(ctx, r, err)
 }
 
+// GetConfigWithResponse The configuration the server runs with
+//
+// The configuration the server runs with, as a YAML configuration file. Its keys are the keys of the configuration file, so they follow the release of the server; the body has no schema. Each literal secret, and each setting of `dns.challenge.provider` but `name`, is `<redacted>`; `file:` references are kept as written, and the credentials in URLs are removed. The client-only `cli` section is left out.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/headscale/v0/config (the `GetConfig` operationId).
+func (c *ClientWithResponses) GetConfigWithResponse(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*GetConfigResponse, error) {
+	rsp, err := c.GetConfig(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseGetConfigResponse(rsp)
+	return told(ctx, r, err)
+}
+
 // CreateDebugNodeWithBodyWithResponse Make a registration for a made-up node
 //
 // A test tool. It makes an auth request, not a node: a registration of a made-up machine that advertises routes, which register answers. It has no Location, which would hold the auth ID, a secret. An ID that a request has is invalid_field at body.authId; a server that holds as many auth requests as it may is unhealthy, with the reason auth_requests_full.
@@ -14961,6 +15194,185 @@ func ParseRejectAuthRequestResponse(rsp *http.Response) (*RejectAuthRequestRespo
 		response.Headers500 = &headers
 	case rsp.StatusCode == 503:
 		var headers RejectAuthRequestResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetConfigResponse parses an HTTP response from a GetConfigWithResponse call
+func ParseGetConfigResponse(rsp *http.Response) (*GetConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	// json reads the body by the exact member names (DecodeResponse): it
+	// shadows encoding/json for the unmarshal generated below.
+	json := exactJSON{rsp: rsp, page: false}
+	_ = json
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	if rsp.StatusCode == 401 {
+		response.ApplicationproblemJSON401 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 403 {
+		response.ApplicationproblemJSON403 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 422 {
+		response.ApplicationproblemJSON422 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 500 {
+		response.ApplicationproblemJSON500 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 503 {
+		response.ApplicationproblemJSON503 = problemIn(bodyBytes)
+	}
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetConfigResponse200Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers GetConfigResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers GetConfigResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 422:
+		var headers GetConfigResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers GetConfigResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers GetConfigResponse503Headers
 		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -21490,6 +21902,18 @@ func (r *RegisterAuthRequestResponse) Result() (*Node, error) {
 func (r *RejectAuthRequestResponse) Err() error {
 	if err := answerOf(r.HTTPResponse, r.Body, []int{204}); err != nil {
 		return err
+	}
+	return nil
+}
+
+// Err is nil for a success of GetConfig, else the answer as an error: a
+// *ResponseError, or an *AnswerError.
+func (r *GetConfigResponse) Err() error {
+	if err := answerOf(r.HTTPResponse, r.Body, []int{200}); err != nil {
+		return err
+	}
+	if kind, _, err := mime.ParseMediaType(r.HTTPResponse.Header.Get("Content-Type")); err != nil || !slices.Contains([]string{"application/yaml"}, kind) {
+		return &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrContentType}
 	}
 	return nil
 }
