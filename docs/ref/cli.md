@@ -1375,7 +1375,7 @@ Usage:
 
 Examples:
 
-  headscale auth keys get ab12cd
+  headscale auth keys get ab12cd345678
   headscale auth keys get 7 -o json
 
 Flags:
@@ -1462,7 +1462,7 @@ Aliases: rm
 Examples:
 
   headscale auth keys delete 7
-  headscale auth keys rm ab12cd --force
+  headscale auth keys rm ab12cd345678 --force
   headscale auth keys delete 7 --force -o json | jq -r .removal
 
 Flags:
@@ -1585,7 +1585,7 @@ Usage:
 Examples:
 
   headscale api keys get 2
-  headscale api keys get tr81ys -o json
+  headscale api keys get f0e1d2c3b4a5 -o json
 
 Flags:
 
@@ -1671,7 +1671,7 @@ Aliases: rm
 
 Examples:
 
-  headscale api keys delete tr81ys
+  headscale api keys delete f0e1d2c3b4a5
   headscale api keys rm 2 --force
   headscale api keys delete 2 --force -o json | jq -r .removal
 
