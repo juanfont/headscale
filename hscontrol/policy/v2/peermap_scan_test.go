@@ -77,7 +77,9 @@ func buildPeerMapPairScan(pm *PolicyManager, nodes views.Slice[types.NodeView]) 
 			canJReachI := hasFilterI && nodeJ.CanAccessWithRoutes(matchersI, nodeI, riJ.subnet, riI.subnet, riI.isExit)
 			canIReachJ := hasFilterJ && nodeI.CanAccessWithRoutes(matchersJ, nodeJ, riI.subnet, riJ.subnet, riJ.isExit)
 
-			linked := canIAccessJ || canJAccessI || canJReachI || canIReachJ
+			linked := canIAccessJ || canJAccessI || canJReachI || canIReachJ ||
+				isViaSource(viaSources(pm.compiledGrants, nodeI), nodeJ, riJ.subnet) ||
+				isViaSource(viaSources(pm.compiledGrants, nodeJ), nodeI, riI.subnet)
 			if linked || sameUser(nodeI, nodeJ) {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
@@ -861,13 +863,13 @@ func benchmarkPeerMapBuilders(b *testing.B, pm *PolicyManager, nodes types.Nodes
 }
 
 // peerRulesForNode returns the rules that decide a node's peers: its
-// unreduced filter rules, with [viaPeerRule] in place of each via rule.
+// unreduced filter rules without the via rules, which [viaSources] stands for.
 func peerRulesForNode(
 	grants []compiledGrant,
 	node types.NodeView,
 	userIdx userNodeIndex,
 ) []tailcfg.FilterRule {
-	return rulesForNode(grants, node, userIdx, ownSelfRules, viaPeerRule)
+	return rulesForNode(grants, node, userIdx, ownSelfRules, noViaRules)
 }
 
 // peerRulesForNodeLocked returns the rules that decide a node's peers, see

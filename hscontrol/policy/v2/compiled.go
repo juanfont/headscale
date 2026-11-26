@@ -1211,30 +1211,22 @@ func compileViaForNode(
 	return rules
 }
 
-// viaPeerRule returns a rule that links node, as a via router, to the grant's
-// sources. It names the router's own addresses: the filter rule names the route,
-// which would also link a router that is a source to everything else serving
-// that route, and via-grant-v81 shows SaaS does not.
-//
-// shortcut: a node with an approved route over the router's address also matches,
-// as for any rule naming a node. Bind the link to the router if that shape matters.
-func viaPeerRule(
-	cg *compiledGrant,
-	node types.NodeView,
-) []tailcfg.FilterRule {
-	if !viaServes(cg, node) {
-		return nil
+// viaSources returns the sources of each via grant node serves, see
+// [viaServes]. They link the router to those sources and to nothing else: a
+// rule naming the router's addresses would also link a node that routes them,
+// and one naming the route everything else serving it, and SaaS links neither
+// (grant-via-router-covered, via-grant-v81).
+func viaSources(grants []compiledGrant, node types.NodeView) []matcher.Match {
+	var srcs []matcher.Match
+
+	for i := range grants {
+		if cg := &grants[i]; cg.via != nil && viaServes(cg, node) {
+			srcs = append(srcs, matcher.MatchFromFilterRuleSrcs(tailcfg.FilterRule{}, cg.via.srcSet))
+		}
 	}
 
-	ips := node.IPs()
-	destPorts := make([]tailcfg.NetPortRange, 0, len(ips))
-
-	for _, ip := range ips {
-		destPorts = append(destPorts, tailcfg.NetPortRange{
-			IP:    ip.String(),
-			Ports: tailcfg.PortRangeAny,
-		})
-	}
-
-	return []tailcfg.FilterRule{{SrcIPs: cg.via.srcIPStrings, DstPorts: destPorts}}
+	return srcs
 }
+
+// noViaRules leaves via grants out of a node's matchers.
+func noViaRules(*compiledGrant, types.NodeView) []tailcfg.FilterRule { return nil }
