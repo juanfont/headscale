@@ -828,7 +828,7 @@ var (
 func CheckPolicy(b []byte) error {
 	pol, err := ParsePolicy(b)
 	if err != nil {
-		return fmt.Errorf("parsing policy: %w", err)
+		return &contextError{context: "parsing policy", err: err, beforeTests: true}
 	}
 
 	var (
