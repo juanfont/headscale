@@ -939,6 +939,8 @@ func TestTestTreesUseTheBuilder(t *testing.T) {
 		"Local",
 		"NeedsServer",
 		"ReadsConfig",
+		"IgnoresConfig",
+		"MissingConfig",
 		"NoJSON",
 		"NeedsChange",
 		"Columns",

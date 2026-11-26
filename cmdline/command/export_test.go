@@ -196,6 +196,12 @@ func testProgram() Program[testS] {
 		ConfigEnv: "HEADSCALE_CONFIG",
 		MaxFile:   16 << 20,
 		Server:    "a running headscale",
+		Doc: Doc{
+			Reference: "headscale generate cli-reference",
+			Man:       "headscale generate man",
+			Source:    "cmd/headscale",
+			SeeAlso:   "https://headscale.net/stable/ref/cli/",
+		},
 	}
 }
 

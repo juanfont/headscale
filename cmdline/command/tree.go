@@ -1,6 +1,7 @@
 package command
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -65,7 +66,7 @@ type leaf struct {
 	secret bool
 	// noJSON is a test tool with no --output: Spec.NoJSON.
 	noJSON bool
-	// verbatim prints a text of the server byte for byte: Spec.Verbatim.
+	// verbatim prints a text byte for byte: Spec.Verbatim, or a Text.
 	verbatim bool
 	// end is the delete of a credential, made by NewEnd.
 	end bool
@@ -86,10 +87,13 @@ type leaf struct {
 	// target is the type of the command's target: the first argument that
 	// is an entity; nil for none.
 	target reflect.Type
-	// server reports whether this line talks to the server.
-	server func(*cmdline.Line) bool
-	check  func(*program) error
-	cmd    func(flags []any) cmdline.Node
+	// server reports whether this line talks to the server; reads whether
+	// it reads the config, which every line that talks to the server does.
+	server, reads func(*cmdline.Line) bool
+	// missingConfig is Spec.MissingConfig.
+	missingConfig func(*run, context.Context)
+	check         func(*program) error
+	cmd           func(flags []any) cmdline.Node
 }
 
 func (*leaf) isNode() {}
@@ -121,6 +125,9 @@ var (
 	errFormat    = errors.New("the only format is json")
 	errNoRun     = errors.New("no Run")
 	errNoShow    = errors.New("a result and neither Columns nor Done to show it")
+	errTextLocal = errors.New(
+		"a Text result and not Local: a server command prints the server's answer",
+	)
 	errNoColumns = errors.New("a list with no columns")
 	errBoth      = errors.New(
 		"both Columns and Done; Done is printed in place of the sheet",
@@ -157,7 +164,10 @@ var (
 		"NoJSON is a test tool that prints one sentence: it needs Done and no Columns",
 	)
 	errVerbatim = errors.New(
-		"a Verbatim text is printed as it is, so the spec needs a result, and neither Columns, Done nor Secret",
+		"a text printed as it is, a Verbatim or a Text result, needs a result, and neither Columns, Done nor Secret",
+	)
+	errIgnores = errors.New(
+		"IgnoresConfig without ReadsConfig: there is no config to ignore",
 	)
 )
 
@@ -233,6 +243,7 @@ func cloneColumns[R any](cols table.Columns[R]) table.Columns[R] {
 // New makes the command of a spec.
 func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	noOut := isNoOutput[Out]()
+	text := reflect.TypeFor[Out]() == reflect.TypeFor[Text]()
 
 	s.Columns, s.Blocks = cloneColumns(s.Columns), slices.Clone(s.Blocks)
 	l := common(
@@ -245,8 +256,9 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 		s.Local,
 		s.NeedsServer,
 		s.ReadsConfig,
+		s.IgnoresConfig,
 	)
-	l.output = (!noOut || !s.Local || s.NeedsServer != nil) && !s.NoJSON
+	l.output = !text && (!noOut || !s.Local || s.NeedsServer != nil) && !s.NoJSON
 	l.own = !noOut && s.Local && s.NeedsServer == nil
 	rule, whole, kinds, ruleErr := inputRule[In]()
 	l.valid = rule
@@ -259,8 +271,15 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	l.changed = s.Changed != ""
 	l.secret = s.Secret != nil
 	l.noJSON = s.NoJSON
-	l.verbatim = s.Verbatim != nil
+	l.verbatim = s.Verbatim != nil || text
 	l.end = s.End
+
+	if s.MissingConfig != nil {
+		l.missingConfig = func(r *run, ctx context.Context) {
+			api, _ := r.api.(S)
+			s.MissingConfig(Ctx[S]{Context: ctx, run: r, API: api})
+		}
+	}
 
 	l.hint = s.Hint
 	l.emptyList = s.EmptyList
@@ -300,13 +319,30 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 					return s.Done(in, out, c.Now())
 				}
 
+				// A text to print with the error, such as a report with a line
+				// that failed. Only a Local spec has a Text, and no Secret one.
+				if f, ok := errors.AsType[*failure](err); ok && text {
+					return cmp.Or(
+						printOne(c.run, out, s.Columns, s.Blocks, done),
+						exitOf(
+							s.Local,
+							err,
+							c.fields(c.about(f.err, in), reflect.TypeFor[In]()),
+						),
+					)
+				}
+
 				switch {
 				case err != nil && !notRead && s.Secret != nil:
 					return c.lostAnswer(
 						c.fields(c.about(err, in), reflect.TypeFor[In]()),
 					)
 				case err != nil && !notRead:
-					return c.fields(c.about(err, in), reflect.TypeFor[In]())
+					return exitOf(
+						s.Local,
+						err,
+						c.fields(c.about(err, in), reflect.TypeFor[In]()),
+					)
 				case s.Secret != nil:
 					// A closed pipe on stdout or stderr kills a Go process at the
 					// write, the credential made and its revoke never said;
@@ -383,6 +419,18 @@ func isNoOutput[Out any]() bool {
 	return t == reflect.TypeFor[NoOutput]() || t == reflect.TypeFor[Said]()
 }
 
+// exitOf is shown, the error a Run returned as the builder names it, ending
+// the run with the code of an ExitCode in err when the spec is local and the
+// code is one an exit can carry.
+func exitOf(local bool, err, shown error) error {
+	e, ok := errors.AsType[*exitError](err)
+	if !ok || !local || e.code < 1 || e.code > 255 {
+		return shown
+	}
+
+	return &codedError{code: e.code, err: shown}
+}
+
 // checkSpec reports what is wrong with a spec, for the tree to name.
 func checkSpec[S, In, Out any](p *program, s Spec[S, In, Out]) error {
 	noOut := isNoOutput[Out]()
@@ -404,10 +452,17 @@ func checkSpec[S, In, Out any](p *program, s Spec[S, In, Out]) error {
 		errs = append(errs, errNoJSON)
 	}
 
+	text := reflect.TypeFor[Out]() == reflect.TypeFor[Text]()
+
 	switch {
-	case s.Verbatim != nil:
-		if noOut || s.Columns != nil || s.Done != nil || s.Secret != nil {
+	case s.Verbatim != nil || text:
+		if noOut || s.Columns != nil || s.Done != nil || s.Secret != nil ||
+			text && s.Verbatim != nil {
 			errs = append(errs, errVerbatim)
+		}
+
+		if text && !s.Local {
+			errs = append(errs, errTextLocal)
 		}
 	case !noOut && s.Columns == nil && s.Done == nil:
 		errs = append(errs, errNoShow)
@@ -432,6 +487,10 @@ func checkSpec[S, In, Out any](p *program, s Spec[S, In, Out]) error {
 		errs = append(errs, errNoQuestion)
 	}
 
+	if s.IgnoresConfig != nil && !s.ReadsConfig {
+		errs = append(errs, errIgnores)
+	}
+
 	return errors.Join(append(errs, s.Columns.Check(), s.Blocks.Check())...)
 }
 
@@ -448,6 +507,7 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 		s.Local,
 		s.NeedsServer,
 		s.ReadsConfig,
+		nil,
 	)
 	l.output = true
 	l.list = true
@@ -554,8 +614,23 @@ func common[In any](
 	local bool,
 	needs func(In) bool,
 	readsConfig bool,
+	ignores func(In) bool,
 ) *leaf {
 	var zero In
+
+	server := func(line *cmdline.Line) bool {
+		if !local {
+			return true
+		}
+
+		if needs == nil {
+			return false
+		}
+
+		in, _ := cmdline.Get[In](line)
+
+		return needs(in)
+	}
 
 	return &leaf{
 		name:     name,
@@ -566,18 +641,19 @@ func common[In any](
 		oldNames: oldNames,
 		local:    local && (needs == nil || !needs(zero)),
 		config:   !local || needs != nil || readsConfig,
-		server: func(line *cmdline.Line) bool {
-			if !local {
+		server:   server,
+		reads: func(line *cmdline.Line) bool {
+			if server(line) {
 				return true
 			}
 
-			if needs == nil {
-				return false
+			if !readsConfig || ignores == nil {
+				return readsConfig
 			}
 
 			in, _ := cmdline.Get[In](line)
 
-			return needs(in)
+			return !ignores(in)
 		},
 	}
 }
@@ -676,11 +752,14 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 		}
 
 		for _, old := range oldNamesOf(n) {
+			// An old name may end in the flags that the old command meant,
+			// as "dumpConfig --running": the hint names them too.
+			old, flags, _ := strings.Cut(old, " -")
 			if other, ok := t.oldNames[old]; ok {
 				bad("old name %q is also the old name of %s", old, other)
 			}
 
-			t.oldNames[old] = at
+			t.oldNames[old] = strings.TrimSuffix(at+" -"+flags, " -")
 		}
 
 		switch n := n.(type) {
@@ -923,8 +1002,8 @@ type Command struct {
 	// NoJSON is a test tool that takes no --output: a test lists each, with
 	// why.
 	NoJSON bool
-	// Verbatim prints a text of the server byte for byte, past the rule
-	// that masks a credential: a test lists each, with why.
+	// Verbatim prints a text byte for byte, a Spec.Verbatim or a Text, past
+	// the rule that masks a credential: a test lists each, with why.
 	Verbatim bool
 	// Whole are the arguments and flags that take a secret typed whole, such
 	// as <auth-id>: the tests that it leaves in one request and comes back
