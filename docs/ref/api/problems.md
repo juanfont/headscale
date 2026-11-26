@@ -68,7 +68,7 @@ registration that waits.
 
 - **Status:** 422
 - **Title:** A field or parameter is not valid
-- **When:** A field or parameter is unknown, or has a value that is not allowed. `errors` names each one.
+- **When:** A field or parameter is unknown, or has a value that is not allowed. `errors` names each one; a long list may be cut, and then its last entry has `location` `""` and says how many more.
 - **`details`:** `{}`
 
 ## invalid_page_token { #invalid_page_token }
