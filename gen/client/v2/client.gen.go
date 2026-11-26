@@ -157,7 +157,7 @@ type ErrorDetail struct {
 type ErrorModel struct {
 	// Detail A human-readable explanation specific to this occurrence of the problem.
 	//
-	// Example: Property foo is required but is missing.
+	// Examples: Property foo is required but is missing.
 	Detail *string `json:"detail,omitempty"`
 
 	// Errors Optional list of individual error details
@@ -165,22 +165,22 @@ type ErrorModel struct {
 
 	// Instance A URI reference that identifies the specific occurrence of the problem.
 	//
-	// Example: https://example.com/error-log/abc123
+	// Examples: https://example.com/error-log/abc123
 	Instance *string `json:"instance,omitempty"`
 
 	// Status HTTP status code
 	//
-	// Example: 400
+	// Examples: 400
 	Status *int64 `json:"status,omitempty"`
 
 	// Title A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
 	//
-	// Example: Bad Request
+	// Examples: Bad Request
 	Title *string `json:"title,omitempty"`
 
 	// Type A URI reference to human-readable documentation for the error.
 	//
-	// Example: https://example.com/errors/example
+	// Examples: https://example.com/errors/example
 	Type *string `json:"type,omitempty"`
 }
 
