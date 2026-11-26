@@ -47,6 +47,17 @@ func noop[In, Out any](Ctx, In) (Out, error) {
 
 var errBroken = errors.New("it broke")
 
+func words(line string) []string {
+	w := strings.Fields(line)
+	for i := range w {
+		if w[i] == "''" {
+			w[i] = ""
+		}
+	}
+
+	return w
+}
+
 // allowedAliases are Headscale's aliases.
 func allowedAliases() []string { return []string{"ls", "rm", "approve"} }
 
@@ -74,6 +85,28 @@ func connectTest(cfg *types.Config, env Env) (*API, error) {
 	}
 
 	return a, err
+}
+
+// masked is s as the edge of Headscale's program writes it.
+func masked(s string) string {
+	var b strings.Builder
+
+	t, err := Build("prog", "P", New(Spec[NoInput, NoOutput]{
+		Name:    "say",
+		Short:   "S",
+		Long:    "S.",
+		Example: []string{"prog say"},
+		Local:   true,
+		Run:     func(c Ctx, _ NoInput) (NoOutput, error) { c.Note(s); return NoOutput{}, nil },
+		Done:    func(NoInput, NoOutput, time.Time) string { return "" },
+	}))
+	if err != nil {
+		panic(err)
+	}
+
+	Run(t, []string{"say"}, Env{Stdout: &b, Stderr: &b})
+
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // fakeServer answers like v0, with a field this build does not know in
@@ -738,15 +771,4 @@ func TestAbout(t *testing.T) {
 		)
 		require.Equal(t, tt.want, sentence(tt.err), tt.name)
 	}
-}
-
-func words(line string) []string {
-	w := strings.Fields(line)
-	for i := range w {
-		if w[i] == "''" {
-			w[i] = ""
-		}
-	}
-
-	return w
 }
