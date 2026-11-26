@@ -2,7 +2,9 @@ package table
 
 import (
 	"bytes"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,6 +142,102 @@ func TestScreen(t *testing.T) {
 	}())
 }
 
+// TestJoiningEdges pins the limit stated at width: a text that begins with
+// a mark joining the space before it, or ends with a prepend character
+// joining the space after it, is shown as it is, and each such join puts
+// its row off by the library's count; the joins add up. Nothing changes the text to avoid it,
+// so the screen, a pipe and every sort see the same bytes.
+func TestJoiningEdges(t *testing.T) {
+	t.Parallel()
+
+	render := func(rs []row, cs Columns[row], screen *Screen) string {
+		var b bytes.Buffer
+		require.NoError(t, Render(&b, rs, cs, now, screen))
+
+		return b.String()
+	}
+
+	for _, tt := range []struct {
+		name string
+		cs   Columns[row]
+		row  int // the row's width as the library counts it; the header's otherwise
+		head int
+	}{
+		{"abcdefghijkl", Columns[row]{cols[0], cols[1]}, 16, 8},
+		{"\uFE0Fabcdefghijkl", Columns[row]{cols[0], cols[1]}, 17, 8}, // its join takes the row to 17 on 16
+		{"\u0301abcdefghijkl", Columns[row]{cols[0], cols[1]}, 16, 8},
+		{"\u200Dabcdefghijkl", Columns[row]{cols[0], cols[1]}, 16, 8},
+		{"abcdefghijk\u0600", Columns[row]{cols[1], cols[0]}, 13, 15}, // joins the padding after it: the ID left of its header
+	} {
+		rs := []row{{ID: "1", Name: tt.name}}
+		screen := render(rs, tt.cs, &Screen{Width: 16})
+		require.Equal(
+			t,
+			render(rs, tt.cs, nil),
+			screen,
+			"%q: the screen and a pipe write the same",
+			tt.name,
+		)
+		require.Equal(
+			t,
+			tt.name,
+			Visible(tt.name, ""),
+			"%q: the text is not changed",
+			tt.name,
+		)
+
+		lines := strings.Split(strings.TrimSuffix(screen, "\n"), "\n")
+		require.Equal(
+			t,
+			[]int{tt.head, tt.row},
+			[]int{width(lines[0]), width(lines[1])},
+			"%q",
+			tt.name,
+		)
+	}
+
+	// Exact bytes, so a mark stripped, added or moved fails: a pipe, a
+	// screen with room, and one narrow enough to cut the list.
+	list := []ref{
+		{ID: "1", Name: "alpha"},
+		{ID: "2", Name: "\u0301bravo"},
+		{ID: "3", Name: "\uFE0Fcharlie"},
+		{ID: "4", Name: "delta"},
+	}
+	cs := Columns[row]{
+		cols[0],
+		{Name: "nodes", Field: "nodes", List: Cut, Default: true},
+	}
+	rs := []row{{ID: "1", Nodes: list}}
+	whole := "ID  NODES\n1   alpha, \u0301bravo, \uFE0Fcharlie, delta\n"
+	require.Equal(t, whole, render(rs, cs, nil), "a pipe")
+	require.Equal(t, whole, render(rs, cs, &Screen{Width: 80}), "a screen with room")
+	require.Equal(
+		t,
+		"ID  NODES\n1   alpha, \u0301bravo … (+2)\n",
+		render(rs, cs, &Screen{Width: 26}),
+		"a screen that cuts",
+	)
+
+	require.Equal(
+		t,
+		"aa, \uFE0Fabcdefghi",
+		FitList([]string{"aa", "\uFE0Fabcdefghi"}, 13),
+		"its join takes it to 14 on 13",
+	)
+	require.Equal(
+		t,
+		"aa, \u0301abcdefghi",
+		FitList([]string{"aa", "\u0301abcdefghi"}, 13),
+	)
+
+	// Joins add up: three entries that each join the space before them
+	// take a list measured at 10 to 13.
+	joining := []string{"\uFE0Fa", "\uFE0Fa", "\uFE0Fa", "\uFE0Fa"}
+	require.Equal(t, strings.Join(joining, ", "), FitList(joining, 10))
+	require.Equal(t, 13, width(FitList(joining, 10)))
+}
+
 func TestHangulCell(t *testing.T) {
 	t.Parallel()
 
@@ -162,9 +260,36 @@ func TestFit(t *testing.T) {
 	require.Equal(t, "abc", fit("abc", 3))
 	require.Equal(t, "ab…", fit("abcd", 3))
 	require.Equal(t, "🚀…", fit("🚀🚀", 3), "a wide character is two cells")
-	require.Equal(t, "aa … (+2)", fitList([]string{"aa", "bb", "cccc"}, 11))
-	require.Equal(t, "… (+3)", fitList([]string{"aaaa", "b", "c"}, 6))
-	require.Equal(t, "(+…", fitList([]string{"aaaa", "b", "c"}, 3))
+	require.Equal(t, "aa … (+2)", FitList([]string{"aa", "bb", "cccc"}, 11))
+	require.Equal(t, "… (+3)", FitList([]string{"aaaa", "b", "c"}, 6))
+	require.Equal(t, "(+…", FitList([]string{"aaaa", "b", "c"}, 3))
+}
+
+// TestFitListLinear: a long list is cut in one pass; a join per cut made
+// tens of megabytes for one cell of two thousand entries.
+func TestFitListLinear(t *testing.T) {
+	entries := make([]string, 2000)
+	for i := range entries {
+		entries[i] = fmt.Sprintf("node-%04d", i)
+	}
+
+	require.Equal(t, "node-0000 … (+1999)", FitList(entries, 24))
+	require.LessOrEqual(
+		t,
+		testing.AllocsPerRun(10, func() { FitList(entries, 24) }),
+		8.0,
+	)
+
+	for i := range entries {
+		entries[i] = "\u0301" + entries[i]
+	}
+
+	require.LessOrEqual(
+		t,
+		testing.AllocsPerRun(10, func() { FitList(entries, 24) }),
+		8.0,
+		"entries that begin with a mark cost no more",
+	)
 }
 
 // TestCutOrder: a table wider than the screen gives way in one order. A
