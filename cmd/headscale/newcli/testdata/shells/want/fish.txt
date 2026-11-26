@@ -202,6 +202,26 @@ LINE: headscale policy set |
 LISTED: [$ headscale $ headscale policy $ headscale policy set $ headscale policy set $ headscale policy set ]
 FINAL: [headscale policy set ]
 
+LINE: headscale check config |
+LISTED: [$ headscale $ headscale check $ headscale check config $ headscale check config $ headscale check config ]
+FINAL: [headscale check config ]
+
+LINE: headscale check policy |
+LISTED: [$ headscale $ headscale check $ headscale check policy $ headscale check policy $ headscale check policy ]
+FINAL: [headscale check policy ]
+
+LINE: headscale check |
+LISTED: [$ headscale $ headscale check $ headscale check $ headscale check ]
+FINAL: [headscale check ]
+
+LINE: headscale generate |
+LISTED: [$ headscale $ headscale generate $ headscale generate $ headscale generate ]
+FINAL: [headscale generate ]
+
+LINE: headscale serve --|
+LISTED: [$ headscale $ headscale serve $ headscale serve --$ headscale serve --]
+FINAL: [headscale serve --]
+
 LINE: headscale nodes list |
 LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list $ headscale nodes list $ headscale nodes list $ headscale nodes list ]
 FINAL: [headscale nodes list ]
