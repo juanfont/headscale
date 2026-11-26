@@ -35,6 +35,50 @@ var openOperations = map[string]accessKind{
 	"getHealth":  anyCredentialAccess,
 }
 
+// notLists are the paths whose GET answers an object that holds a list but
+// is not a list of a collection: they name one thing.
+var notLists = map[string]string{
+	"/health": "the health of the server, with its warnings",
+}
+
+// isList reports whether op is a list by its shape: a GET of a path that
+// does not end in a parameter, whose 200 body holds a list at its top. The
+// operation ID is not asked, so a list named otherwise is still a list.
+func isList(api huma.API, method, path string, op *huma.Operation) bool {
+	if method != http.MethodGet || strings.HasSuffix(path, "}") ||
+		notLists[strings.TrimPrefix(path, Prefix)] != "" {
+		return false
+	}
+
+	body := okBody(api, op)
+	if body == nil {
+		return false
+	}
+
+	for _, p := range body.Properties {
+		if p.Type == huma.TypeArray {
+			return true
+		}
+	}
+
+	return false
+}
+
+// okBody is the schema of the 200 JSON body of op, or nil.
+func okBody(api huma.API, op *huma.Operation) *huma.Schema {
+	r := op.Responses["200"]
+	if r == nil || r.Content["application/json"] == nil {
+		return nil
+	}
+
+	body := r.Content["application/json"].Schema
+	if body != nil && body.Ref != "" {
+		body = api.OpenAPI().Components.Schemas.SchemaFromRef(body.Ref)
+	}
+
+	return body
+}
+
 // nullableLists are the only lists that may be null: null and [] mean
 // different things there.
 var nullableLists = []string{"Authorization.tags"}
@@ -59,72 +103,40 @@ func guard(api huma.API) []string {
 				)
 			}
 
-			a, _ := op.Metadata[accessMetaKey].(access)
+			accessFaults(key, op, fault)
+			cs := codeFaults(key, op, fault)
 
-			switch want, open := openOperations[op.OperationID]; {
-			case a.kind() == undeclared:
-				fault(key, "declares no access; register it with register()")
-			case open && a.kind() != want, !open && a.kind() != scopedAccess:
-				fault(
-					key,
-					"only getVersion is public, and only getMe and getHealth take any credential; name the scopes",
+			if op.RequestBody != nil {
+				if limit, _ := op.Metadata[maxBodyMetaKey].(int64); limit <= 0 ||
+					limit > maxBodyCeiling {
+					fault(
+						key,
+						"takes a body with no limit of its own up to %d; set MaxBodyBytes",
+						maxBodyCeiling,
+					)
+				}
+			}
+
+			if strings.HasPrefix(op.OperationID, "list") ||
+				isList(api, method, path, op) {
+				listFaults(
+					api,
+					op,
+					cs,
+					func(format string, args ...any) { fault(key, format, args...) },
 				)
 			}
 
-			var security []string
-			if len(op.Security) == 1 {
-				security = op.Security[0]["bearer"]
+			if method == http.MethodPatch {
+				patchFaults(
+					api,
+					op,
+					cs,
+					func(format string, args ...any) { fault(key, format, args...) },
+				)
 			}
 
-			scopes := make([]string, len(a.scopes))
-			for i, s := range a.scopes {
-				scopes[i] = string(s)
-			}
-
-			if (a.kind() == publicAccess) != (len(op.Security) == 0) ||
-				!slices.Equal(security, scopes) {
-				fault(key, "security %v does not match access %v", op.Security, scopes)
-			}
-
-			for _, s := range a.scopes {
-				if !s.Valid() {
-					fault(key, "unknown scope %q", s)
-				}
-			}
-
-			cs, _ := op.Metadata[codesMetaKey].([]Code)
-			if len(cs) == 0 {
-				fault(key, "declares no problem codes")
-			}
-
-			for _, c := range cs {
-				info, known := codes[c]
-				if !known {
-					fault(key, "unknown code %q", c)
-
-					continue
-				}
-
-				if op.Responses[strconv.Itoa(info.status)] == nil {
-					fault(key, "code %s has no %d response", c, info.status)
-				}
-			}
-
-			for status, r := range op.Responses {
-				for _, mt := range r.Content {
-					nullLists(mt.Schema, key+" "+status, false, fault)
-
-					body := mt.Schema
-					if body != nil && body.Ref != "" {
-						body = api.OpenAPI().Components.Schemas.SchemaFromRef(body.Ref)
-					}
-
-					if strings.HasPrefix(status, "2") && body != nil &&
-						body.Type == huma.TypeArray {
-						fault(key+" "+status, "a list is an object, never a bare array")
-					}
-				}
-			}
+			responseFaults(api, key, op, fault)
 		}
 	}
 
@@ -138,6 +150,153 @@ func guard(api huma.API) []string {
 	slices.Sort(faults)
 
 	return faults
+}
+
+// accessFaults reports an operation whose access is undeclared, open where
+// it must be scoped, or not what its security says.
+func accessFaults(key string, op *huma.Operation, fault func(string, string, ...any)) {
+	a, _ := op.Metadata[accessMetaKey].(access)
+
+	switch want, open := openOperations[op.OperationID]; {
+	case a.kind() == undeclared:
+		fault(key, "declares no access; register it with register()")
+	case open && a.kind() != want, !open && a.kind() != scopedAccess:
+		fault(
+			key,
+			"only getVersion is public, and only getMe and getHealth take any credential; name the scopes",
+		)
+	}
+
+	var security []string
+	if len(op.Security) == 1 {
+		security = op.Security[0]["bearer"]
+	}
+
+	scopes := make([]string, len(a.scopes))
+	for i, s := range a.scopes {
+		scopes[i] = string(s)
+	}
+
+	if (a.kind() == publicAccess) != (len(op.Security) == 0) ||
+		!slices.Equal(security, scopes) {
+		fault(key, "security %v does not match access %v", op.Security, scopes)
+	}
+
+	for _, s := range a.scopes {
+		if !s.Valid() {
+			fault(key, "unknown scope %q", s)
+		}
+	}
+}
+
+// codeFaults reports an operation with no problem codes, or one whose code
+// is unknown or has no response, and returns its codes.
+func codeFaults(
+	key string,
+	op *huma.Operation,
+	fault func(string, string, ...any),
+) []Code {
+	cs, _ := op.Metadata[codesMetaKey].([]Code)
+	if len(cs) == 0 {
+		fault(key, "declares no problem codes")
+	}
+
+	for _, c := range cs {
+		info, known := codes[c]
+		if !known {
+			fault(key, "unknown code %q", c)
+
+			continue
+		}
+
+		if op.Responses[strconv.Itoa(info.status)] == nil {
+			fault(key, "code %s has no %d response", c, info.status)
+		}
+	}
+
+	return cs
+}
+
+// responseFaults reports a list in an answer of op that may be null, and a
+// success answer that is a bare array.
+func responseFaults(
+	api huma.API,
+	key string,
+	op *huma.Operation,
+	fault func(string, string, ...any),
+) {
+	for status, r := range op.Responses {
+		for _, mt := range r.Content {
+			nullLists(mt.Schema, key+" "+status, false, fault)
+
+			body := mt.Schema
+			if body != nil && body.Ref != "" {
+				body = api.OpenAPI().Components.Schemas.SchemaFromRef(body.Ref)
+			}
+
+			if strings.HasPrefix(status, "2") && body != nil &&
+				body.Type == huma.TypeArray {
+				fault(key+" "+status, "a list is an object, never a bare array")
+			}
+		}
+	}
+}
+
+// listFaults reports a list operation that is not paged as every list is:
+// pageSize and pageToken, invalid_page_token, and nextPageToken next to the
+// rows, left out on the last page.
+func listFaults(
+	api huma.API,
+	op *huma.Operation,
+	cs []Code,
+	fault func(string, ...any),
+) {
+	for _, name := range []string{"pageSize", "pageToken"} {
+		if !slices.ContainsFunc(
+			op.Parameters,
+			func(p *huma.Param) bool { return p.In == "query" && p.Name == name },
+		) {
+			fault("a list takes %s; embed PageQuery", name)
+		}
+	}
+
+	if !slices.Contains(cs, CodeInvalidPageToken) {
+		fault("a list declares invalid_page_token; embed PageQuery")
+	}
+
+	body := okBody(api, op)
+	if body == nil || body.Properties["nextPageToken"] == nil ||
+		slices.Contains(body.Required, "nextPageToken") {
+		fault("a list answers 200 with an optional nextPageToken")
+	}
+}
+
+// patchFaults reports a PATCH that is not a merge patch: every field
+// optional, empty_patch declared, and RFC 7396's media type taken.
+func patchFaults(
+	api huma.API,
+	op *huma.Operation,
+	cs []Code,
+	fault func(string, ...any),
+) {
+	if !slices.Contains(cs, CodeEmptyPatch) {
+		fault("a PATCH declares empty_patch; register it with register()")
+	}
+
+	if op.RequestBody == nil || op.RequestBody.Content[mergePatchContentType] == nil {
+		fault("a PATCH takes %s", mergePatchContentType)
+
+		return
+	}
+
+	body := op.RequestBody.Content[mergePatchContentType].Schema
+	if body != nil && body.Ref != "" {
+		body = api.OpenAPI().Components.Schemas.SchemaFromRef(body.Ref)
+	}
+
+	if body == nil || len(body.Required) > 0 {
+		fault("a PATCH body has no required field; use Optional with omitzero")
+	}
 }
 
 // nullLists reports each list in s, at any depth, that may be null. A $ref
@@ -228,6 +387,79 @@ func TestGuardFails(t *testing.T) {
 		func(context.Context, *struct{}) (*struct{ Body []string }, error) { return nil, nil },
 	)
 
+	//nolint:nilnil
+	huma.Register(
+		api,
+		huma.Operation{
+			OperationID: "listThings",
+			Method:      http.MethodGet,
+			Path:        Prefix + "/things",
+		},
+		func(context.Context, *struct{}) (*struct{ Body struct{} }, error) { return nil, nil },
+	)
+
+	//nolint:nilnil
+	huma.Register(
+		api,
+		huma.Operation{
+			OperationID: "createThing",
+			Method:      http.MethodPost,
+			Path:        Prefix + "/things",
+		},
+		func(context.Context, *struct{ Body struct{} }) (*struct{}, error) { return nil, nil },
+	)
+
+	// A list by its shape, whatever its name.
+	register(
+		api,
+		huma.Operation{
+			OperationID: "fetchWidgets",
+			Method:      http.MethodGet,
+			Path:        Prefix + "/widgets",
+		},
+		needs(scope.UsersRead),
+		nil,
+		func(context.Context, *struct{}) (*struct {
+			Body struct {
+				Widgets []string `json:"widgets" nullable:"false"`
+			}
+		}, error,
+		) {
+			return nil, nil //nolint:nilnil
+		},
+	)
+
+	//nolint:nilnil
+	huma.Register(
+		api,
+		huma.Operation{
+			OperationID:  "createWidget",
+			Method:       http.MethodPost,
+			Path:         Prefix + "/widgets",
+			MaxBodyBytes: 1 << 40,
+			Metadata:     map[string]any{maxBodyMetaKey: int64(1 << 40)},
+		},
+		func(context.Context, *struct{ Body struct{} }) (*struct{}, error) { return nil, nil },
+	)
+
+	huma.Register(
+		api,
+		huma.Operation{
+			OperationID: "updateThing",
+			Method:      http.MethodPatch,
+			Path:        Prefix + "/things/{id}",
+		},
+		func(context.Context, *struct {
+			ID   string `path:"id"`
+			Body struct {
+				Name string `json:"name"`
+			}
+		},
+		) (*struct{}, error) {
+			return nil, nil //nolint:nilnil
+		},
+	)
+
 	faults := strings.Join(guard(api), "\n")
 	for _, want := range []string{
 		"GET " + Prefix + "/bare: operation ID \"get-api-headscale-v0-bare\" is not explicit",
@@ -239,6 +471,16 @@ func TestGuardFails(t *testing.T) {
 		"GET " + Prefix + "/nodes: only getVersion is public",
 		"GET " + Prefix + "/tags 200: a list must be nullable",
 		"GET " + Prefix + "/tags 200: a list is an object, never a bare array",
+		"GET " + Prefix + "/things: a list takes pageSize",
+		"GET " + Prefix + "/things: a list takes pageToken",
+		"GET " + Prefix + "/things: a list declares invalid_page_token",
+		"GET " + Prefix + "/things: a list answers 200 with an optional nextPageToken",
+		"POST " + Prefix + "/things: takes a body with no limit of its own",
+		"GET " + Prefix + "/widgets: a list takes pageSize",
+		"GET " + Prefix + "/widgets: a list declares invalid_page_token",
+		"POST " + Prefix + "/widgets: takes a body with no limit of its own",
+		"PATCH " + Prefix + "/things/{id}: a PATCH declares empty_patch",
+		"PATCH " + Prefix + "/things/{id}: a PATCH takes application/merge-patch+json",
 	} {
 		require.Contains(t, faults, want)
 	}
@@ -390,6 +632,10 @@ var scopes002 = map[string]string{
 	"getVersion": "none",
 	"getMe":      "any",
 	"getHealth":  "any",
+	"listUsers":  "users:read",
+	"getUser":    "users:read",
+	"createUser": "users",
+	"updateUser": "users",
 }
 
 func TestScopesAre002s(t *testing.T) {

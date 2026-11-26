@@ -124,7 +124,7 @@ func registerServer(api huma.API, b Backend) {
 		Summary:     "Who makes this request, how it is authenticated, and what it may do",
 		Tags:        []string{"Server"},
 	}, anyCredential, nil, func(ctx context.Context, _ *struct{}) (*struct{ Body Me }, error) {
-		me, err := whoAmI(b, callerFrom(ctx))
+		me, err := whoAmI(ctx, b, callerFrom(ctx))
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +138,7 @@ func registerServer(api huma.API, b Backend) {
 		Path:        Prefix + "/health",
 		Summary:     "The health of the server",
 		Tags:        []string{"Server"},
-	}, anyCredential, []Code{CodeUnhealthy}, func(ctx context.Context, _ *struct{}) (*struct{ Body Health }, error) {
+	}, anyCredential, []answer{{code: CodeUnhealthy}}, func(ctx context.Context, _ *struct{}) (*struct{ Body Health }, error) {
 		err := b.State.PingDB(ctx)
 		if err != nil {
 			log.Error().
@@ -157,7 +157,7 @@ func registerServer(api huma.API, b Backend) {
 	})
 }
 
-func whoAmI(b Backend, c *caller) (Me, error) {
+func whoAmI(ctx context.Context, b Backend, c *caller) (Me, error) {
 	scopes := make([]string, len(c.scopes))
 	for i, s := range c.scopes {
 		scopes[i] = string(s)
@@ -195,7 +195,7 @@ func whoAmI(b Backend, c *caller) (Me, error) {
 	}
 
 	if cred.owner != nil {
-		u, err := b.State.GetUserByID(types.UserID(*cred.owner))
+		u, err := b.State.GetUserByIDContext(ctx, types.UserID(*cred.owner))
 		if err != nil {
 			return Me{}, fmt.Errorf("reading the owner of API key %d: %w", cred.id, err)
 		}

@@ -31,6 +31,11 @@ const (
 	CodeTooLarge             Code = "too_large"
 	CodeUnsupportedMediaType Code = "unsupported_media_type"
 	CodeInvalidField         Code = "invalid_field"
+	CodeInvalidPageToken     Code = "invalid_page_token"
+	CodeEmptyPatch           Code = "empty_patch"
+	CodeNameTaken            Code = "name_taken"
+	CodeEmailTaken           Code = "email_taken"
+	CodeUserManagedByOIDC    Code = "user_managed_by_oidc"
 	CodeUnhealthy            Code = "unhealthy"
 	CodeInternal             Code = "internal"
 )
@@ -97,6 +102,38 @@ var codes = map[Code]codeInfo{
 		http.StatusUnprocessableEntity,
 		"A field or parameter is not valid",
 		"A field or parameter is unknown, or has a value that is not allowed. `errors` names each one.",
+		nil,
+	},
+	CodeInvalidPageToken: {
+		http.StatusUnprocessableEntity,
+		"The page token is not valid",
+		"The page token was not made by this server, is for another list or other filters, or is from before a restart. Start again from the first page.",
+		nil,
+	},
+	CodeEmptyPatch: {
+		http.StatusUnprocessableEntity,
+		"The patch changes nothing",
+		"A `PATCH` with no fields.",
+		nil,
+	},
+	CodeNameTaken: {
+		http.StatusConflict,
+		"The name is taken",
+		"The name belongs to another node or user; `object` is that one. The name of a local user is also taken when it equals the email or the provider identifier of another user, without regard to case.",
+		[]string{
+			"`name`: the name that is taken, as the request sent it; `object` names the holder as messages do, which for a user can be its email",
+		},
+	},
+	CodeEmailTaken: {
+		http.StatusConflict,
+		"The email is taken",
+		"The email of a local user equals the name, the email or the provider identifier of another user, without regard to case. A policy names a user by these texts. `object` is that user.",
+		[]string{"`email`: the email that is taken, as the request sent it"},
+	},
+	CodeUserManagedByOIDC: {
+		http.StatusConflict,
+		"The identity provider owns this user",
+		"A change to a user from OIDC, whose fields the identity provider owns. `object` is the user.",
 		nil,
 	},
 	CodeUnhealthy: {
@@ -205,6 +242,15 @@ func newProblem(c Code, detail string) *Problem {
 	}
 }
 
+// ruleForbidden is the problem of a token that a token rule refuses.
+func ruleForbidden(r *tokenRule) *Problem {
+	p := newProblem(CodeForbidden, r.why)
+	p.Details["scopes"] = []string{}
+	p.Details["rule"] = r.name
+
+	return p
+}
+
 // forbidden is the problem of a token that lacks scopes.
 func forbidden(missing []string) *Problem {
 	p := newProblem(
@@ -223,12 +269,46 @@ func (p *Problem) GetStatus() int { return p.Status }
 
 func (p *Problem) ContentType(string) string { return problemContentType }
 
-// mapError is the one path from a handler error to the wire. A *Problem with
-// a code the operation declared passes; anything else is logged and answered
-// as internal, without its text.
-func mapError(ctx context.Context, err error, declared []Code) error {
+// answer is a code an operation answers of its own. With err set, a
+// handler error that is err (errors.Is) answers code with detail; without
+// it, the handler returns the *Problem itself. Each operation states its
+// answers, so the next resource maps its own errors and inherits none.
+type answer struct {
+	code   Code
+	err    error
+	detail string
+}
+
+// onError is the answer to a handler error that is err.
+func onError(err error, c Code, detail string) answer {
+	return answer{code: c, err: err, detail: detail}
+}
+
+// mapError is the one path from a handler error to the wire. A *Problem
+// with a code the operation declared passes, and so does an error that one
+// of own maps; anything else is logged and answered as internal, without
+// its text.
+func mapError(ctx context.Context, err error, declared []Code, own []answer) error {
 	p, ok := errors.AsType[*Problem](err)
-	if ok && slices.Contains(declared, p.Code) {
+	if !ok {
+		for _, a := range own {
+			if a.err != nil && errors.Is(err, a.err) {
+				p = newProblem(a.code, a.detail)
+
+				break
+			}
+		}
+	}
+
+	if p != nil && slices.Contains(declared, p.Code) {
+		if oe, ok := errors.AsType[*objectError](err); ok && p.Object == nil {
+			p.Object = &oe.obj
+		}
+
+		if de, ok := errors.AsType[*detailsError](err); ok {
+			maps.Copy(p.Details, de.details)
+		}
+
 		return p
 	}
 
@@ -238,6 +318,32 @@ func mapError(ctx context.Context, err error, declared []Code) error {
 		Msg("api v0: internal error")
 
 	return newProblem(CodeInternal, "")
+}
+
+// objectError is an error with the resource it is about.
+type objectError struct {
+	err error
+	obj ProblemObject
+}
+
+func (e *objectError) Error() string { return e.err.Error() }
+
+func (e *objectError) Unwrap() error { return e.err }
+
+// detailsError is an error with data for the details of its problem.
+type detailsError struct {
+	err     error
+	details map[string]any
+}
+
+func (e *detailsError) Error() string { return e.err.Error() }
+
+func (e *detailsError) Unwrap() error { return e.err }
+
+// about is err with the resource it is about; the problem it maps to names
+// obj.
+func about(err error, obj ProblemObject) error {
+	return &objectError{err: err, obj: obj}
 }
 
 // problemTransformer turns huma's own errors (validation, body limits,
@@ -294,24 +400,53 @@ func fromHumaError(em *huma.ErrorModel) *Problem {
 		return p
 	}
 
-	listed := em.Errors[:min(len(em.Errors), maxFieldErrors)]
-	for _, d := range listed {
+	for _, d := range em.Errors {
 		// huma keeps a nil detail for a nil error. Value is dropped: for an
 		// unknown field it holds the whole body.
-		if d != nil {
+		if d == nil {
+			continue
+		}
+
+		// A resolver gives a field error of its own. The schema's failure at
+		// the same place, which comes first, already names the field.
+		if f, ok := d.Value.(FieldError); ok {
+			if !slices.ContainsFunc(
+				p.Errors,
+				func(prev FieldError) bool { return prev.Location == f.Location },
+			) {
+				p.Errors = append(p.Errors, f)
+			}
+
+			continue
+		}
+
+		// The strict decode of bodyFormat names the member in its message.
+		if at, ok := strings.CutPrefix(
+			d.Message,
+			unknownMember,
+		); ok &&
+			d.Location == "body" {
 			p.Errors = append(
 				p.Errors,
-				FieldError{
-					Location: fieldLocation(d.Location),
-					Message:  humaMessage(d.Message),
-				},
+				FieldError{Location: fieldLocation(at), Message: "unexpected property"},
 			)
-		}
-	}
 
-	if more := len(em.Errors) - len(listed); more > 0 {
+			continue
+		}
+
 		p.Errors = append(
 			p.Errors,
+			FieldError{
+				Location: fieldLocation(d.Location),
+				Message:  humaMessage(d.Message),
+			},
+		)
+	}
+
+	// The cap counts what is left after a repeat is dropped.
+	if more := len(p.Errors) - maxFieldErrors; more > 0 {
+		p.Errors = append(
+			p.Errors[:maxFieldErrors],
 			FieldError{Message: "and " + strconv.Itoa(more) + " more"},
 		)
 	}
@@ -451,6 +586,14 @@ code, and is ` + "`{}`" + ` when the code has none.
 		for _, d := range info.details {
 			fmt.Fprintf(&b, "    - %s\n", d)
 		}
+	}
+
+	b.WriteString(
+		"\n## Token rules { #rules }\n\nThe `rule` of a `forbidden` problem: what an OAuth access token may not do although its scopes allow it. An API key and the unix socket are not held by these rules. The OpenAPI document lists the rules of each operation under `x-token-rules`.\n",
+	)
+
+	for _, r := range slices.SortedFunc(slices.Values(tokenRules), func(a, b *tokenRule) int { return strings.Compare(a.name, b.name) }) {
+		fmt.Fprintf(&b, "\n### %s { #%s }\n\n%s\n", r.name, r.name, r.why)
 	}
 
 	b.WriteString(

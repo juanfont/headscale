@@ -415,6 +415,10 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 			lastExpiryCheck, expiredNodeChanges, changed = h.state.ExpireExpiredNodes(lastExpiryCheck)
 
+			if c := h.state.CatchUpPolicyUsers(); !c.IsEmpty() {
+				h.Change(c)
+			}
+
 			if changed {
 				log.Trace().Interface("changes", expiredNodeChanges).Msgf("expiring nodes")
 
@@ -1422,8 +1426,9 @@ func (h *Headscale) apiHandlers() (http.Handler, http.Handler, http.Handler) {
 		})
 
 		h.headscaleAPI = apiv0.Handler(apiv0.Backend{
-			State: h.state,
-			Cfg:   h.cfg,
+			State:  h.state,
+			Change: h.Change,
+			Cfg:    h.cfg,
 		})
 	})
 

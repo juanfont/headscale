@@ -3,23 +3,31 @@ package apiv0
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/go-chi/chi/v5"
+	jsonv2 "github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/config"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // newBackend is a real State on a fresh SQLite database.
@@ -35,7 +43,129 @@ func newBackend(tb testing.TB) Backend {
 	require.NoError(tb, err)
 	tb.Cleanup(func() { _ = st.Close() })
 
-	return Backend{State: st, Cfg: &cfg}
+	return Backend{State: st, Change: func(...change.Change) {}, Cfg: &cfg}
+}
+
+// countChanges makes b count the changes it sends that are not empty; set it
+// before b is handed to an API.
+func countChanges(b *Backend) *atomic.Int32 {
+	var sent atomic.Int32
+
+	b.Change = func(cs ...change.Change) {
+		for _, c := range cs {
+			if !c.IsEmpty() {
+				sent.Add(1)
+			}
+		}
+	}
+
+	return &sent
+}
+
+// failSetUsers fails the policy manager's next fail SetUsers calls.
+type failSetUsers struct {
+	policy.PolicyManager
+
+	fail atomic.Int32
+}
+
+func (f *failSetUsers) SetUsers(users []types.User) (bool, bool, error) {
+	if f.fail.Add(-1) >= 0 {
+		return false, false, errors.New("injected SetUsers failure") //nolint:err113
+	}
+
+	return f.PolicyManager.SetUsers(users)
+}
+
+// failPolicyUsers makes as many refreshes of the policy's users fail as the
+// returned count says.
+func failPolicyUsers(b Backend) *atomic.Int32 {
+	f := &failSetUsers{}
+
+	b.State.WrapPolicyManagerForTest(
+		func(pm policy.PolicyManager) policy.PolicyManager {
+			f.PolicyManager = pm
+
+			return f
+		},
+	)
+
+	return &f.fail
+}
+
+// whileBlocked runs write on a goroutine of its own and returns once write
+// is done or waits for a lock, so the write lands inside the caller's read
+// unless that read holds it off. The test waits for write before it ends.
+func whileBlocked(t *testing.T, write func()) {
+	t.Helper()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		write()
+	}()
+
+	t.Cleanup(func() { <-done })
+
+	buf := make([]byte, 1<<22)
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+		}
+
+		for g := range strings.SplitSeq(string(buf[:runtime.Stack(buf, true)]), "\n\n") {
+			if strings.Contains(g, "[sync.") &&
+				strings.Contains(g, ".whileBlocked.func") {
+				return true
+			}
+		}
+
+		return false
+	}, 5*time.Second, time.Millisecond)
+}
+
+// onQuery runs fn once, at the first query of table, before or after it ran,
+// that comes after a query of since; "" is any time.
+//
+//nolint:unparam // every read under test so far waits on users
+func onQuery(
+	t *testing.T,
+	b Backend,
+	table string,
+	after bool,
+	since string,
+	fn func(),
+) {
+	t.Helper()
+
+	var seen, fired atomic.Bool
+
+	seen.Store(since == "")
+
+	q := b.State.DB().DB.Callback().Query()
+	require.NoError(t, q.After("gorm:query").Register("test:since", func(tx *gorm.DB) {
+		if tx.Statement.Table == since {
+			seen.Store(true)
+		}
+	}))
+
+	hook := func(tx *gorm.DB) {
+		if tx.Statement.Table == table && seen.Load() &&
+			fired.CompareAndSwap(false, true) {
+			fn()
+		}
+	}
+
+	if after {
+		require.NoError(t, q.After("gorm:query").Register("test:on-query", hook))
+	} else {
+		require.NoError(t, q.Before("gorm:query").Register("test:on-query", hook))
+	}
 }
 
 // newTestAPI is v0 on b, through humatest. Every answer is checked for a
@@ -355,6 +485,190 @@ func TestNewAPIConcurrently(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+// tryBody registers an operation whose body is B.
+func tryBody[B any](method string, maxBody int64) func() {
+	return func() {
+		api := NewAPI(chi.NewMux(), Backend{}, "test")
+		op := huma.Operation{
+			OperationID:  "x",
+			Method:       method,
+			Path:         Prefix + "/x/{id}",
+			MaxBodyBytes: maxBody,
+		}
+
+		register(api, op, needs(scope.Users), nil, func(context.Context, *struct {
+			ID   string `path:"id"`
+			Body B
+		},
+		) (*struct{}, error) {
+			return nil, nil //nolint:nilnil
+		})
+	}
+}
+
+// TestRegisterRefusesBodies: a body without a limit of its own, and a field
+// that would read null as a zero value, at any depth, fail when the API is
+// built.
+func TestRegisterRefusesBodies(t *testing.T) {
+	type (
+		plain struct {
+			Name string `json:"name"`
+		}
+		omitted struct {
+			Name string `json:"name,omitempty"`
+		}
+		notRequired struct {
+			Name string `json:"name" required:"false"`
+		}
+		pointer struct {
+			Name *string `json:"name"`
+		}
+		nullable struct {
+			Name string `json:"name" nullable:"true"`
+		}
+		optional struct {
+			Name Optional[string] `json:"name,omitzero"`
+		}
+		optionalRequired struct {
+			Name Optional[string] `json:"name"`
+		}
+		nested struct {
+			Nest plain `json:"nest"`
+		}
+		nestedOmitted struct {
+			Nest []omitted `json:"nest"`
+		}
+		optionalNested struct {
+			Nest Optional[notRequired] `json:"nest,omitzero"`
+		}
+		withTime struct {
+			At time.Time `json:"at"`
+		}
+	)
+
+	const prefix = "apiv0: x: body field "
+
+	require.PanicsWithValue(
+		t,
+		"apiv0: x takes a body and sets no MaxBodyBytes between 1 and 1048576",
+		tryBody[plain](http.MethodPost, 0),
+	)
+	require.PanicsWithValue(
+		t,
+		"apiv0: x takes a body and sets no MaxBodyBytes between 1 and 1048576",
+		tryBody[plain](http.MethodPost, 1<<40),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"omitted.Name is not required, so it must be an Optional",
+		tryBody[omitted](http.MethodPost, 1),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"notRequired.Name is not required, so it must be an Optional",
+		tryBody[notRequired](http.MethodPost, 1),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"pointer.Name holds a pointer or an interface; use Optional",
+		tryBody[pointer](http.MethodPost, 1),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"nullable.Name takes null, so it must be an Optional",
+		tryBody[nullable](http.MethodPost, 1),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"plain.Name must be an Optional tagged omitzero in a PATCH",
+		tryBody[plain](http.MethodPatch, 1),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"optionalRequired.Name is an Optional without omitzero",
+		tryBody[optionalRequired](http.MethodPatch, 1),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"omitted.Name is not required, so it must be an Optional",
+		tryBody[nestedOmitted](http.MethodPost, 1),
+	)
+	require.PanicsWithValue(
+		t,
+		prefix+"notRequired.Name is not required, so it must be an Optional",
+		tryBody[optionalNested](http.MethodPatch, 1),
+	)
+	require.NotPanics(t, tryBody[plain](http.MethodPost, 1))
+	require.NotPanics(t, tryBody[nested](http.MethodPost, 1))
+	require.NotPanics(t, tryBody[withTime](http.MethodPost, 1))
+	require.NotPanics(t, tryBody[optional](http.MethodPatch, 1))
+}
+
+// TestBodyNulls: null is refused inside a struct in a body, and inside the
+// struct of an Optional.
+func TestBodyNulls(t *testing.T) {
+	type (
+		inner struct {
+			Inner Optional[string] `json:"inner,omitzero"`
+		}
+		body struct {
+			Nest inner           `json:"nest"`
+			Opt  Optional[inner] `json:"opt,omitzero"`
+		}
+	)
+
+	api := newTestAPI(t, newBackend(t))
+	register(
+		api,
+		huma.Operation{
+			OperationID:  "createNest",
+			Method:       http.MethodPost,
+			Path:         Prefix + "/nest",
+			MaxBodyBytes: 1024,
+		},
+		public,
+		nil,
+		func(context.Context, *struct{ Body body }) (*struct{}, error) { return &struct{}{}, nil },
+	)
+
+	for in, want := range map[string]string{
+		`{"nest": {"inner": null}}`:                       "body.nest.inner",
+		`{"nest": {}, "opt": {"inner": null}}`:            "body.opt.inner",
+		`{"nest": {"inner": "x"}, "opt": {"INNER": "x"}}`: "body.opt.INNER",
+	} {
+		p := decodeProblem(
+			t,
+			api.Post(
+				Prefix+"/nest",
+				"Content-Type: application/json",
+				strings.NewReader(in),
+			),
+			CodeInvalidField,
+		)
+		require.Equal(t, []string{want}, locations(p), in)
+	}
+
+	rec := api.Post(
+		Prefix+"/nest",
+		"Content-Type: application/json",
+		strings.NewReader(`{"nest": {}, "opt": {"inner": "x"}}`),
+	)
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+}
+
+// TestOptionalResets: a second decode into the same Optional keeps nothing
+// of the first.
+func TestOptionalResets(t *testing.T) {
+	var o Optional[string]
+
+	require.NoError(t, jsonv2.Unmarshal([]byte(`null`), &o))
+	require.NoError(t, jsonv2.Unmarshal([]byte(`"x"`), &o))
+	require.Equal(t, Optional[string]{Set: true, Value: "x"}, o)
+
+	require.NoError(t, jsonv2.Unmarshal([]byte(`null`), &o))
+	require.Equal(t, Optional[string]{Set: true, Null: true}, o)
 }
 
 // TestResponsesAreOpen: 002 lets a release add fields to an answer, so a
