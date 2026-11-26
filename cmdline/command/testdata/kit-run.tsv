@@ -1,10 +1,10 @@
-# headscale: 206 rows: pass 186 seen 3 waits 17
+# headscale: 206 rows: pass 190 seen 3 waits 13
 # model: 206 rows: pass 203 seen 3
 headscale	T01	pass
 headscale	T02	pass
 headscale	T03	pass
 headscale	T04	pass
-headscale	T05	waits	users delete
+headscale	T05	pass
 headscale	T06	pass
 headscale	T07	pass
 headscale	T08	pass
@@ -72,8 +72,8 @@ headscale	F19	pass
 headscale	F20	waits	policy set
 headscale	F21	pass
 headscale	F22	pass
-headscale	F23	waits	users delete
-headscale	F24	waits	users delete
+headscale	F23	pass
+headscale	F24	pass
 headscale	F25	pass
 headscale	F26	pass
 headscale	F27	pass
@@ -165,7 +165,7 @@ headscale	A01	pass
 headscale	A02	pass
 headscale	A03	waits	check config
 headscale	A04	pass
-headscale	A05	waits	users delete
+headscale	A05	pass
 headscale	R01	pass
 headscale	R02	pass
 headscale	R03	pass

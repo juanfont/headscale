@@ -209,6 +209,7 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		Terminal:       tc.terminal && !tc.piped,
 		StdoutTerminal: tc.terminal,
 		Width:          tc.width,
+		StderrWidth:    tc.width,
 		PageSize:       pageSize,
 		Now:            func() time.Time { return f.now },
 		Version:        build,
@@ -887,6 +888,7 @@ Server commands (talk to a running headscale):
   users get <user>   Show one user
   users create <name>   Create a local user
   users set <user>   Change a local user
+  users delete <user>   Delete a user with its keys (alias: rm)
   auth keys list   List the auth keys (alias: ls)
   auth keys get <key>   Show one auth key
   auth keys create <owner>   Create an auth key
