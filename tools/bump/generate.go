@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"regexp"
 	"strings"
 )
 
@@ -20,69 +18,18 @@ var generatedPaths = map[string]bool{
 	"hscontrol/capver/capver_test_data.go":     true,
 	"gen/client/v1/client.gen.go":              true,
 	"gen/client/v2/client.gen.go":              true,
+	"gen/client/headscale/v0/client.gen.go":    true,
+	"docs/ref/api/headscale-v0.yaml":           true,
+	"docs/ref/api/problems.md":                 true,
+	"docs/ref/cli.md":                          true,
+	"docs/ref/headscale.1":                     true,
 	".github/workflows/test-integration.yaml":  true,
 	"nix/options.generated.nix":                true,
 	"docs/ref/configuration-options.md":        true,
 	"docs/ref/config-example.yaml":             true,
 }
 
-// oapiPin finds the oapi-codegen version the Makefile pins, so the clients are
-// regenerated with the same tool a developer running `make client` would get.
-var oapiPin = regexp.MustCompile(`github\.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@(v[\w.\-]+)`)
-
-var (
-	errNoOapiPin  = errors.New("no oapi-codegen pin found in Makefile")
-	errStrayWrite = errors.New("generator wrote outside the generated set")
-)
-
-func oapiVersion(r *repo) (string, error) {
-	mk, err := r.readFile("Makefile")
-	if err != nil {
-		return "", err
-	}
-
-	m := oapiPin.FindStringSubmatch(mk)
-	if m == nil {
-		return "", errNoOapiPin
-	}
-
-	return m[1], nil
-}
-
-// generateClients repeats the Makefile's client recipe. The bot does not shell
-// out to make, but check-generated.yml still runs the real target and diffs, so
-// any drift between the two surfaces on the bot's own pull request.
-func generateClients(ctx context.Context, r *repo) error {
-	version, err := oapiVersion(r)
-	if err != nil {
-		return err
-	}
-
-	tmp, err := os.CreateTemp("", "headscale-openapi-3.0.*.yaml")
-	if err != nil {
-		return fmt.Errorf("creating temporary spec: %w", err)
-	}
-
-	spec := tmp.Name()
-
-	tmp.Close()
-	defer os.Remove(spec)
-
-	tool := "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@" + version
-
-	for _, step := range [][]string{
-		{"go", "run", "./cmd/gen-openapi", "-downgrade", spec},
-		{"go", "run", tool, "-generate", "types,client", "-package", "clientv1", "-o", "gen/client/v1/client.gen.go", spec},
-		{"go", "run", "./cmd/gen-openapi", "-api", "v2", "-downgrade", spec},
-		{"go", "run", tool, "-generate", "types,client", "-package", "clientv2", "-o", "gen/client/v2/client.gen.go", spec},
-	} {
-		if _, err := r.nixRun(ctx, step...); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
+var errStrayWrite = errors.New("generator wrote outside the generated set")
 
 // applyGenerate refreshes every checked-in generated file. Most of the churn
 // here is not caused by this repository at all: the capability-version table is
@@ -93,7 +40,7 @@ func applyGenerate(ctx context.Context, r *repo) (change, error) {
 		return change{}, err
 	}
 
-	if err := generateClients(ctx, r); err != nil {
+	if _, err := r.nixRun(ctx, "make", "client"); err != nil {
 		return change{}, err
 	}
 

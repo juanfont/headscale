@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -23,22 +24,13 @@ func cmdPlan(ctx context.Context) error {
 }
 
 func planLines(ctx context.Context, r *repo) []string {
-	lines := []string{"flake.lock: `nix flake update` moves nixpkgs, flake-utils and flake-checks"}
-
-	lines = append(lines, planBuilders(ctx, r)...)
-	lines = append(lines, planLockstep(ctx, r)...)
-	lines = append(lines, planImages(ctx, r)...)
-	lines = append(lines, planProviders(ctx, r))
-
-	if version, err := oapiVersion(r); err != nil { //nolint:noinlineerr
-		lines = append(lines, "oapi-codegen: "+err.Error())
-	} else if latest, err := latestVersion(ctx, "github.com/oapi-codegen/oapi-codegen/v2", version); err != nil { //nolint:noinlineerr
-		lines = append(lines, "oapi-codegen: "+err.Error())
-	} else {
-		lines = append(lines, gap("Makefile oapi-codegen", version, latest))
-	}
-
-	return lines
+	return slices.Concat(
+		[]string{"flake.lock: `nix flake update` moves nixpkgs, flake-utils and flake-checks"},
+		planBuilders(ctx, r),
+		planLockstep(ctx, r),
+		planImages(ctx, r),
+		[]string{planProviders(ctx, r)},
+	)
 }
 
 func planProviders(ctx context.Context, r *repo) string {
