@@ -107,6 +107,9 @@ zizmor, `golangci-lint --new-from-rev=HEAD~1`, vendor hash). Never skip them
 - Integration flakes are almost always code. Read `hs-*.stderr.log` before
   blaming Docker.
 - Some races surface only on SQLite or only on PostgreSQL (`hi run --postgres`).
+- `.github/workflows/soak.yml` runs every property and fuzz target nightly
+  with a long budget. Call a property `TestRapid*` and add it to
+  `.github/workflows/soak-properties.txt`, which the soak checks.
 
 ## Public contract
 
