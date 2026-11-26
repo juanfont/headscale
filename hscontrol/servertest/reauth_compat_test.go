@@ -71,8 +71,13 @@ var reauthSkipReasons = map[string]string{
 	"tag-claim/tc-oc-own-relogin/tc-oc-own/login-devices": ownerOverride,
 	"tag-claim/tc-oc-own-relogin/tc-oc-own/login-owner":   ownerOverride,
 
-	"tag-claim/tc-self-kris-relogin/tc-self-kris/login-devices": loginTagged,
-	"tag-claim/tc-self-kris-relogin/tc-self-kris/login-owner":   loginTagged,
+	"tag-claim/tc-self-kris-relogin/tc-self-kris/login-devices":    loginTagged,
+	"tag-claim/tc-self-kris-relogin/tc-self-kris/login-owner":      loginTagged,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/created-by":         ownerOverride,
+	"tag-claim/tc-thor-own-relogin/tc-thor-own/login-created-by":   ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/created-by":             ownerOverride,
+	"tag-claim/tc-oc-own-relogin/tc-oc-own/login-created-by":       ownerOverride,
+	"tag-claim/tc-self-kris-relogin/tc-self-kris/login-created-by": loginTagged,
 
 	"tag-claim/tc-adm-own-tags-relogin/tc-adm-own-tags/expires": expiryTimeKept,
 	"reauth-wake/wk-force-other-relogin/wk-force-other/expires": expiryTimeKept,
@@ -407,6 +412,7 @@ func (run *reauthRun) cellChecks(
 		return renderDevices(views, f)
 	})
 	check("owner", renderOwners(want), func() string { return renderOwners(got()) })
+	check("created-by", renderUsers(want), func() string { return renderUsers(got()) })
 
 	if run.viaLogin {
 		if len(want) > 0 && !slices.ContainsFunc(want, func(v deviceView) bool { return !v.tagged }) {
@@ -621,6 +627,7 @@ type deviceView struct {
 	nodeID    tailcfg.NodeID
 	tagged    bool
 	owner     string
+	user      string // SaaS's device user; headscale's CreatedByUserID
 	expiry    string // "disabled", "past" or "future"
 	expires   string // the raw expiry, to tell a renewal from no change
 	deadline  string // "none" or "set": whether a time is kept, key expiry on or off
@@ -671,6 +678,7 @@ func saasDeviceView(c *testcapture.Capture, d saasDevice, at time.Time) deviceVi
 		nodeID:    c.NodeIDs[deviceLabelAlias(d.ID)],
 		tagged:    len(d.Tags) > 0,
 		owner:     saasOwner(d),
+		user:      saasDeviceUser(d.User),
 		expiry:    expiry,
 		expires:   d.Expires,
 		deadline:  deadline,
@@ -679,6 +687,20 @@ func saasDeviceView(c *testcapture.Capture, d saasDevice, at time.Time) deviceVi
 		nodeKey:   d.NodeKey,
 		addrs:     sortedStrings(d.Addresses),
 	}
+}
+
+// saasDeviceUser names a SaaS device's user as [stepReplay.hsViews] names a
+// creator, so a user the capture does not map is not read as none.
+func saasDeviceUser(email string) string {
+	if email == "" {
+		return "none"
+	}
+
+	if name, ok := captureUserNames[email]; ok {
+		return "user " + name
+	}
+
+	return "unmapped " + email
 }
 
 // deviceLabelAlias turns "{device:x#2}" into "x#2".
@@ -705,6 +727,17 @@ func (r *stepReplay) hsViews(alias string) []deviceView {
 			nodeKey:   nv.NodeKey().String(),
 			addrs:     sortedStrings(nv.IPsAsString()),
 			ips:       nv.IPs(),
+		}
+
+		v.user = "none"
+		if id, ok := nv.CreatedByUserID().GetOk(); ok {
+			v.user = fmt.Sprintf("unmapped %d", id)
+
+			for name, u := range r.users {
+				if u.ID == id {
+					v.user = "user " + name
+				}
+			}
 		}
 
 		if v.tagged {
@@ -742,6 +775,12 @@ func renderDevices(views []deviceView, first deviceView) string {
 
 func renderOwners(views []deviceView) string {
 	return renderEach(views, func(v deviceView) string { return v.owner })
+}
+
+// renderUsers gives each device's user: headscale's createdBy stands for
+// SaaS's device user.
+func renderUsers(views []deviceView) string {
+	return renderEach(views, func(v deviceView) string { return v.user })
 }
 
 func renderNodeKeys(views []deviceView, prev map[string]deviceView) string {

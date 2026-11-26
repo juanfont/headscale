@@ -68,6 +68,7 @@ type serverConfig struct {
 	dnsResolvers          []string
 	certProvider          hsdns.Provider
 	prefixV4              netip.Prefix
+	connectedSeen         func() time.Time
 }
 
 func defaultServerConfig() *serverConfig {
@@ -79,6 +80,12 @@ func defaultServerConfig() *serverConfig {
 		taildropEnabled:  true,
 		prefixV4:         netip.MustParsePrefix("100.64.0.0/10"),
 	}
+}
+
+// WithConnectedSeen sets the last seen that API v0 reports for a connected
+// node, so the minute a test expects is the one the server prints.
+func WithConnectedSeen(now func() time.Time) ServerOption {
+	return func(c *serverConfig) { c.connectedSeen = now }
 }
 
 // WithBatchDelay sets the batcher's change coalescing delay.
@@ -185,6 +192,8 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 	cfg.Database.Type = types.DatabaseSqlite
 	cfg.Database.Sqlite.Path = tmpDir + "/headscale_test.db"
 	cfg.Policy.Mode = types.PolicyModeDB
+	// Tests never reach pkgs.tailscale.com.
+	cfg.AutoUpdate.CheckVersions = false
 	cfg.Taildrop.Enabled = sc.taildropEnabled
 	cfg.LogTail.Enabled = sc.logTailEnabled
 	cfg.Tuning.BatchChangeDelay = sc.batchDelay
@@ -217,7 +226,7 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		cfg.DNSConfig.Nameservers.Global = sc.dnsResolvers
 	}
 
-	return start(tb, cfg, sc.ephemeralTimeout, sc.realListener)
+	return start(tb, cfg, sc.ephemeralTimeout, sc.realListener, sc.connectedSeen)
 }
 
 // NewServerFromConfig starts cfg, as loaded, as a test server. Only the
@@ -229,17 +238,21 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 func NewServerFromConfig(tb testing.TB, cfg types.Config) *TestServer {
 	tb.Helper()
 
-	return start(tb, cfg, cfg.Node.Ephemeral.InactivityTimeout, false)
+	return start(tb, cfg, cfg.Node.Ephemeral.InactivityTimeout, false, nil)
 }
 
 // start runs cfg through [hscontrol.NewHeadscale], then sets the ephemeral
 // timeout and starts the server's subsystems and listener.
-func start(tb testing.TB, cfg types.Config, ephemeralTimeout time.Duration, realListener bool) *TestServer {
+func start(tb testing.TB, cfg types.Config, ephemeralTimeout time.Duration, realListener bool, connectedSeen func() time.Time) *TestServer {
 	tb.Helper()
 
 	app, err := hscontrol.NewHeadscale(&cfg)
 	if err != nil {
 		tb.Fatalf("servertest: NewHeadscale: %v", err)
+	}
+
+	if connectedSeen != nil {
+		app.SetConnectedSeenForTest(tb, connectedSeen)
 	}
 
 	// Validate's floor is for clients that reconnect over real networks;
