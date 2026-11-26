@@ -29,6 +29,7 @@ import (
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/netmap"
 	"tailscale.com/types/views"
@@ -146,6 +147,7 @@ var routesMapCompatTests = []struct {
 	{"routes-internet-public-subnet", "autogroup:internet with a public subnet router"},
 	{"routes-destination-wider-than-route", "destination wider than the approved route"},
 	{"routes-exit-node-public-destination-a", "a routed prefix to one public address"},
+	{"routes-exit-node-public-destination-b", "the internet with an exit node approved for IPv6 only"},
 }
 
 // aclMapCompatTests lists ACL captures replayed through the mapper, with only
@@ -829,6 +831,9 @@ func compareNetmap(
 //     entries like 10.44.0.0/16)
 //   - peer-addresses: the Tailscale IPs in AllowedIPs, by count and owner
 //   - peer-primary-routes: PrimaryRoutes
+//   - peer-suggest-exit-node: presence of suggest-exit-node on the peer's
+//     CapMap (presence only, not values — headscale and the service agree
+//     a one-family exit node, offered to nobody, suggests nobody)
 //
 // The last three cover peers both sides list. A check listed in skips as
 // <key>/<check> must differ.
@@ -849,7 +854,7 @@ func comparePeers(
 	check := map[string]require.TestingT{}
 	listed := map[string]*failRecorder{}
 
-	for _, name := range []string{"peers", "peer-allowed-ips", "peer-addresses", "peer-primary-routes"} {
+	for _, name := range []string{"peers", "peer-allowed-ips", "peer-addresses", "peer-primary-routes", "peer-suggest-exit-node"} {
 		check[name] = t
 
 		if _, ok := skips[key+"/"+name]; ok {
@@ -933,6 +938,7 @@ func comparePeers(
 			TailscaleIPs:  tsIPs,
 			RoutePrefixes: routePrefixes,
 			PrimaryRoutes: proutes,
+			SuggestExit:   peer.CapMap().Contains(nodecap.SuggestExitNode),
 		}
 	}
 
@@ -988,6 +994,12 @@ func comparePeers(
 
 		assert.ElementsMatchf(check["peer-primary-routes"], wantPRoutes, gotPeer.PrimaryRoutes,
 			"peer %s: PrimaryRoutes mismatch", name)
+
+		// Only presence: a one-family exit node is offered to nobody,
+		// so the capability must reach nobody's peer view of it.
+		assert.Equalf(check["peer-suggest-exit-node"],
+			wantPeer.CapMap().Contains(nodecap.SuggestExitNode), gotPeer.SuggestExit,
+			"peer %s: suggest-exit-node on the peer's CapMap mismatch", name)
 	}
 
 	// Check for extra peers headscale shows that Tailscale SaaS doesn't.
@@ -1378,6 +1390,7 @@ type peerSummary struct {
 	TailscaleIPs  []netip.Prefix // Tailscale address entries from AllowedIPs
 	RoutePrefixes []string       // non-Tailscale-IP AllowedIPs (sorted)
 	PrimaryRoutes []string       // sorted
+	SuggestExit   bool           // suggest-exit-node on the peer's CapMap
 }
 
 // parsePrefixOrAddr parses a string as a [netip.Prefix]. If the string

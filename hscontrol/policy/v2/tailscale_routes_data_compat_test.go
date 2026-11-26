@@ -1649,7 +1649,7 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 						// This mirrors RoutesForPeer: primaryRoutes + exitRoutes
 						// filtered through ReduceRoutes.
 						peerPrimaries := nmPeer.PrimaryRoutes().AsSlice()
-						exitRoutes := peer.ExitRoutes()
+						exitRoutes := peer.OfferedExitRoutes()
 						allRoutes := slices.Concat(peerPrimaries, exitRoutes)
 
 						var reducedRoutes []netip.Prefix
