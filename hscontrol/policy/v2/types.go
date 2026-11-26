@@ -98,6 +98,8 @@ var (
 	ErrGrantMissingIPOrApp             = errors.New("ip and app can not both be empty")
 	ErrGrantIPPortList                 = errors.New("only one port range allowed")
 	ErrGrantViaNotATag                 = errors.New("via can only be a tag")
+	ErrGrantViaNonIPDst                = errors.New("cannot use via with non-IP dsts")
+	ErrGrantViaTailscaleIP             = errors.New("cannot use via with tailscale IPs")
 	ErrProtocolPortInvalidFormat       = errors.New("expected only one colon in Internet protocol and port type")
 	ErrCapNameInvalidForm              = errors.New("capability name must have the form {domain}/{path}")
 	ErrCapNameTailscaleDomain          = errors.New("capability name must not be in the tailscale.com domain")
@@ -2501,6 +2503,42 @@ var tailscaleCapAllowlist = map[peercap.Cap]bool{
 	peercap.Cap("tailscale.com/cap/tailsql"): true,
 }
 
+// validateViaDestinations refuses what SaaS refuses as the destination of a
+// grant with via: only routable prefixes and autogroup:internet can be
+// steered through a router, and a node's own address is not routed. The
+// 4via6 range is the one part of the Tailscale ranges a router serves.
+func validateViaDestinations(hosts Hosts, destinations Aliases) error {
+	for _, dst := range destinations {
+		var pfx netip.Prefix
+
+		switch d := dst.(type) {
+		case *Prefix:
+			pfx = netip.Prefix(*d)
+		case *Host:
+			pfx = netip.Prefix(hosts[*d])
+		case *AutoGroup:
+			if !d.Is(AutoGroupInternet) {
+				return ErrGrantViaNonIPDst
+			}
+
+			continue
+		default:
+			return ErrGrantViaNonIPDst
+		}
+
+		if !pfx.IsValid() || tsaddr.TailscaleViaRange().Contains(pfx.Addr()) &&
+			pfx.Bits() >= tsaddr.TailscaleViaRange().Bits() {
+			continue
+		}
+
+		if pfx.Overlaps(tsaddr.CGNATRange()) || pfx.Overlaps(tsaddr.TailscaleULARange()) {
+			return ErrGrantViaTailscaleIP
+		}
+	}
+
+	return nil
+}
+
 // validateGrantSrcDstCombination validates [Grant]-specific source/destination
 // combinations. [Grant]s are stricter than [ACL]s: wildcard (*) sources are NOT
 // allowed with autogroup:self destinations because * includes tags, and tags
@@ -2927,6 +2965,13 @@ func (p *Policy) validate() error {
 			if err != nil {
 				//nolint:err113 // SaaS-aligned dynamic phrasing; no caller does errors.Is.
 				errs = append(errs, fmt.Errorf("tag %q not found", viaTag))
+			}
+		}
+
+		if len(grant.Via) > 0 {
+			err := validateViaDestinations(p.Hosts, grant.Destinations)
+			if err != nil {
+				errs = append(errs, err)
 			}
 		}
 
