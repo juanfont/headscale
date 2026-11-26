@@ -123,6 +123,7 @@ func newAPI(router chi.Router, b Backend, config huma.Config) huma.API {
 	registerAuthKeys(api, b)
 	registerAPIKeys(api, b)
 	registerOAuthClients(api, b)
+	registerAuthRequests(api, b)
 
 	return api
 }
@@ -608,6 +609,13 @@ func operations(item *huma.PathItem) map[string]*huma.Operation {
 
 // notUserID is the message of a userId, or a user query, that is not an ID.
 const notUserID = "is not a user ID"
+
+// userIDField is where a body names a user.
+const userIDField = "body.userId"
+
+// hasControlCharacter is the message of a text that [types.ValidateUserText]
+// refuses.
+const hasControlCharacter = "has a control character or a bidirectional formatting character"
 
 // pathID reads the ID of a resource in a path. Only the form a server
 // writes names a resource: decimal digits with no sign and no leading zero,

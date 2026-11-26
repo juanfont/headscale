@@ -77,7 +77,7 @@ func findUser(ctx context.Context, word string) (clientv0.User, error) {
 		return clientv0.User{}, err
 	}
 
-	return lib.Resolve(
+	u, err := lib.Resolve(
 		users,
 		word,
 		word,
@@ -86,6 +86,13 @@ func findUser(ctx context.Context, word string) (clientv0.User, error) {
 		func(u clientv0.User) string { return u.Id },
 		func(u clientv0.User) []string { return []string{u.Email, u.Name, u.ProviderId} },
 	)
+	// No username has a colon: a tag where a user is wanted is a mistake of
+	// the kind, which a command's hint may say more of.
+	if err != nil && strings.HasPrefix(word, "tag:") {
+		return u, &lib.LookupError{Text: "a tag is not a user.", Hinted: true}
+	}
+
+	return u, err
 }
 
 // userCandidates are the columns of the users an ambiguous word matches;

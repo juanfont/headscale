@@ -29,7 +29,9 @@ import (
 
 const user = "user1"
 
-var authIDRe = regexp.MustCompile(`starting node registration using auth id: (\S+)`)
+// authIDRe finds the auth ID in the command that headscale's register page
+// shows; only its prefix is a promise.
+var authIDRe = regexp.MustCompile(`--auth-id (hskey-authreq-\S+)`)
 
 // androidSkip skips unless running under hi with an APK to test, which
 // also means the host was set up with KVM for it.
@@ -342,21 +344,13 @@ func (e *env) loginInteractive(t *testing.T) *clientv1.Node {
 	require.NoError(t, e.android.Launch())
 	e.setControlURL(t)
 
-	// The app hands the register URL to a browser; stand in for the user
-	// opening it and running the command it shows.
-	var authID string
+	// The app hands the register URL to a browser; read the command the
+	// page shows there and run it, as the user does. The server's log
+	// hides the ID.
+	authID, err := e.android.WaitForMatch(authIDRe)
+	require.NoError(t, err, "the register page never showed its command")
 
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		stdout, stderr, err := e.headscale.ReadLog()
-		assert.NoError(c, err)
-
-		m := authIDRe.FindStringSubmatch(stdout + stderr)
-		if assert.NotNil(c, m, "headscale never received an interactive registration") {
-			authID = m[1]
-		}
-	}, 2*time.Minute, 2*time.Second)
-
-	_, err := e.headscale.Execute([]string{
+	_, err = e.headscale.Execute([]string{
 		"headscale", "auth", "register", "--user", user, "--auth-id", authID,
 	})
 	require.NoError(t, err)

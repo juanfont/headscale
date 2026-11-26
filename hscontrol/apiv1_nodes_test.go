@@ -607,7 +607,7 @@ func TestAPIV1NodeRegister(t *testing.T) {
 		}
 
 		assertParityIsolated(t, seed, http.MethodPost,
-			"/api/v1/node/register?user=alice&key="+authID.String(), nil)
+			"/api/v1/node/register?user=alice&key="+authID.Raw(), nil)
 	})
 
 	t.Run("invalid key parity", func(t *testing.T) {
@@ -621,7 +621,7 @@ func TestAPIV1NodeRegister(t *testing.T) {
 	t.Run("unknown user parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 		res := h.assertParity(t, http.MethodPost,
-			"/api/v1/node/register?user=nope&key="+types.MustAuthID().String(), nil)
+			"/api/v1/node/register?user=nope&key="+types.MustAuthID().Raw(), nil)
 		assertStatus(t, res, http.StatusNotFound)
 	})
 }
@@ -650,7 +650,7 @@ func TestAPIV1NodeBackfillIPs(t *testing.T) {
 func TestAPIV1NodeDebugCreate(t *testing.T) {
 	t.Run("unknown user parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
-		body := []byte(`{"user":"nope","key":"` + types.MustAuthID().String() +
+		body := []byte(`{"user":"nope","key":"` + types.MustAuthID().Raw() +
 			`","name":"dbg","routes":[]}`)
 		res := h.assertParity(t, http.MethodPost, "/api/v1/debug/node", body)
 		assertStatus(t, res, http.StatusNotFound)
@@ -671,7 +671,7 @@ func TestAPIV1NodeDebugCreate(t *testing.T) {
 		h := newAPIV1Harness(t)
 		h.app.state.CreateUserForTest("alice")
 
-		body := []byte(`{"user":"alice","key":"` + types.MustAuthID().String() +
+		body := []byte(`{"user":"alice","key":"` + types.MustAuthID().Raw() +
 			`","name":"dbgnode","routes":["10.0.0.0/24"]}`)
 
 		res := h.callHuma(http.MethodPost, "/api/v1/debug/node", body)
@@ -703,7 +703,7 @@ func TestAPIV1NodeDebugCreateAdmissionFailure(t *testing.T) {
 	require.NoError(t, app.state.SetAuthCacheEntry(types.MustAuthID(), types.NewAuthRequest()))
 
 	id := types.MustAuthID()
-	body := []byte(`{"user":"alice","key":"` + id.String() + `","name":"node","routes":[]}`)
+	body := []byte(`{"user":"alice","key":"` + id.Raw() + `","name":"node","routes":[]}`)
 	res := callHandler(newHumaTestHandler(app), http.MethodPost, "/api/v1/debug/node", body)
 	require.Equal(t, http.StatusServiceUnavailable, res.status)
 

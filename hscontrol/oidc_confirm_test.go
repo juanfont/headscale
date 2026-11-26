@@ -20,7 +20,7 @@ func newConfirmRequest(t *testing.T, authID types.AuthID, formCSRF, cookieCSRF s
 	req := httptest.NewRequestWithContext(
 		context.Background(),
 		http.MethodPost,
-		"/register/confirm/"+authID.String(),
+		"/register/confirm/"+authID.Raw(),
 		form,
 	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -31,7 +31,7 @@ func newConfirmRequest(t *testing.T, authID types.AuthID, formCSRF, cookieCSRF s
 	})
 
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("auth_id", authID.String())
+	rctx.URLParams.Add("auth_id", authID.Raw())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	return req
@@ -100,4 +100,42 @@ func TestRegisterConfirmHandler_RejectsWithoutPending(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, rec.Code,
 		"confirm without prior OIDC pending state must be rejected with 403")
+}
+
+// TestRegisterConfirmReloadOfASpentLink: the browser reloads the confirmation
+// page of a
+// registration an admin rejected; 002 promises 410 for a spent link.
+func TestRegisterConfirmReloadOfASpentLink(t *testing.T) {
+	app := createTestApp(t)
+	provider := &AuthProviderOIDC{h: app}
+	user := app.state.CreateUserForTest("alice")
+
+	get := func(id types.AuthID) int {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/register/confirm/"+id.Raw(), nil)
+		req.AddCookie(&http.Cookie{Name: registerConfirmCSRFCookie, Value: "c"}) //nolint:gosec
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("auth_id", id.Raw())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		provider.RegisterConfirmGetHandler(rec, req)
+
+		return rec.Code
+	}
+
+	pending := func() types.AuthID {
+		id := types.MustAuthID()
+		r := types.NewRegisterAuthRequest(&types.RegistrationData{Hostname: "h"})
+		r.SetPendingConfirmation(&types.PendingRegistrationConfirmation{UserID: user.ID, CSRF: "c"})
+		require.NoError(t, app.state.SetAuthCacheEntry(id, r))
+
+		return id
+	}
+
+	open := pending()
+	require.Equal(t, http.StatusOK, get(open), "control: a pending link opens")
+
+	spent := pending()
+	require.NoError(t, app.state.AnswerAuthRequest(spent, false))
+	require.Equal(t, http.StatusGone, get(spent), "a rejected link is spent")
 }

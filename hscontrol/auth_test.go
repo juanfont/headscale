@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -33,6 +34,59 @@ const (
 )
 
 var errNodeNotFoundAfterSetup = errors.New("node not found after setup")
+
+// TestRegisterRequestLogHidesAuthKey: the trace lines of a registration
+// print the request, whose auth key joins a node to the tailnet. Both are
+// reached: the registration, and the logout of an expired node that sends
+// its key along.
+func TestRegisterRequestLogHidesAuthKey(t *testing.T) {
+	logged := captureLog(t, zerolog.TraceLevel)
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("keyed")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machine := key.NewMachine().Public()
+	ns := &noiseServer{headscale: app, machineKey: machine}
+	nodeKey := key.NewNode().Public()
+	followup := "https://headscale.example/register/" + string(types.MustAuthID())
+
+	register := func(expiry time.Time) {
+		rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+			Version:  capver.MinSupportedCapabilityVersion,
+			NodeKey:  nodeKey,
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			Expiry:   expiry,
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "keyed"},
+		})
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	register(time.Time{})
+
+	node, ok := app.state.GetNodeByNodeKey(nodeKey)
+	require.True(t, ok)
+
+	_, _, err = app.state.SetNodeExpiry(node.ID(), new(time.Now().Add(-time.Minute)))
+	require.NoError(t, err)
+
+	register(time.Now().Add(-time.Minute))
+
+	out := logged.String()
+	require.Contains(t, out, `"message":"RegisterResponse"`)
+	require.Contains(t, out, "Node key expired, forcing re-authentication")
+	require.Contains(t, out, "hskey-auth-***")
+	require.NotContains(t, out, pak.Key)
+
+	got := registerRequestForLog(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: strings.Repeat("a", 48), Oauth2Token: &tailcfg.Oauth2Token{AccessToken: "secret"}},
+		Followup: followup,
+	})
+	require.Equal(t, "***", got.Auth.AuthKey, "a key of the old form")
+	require.Nil(t, got.Auth.Oauth2Token)
+	require.Equal(t, "https://headscale.example/register/hskey-authreq-***", got.Followup)
+}
 
 // interactiveStep defines a step in the interactive authentication workflow.
 type interactiveStep struct {
@@ -711,7 +765,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					nodeToRegister.FinishAuth(types.AuthVerdict{Node: node.View()})
 				}()
 
-				return fmt.Sprintf("http://localhost:8080/register/%s", regID), nil
+				return "http://localhost:8080/register/" + regID.Raw(), nil
 			},
 			request: func(followupURL string) tailcfg.RegisterRequest {
 				return tailcfg.RegisterRequest{
@@ -746,7 +800,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				require.NoError(t, app.state.SetAuthCacheEntry(regID, nodeToRegister))
 				// Don't call FinishRegistration - will timeout
 
-				return fmt.Sprintf("http://localhost:8080/register/%s", regID), nil
+				return "http://localhost:8080/register/" + regID.Raw(), nil
 			},
 			request: func(followupURL string) tailcfg.RegisterRequest {
 				return tailcfg.RegisterRequest{
@@ -1589,7 +1643,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					nodeToRegister.FinishAuth(types.AuthVerdict{Node: types.NodeView{}}) // Empty view indicates cache expiry
 				}()
 
-				return fmt.Sprintf("http://localhost:8080/register/%s", regID), nil
+				return "http://localhost:8080/register/" + regID.Raw(), nil
 			},
 			request: func(followupURL string) tailcfg.RegisterRequest {
 				return tailcfg.RegisterRequest{
@@ -2051,7 +2105,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					return "", err
 				}
 				// Don't add it to cache - it's already expired/missing
-				return regID.String(), nil
+				return regID.Raw(), nil
 			},
 			request: func(regID string) tailcfg.RegisterRequest {
 				return tailcfg.RegisterRequest{
@@ -3479,7 +3533,7 @@ func TestRegistrationFollowupReleasesRejectedSession(t *testing.T) {
 	_, present := app.state.GetAuthCacheEntry(authID)
 	require.True(t, present, "a canceled poll must leave the pending session available")
 
-	body := fmt.Appendf(nil, `{"authId":%q}`, authID.String())
+	body := fmt.Appendf(nil, `{"authId":%q}`, authID.Raw())
 	rejected := callHandler(newHumaTestHandler(app), http.MethodPost, "/api/v1/auth/reject", body)
 	require.Equal(t, http.StatusOK, rejected.status)
 
@@ -4606,7 +4660,7 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 		node.User = user
 		regEntry.FinishAuth(types.AuthVerdict{Node: node.View()})
 
-		return fmt.Sprintf("http://localhost:8080/register/%s", authID)
+		return "http://localhost:8080/register/" + authID.Raw()
 	}
 
 	followup := func(url string, machineKey key.MachinePublic) (*tailcfg.RegisterResponse, error) {
@@ -4675,7 +4729,7 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 		})
 		require.NoError(t, app.state.SetAuthCacheEntry(authID, regEntry))
 
-		url := fmt.Sprintf("http://localhost:8080/register/%s", authID)
+		url := "http://localhost:8080/register/" + authID.Raw()
 		refusedAtOnce(t, url, foreignMachineKey.Public())
 
 		user := app.state.CreateUserForTest("followup-pending-user")
@@ -4694,7 +4748,7 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 		authID := types.MustAuthID()
 		require.NoError(t, app.state.SetAuthCacheEntry(authID, types.NewSSHCheckAuthRequest(1, 2)))
 
-		refusedAtOnce(t, fmt.Sprintf("http://localhost:8080/register/%s", authID),
+		refusedAtOnce(t, "http://localhost:8080/register/"+authID.Raw(),
 			victimMachineKey.Public())
 	})
 }
@@ -4751,7 +4805,7 @@ func TestFollowupWaitPrefersCompletedAuthOverExpiredContext(t *testing.T) {
 		cancel()
 
 		regData := &types.RegistrationData{MachineKey: machineKey, NodeKey: nodeKey}
-		followup := fmt.Sprintf("http://localhost:8080/register/%s", regID)
+		followup := "http://localhost:8080/register/" + regID.Raw()
 
 		resp, err := app.waitForFollowup(ctx, followup, regData)
 		switch {
@@ -4870,7 +4924,7 @@ func TestFollowupParksOneRequestPerRegistration(t *testing.T) {
 		MachineKey: machineKey,
 		NodeKey:    key.NewNode().Public(),
 	}
-	followup := fmt.Sprintf("http://localhost:8080/register/%s", authID)
+	followup := "http://localhost:8080/register/" + authID.Raw()
 
 	const followups = 50
 
@@ -4943,7 +4997,7 @@ func TestFollowupURLLength(t *testing.T) {
 			t.Parallel()
 
 			app := createTestApp(t)
-			followup := fmt.Sprintf("http://localhost:8080/register/%s?padding=", types.MustAuthID())
+			followup := fmt.Sprintf("http://localhost:8080/register/%s?padding=", types.MustAuthID().Raw())
 			followup += strings.Repeat("x", length-len(followup))
 			regData := &types.RegistrationData{
 				MachineKey: key.NewMachine().Public(),
@@ -4992,7 +5046,7 @@ func TestFollowupRefreshKeepsAuthMetadata(t *testing.T) {
 
 			expiry := time.Now().UTC().Add(time.Hour)
 			req := tailcfg.RegisterRequest{
-				Followup: fmt.Sprintf("http://localhost:8080/register/%s", authID),
+				Followup: "http://localhost:8080/register/" + authID.Raw(),
 				NodeKey:  key.NewNode().Public(),
 				Expiry:   expiry,
 				Hostinfo: &tailcfg.Hostinfo{

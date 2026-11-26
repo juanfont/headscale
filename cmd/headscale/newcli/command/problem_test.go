@@ -77,6 +77,59 @@ func TestProblemSentence(t *testing.T) {
 			clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "node", Id: "12", Name: "mynode"})},
 			"Node 12 (mynode) no longer exists.",
 		},
+		{
+			"not found of an auth request names no ID, also when the server sent one",
+			clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "authRequest", Id: "hskey-authreq-0123456789abcdef01234567"})},
+			"no auth request has this ID. It may have timed out, or it was answered already.",
+		},
+		{
+			"a registration answered with the verb of an SSH check",
+			clientv0.Problem{Code: clientv0.ProblemCodeAuthRequestKind, Details: map[string]any{"kind": "registration"}},
+			"this is a registration request. It needs a user:\n  headscale auth register <auth-id> <user>",
+		},
+		{
+			"an SSH check answered with the verb of a registration",
+			clientv0.Problem{Code: clientv0.ProblemCodeAuthRequestKind, Details: map[string]any{"kind": "sshCheck"}},
+			"this is an SSH check request. Use:\n  headscale auth approve <auth-id>",
+		},
+		{
+			"not found of an auth request whose object is a hostname and no ID",
+			clientv0.Problem{Code: clientv0.ProblemCodeNotFound, Object: nullable.NewNullableWithValue(clientv0.ProblemObject{Kind: "authRequest", Name: "newlaptop"})},
+			"no auth request has this ID. It may have timed out, or it was answered already.",
+		},
+		{
+			"a registration refused: the node key is another node's",
+			clientv0.Problem{Code: clientv0.ProblemCodeRegistrationRefused, Details: map[string]any{"reason": "nodeKeyInUse"}},
+			"the node key of this machine belongs to another node already.\nRun tailscale logout on the machine, then tailscale up, and answer the request it shows then.",
+		},
+		{
+			"a registration refused: the report is too large",
+			clientv0.Problem{Code: clientv0.ProblemCodeRegistrationRefused, Details: map[string]any{"reason": "reportTooLarge"}},
+			"this machine reported more about itself than the server takes.\nHave it advertise less, such as fewer routes or tags, and answer the request it shows then.",
+		},
+		{
+			"a registration refused for a reason this build does not know",
+			clientv0.Problem{Code: clientv0.ProblemCodeRegistrationRefused, Details: map[string]any{"reason": "new\nError: x"}},
+			`the server refused the registration (new\x0aError: x).`,
+		},
+		{
+			"the cache of auth requests is full",
+			clientv0.Problem{Code: clientv0.ProblemCodeUnhealthy, Details: map[string]any{"reasons": []any{
+				map[string]any{"code": "auth_requests_full", "message": "The cache is full."},
+			}}},
+			"the server holds as many auth requests as it takes. Answer some, or wait until they time out, then run the command again.",
+		},
+		{"a kind of auth request this build does not know", clientv0.Problem{Code: clientv0.ProblemCodeAuthRequestKind, Title: "Wrong kind", Details: map[string]any{"kind": "new"}}, "Wrong kind (auth_request_kind)."},
+		{
+			"a token cannot register a node to a user",
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_cannot_register_node_to_user"}},
+			"this credential may not do that.\nAn OAuth access token cannot register a node to a user; an API key can.",
+		},
+		{
+			"a token cannot approve an SSH check",
+			clientv0.Problem{Code: clientv0.ProblemCodeForbidden, Details: map[string]any{"scopes": []any{}, "rule": "token_cannot_approve_ssh_check"}},
+			"this credential may not do that.\nAn OAuth access token cannot approve an SSH check; an API key can, and a token may reject one.",
+		},
 		{"tags required of what is no node, such as a key", clientv0.Problem{Code: clientv0.ProblemCodeTagsRequired}, "the tag list is empty."},
 		{
 			"tags not permitted names them, escaped",

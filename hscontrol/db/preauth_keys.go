@@ -365,13 +365,13 @@ func pageCredentials(
 
 // GetPreAuthKeyWithReference is the key with id, and whether a node refers
 // to it, from one transaction.
-func (hsdb *HSDatabase) GetPreAuthKeyWithReference(id uint64) (*types.PreAuthKey, bool, error) {
+func (hsdb *HSDatabase) GetPreAuthKeyWithReference(ctx context.Context, id uint64) (*types.PreAuthKey, bool, error) {
 	type found struct {
 		key        *types.PreAuthKey
 		referenced bool
 	}
 
-	f, err := Read(hsdb.DB, func(rx *gorm.DB) (found, error) {
+	f, err := Read(hsdb.DB.WithContext(ctx), func(rx *gorm.DB) (found, error) {
 		var cred types.Credential
 
 		err := rx.Preload("User").First(&cred, "kind = ? AND id = ?", types.CredentialPreAuthKey, id).Error

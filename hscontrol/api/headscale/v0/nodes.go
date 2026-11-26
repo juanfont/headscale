@@ -111,10 +111,7 @@ func (b *UpdateNodeBody) fieldErrors() []FieldError {
 		case types.ValidateUserText(n) != nil:
 			errs = append(
 				errs,
-				FieldError{
-					Location: "body.name",
-					Message:  "has a control character or a bidirectional formatting character",
-				},
+				FieldError{Location: "body.name", Message: hasControlCharacter},
 			)
 		case n != strings.ToLower(n):
 			errs = append(
@@ -263,7 +260,7 @@ func registerNodes(api huma.API, b Backend) {
 		Summary:     "List nodes",
 		Description: "In ID order. A page and its computed fields show one moment.",
 		Tags:        tags,
-	}, needs(scope.DevicesCoreRead), nil, func(_ context.Context, in *listNodesInput) (*struct{ Body NodeList }, error) {
+	}, needs(scope.DevicesCoreRead), nil, func(ctx context.Context, in *listNodesInput) (*struct{ Body NodeList }, error) {
 		var user types.UserID
 
 		if in.User != "" {
@@ -314,7 +311,7 @@ func registerNodes(api huma.API, b Backend) {
 			func(nv types.NodeView) uint64 { return uint64(nv.ID()) },
 		)
 
-		nodes, err := b.nodes(idx.Snapshot, rows)
+		nodes, err := b.nodes(ctx, idx.Snapshot, rows)
 		if err != nil {
 			return nil, err
 		}
@@ -331,13 +328,13 @@ func registerNodes(api huma.API, b Backend) {
 		Summary:     "Read one node",
 		Description: "The ETag is the revision, to send back in If-Match.",
 		Tags:        tags,
-	}, needs(scope.DevicesCoreRead), nodeNotFound, func(_ context.Context, in *nodeIDInput) (*nodeOutput, error) {
+	}, needs(scope.DevicesCoreRead), nodeNotFound, func(ctx context.Context, in *nodeIDInput) (*nodeOutput, error) {
 		id, err := pathID[types.NodeID](in.ID)
 		if err != nil {
 			return nil, err
 		}
 
-		return b.nodeOutput(id, types.NodeView{})
+		return b.nodeOutput(ctx, id, types.NodeView{})
 	})
 
 	registerNodeWrites(api, b, tags)
@@ -358,7 +355,7 @@ func registerNodeWrites(api huma.API, b Backend, tags []string) {
 		nodeChanged,
 		{code: CodeNameTaken},
 		{code: CodeExpiryInPast},
-	}, nodeNotFound...), func(_ context.Context, in *updateNodeInput) (*nodeOutput, error) {
+	}, nodeNotFound...), func(ctx context.Context, in *updateNodeInput) (*nodeOutput, error) {
 		var patch state.NodePatch
 
 		body := in.Body
@@ -414,7 +411,7 @@ func registerNodeWrites(api huma.API, b Backend, tags []string) {
 			return nil, about(err, nodeObject(id, b.State))
 		}
 
-		return b.nodeOutput(id, nv)
+		return b.nodeOutput(ctx, id, nv)
 	})
 
 	register(api, huma.Operation{
@@ -450,7 +447,7 @@ func registerNodeWrites(api huma.API, b Backend, tags []string) {
 		Summary:     "Expire a node now",
 		Description: "Sets the expiry to the server's clock and turns key expiry on, so the node must log in again, tagged or not.",
 		Tags:        tags,
-	}, needs(scope.DevicesCore), append([]answer{nodeChanged}, nodeNotFound...), func(_ context.Context, in *nodeWriteInput) (*nodeOutput, error) {
+	}, needs(scope.DevicesCore), append([]answer{nodeChanged}, nodeNotFound...), func(ctx context.Context, in *nodeWriteInput) (*nodeOutput, error) {
 		id, rev, err := b.nodeWrite(in.ID, in.IfMatch)
 		if err != nil {
 			return nil, err
@@ -463,7 +460,7 @@ func registerNodeWrites(api huma.API, b Backend, tags []string) {
 			return nil, about(err, nodeObject(id, b.State))
 		}
 
-		return b.nodeOutput(id, nv)
+		return b.nodeOutput(ctx, id, nv)
 	})
 }
 
@@ -499,7 +496,7 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 			return nil, about(err, nodeObject(id, b.State))
 		}
 
-		return b.nodeOutput(id, types.NodeView{})
+		return b.nodeOutput(ctx, id, types.NodeView{})
 	})
 
 	register(api, huma.Operation{
@@ -594,7 +591,7 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 			return nil, about(err, nodeObject(id, b.State))
 		}
 
-		return b.nodeOutput(id, nv)
+		return b.nodeOutput(ctx, id, nv)
 	})
 
 	register(api, huma.Operation{
@@ -605,7 +602,7 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 		Description:  "Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.",
 		Tags:         tags,
 		MaxBodyBytes: maxNodeBody,
-	}, needs(scope.DevicesRoutes, scope.DevicesCoreRead), append([]answer{nodeChanged}, nodeNotFound...), func(_ context.Context, in *setRoutesInput) (*nodeOutput, error) {
+	}, needs(scope.DevicesRoutes, scope.DevicesCoreRead), append([]answer{nodeChanged}, nodeNotFound...), func(ctx context.Context, in *setRoutesInput) (*nodeOutput, error) {
 		routes := make([]netip.Prefix, 0, len(in.Body.Routes))
 
 		for _, r := range in.Body.Routes {
@@ -632,7 +629,7 @@ func registerNodeActions(api huma.API, b Backend, tags []string) {
 			return nil, about(err, nodeObject(id, b.State))
 		}
 
-		return b.nodeOutput(id, nv)
+		return b.nodeOutput(ctx, id, nv)
 	})
 }
 
@@ -844,8 +841,10 @@ func nodeObject(id types.NodeID, s *state.State) ProblemObject {
 // nodeOutput is the node with id as the newest snapshot holds it, else
 // written, the node a write returned; not_found when neither has it.
 func (b Backend) nodeOutput(
+	ctx context.Context,
 	id types.NodeID,
 	written types.NodeView,
+	known ...types.UserView,
 ) (*nodeOutput, error) {
 	defer b.State.UsersMoment()()
 
@@ -863,7 +862,7 @@ func (b Backend) nodeOutput(
 		nv = written
 	}
 
-	ns, err := b.nodes(snap, []types.NodeView{nv})
+	ns, err := b.nodes(ctx, snap, []types.NodeView{nv}, known...)
 	if err != nil {
 		return nil, err
 	}
@@ -872,8 +871,13 @@ func (b Backend) nodeOutput(
 }
 
 // nodes is nvs with the fields computed from snap. The users a page names
-// and the NodeStore does not hold are read in one query.
-func (b Backend) nodes(snap *state.Snapshot, nvs []types.NodeView) ([]Node, error) {
+// and neither the NodeStore nor known holds are read in one query.
+func (b Backend) nodes(
+	ctx context.Context,
+	snap *state.Snapshot,
+	nvs []types.NodeView,
+	known ...types.UserView,
+) ([]Node, error) {
 	var missing []types.UserID
 
 	for _, nv := range nvs {
@@ -889,11 +893,23 @@ func (b Backend) nodes(snap *state.Snapshot, nvs []types.NodeView) ([]Node, erro
 		}
 	}
 
+	missing = slices.DeleteFunc(missing, func(id types.UserID) bool {
+		return slices.ContainsFunc(
+			known,
+			func(u types.UserView) bool { return u.Valid() && types.UserID(u.ID()) == id },
+		)
+	})
 	slices.Sort(missing)
 
-	users, err := b.State.GetUsersByIDs(slices.Compact(missing))
+	users, err := b.State.GetUsersByIDs(ctx, slices.Compact(missing))
 	if err != nil {
 		return nil, err
+	}
+
+	for _, u := range known {
+		if u.Valid() {
+			users[types.UserID(u.ID())] = u
+		}
 	}
 
 	user := func(nv types.NodeView, id types.UserID) types.UserView {

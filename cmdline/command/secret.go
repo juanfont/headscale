@@ -46,21 +46,67 @@ var (
 func secretNames() []string { return []string{"key", "secret"} }
 
 // holdsSecret reports whether a value of t can hold a secret: a field named
-// as one, at any depth, through pointers, slices and maps. An interface
-// can hold anything, and is an error.
+// as one, at any depth, through pointers, slices and maps. An interface can
+// hold anything, and is an error at any depth, but for the fields of
+// openFields.
 func (p *program) holdsSecret(t reflect.Type) (bool, error) {
-	if t.Kind() == reflect.Interface {
+	if elem(t).Kind() == reflect.Interface {
 		return false, fmt.Errorf("%v %w", t, errOpaque)
 	}
 
+	if reaches(t, func(owner reflect.Type, f reflect.StructField) bool {
+		return elem(f.Type).Kind() == reflect.Interface && p.OpenFields[owner] != f.Name
+	}) {
+		return false, fmt.Errorf("%v holds a field that %w", t, errOpaque)
+	}
+
+	return reaches(t, func(_ reflect.Type, f reflect.StructField) bool {
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+
+		return f.IsExported() && slices.Contains(secretNames(), name)
+	}), nil
+}
+
+// unprintable is why a value of t cannot be printed: it is, or holds at
+// any depth, one of the program's Unprintable types, or a struct of its
+// shape, a defined type on it among them; nil for none.
+func (p *program) unprintable(t reflect.Type) error {
+	for u, why := range p.Unprintable {
+		is := func(t reflect.Type) bool { t = elem(t); return t.Kind() == reflect.Struct && t.ConvertibleTo(u) }
+
+		if is(t) ||
+			reaches(
+				t,
+				func(_ reflect.Type, f reflect.StructField) bool { return is(f.Type) },
+			) {
+			return why
+		}
+	}
+
+	return nil
+}
+
+// elem is t through pointers, slices and maps, a nullable among them.
+func elem(t reflect.Type) reflect.Type {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Map {
+		t = t.Elem()
+	}
+
+	return t
+}
+
+// reaches reports whether a field of t, at any depth, through pointers,
+// slices and maps, is one that is, told the struct that has it.
+func reaches(
+	t reflect.Type,
+	is func(owner reflect.Type, f reflect.StructField) bool,
+) bool {
 	seen := map[reflect.Type]bool{}
 
 	var walk func(reflect.Type) bool
 
 	walk = func(t reflect.Type) bool {
-		for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Map {
-			t = t.Elem()
-		}
+		t = elem(t)
 
 		if t.Kind() != reflect.Struct || seen[t] {
 			return false
@@ -69,8 +115,7 @@ func (p *program) holdsSecret(t reflect.Type) (bool, error) {
 		seen[t] = true
 
 		for f := range t.Fields() {
-			name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
-			if f.IsExported() && slices.Contains(secretNames(), name) || walk(f.Type) {
+			if is(t, f) || walk(f.Type) {
 				return true
 			}
 		}
@@ -78,17 +123,20 @@ func (p *program) holdsSecret(t reflect.Type) (bool, error) {
 		return false
 	}
 
-	return walk(t), nil
+	return walk(t)
 }
 
 // checkSecret is what is wrong with the secret of a spec whose result is
 // of type out.
 func (p *program) checkSecret(out reflect.Type, secret, done, columns bool) []error {
 	held, err := p.holdsSecret(out)
+	why := p.unprintable(out)
 
 	switch {
 	case err != nil:
 		return []error{err}
+	case why != nil:
+		return []error{why}
 	case held != secret:
 		return []error{errSecret}
 	case !secret:
@@ -106,10 +154,13 @@ func (p *program) checkSecret(out reflect.Type, secret, done, columns bool) []er
 // secret.
 func (p *program) checkRows(row reflect.Type) []error {
 	held, err := p.holdsSecret(row)
+	why := p.unprintable(row)
 
 	switch {
 	case err != nil:
 		return []error{err}
+	case why != nil:
+		return []error{why}
 	case held:
 		return []error{errSecretRow}
 	}

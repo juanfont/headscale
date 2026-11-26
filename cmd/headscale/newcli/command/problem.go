@@ -117,6 +117,12 @@ type faultAfterWriteError struct{ error }
 
 func (e *faultAfterWriteError) Unwrap() error { return e.error }
 
+// errAuthReq: an auth request's id is the secret the admin typed, which
+// nothing the CLI writes repeats, and no field name tells a check so.
+var errAuthReq = errors.New(
+	"a result or a row holds an auth request, whose id is the secret of the request: no command prints one",
+)
+
 func problemOf(status int, body json.RawMessage) error {
 	var p clientv0.Problem
 
@@ -157,9 +163,8 @@ func (e *ProblemError) text() string {
 			e.target.Kind == "node",
 		)
 	case clientv0.ProblemCodeNotFound:
-		o, err := p.Object.Get()
-		if err == nil {
-			return e.entity(o) + " no longer exists."
+		if s, ok := e.notFound(); ok {
+			return s
 		}
 	case clientv0.ProblemCodeNameTaken:
 		if s, ok := taken(p, "name"); ok {
@@ -175,6 +180,10 @@ func (e *ProblemError) text() string {
 		o, err := p.Object.Get()
 		if err == nil {
 			return e.aboutObject(o)
+		}
+	case clientv0.ProblemCodeAuthRequestKind:
+		if s := wrongVerb(p.Details["kind"]); s != "" {
+			return s
 		}
 	case clientv0.ProblemCodeOwnerConflict:
 		// The server answers it for a key with no owner too.
@@ -226,7 +235,9 @@ func (e *ProblemError) text() string {
 			return refused(table.Entity(string(o.Kind), o.Id, o.Name), p.Details)
 		}
 	case clientv0.ProblemCodeUnhealthy:
-		return "the server is not healthy:" + messages(p.Details["reasons"])
+		return unhealthy(p.Details["reasons"])
+	case clientv0.ProblemCodeRegistrationRefused:
+		return registrationRefused(p.Details["reason"])
 	case clientv0.ProblemCodeInvalidField:
 		return "the server refused a value:" + fieldErrors(p.Errors)
 	case clientv0.ProblemCodeTooLarge:
@@ -240,6 +251,21 @@ func (e *ProblemError) text() string {
 
 	// A code this build does not know.
 	return table.Visible(p.Title, "") + " (" + table.Visible(string(p.Code), "") + ")."
+}
+
+// notFound is the sentence of not_found about its object; false for none.
+// An auth request is named by its secret, which no sentence repeats.
+func (e *ProblemError) notFound() (string, bool) {
+	o, err := e.Problem.Object.Get()
+
+	switch {
+	case err != nil:
+		return "", false
+	case o.Kind == clientv0.ProblemObjectKindAuthRequest:
+		return "no auth request has this ID. It may have timed out, or it was answered already.", true
+	}
+
+	return e.entity(o) + " no longer exists.", true
 }
 
 // entity names o as messages do. The server names no object that is gone,
@@ -328,6 +354,53 @@ func fieldErrors(errs []clientv0.FieldError) string {
 	}
 
 	return b.String()
+}
+
+// unhealthy is the sentence of unhealthy, with its reasons. A cache of auth
+// requests that is full, alone, is no fault of the server's health.
+func unhealthy(reasons any) string {
+	list, _ := reasons.([]any)
+	if len(list) == 1 {
+		if m, _ := list[0].(map[string]any); m["code"] == string(
+			clientv0.HealthMessageCodeAuthRequestsFull,
+		) {
+			return "the server holds as many auth requests as it takes. Answer some, or wait until they time out, then run the command again."
+		}
+	}
+
+	return "the server is not healthy:" + messages(reasons)
+}
+
+// registrationRefused is the sentence of registration_refused, by its
+// reason: the request still waits, and what the machine must do. It names
+// no ID.
+func registrationRefused(reason any) string {
+	switch reason {
+	case "nodeKeyInUse":
+		return "the node key of this machine belongs to another node already.\n" +
+			"Run tailscale logout on the machine, then tailscale up, and answer the request it shows then."
+	case "reportTooLarge":
+		return "this machine reported more about itself than the server takes.\n" +
+			"Have it advertise less, such as fewer routes or tags, and answer the request it shows then."
+	}
+
+	text, _ := reason.(string)
+
+	return "the server refused the registration (" + table.Visible(text, "") + ")."
+}
+
+// wrongVerb is the sentence of auth_request_kind: the kind the request
+// is, and the command that answers it. The line holds <auth-id>, never the
+// ID: the edge would mask it, and a line that cannot be run is no help.
+func wrongVerb(kind any) string {
+	switch kind {
+	case string(clientv0.AuthRequestKindRegistration):
+		return "this is a registration request. It needs a user:\n  headscale auth register <auth-id> <user>"
+	case string(clientv0.AuthRequestKindSshCheck):
+		return "this is an SSH check request. Use:\n  headscale auth approve <auth-id>"
+	}
+
+	return ""
 }
 
 // refused is the sentence of update_refused, one for each reason.
@@ -471,6 +544,10 @@ func tokenRule(rule string, node bool) string {
 		return "An OAuth access token makes an OAuth client with only scopes it holds itself."
 	case "token_cannot_create_api_key":
 		return "An OAuth access token cannot make an API key: an API key may do everything, so only an API key or the socket makes one."
+	case "token_cannot_register_node_to_user":
+		return "An OAuth access token cannot register a node to a user; an API key can."
+	case "token_cannot_approve_ssh_check":
+		return "An OAuth access token cannot approve an SSH check; an API key can, and a token may reject one."
 	case "token_cannot_create_key_for_user":
 		return "An OAuth access token makes only tagged keys; an API key may make a key for a user."
 	}

@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -190,6 +191,85 @@ func (m *masking) Flush() error {
 // Prefix.
 type TakesCredential interface{ Credential() string }
 
+// TakesWhole is a TakesCredential that is typed whole, as the ID of an
+// auth request is: Whole is why s is not one, nil when it is. The input
+// rule refuses such a value before any call and quotes none of it: it may
+// be the secret, mistyped.
+type TakesWhole interface {
+	TakesCredential
+	Whole(s string) error
+}
+
+// MaskedWhole reports whether rest, what follows the kind of a secret typed
+// whole, is one the edge masks whole, so the program can promise never to
+// print it: one character or more, each one the edge reads as part of the
+// word, and no second Prefix, which the edge would read as a credential of
+// another kind. The input rule and the edge share credentialRune, so they
+// cannot drift apart (FuzzWhole).
+func (cr *Credentials) MaskedWhole(rest string) bool {
+	return rest != "" &&
+		!strings.ContainsFunc(rest, func(r rune) bool { return !credentialRune(r) }) &&
+		indexFold(rest, cr.Prefix) < 0
+}
+
+var errWholeKind = errors.New(
+	"takes a credential typed whole and is not text: the input rule reads only text",
+)
+
+// wholeWord is a word a run took as a secret typed whole, and the argument
+// or flag it was typed for.
+type wholeWord struct{ word, field string }
+
+// withheld is an output of a run: a write that repeats a secret the run
+// took whole is not made. It stands under the edge and under the JSON that
+// is written past it, so it holds for what the server sent too. words are
+// set once the line is read and checked.
+type withheld struct {
+	w     io.Writer
+	words *[]wholeWord
+}
+
+func (h withheld) Write(p []byte) (int, error) {
+	for _, w := range *h.words {
+		if repeats(p, w.word) {
+			return 0, &repeatedError{field: w.field}
+		}
+	}
+
+	return h.w.Write(p)
+}
+
+// repeats reports whether p holds word in any case, or, when p is JSON, a
+// value or key that does once its escapes are read: a consumer of -o json
+// reads them.
+func repeats(p []byte, word string) bool {
+	if indexFold(string(p), word) >= 0 {
+		return true
+	}
+
+	d := json.NewDecoder(bytes.NewReader(p))
+	d.UseNumber()
+
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return false
+		}
+
+		if s, ok := tok.(string); ok && indexFold(s, word) >= 0 {
+			return true
+		}
+	}
+}
+
+// repeatedError is an output that would repeat a secret the run took whole:
+// only the server's answer can, so the command was done.
+type repeatedError struct{ field string }
+
+func (e *repeatedError) Error() string {
+	return "the command was done, but the server's answer repeats " + e.field + ", a secret, so it is not printed. This is a fault of the server."
+}
+
 var errCredentialKind = errors.New(
 	"takes a kind of credential that is none of the program's Kinds",
 )
@@ -200,13 +280,16 @@ var errCredentialKind = errors.New(
 type textField struct {
 	index      int
 	word, kind string
+	whole      func(string) error
 }
 
-// inputRule is the check of the rule on the way in for In, and the fields
+// inputRule is the check of the rule on the way in for In, the words of a
+// line, once checked, that it takes as secrets typed whole, and the fields
 // that take a kind of credential, which the tree checks against the
 // program's kinds when it is built.
 func inputRule[In any]() (
 	func(*cmdline.Line, *Credentials) error,
+	func(*cmdline.Line) []wholeWord,
 	[]textField,
 	error,
 ) {
@@ -215,7 +298,7 @@ func inputRule[In any]() (
 	t := reflect.TypeFor[In]()
 	if t.Kind() != reflect.Struct {
 		return func(*cmdline.Line, *Credentials) error { return nil },
-			nil, nil
+			func(*cmdline.Line) []wholeWord { return nil }, nil, nil
 	}
 
 	var (
@@ -238,6 +321,13 @@ func inputRule[In any]() (
 			ft = ft.Elem()
 		}
 
+		if _, ok := reflect.TypeAssert[TakesCredential](
+			reflect.Zero(ft),
+		); ok &&
+			ft.Kind() != reflect.String {
+			errs = append(errs, fmt.Errorf("%s %w", word, errWholeKind))
+		}
+
 		if ft.Kind() != reflect.String || ft == reflect.TypeFor[Path]() {
 			continue
 		}
@@ -249,10 +339,14 @@ func inputRule[In any]() (
 			kinds = append(kinds, f)
 		}
 
+		if w, ok := reflect.TypeAssert[TakesWhole](reflect.Zero(ft)); ok {
+			f.whole = w.Whole
+		}
+
 		fields = append(fields, f)
 	}
 
-	return func(line *cmdline.Line, cr *Credentials) error {
+	check := func(line *cmdline.Line, cr *Credentials) error {
 		in, _ := cmdline.Get[In](line)
 		v := reflect.ValueOf(in)
 
@@ -262,11 +356,40 @@ func inputRule[In any]() (
 				if err != nil {
 					return err
 				}
+
+				if f.whole != nil {
+					err = f.whole(s)
+					if err != nil {
+						//nolint:staticcheck // a sentence of the CLI
+						return fmt.Errorf("%s %w.", f.word, err)
+					}
+				}
 			}
 		}
 
 		return nil
-	}, kinds, errors.Join(errs...)
+	}
+
+	whole := func(line *cmdline.Line) []wholeWord {
+		in, _ := cmdline.Get[In](line)
+		v := reflect.ValueOf(in)
+
+		var out []wholeWord
+
+		for _, f := range fields {
+			if f.whole == nil {
+				continue
+			}
+
+			for _, s := range valuesOf(v.Field(f.index)) {
+				out = append(out, wholeWord{word: s, field: f.word})
+			}
+		}
+
+		return out
+	}
+
+	return check, whole, kinds, errors.Join(errs...)
 }
 
 // checkKinds is what is wrong with kinds, the kinds of credential that the

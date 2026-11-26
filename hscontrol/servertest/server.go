@@ -61,6 +61,7 @@ type serverConfig struct {
 	nodeExpiry            time.Duration
 	batcherWorkers        int
 	nodeStoreBatchTimeout time.Duration
+	registerCacheExpiry   time.Duration
 	taildropEnabled       bool
 	logTailEnabled        bool
 	realListener          bool
@@ -110,6 +111,12 @@ func WithBatcherWorkers(n int) ServerOption {
 // WithNodeStoreBatchTimeout overrides the server's default write-batch wait.
 func WithNodeStoreBatchTimeout(d time.Duration) ServerOption {
 	return func(c *serverConfig) { c.nodeStoreBatchTimeout = d }
+}
+
+// WithRegisterCacheExpiration sets how long an auth request waits for an
+// answer.
+func WithRegisterCacheExpiration(d time.Duration) ServerOption {
+	return func(c *serverConfig) { c.registerCacheExpiry = d }
 }
 
 // WithEphemeralTimeout sets the ephemeral node inactivity timeout.
@@ -210,6 +217,10 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 
 	if sc.revokedRetention != nil {
 		cfg.Credentials.RevokedRetention = *sc.revokedRetention
+	}
+
+	if sc.registerCacheExpiry > 0 {
+		cfg.Tuning.RegisterCacheExpiration = sc.registerCacheExpiry
 	}
 
 	if sc.nodeStoreBatchTimeout > 0 {

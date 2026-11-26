@@ -39,6 +39,18 @@ func KitModel(tb testing.TB, hs *Tree) *Tree {
 // Outcome is what the builder makes of argv, as the kit compares it.
 func Outcome(t *Tree, argv []string) string { return outcome(t, argv).String() }
 
+// Valid is the mistake Run finds in argv before any call: the parser's,
+// the builder's, or a value that its type refuses. nil for a line that
+// would run, and for help.
+func Valid(t *Tree, argv []string) error {
+	line, step, err := t.check(argv)
+	if err != nil || step != stepRun {
+		return err
+	}
+
+	return t.leaves[strings.Join(line.Command.Path, " ")].valid(line, t.cred())
+}
+
 // Want writes an expected outcome as Outcome writes one.
 func Want(
 	kind string,
@@ -76,6 +88,67 @@ func Paths(t *Tree) []string {
 	return out
 }
 
+// Texts is every text a person wrote for the help and the reference page:
+// the root's line, the help of each group and command, its long text and
+// examples, and the help of each flag, argument and column.
+func Texts(t *Tree) []string {
+	out := []string{t.short}
+
+	var walk func(*cmdline.Info)
+
+	walk = func(c *cmdline.Info) {
+		out = append(out, c.Help)
+
+		for _, f := range c.Flags {
+			out = append(out, f.Help)
+		}
+
+		for _, a := range c.Args {
+			out = append(out, a.Help)
+		}
+
+		if l, ok := t.leaves[strings.Join(c.Path, " ")]; ok {
+			out = append(out, l.long, l.noRows, l.filter)
+			out = append(out, l.example...)
+
+			for _, ci := range l.info {
+				out = append(out, ci.Help)
+			}
+		}
+
+		for _, s := range c.Commands {
+			walk(s)
+		}
+	}
+	walk(t.parser.Root())
+
+	return out
+}
+
+// Defaults is the "(default …)" the help appends for each flag of the tree
+// that has a default.
+func Defaults(t *Tree) []string {
+	var (
+		out  []string
+		walk func(*cmdline.Info)
+	)
+
+	walk = func(c *cmdline.Info) {
+		for _, f := range c.Flags {
+			if f.Default != "" {
+				out = append(out, " (default "+f.Default+")")
+			}
+		}
+
+		for _, s := range c.Commands {
+			walk(s)
+		}
+	}
+	walk(t.parser.Root())
+
+	return out
+}
+
 // build is a tree with the aliases it may use and the entities it looks
 // up, of a program with no session: the tests of the grammar need trees
 // with other aliases than a real program's, and a test of the retry a type
@@ -96,6 +169,12 @@ func build(
 // calls no server.
 type testS = any
 
+// errAuthReq is Headscale's refusal of a result that holds an auth
+// request, which the test program declares as Headscale does.
+var errAuthReq = errors.New(
+	"a result or a row holds an auth request, whose id is the secret of the request: no command prints one",
+)
+
 // testProgram is the program of a test tree: Headscale's data, and no
 // session.
 func testProgram() Program[testS] {
@@ -108,6 +187,9 @@ func testProgram() Program[testS] {
 		},
 		OpenFields: map[reflect.Type]string{
 			reflect.TypeFor[clientv0.HealthMessage](): "Details",
+		},
+		Unprintable: map[reflect.Type]error{
+			reflect.TypeFor[clientv0.AuthRequest](): errAuthReq,
 		},
 		MayBeMade: func(err error) bool { _, ok := errors.AsType[*madeError](err); return ok },
 		Aliases:   []string{"ls", "rm", "approve"},

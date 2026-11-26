@@ -9,15 +9,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -293,7 +297,7 @@ func TestCreateAuthKeyTokenRules(t *testing.T) {
 		)
 		require.Nil(t, k.CreatedBy, "a token stands for a client, never a person")
 
-		stored, _, err := b.State.GetAuthKey(mustID(t, k.ID))
+		stored, _, err := b.State.GetAuthKey(t.Context(), mustID(t, k.ID))
 		require.NoError(t, err)
 		require.True(t, stored.CreatedByToken)
 	})
@@ -610,7 +614,7 @@ func TestListAuthKeys(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		stored, _, err := b.State.GetAuthKey(k.ID)
+		stored, _, err := b.State.GetAuthKey(t.Context(), k.ID)
 		require.NoError(t, err)
 
 		stored.Used = true
@@ -1167,4 +1171,236 @@ func TestListAuthKeysEndsWithTheRequest(t *testing.T) {
 	cancel()
 
 	decodeProblem(t, api.GetCtx(ctx, Prefix+"/auth-keys", auth), CodeInternal)
+}
+
+// TestReadsTakeTheirContext: every GET of the document, for each kind of
+// caller whose identity changes what the handler reads, reads with the
+// request's context: each query of an answered request carries it, and with
+// the one database connection busy, a request that ended answers without
+// waiting for it. The next read that forgets its context fails here.
+func TestReadsTakeTheirContext(t *testing.T) {
+	b := newBackend(t)
+
+	_, _, err := b.State.UpdatePolicy([]byte(authKeysPolicy))
+	require.NoError(t, err)
+
+	alice := b.State.CreateUserForTest("alice")
+	n := b.State.CreateRegisteredNodeForTest(alice, "node")
+	node := b.State.PutNodeInStoreForTest(*n)
+	k, err := b.State.CreatePreAuthKey(alice.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+	_, apiKey, err := b.State.CreateAPIKey(nil)
+	require.NoError(t, err)
+	_, client, err := b.State.CreateOAuthClient([]string{"all:read"}, nil, "", nil)
+	require.NoError(t, err)
+	owned, ownedKey, err := b.State.CreateAPIKeyFrom(
+		db.NewAPIKey{Owner: alice.TypedID()},
+	)
+	require.NoError(t, err)
+
+	pending, _ := pendingRegistration(t, b, "pending")
+
+	ids := map[string]string{
+		Prefix + "/users/{id}":         strconv.FormatUint(uint64(alice.ID), 10),
+		Prefix + "/nodes/{id}":         node.ID().String(),
+		Prefix + "/auth-keys/{id}":     strconv.FormatUint(k.ID, 10),
+		Prefix + "/api-keys/{id}":      strconv.FormatUint(apiKey.ID, 10),
+		Prefix + "/oauth-clients/{id}": client.ClientID,
+		Prefix + "/auth-requests/{id}": string(pending),
+	}
+
+	// The tokens hold all, not all:read: the walk reads GET /config too.
+	callers := map[string]struct {
+		h    http.Handler
+		auth string
+	}{
+		"socket":                {WithLocalTrust(Handler(b)), ""},
+		"API key with an owner": {Handler(b), "Bearer " + ownedKey},
+		"token of an OAuth client": {
+			Handler(b),
+			strings.TrimPrefix(keysToken(t, b, nil, "all"), "Authorization: "),
+		},
+		"token with tags": {
+			Handler(b),
+			strings.TrimPrefix(
+				keysToken(t, b, []string{"tag:ci"}, "all"),
+				"Authorization: ",
+			),
+		},
+	}
+
+	// A query whose context does not come from the request lacks the mark.
+	// One that keeps the mark but lets go of the request's end (as
+	// context.WithoutCancel does) is found by ending the request at that
+	// query: its context must be done at once.
+	type mark struct{}
+
+	type probe struct {
+		mu       sync.Mutex
+		cancelAt int // the query at which the request ends; 0 is none
+		seen     int
+		cancel   func()
+		detached int // the query that did not see the end
+	}
+
+	var bare atomic.Int32
+
+	q := b.State.DB().DB.Callback()
+	check := func(tx *gorm.DB) {
+		p, ok := tx.Statement.Context.Value(mark{}).(*probe)
+		if !ok {
+			bare.Add(1)
+
+			return
+		}
+
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		p.seen++
+		if p.seen == p.cancelAt {
+			p.cancel()
+
+			if tx.Statement.Context.Err() == nil {
+				p.detached = p.seen
+			}
+		}
+	}
+
+	require.NoError(t, q.Query().Before("gorm:query").Register("test:mark", check))
+	require.NoError(t, q.Row().Before("gorm:row").Register("test:mark", check))
+
+	sqlDB, err := b.State.DB().DB.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+
+	for name, c := range callers {
+		for path, item := range NewAPI(chi.NewMux(), Backend{}, specVersion).OpenAPI().Paths {
+			if item.Get == nil {
+				continue
+			}
+
+			t.Run(name+" "+path, func(t *testing.T) {
+				// A route the walk cannot answer proves nothing: seed it above.
+				id := ids[path]
+
+				get := func(ctx context.Context) *http.Request {
+					r := httptest.NewRequestWithContext(
+						ctx,
+						http.MethodGet,
+						strings.Replace(path, "{id}", id, 1),
+						nil,
+					)
+					if c.auth != "" {
+						r.Header.Set("Authorization", c.auth)
+					}
+
+					return r
+				}
+
+				// A query made only now and then (the key's last use, written
+				// at most once a minute) is made on every call from here on, so
+				// each trial below meets the queries the first call made.
+				fresh := func() {
+					require.NoError(
+						t,
+						b.State.DB().
+							DB.Model(&types.Credential{}).
+							Where("id = ?", owned.ID).
+							Update("last_seen", nil).
+							Error,
+					)
+				}
+
+				bare.Store(0)
+				fresh()
+
+				live := &probe{cancel: func() {}}
+				rec := httptest.NewRecorder()
+				c.h.ServeHTTP(rec, get(context.WithValue(t.Context(), mark{}, live)))
+				require.Equal(
+					t,
+					http.StatusOK,
+					rec.Code,
+					"the healthy answer comes first: %s",
+					rec.Body,
+				)
+				require.Zero(
+					t,
+					bare.Load(),
+					"every query of the request carries its context",
+				)
+
+				// The request's queries are the same on every call: end it
+				// at each in turn.
+				for at := 1; at <= live.seen; at++ {
+					fresh()
+
+					ctx, cancel := context.WithCancel(t.Context())
+					p := &probe{cancelAt: at, cancel: cancel}
+
+					c.h.ServeHTTP(
+						httptest.NewRecorder(),
+						get(context.WithValue(ctx, mark{}, p)),
+					)
+					cancel()
+					require.GreaterOrEqual(
+						t,
+						p.seen,
+						at,
+						"the trial reaches query %d of %d",
+						at,
+						live.seen,
+					)
+					require.Zero(
+						t,
+						p.detached,
+						"query %d of %d sees the request end",
+						at,
+						live.seen,
+					)
+				}
+
+				conn, err := sqlDB.Conn(t.Context())
+				require.NoError(t, err)
+
+				waits := sqlDB.Stats().WaitCount
+
+				ctx, cancel := context.WithCancel(
+					context.WithValue(t.Context(), mark{}, &probe{cancel: func() {}}),
+				)
+				cancel()
+
+				done := make(chan struct{})
+
+				go func() {
+					defer close(done)
+
+					c.h.ServeHTTP(httptest.NewRecorder(), get(ctx))
+				}()
+
+				// The read either answers or waits for the connection; nothing
+				// else can end the loop, so no timing is assumed.
+				for {
+					select {
+					case <-done:
+						require.NoError(t, conn.Close())
+
+						return
+					default:
+					}
+
+					if sqlDB.Stats().WaitCount > waits {
+						require.NoError(t, conn.Close())
+						<-done
+						t.Fatal(
+							"the read waited for the database after its request ended",
+						)
+					}
+
+					runtime.Gosched()
+				}
+			})
+		}
+	}
 }

@@ -47,6 +47,8 @@ const (
 	CodeInvalidScope         Code = "invalid_scope"
 	CodeExpiryRequired       Code = "expiry_required"
 	CodeExpiryInPast         Code = "expiry_in_past"
+	CodeAuthRequestKind      Code = "auth_request_kind"
+	CodeRegistrationRefused  Code = "registration_refused"
 	CodeUpdateRefused        Code = "update_refused"
 	CodePreconditionFailed   Code = "precondition_failed"
 	CodeUnhealthy            Code = "unhealthy"
@@ -172,9 +174,12 @@ var codes = map[Code]codeInfo{
 		nil,
 	},
 	CodeTagsNotPermitted: {
-		http.StatusUnprocessableEntity, "The tags are not in the policy",
-		"Tags that are not in `tagOwners` of the policy.",
-		[]string{"`tags`: every tag of the request that the policy does not name"},
+		http.StatusUnprocessableEntity,
+		"The tags are not in the policy",
+		"Tags that are not in `tagOwners` of the policy; for `register`, tags the node asks for that its user may not give, and the request still waits.",
+		[]string{
+			"`tags`: every tag of the request that the policy does not name, or that the user may not give",
+		},
 	},
 	CodeScopeRequiresTags: {
 		http.StatusUnprocessableEntity,
@@ -199,6 +204,20 @@ var codes = map[Code]codeInfo{
 		"An expiry before now. A node's expiry takes `\"now\"` for the server's clock; a key's must be in the future.",
 		nil,
 	},
+	CodeAuthRequestKind: {
+		http.StatusConflict,
+		"The auth request is of another kind",
+		"`register` on an SSH check, or `approve` on a registration. Nothing is answered; the request still waits. `object` is the auth request, without its ID, which is a secret.",
+		[]string{"`kind`: the kind the request is, `registration` or `sshCheck`"},
+	},
+	CodeRegistrationRefused: {
+		http.StatusConflict,
+		"The registration cannot be made",
+		"`register` of a machine whose registration the server refuses for what the machine sent. Nothing is made; the request still waits.",
+		[]string{
+			"`reason`: `nodeKeyInUse`: another machine has the node key it sent, and no user makes it pass; `reportTooLarge`: the machine logs in again as a node the user has, and its report merged with that node's is over the limit; a register to a user with no node of this machine can pass. A client must accept a reason it does not know",
+		},
+	},
 	CodeUpdateRefused: {
 		http.StatusConflict,
 		"The node did not start the update",
@@ -217,7 +236,7 @@ var codes = map[Code]codeInfo{
 	CodeUnhealthy: {
 		http.StatusServiceUnavailable,
 		"The server is not healthy",
-		"A check of the server fails: `GET /health`, and any call whose credential cannot be checked because the database does not answer.",
+		"A check of the server fails: `GET /health`, and any call whose credential cannot be checked because the database does not answer; also `POST /debug/nodes` when the server holds as many auth requests as it may.",
 		[]string{
 			"`reasons`: one entry for each failed check, `{code, message, details}`; the codes are under [Reasons of unhealthy](#reasons)",
 		},
@@ -280,8 +299,8 @@ type Problem struct { //nolint:errname // the name of RFC 9457, and of the schem
 // ProblemObject names the resource a [Problem] is about.
 type ProblemObject struct {
 	_    struct{} `nullable:"true"`
-	Kind string   `enum:"node,user,authKey,apiKey,oauthClient,authRequest" json:"kind"`
-	ID   string   `json:"id"`
+	Kind string   `enum:"node,user,authKey,apiKey,oauthClient,authRequest"                              json:"kind"`
+	ID   string   `doc:"The ID of the resource; always \"\" for an auth request, whose ID is a secret." json:"id"`
 	Name string   `json:"name"`
 }
 
@@ -640,17 +659,20 @@ const (
 	ReasonDatabaseUnreachable HealthCode = "database_unreachable"
 	//nolint:gosec // a code, not a secret
 	ReasonCredentialCheckBusy HealthCode = "credential_check_busy"
+	ReasonAuthRequestsFull    HealthCode = "auth_requests_full"
 )
 
 // healthReasons is the message of each reason, also on the page of codes.
 var healthReasons = map[HealthCode]string{ //nolint:gosec // messages, not secrets
 	ReasonDatabaseUnreachable: "The database does not answer.",
 	ReasonCredentialCheckBusy: "Every slot for checking an old-format credential hash stayed busy, so the credential was not checked.",
+	ReasonAuthRequestsFull:    "The server holds as many waiting auth requests as it may.",
 }
 
 // healthCodes are the codes of today, reasons and warnings, listed in the
 // document.
 var healthCodes = []HealthCode{
+	ReasonAuthRequestsFull,
 	ReasonCredentialCheckBusy,
 	ReasonDatabaseUnreachable,
 	"node_expiry_invalid",
@@ -680,7 +702,9 @@ func ProblemsPage() []byte {
 
 Every error of ` + "`/api/headscale/v0`" + ` is a problem (RFC 9457). A program reads its ` + "`code`" + `; the
 ` + "`type`" + ` of the problem leads to the heading of that code here. ` + "`details`" + ` holds the data of the
-code, and is ` + "`{}`" + ` when the code has none.
+code, and is ` + "`{}`" + ` when the code has none. ` + "`object`" + ` names the resource the problem is about; for an
+auth request its ` + "`id`" + ` is always ` + "`\"\"`" + `, as the auth ID is a secret, and ` + "`name`" + ` is the hostname of a
+registration that waits.
 `)
 
 	for _, c := range slices.Sorted(maps.Keys(codes)) {

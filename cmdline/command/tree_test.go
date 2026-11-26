@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"strings"
@@ -278,6 +279,28 @@ func TestDerivedFlags(t *testing.T) {
 			NeedsServer: func(NoInput) bool { return false },
 			Run:         noop[NoInput, NoOutput],
 		}),
+		New(
+			Spec[testS, NoInput, NoOutput]{
+				Name:    "tool",
+				Short:   "T",
+				Long:    "T.",
+				Example: []string{"prog tool"},
+				NoJSON:  true,
+				Run:     noop[NoInput, NoOutput],
+				Done:    func(NoInput, NoOutput, time.Time) string { return "t" },
+			},
+		),
+		New(
+			Spec[testS, NoInput, Said]{
+				Name:    "said",
+				Short:   "S",
+				Long:    "S.",
+				Example: []string{"prog said"},
+				Local:   true,
+				Run:     noop[NoInput, Said],
+				Done:    func(NoInput, Said, time.Time) string { return "s" },
+			},
+		),
 	)
 	require.NoError(t, err)
 
@@ -295,7 +318,73 @@ func TestDerivedFlags(t *testing.T) {
 		"config": {"config", "help"},
 		"server": {"output", "config", "help"},
 		"maybe":  {"output", "config", "help"},
+		"tool":   {"config", "help"},
+		"said":   {"help"},
 	}, flags)
+
+	// What Said holds is printed by Done alone, and a test tool prints one
+	// sentence: a spec that would print another way does not build.
+	done := func(NoInput, Said, time.Time) string { return "" }
+	saidCols := table.Columns[Said]{{Name: "what", Field: "What", Default: true}}
+
+	for name, n := range map[string]Node{
+		"Said with no Done":    New(Spec[testS, NoInput, Said]{Name: "x", Short: "X", Long: "X.", Example: []string{"prog x"}, Run: noop[NoInput, Said]}),
+		"Said with Columns":    New(Spec[testS, NoInput, Said]{Name: "x", Short: "X", Long: "X.", Example: []string{"prog x"}, Run: noop[NoInput, Said], Columns: saidCols}),
+		"NoJSON with no Done":  New(Spec[testS, NoInput, NoOutput]{Name: "x", Short: "X", Long: "X.", Example: []string{"prog x"}, NoJSON: true, Run: noop[NoInput, NoOutput]}),
+		"NoJSON with Columns":  New(Spec[testS, NoInput, item]{Name: "x", Short: "X", Long: "X.", Example: []string{"prog x"}, NoJSON: true, Run: noop[NoInput, item], Columns: itemColumns}),
+		"Said and Done builds": New(Spec[testS, NoInput, Said]{Name: "x", Short: "X", Long: "X.", Example: []string{"prog x"}, Run: noop[NoInput, Said], Done: done}),
+	} {
+		_, err := testBuild("prog", "A program", n)
+
+		switch {
+		case name == "Said and Done builds":
+			require.NoError(t, err, name)
+		case strings.HasPrefix(name, "Said"):
+			require.ErrorContains(t, err, errSaid.Error(), name)
+		default:
+			require.ErrorContains(t, err, errNoJSON.Error(), name)
+		}
+	}
+}
+
+// TestSaid: a write with no answer body names what it answered in Done;
+// it counts as no output, as NoOutput does.
+func TestSaid(t *testing.T) {
+	t.Parallel()
+
+	tree, err := testBuild("prog", "A program", New(Spec[testS, NoInput, Said]{
+		Name:    "answer",
+		Short:   "A",
+		Long:    "A.",
+		Example: []string{"prog answer"},
+		Local:   true,
+		Run:     func(Ctx[testS], NoInput) (Said, error) { return Said{What: "Registration of \"newlaptop\""}, nil },
+		Done:    func(_ NoInput, out Said, _ time.Time) string { return out.What + " rejected." },
+	}))
+	require.NoError(t, err)
+
+	var stdout, stderr bytes.Buffer
+
+	require.Equal(
+		t,
+		0,
+		Run(tree, []string{"answer"}, Env{Stdout: &stdout, Stderr: &stderr}),
+		stderr.String(),
+	)
+	require.Equal(t, "Registration of \"newlaptop\" rejected.\n", stdout.String())
+
+	// It has no object to print, so a Local command has no --output.
+	stdout.Reset()
+	require.Equal(
+		t,
+		1,
+		Run(
+			tree,
+			[]string{"answer", "-o", "json"},
+			Env{Stdout: &stdout, Stderr: &stderr},
+		),
+	)
+	require.Empty(t, stdout.String())
 }
 
 // TestSessionOfTheProgram: a spec made for another session than the

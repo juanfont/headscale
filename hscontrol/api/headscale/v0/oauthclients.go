@@ -142,10 +142,7 @@ func (b *CreateOAuthClientBody) problem() *Problem {
 func (b *CreateOAuthClientBody) fieldErrors() []FieldError {
 	if types.ValidateUserText(b.Description.Value) != nil {
 		return []FieldError{
-			{
-				Location: "body.description",
-				Message:  "has a control character or a bidirectional formatting character",
-			},
+			{Location: "body.description", Message: hasControlCharacter},
 		}
 	}
 

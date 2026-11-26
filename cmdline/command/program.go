@@ -65,8 +65,10 @@ type Program[S any] struct {
 	// Credentials is the rule at the edge (credential.go).
 	Credentials Credentials
 	// OpenFields are the fields that hold an interface and no secret, by
-	// the struct that has them (secret.go).
-	OpenFields map[reflect.Type]string
+	// the struct that has them; Unprintable the types that no result or
+	// row may hold, with why (secret.go).
+	OpenFields  map[reflect.Type]string
+	Unprintable map[reflect.Type]error
 
 	// Aliases are the aliases a command may have.
 	Aliases []string
@@ -96,7 +98,7 @@ func erase[S any](p Program[S]) program {
 		About: p.About, Fields: p.Fields, MayBeMade: p.MayBeMade,
 		Entities: p.Entities, Readers: p.Readers, Owner: p.Owner,
 		Credentials: p.Credentials, OpenFields: p.OpenFields,
-		Aliases: p.Aliases, ConfigEnv: p.ConfigEnv,
+		Unprintable: p.Unprintable, Aliases: p.Aliases, ConfigEnv: p.ConfigEnv,
 		Server:      p.Server,
 		sessionType: reflect.TypeFor[S](),
 	}

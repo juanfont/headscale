@@ -51,7 +51,7 @@ func TestAPIV1AuthRegister(t *testing.T) {
 		discoKey := key.NewDisco().Public()
 
 		seed := seedAuthRequest("alice", authID, machineKey, nodeKey, discoKey, "regnode")
-		body := fmt.Appendf(nil, `{"user":"alice","authId":%q}`, authID.String())
+		body := fmt.Appendf(nil, `{"user":"alice","authId":%q}`, authID.Raw())
 
 		assertParityIsolated(t, seed, http.MethodPost, "/api/v1/auth/register", body)
 	})
@@ -68,7 +68,7 @@ func TestAPIV1AuthRegister(t *testing.T) {
 			"regnode",
 		)(t, h.app)
 
-		body := fmt.Appendf(nil, `{"user":"alice","authId":%q}`, authID.String())
+		body := fmt.Appendf(nil, `{"user":"alice","authId":%q}`, authID.Raw())
 		res := h.callHuma(http.MethodPost, "/api/v1/auth/register", body)
 		require.Equal(t, http.StatusOK, res.status)
 
@@ -101,7 +101,7 @@ func TestAPIV1AuthRegister(t *testing.T) {
 
 	t.Run("unknown user parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
-		body := fmt.Appendf(nil, `{"user":"ghost","authId":%q}`, types.MustAuthID().String())
+		body := fmt.Appendf(nil, `{"user":"ghost","authId":%q}`, types.MustAuthID().Raw())
 		res := h.assertParity(t, http.MethodPost, "/api/v1/auth/register", body)
 		assertStatus(t, res, http.StatusNotFound)
 	})
@@ -112,10 +112,33 @@ func TestAPIV1AuthRegister(t *testing.T) {
 		h := newAPIV1Harness(t)
 		seedUsers("alice")(t, h.app)
 
-		body := fmt.Appendf(nil, `{"user":"alice","authId":%q}`, types.MustAuthID().String())
+		body := fmt.Appendf(nil, `{"user":"alice","authId":%q}`, types.MustAuthID().Raw())
 		res := h.assertParity(t, http.MethodPost, "/api/v1/auth/register", body)
 		assertStatus(t, res, http.StatusNotFound)
 	})
+}
+
+// TestAPIV1AuthAnsweredOnce: v1 answers an auth request once. The ID of an
+// SSH check is the caller's mistake on register (it panicked, then 500), and
+// an answered request is gone (it answered 200). A 404 names no ID.
+func TestAPIV1AuthAnsweredOnce(t *testing.T) {
+	h := newAPIV1Harness(t)
+	seedUsers("alice")(t, h.app)
+
+	authID := types.MustAuthID()
+	require.NoError(t, h.app.state.SetAuthCacheEntry(authID, types.NewSSHCheckAuthRequest(1, 2)))
+
+	register := h.callHuma(http.MethodPost, "/api/v1/auth/register", fmt.Appendf(nil, `{"user":"alice","authId":%q}`, authID.Raw()))
+	assertStatus(t, register, http.StatusBadRequest)
+
+	body := fmt.Appendf(nil, `{"authId":%q}`, authID.Raw())
+	require.Equal(t, http.StatusOK, h.callHuma(http.MethodPost, "/api/v1/auth/reject", body).status)
+
+	for _, verb := range []string{"approve", "reject"} {
+		res := h.callHuma(http.MethodPost, "/api/v1/auth/"+verb, body)
+		assertStatus(t, res, http.StatusNotFound)
+		assert.NotContains(t, string(res.body), authID.Raw())
+	}
 }
 
 func TestAPIV1AuthApprove(t *testing.T) {
@@ -126,7 +149,7 @@ func TestAPIV1AuthApprove(t *testing.T) {
 		authReq := types.NewAuthRequest()
 		require.NoError(t, h.app.state.SetAuthCacheEntry(authID, authReq))
 
-		body := fmt.Appendf(nil, `{"authId":%q}`, authID.String())
+		body := fmt.Appendf(nil, `{"authId":%q}`, authID.Raw())
 		res := h.callHuma(http.MethodPost, "/api/v1/auth/approve", body)
 
 		require.Equal(t, http.StatusOK, res.status)
@@ -147,7 +170,7 @@ func TestAPIV1AuthApprove(t *testing.T) {
 	// Well-formed auth_id with no pending session: codes.NotFound → 404.
 	t.Run("no pending session parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
-		body := fmt.Appendf(nil, `{"authId":%q}`, types.MustAuthID().String())
+		body := fmt.Appendf(nil, `{"authId":%q}`, types.MustAuthID().Raw())
 		res := h.assertParity(t, http.MethodPost, "/api/v1/auth/approve", body)
 		assertStatus(t, res, http.StatusNotFound)
 	})
@@ -161,7 +184,7 @@ func TestAPIV1AuthReject(t *testing.T) {
 		authReq := types.NewAuthRequest()
 		require.NoError(t, h.app.state.SetAuthCacheEntry(authID, authReq))
 
-		body := fmt.Appendf(nil, `{"authId":%q}`, authID.String())
+		body := fmt.Appendf(nil, `{"authId":%q}`, authID.Raw())
 		res := h.callHuma(http.MethodPost, "/api/v1/auth/reject", body)
 
 		require.Equal(t, http.StatusOK, res.status)
@@ -180,7 +203,7 @@ func TestAPIV1AuthReject(t *testing.T) {
 
 	t.Run("no pending session parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
-		body := fmt.Appendf(nil, `{"authId":%q}`, types.MustAuthID().String())
+		body := fmt.Appendf(nil, `{"authId":%q}`, types.MustAuthID().Raw())
 		res := h.assertParity(t, http.MethodPost, "/api/v1/auth/reject", body)
 		assertStatus(t, res, http.StatusNotFound)
 	})

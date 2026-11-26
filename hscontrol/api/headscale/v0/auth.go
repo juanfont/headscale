@@ -201,8 +201,13 @@ type tokenRule struct {
 // tokenRules is every rule. The page of codes lists them, and register
 // refuses a rule that is not here.
 var tokenRules = []*tokenRule{
-	&tokenCannotChangeUserNameOrEmail, &tokenMustOwnTags, &tokenCannotCreateKeyForUser,
-	&tokenCannotCreateAPIKey, &tokenMustHoldScopes,
+	&tokenCannotChangeUserNameOrEmail,
+	&tokenMustOwnTags,
+	&tokenCannotCreateKeyForUser,
+	&tokenCannotCreateAPIKey,
+	&tokenMustHoldScopes,
+	&tokenCannotRegisterNodeToUser,
+	&tokenCannotApproveSSHCheck,
 }
 
 // ruleRefusal is the problem of the first rule of a that refuses in, when
