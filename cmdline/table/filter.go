@@ -119,6 +119,17 @@ func (cs Columns[R]) Showing(rows []R, word string) Columns[R] {
 	return out
 }
 
+// Shown is the declaration with the column of that name among the
+// defaults; the declaration itself does not change.
+func (cs Columns[R]) Shown(name string) Columns[R] {
+	out := slices.Clone(cs)
+	for i := range out {
+		out[i].Default = out[i].Default || out[i].Name == name
+	}
+
+	return out
+}
+
 func (cs Columns[R]) defaults() Columns[R] {
 	var out Columns[R]
 
@@ -340,6 +351,9 @@ func (f *Filter[R]) read() error {
 	return nil
 }
 
+// Column is the name of the column the condition reads.
+func (f Filter[R]) Column() string { return f.col.Name }
+
 // User is the word of an owner=<user> condition, which the caller resolves
 // to a user ID like a target; false for every other condition.
 func (f Filter[R]) User() (string, bool) {
@@ -455,12 +469,22 @@ func (f Filter[R]) matchTime(v reflect.Value, ok bool, now time.Time) bool {
 		return compare(float64(t.Compare(f.at)), 0, f.op)
 	}
 
-	d := now.Sub(t)
+	// The distance compares as the moment it puts the cutoff at: Sub
+	// saturates some 292 years away, Add does not. f.dur is above zero, so
+	// a time on the other side of now is nearer.
+	cutoff := now.Add(-f.dur)
+	farther, nearer := t.Before(cutoff), t.After(cutoff)
+
 	if f.col.Ahead {
-		d = -d
+		cutoff = now.Add(f.dur)
+		farther, nearer = t.After(cutoff), t.Before(cutoff)
 	}
 
-	return compare(float64(cmp.Compare(max(d, 0), f.dur)), 0, f.op)
+	if f.op == '>' {
+		return farther
+	}
+
+	return nearer
 }
 
 // matchOwner: tag:x finds the rows that have the tag, a user the rows it
@@ -873,11 +897,27 @@ func ReadTime(s string) (time.Duration, time.Time, bool, error) {
 	}
 
 	d, ok := duration.Parse(s)
+	if !ok {
+		// A duration the parser takes once its digits are zeros is in its
+		// form, in any unit and with a fraction, and too long for it; a
+		// date has no such limit.
+		zeros := strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return '0'
+			}
 
-	switch {
-	case !ok:
+			return r
+		}, s)
+
+		_, zok := duration.Parse(zeros)
+		if zok && !strings.HasPrefix(s, "-") {
+			return 0, time.Time{}, false, ErrTooLong
+		}
+
 		return 0, time.Time{}, false, errNotDuration
-	case d < 0:
+	}
+
+	if d < 0 {
 		return 0, time.Time{}, false, errNegative
 	}
 
@@ -913,6 +953,10 @@ var (
 	errNoUnit      = errors.New("a duration needs a unit")
 	errNotDuration = errors.New("it is not a duration")
 	errNegative    = errors.New("a duration cannot be negative")
+	// ErrTooLong is a duration longer than the parser holds, some 292 years.
+	ErrTooLong = errors.New(
+		"a duration from now is at most 292y; a later time is written as a date, such as 2999-08-27",
+	)
 )
 
 // Closest is the name nearest to word, within two edits, for "Did you

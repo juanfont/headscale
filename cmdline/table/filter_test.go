@@ -2,6 +2,7 @@ package table
 
 import (
 	"bytes"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -182,6 +183,33 @@ func TestRelativeDurationBoundary(t *testing.T) {
 	got, err = f.Match(row{Seen: now.Add(-limit)}, now)
 	require.NoError(t, err)
 	require.False(t, got, "at the limit")
+}
+
+// TestRelativeDurationFar: a distance near the longest duration still
+// compares exactly, where Sub would saturate.
+func TestRelativeDurationFar(t *testing.T) {
+	t.Parallel()
+
+	limit := time.Duration(math.MaxInt64)
+	for _, tt := range []struct {
+		filter string
+		seen   time.Time
+		want   bool
+	}{
+		{"last-seen>" + limit.String(), now.Add(-limit).Add(-time.Nanosecond), true},
+		{"last-seen>" + limit.String(), now.Add(-limit), false},
+		{"last-seen<" + limit.String(), now.Add(-limit).Add(-time.Nanosecond), false},
+		{"last-seen<" + limit.String(), now.Add(-limit).Add(time.Nanosecond), true},
+		{"last-seen<1ns", now.Add(time.Nanosecond), true},
+		{"last-seen>1ns", now.Add(time.Nanosecond), false},
+	} {
+		f, err := listCols.ParseFilter(tt.filter)
+		require.NoError(t, err)
+
+		got, err := f.Match(row{Seen: tt.seen}, now)
+		require.NoError(t, err)
+		require.Equal(t, tt.want, got, "%s at %s", tt.filter, tt.seen)
+	}
 }
 
 // TestNonFiniteThreshold: NaN and Inf parse as floats but compare with
@@ -629,10 +657,21 @@ func TestReadTime(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, time.Date(2027, 8, 27, 10, 0, 0, 0, time.UTC), at)
 
-	for _, s := range []string{"30", "0", "-1h", "1.5d", "soon", ""} {
+	for _, s := range []string{"30", "0", "-1h", "1.5d", "soon", "", "1d1y"} {
 		_, _, _, err := ReadTime(s)
 		require.Error(t, err, s)
+		require.NotErrorIs(t, err, ErrTooLong, s)
 	}
+
+	// No limit on a time, but on a duration: the parser holds some 292 years.
+	for _, s := range []string{"300y", "3000000h", "9223372036854775808ns", "0ns9223372036854775808ns", "9223372036854775807ns1ns", "9223372036.854775808s"} {
+		_, _, _, err := ReadTime(s)
+		require.ErrorIs(t, err, ErrTooLong, s)
+	}
+
+	d, _, _, err := ReadTime("292y")
+	require.NoError(t, err)
+	require.Equal(t, 292*365*24*time.Hour, d)
 }
 
 func TestDeclaration(t *testing.T) {
