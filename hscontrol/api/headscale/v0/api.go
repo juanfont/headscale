@@ -38,6 +38,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -59,6 +60,13 @@ type Backend struct {
 	// Change sends the change of a write to the connected nodes.
 	Change func(...change.Change)
 	Cfg    *types.Config
+	// Connected reports whether a node has a live map stream, which alone
+	// can carry a request to the node.
+	Connected func(types.NodeID) bool
+	// ConnectedSeen is the last seen v0 reports for a connected node, which
+	// is "now"; nil is the wall clock. Nothing else reads it: a test sets it
+	// so the minute it expects is the minute the server prints.
+	ConnectedSeen func() time.Time
 }
 
 // specVersion is info.version of the document in the tree, which no server
@@ -97,7 +105,7 @@ func NewAPI(router chi.Router, b Backend, version string) huma.API {
 }
 
 func newAPI(router chi.Router, b Backend, config huma.Config) huma.API {
-	router.Use(strictQuery)
+	router.Use(strictQuery, joinIfMatch)
 
 	api := humachi.New(router, config)
 
@@ -109,6 +117,8 @@ func newAPI(router chi.Router, b Backend, config huma.Config) huma.API {
 
 	registerServer(api, b)
 	registerUsers(api, b)
+	registerNodes(api, b)
+	registerTags(api, b)
 
 	return api
 }

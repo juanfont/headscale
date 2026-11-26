@@ -38,12 +38,20 @@ func newBackend(tb testing.TB) Backend {
 	cfg.Database.Type = types.DatabaseSqlite
 	cfg.Database.Sqlite.Path = tb.TempDir() + "/headscale.db"
 	cfg.Policy.Mode = types.PolicyModeDB
+	cfg.AutoUpdate.CheckVersions = false
+	// A node write waits for the NodeStore batch; tests write one at a time.
+	cfg.Tuning.NodeStoreBatchTimeout = time.Millisecond
 
 	st, err := state.NewState(&cfg)
 	require.NoError(tb, err)
 	tb.Cleanup(func() { _ = st.Close() })
 
-	return Backend{State: st, Change: func(...change.Change) {}, Cfg: &cfg}
+	return Backend{
+		State:     st,
+		Change:    func(...change.Change) {},
+		Cfg:       &cfg,
+		Connected: func(types.NodeID) bool { return false },
+	}
 }
 
 // countChanges makes b count the changes it sends that are not empty; set it
