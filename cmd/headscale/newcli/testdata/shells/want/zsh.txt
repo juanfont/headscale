@@ -1,5 +1,5 @@
 LINE: headscale |
-LISTED: [headscale <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale ]
+LISTED: [headscale <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / policy      -- Read, check and replace the policy / users       -- Manage users / version     -- Print the version / $ headscale ]
 FINAL: [headscale ]
 
 LINE: headscale ve|
@@ -87,7 +87,7 @@ LISTED: [headscale version -o json --<BEL> / --config  -- Config file / --help  
 FINAL: [headscale version -o json --]
 
 LINE: headscale -c -o |
-LISTED: [headscale -c -o <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale -c -o ]
+LISTED: [headscale -c -o <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / policy      -- Read, check and replace the policy / users       -- Manage users / version     -- Print the version / $ headscale -c -o ]
 FINAL: [headscale -c -o ]
 
 LINE: headscale -c x ve|
@@ -95,7 +95,7 @@ LISTED: [headscale -c x version ]
 FINAL: [headscale -c x version]
 
 LINE: headscale nodez |
-LISTED: [headscale nodez <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale nodez ]
+LISTED: [headscale nodez <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / policy      -- Read, check and replace the policy / users       -- Manage users / version     -- Print the version / $ headscale nodez ]
 FINAL: [headscale nodez ]
 
 LINE: headscale versoin --|
@@ -143,7 +143,7 @@ LISTED: [headscale -h version ]
 FINAL: [headscale -h version]
 
 LINE: headscale --version |
-LISTED: [headscale --version <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / users       -- Manage users / version     -- Print the version / $ headscale --version ]
+LISTED: [headscale --version <BEL> / api         -- Authentication towards the headscale API / auth        -- Authentication of nodes to headscale / completion  -- Print the completion script of a shell / debug       -- A health check and test tools / nodes       -- Manage nodes / policy      -- Read, check and replace the policy / users       -- Manage users / version     -- Print the version / $ headscale --version ]
 FINAL: [headscale --version ]
 
 LINE: headscale no|
@@ -197,6 +197,10 @@ FINAL: [headscale nodes list --sort -last-seen]
 LINE: headscale nodes list --filter=ow|
 LISTED: [headscale nodes list --filter=owner]
 FINAL: [headscale nodes list --filter=owner]
+
+LINE: headscale policy set |
+LISTED: [headscale policy set <BEL> / config.yaml    policy.hujson / $ headscale policy set ]
+FINAL: [headscale policy set ]
 
 LINE: headscale nodes list |
 LISTED: [headscale nodes list <BEL>]
@@ -261,6 +265,10 @@ FINAL: [headscale nodes list -c]
 LINE: headscale nodes list --bogus --l|
 LISTED: [headscale nodes list --bogus --list-columns ]
 FINAL: [headscale nodes list --bogus --list-columns]
+
+LINE: headscale policy set --bogus |
+LISTED: [headscale policy set --bogus <BEL> / config.yaml    policy.hujson / $ headscale policy set --bogus ]
+FINAL: [headscale policy set --bogus ]
 
 LINE: headscale nodes list --sort id --s|
 LISTED: [headscale nodes list --sort id --s<BEL>]

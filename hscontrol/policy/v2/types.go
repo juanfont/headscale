@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 	"github.com/juanfont/headscale/hscontrol/derp"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -480,6 +481,22 @@ func (u *Username) CanBeAutoApprover() bool {
 // If multiple matching users are found, it returns an error indicating multiple users matching.
 // It returns the matched [types.User] and a nil error if exactly one match is found.
 func (u *Username) resolveUser(users types.Users) (types.User, error) {
+	potentialUsers := u.matches(users)
+
+	if len(potentialUsers) == 0 {
+		return types.User{}, fmt.Errorf("%w: token %q", ErrUserNotFound, u.String())
+	}
+
+	if len(potentialUsers) > 1 {
+		return types.User{}, fmt.Errorf("%w: token %q found: %s", ErrMultipleUsersFound, u.String(), potentialUsers.String())
+	}
+
+	return potentialUsers[0], nil
+}
+
+// matches is every user u names: the one whose provider identifier it is,
+// else every user with it as email, else every user with it as name.
+func (u *Username) matches(users types.Users) types.Users {
 	var emailMatches, nameMatches types.Users
 
 	// At parsetime, we require all usernames to contain an "@" character, if the
@@ -488,13 +505,13 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 	// usernames to be stored with the "@".
 	uTrimmed := strings.TrimSuffix(u.String(), "@")
 	if uTrimmed == "" {
-		return types.User{}, fmt.Errorf("%w: token %q", ErrUserNotFound, u.String())
+		return nil
 	}
 
 	for _, user := range users {
 		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == uTrimmed {
 			// Prioritize ProviderIdentifier match and exit early
-			return user, nil
+			return types.Users{user}
 		}
 
 		if user.Email == uTrimmed {
@@ -506,20 +523,11 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 		}
 	}
 
-	potentialUsers := emailMatches
-	if len(potentialUsers) == 0 {
-		potentialUsers = nameMatches
+	if len(emailMatches) > 0 {
+		return emailMatches
 	}
 
-	if len(potentialUsers) == 0 {
-		return types.User{}, fmt.Errorf("%w: token %q", ErrUserNotFound, u.String())
-	}
-
-	if len(potentialUsers) > 1 {
-		return types.User{}, fmt.Errorf("%w: token %q found: %s", ErrMultipleUsersFound, u.String(), potentialUsers.String())
-	}
-
-	return potentialUsers[0], nil
+	return nameMatches
 }
 
 func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
@@ -3443,38 +3451,44 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 	// callers store b as written.
 	ast, err := hujson.Parse(bytes.Clone(b))
 	if err != nil {
-		return nil, fmt.Errorf("parsing HuJSON: %w", err)
+		return nil, fmt.Errorf("parsing HuJSON: %w", hujsonPlaced(err))
 	}
 
 	stripMetadataMembers(&ast)
 	ast.Standardize()
 
 	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil { //nolint:noinlineerr
+		// Where the decoder met it, through the decodes that types start of
+		// their own bytes.
+		ptr, off := decoderPlace(err)
+
+		if errors.Is(err, jsontext.ErrDuplicateName) {
+			return nil, fmt.Errorf("parsing policy from bytes: %w", duplicatePlaced(b, err, ptr, off))
+		}
+
 		if serr, ok := errors.AsType[*json.SemanticError](err); ok {
 			if errors.Is(serr.Err, json.ErrUnknownName) {
-				ptr := serr.JSONPointer
 				name := ptr.LastToken()
 
-				return nil, fmt.Errorf("%w: %q", ErrUnknownField, name)
+				return nil, atPointer(fmt.Errorf("%w: %q", ErrUnknownField, name), ptr)
 			}
 
 			// Non-tag entries in grant.via surface as type errors on
 			// []Tag; rephrase to the wire-compatible body.
 			if strings.Contains(string(serr.JSONPointer), "/via/") {
-				return nil, ErrGrantViaNotATag
+				return nil, atPointer(ErrGrantViaNotATag, serr.JSONPointer)
 			}
 
 			// Non-ASCII tag-name failures surface from Tag.Validate
 			// at unmarshal time. Reshape to `tagOwners["tag:X"]: …`.
 			if errors.Is(serr.Err, ErrTagNameMustStartWithLetter) {
-				ptr := serr.JSONPointer
 				name := ptr.LastToken()
 
-				return nil, fmt.Errorf("tagOwners[%q]: %w", name, ErrTagNameMustStartWithLetter)
+				return nil, atPointer(fmt.Errorf("tagOwners[%q]: %w", name, ErrTagNameMustStartWithLetter), ptr)
 			}
 		}
 
-		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
+		return nil, fmt.Errorf("parsing policy from bytes: %w", semanticPlaced(err))
 	}
 
 	if err := policy.validate(); err != nil { //nolint:noinlineerr
@@ -3572,27 +3586,27 @@ func validateTests(pol *Policy, tests []PolicyTest) error {
 
 	for i, t := range tests {
 		if len(t.Accept) == 0 && len(t.Deny) == 0 {
-			errs = append(errs, fmt.Errorf("test %d: %w", i, ErrTestEmptyAssertions))
+			errs = append(errs, testEntryErr("tests", i, "", ErrTestEmptyAssertions))
 		}
 
 		if t.Proto != "" &&
 			t.Proto != ProtocolNameTCP &&
 			t.Proto != ProtocolNameUDP &&
 			t.Proto != ProtocolNameSCTP {
-			errs = append(errs, fmt.Errorf("test %d: %w: %q", i, ErrTestProtocolNotAllowed, t.Proto))
+			errs = append(errs, testEntryErr("tests", i, "", fmt.Errorf("%w: %q", ErrTestProtocolNotAllowed, t.Proto)))
 		}
 
 		for _, dst := range t.Accept {
 			err := validateTestDestination(pol, dst)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("test %d, accept %q: %w", i, dst, err))
+				errs = append(errs, testEntryErr("tests", i, fmt.Sprintf("accept %q", dst), err))
 			}
 		}
 
 		for _, dst := range t.Deny {
 			err := validateTestDestination(pol, dst)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("test %d, deny %q: %w", i, dst, err))
+				errs = append(errs, testEntryErr("tests", i, fmt.Sprintf("deny %q", dst), err))
 			}
 		}
 	}
@@ -3653,21 +3667,21 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 
 	for i, t := range tests {
 		if t.Src == nil {
-			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptySrc))
+			errs = append(errs, testEntryErr("sshTests", i, "", ErrSSHTestEmptySrc))
 		} else if isAddressRange(pol, t.Src) {
 			// Tailscale SaaS refuses a range: a test speaks for one source.
-			errs = append(errs, fmt.Errorf("sshTest %d: %w %q",
-				i, ErrSSHTestSrcDisallowedElement, t.Src.String()))
+			errs = append(errs, testEntryErr("sshTests", i, "",
+				fmt.Errorf("%w %q", ErrSSHTestSrcDisallowedElement, t.Src.String())))
 		}
 
 		if len(t.Dst) == 0 {
-			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptyDst))
+			errs = append(errs, testEntryErr("sshTests", i, "", ErrSSHTestEmptyDst))
 		}
 
 		for _, dst := range t.Dst {
 			err := validateSSHTestDestination(pol, dst)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("sshTest %d: %w", i, err))
+				errs = append(errs, testEntryErr("sshTests", i, "", err))
 			}
 		}
 	}

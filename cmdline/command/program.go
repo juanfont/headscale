@@ -36,6 +36,8 @@ type Program[S any] struct {
 	// Target names the server of a run in a sentence: "the server at
 	// <Target>".
 	Target func(s S) string
+	// Start runs first in every run, before the line is read.
+	Start func()
 
 	// Refusal is the code of err when it is a refusal of the server; "" for
 	// any other error. Precondition is the code that refuses an If-Match.
@@ -75,6 +77,8 @@ type Program[S any] struct {
 	// ConfigEnv is the variable that names the config file, as --config
 	// does.
 	ConfigEnv string
+	// MaxFile is the most a command reads of a file (Ctx.ReadFile).
+	MaxFile int64
 	// Server is what the root help says a server command talks to: "a
 	// running headscale".
 	Server string
@@ -93,13 +97,13 @@ type program struct {
 func erase[S any](p Program[S]) program {
 	e := program{
 		Name: p.Name, Short: p.Short, Version: p.Version,
-		Sentence: p.Sentence,
-		Refusal:  p.Refusal, Precondition: p.Precondition, Again: p.Again,
+		Sentence: p.Sentence, Start: p.Start,
+		Refusal: p.Refusal, Precondition: p.Precondition, Again: p.Again,
 		About: p.About, Fields: p.Fields, MayBeMade: p.MayBeMade,
 		Entities: p.Entities, Readers: p.Readers, Owner: p.Owner,
 		Credentials: p.Credentials, OpenFields: p.OpenFields,
 		Unprintable: p.Unprintable, Aliases: p.Aliases, ConfigEnv: p.ConfigEnv,
-		Server:      p.Server,
+		MaxFile: p.MaxFile, Server: p.Server,
 		sessionType: reflect.TypeFor[S](),
 	}
 

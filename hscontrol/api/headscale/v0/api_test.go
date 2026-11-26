@@ -31,7 +31,7 @@ import (
 )
 
 // newBackend is a real State on a fresh SQLite database.
-func newBackend(tb testing.TB) Backend {
+func newBackend(tb testing.TB, opts ...func(*types.Config)) Backend {
 	tb.Helper()
 
 	cfg := config.Default()
@@ -41,6 +41,10 @@ func newBackend(tb testing.TB) Backend {
 	cfg.AutoUpdate.CheckVersions = false
 	// A node write waits for the NodeStore batch; tests write one at a time.
 	cfg.Tuning.NodeStoreBatchTimeout = time.Millisecond
+
+	for _, o := range opts {
+		o(&cfg)
+	}
 
 	st, err := state.NewState(&cfg)
 	require.NoError(tb, err)
@@ -837,20 +841,16 @@ func TestResponsesAreOpen(t *testing.T) {
 func TestAlwaysSentHeadersAreRequired(t *testing.T) {
 	oapi := NewAPI(chi.NewMux(), Backend{}, specVersion).OpenAPI()
 
+	// A dry run of PUT /policy answers no ETag (TestSetPolicyDryRun).
+	notAlways := Prefix + "/policy PUT 200 ETag"
+
 	for path, item := range oapi.Paths {
 		for method, op := range operations(item) {
 			for status, r := range op.Responses {
 				for _, name := range []string{"Location", "ETag"} {
 					if h, ok := r.Headers[name]; ok {
-						require.True(
-							t,
-							h.Required,
-							"%s %s %s: %s",
-							method,
-							path,
-							status,
-							name,
-						)
+						where := path + " " + method + " " + status + " " + name
+						require.Equal(t, where != notAlways, h.Required, where)
 					}
 				}
 			}

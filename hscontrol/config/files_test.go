@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -367,4 +368,41 @@ func TestReadPrivateKey(t *testing.T) {
 
 	_, err = ReadPrivateKey(filepath.Join(dir, "missing"))
 	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// TestPolicyRefusal: a refused policy as the details API v0 writes: each
+// problem and each failed test with its place, null where it has none.
+func TestPolicyRefusal(t *testing.T) {
+	t.Parallel()
+
+	pol := []byte(`{"acls": [{"action": "accept", "src": ["*"], "dst": ["*:22"]}],
+"ssh": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["root"]}],
+"tests": [{"src": "10.0.0.1", "accept": ["10.0.0.2:80"]}]}`)
+
+	got, err := json.Marshal(PolicyRefusal(pol, policyv2.CheckPolicy(pol)))
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"policyErrors": [], "policyErrorCount": 0, "failedTestCount": 1, "testsNotRun": 0,
+		"failedTests": [{"kind": "acl", "index": 0, "src": "10.0.0.1", "dst": "10.0.0.2:80", "user": null, "want": "accept", "got": "deny", "line": 3, "column": 11}]
+	}`, string(got))
+
+	pol = []byte(`{"acls": [{"action": "accept", "src": ["tag:nope"], "dst": ["*:*"]}],
+"tests": [{"src": "10.0.0.1", "accept": ["10.0.0.2:80"]}],
+"sshTests": [{"src": "10.0.0.1", "dst": ["10.0.0.2"], "accept": ["root"]}]}`)
+
+	// The check of a write, as the bypass runs it: CheckPolicy's parse
+	// step is not one that counts the tests it did not run.
+	got, err = json.Marshal(PolicyRefusal(pol, policyv2.ValidatePolicy(pol, nil, types.Nodes(nil).ViewSlice())))
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"policyErrors": [{"message": "unknown tag \"tag:nope\"", "line": 1, "column": 40}], "policyErrorCount": 1,
+		"failedTests": [], "failedTestCount": 0, "testsNotRun": 2
+	}`, string(got))
+
+	got, err = json.Marshal(PolicyRefusal([]byte("{}"), policyv2.ErrPolicyEmpty))
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"policyErrors": [{"message": "policy is empty, use \"{}\" to allow all", "line": null, "column": null}], "policyErrorCount": 1,
+		"failedTests": [], "failedTestCount": 0, "testsNotRun": 0
+	}`, string(got))
 }

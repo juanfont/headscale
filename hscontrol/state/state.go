@@ -31,6 +31,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/derp"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -57,21 +58,6 @@ const authCacheSSHReserve = 64
 
 // ErrUnsupportedPolicyMode is returned for invalid policy modes. Valid modes are "file" and "db".
 var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
-
-// ErrInvalidPolicy is returned by [State.UpdatePolicy] and
-// [State.ValidatePolicy] for a policy they refuse.
-var ErrInvalidPolicy = errors.New("invalid policy")
-
-// ErrPolicyPrecondition is returned by [State.UpdatePolicyIf] when the stored
-// policy fails the caller's check.
-var ErrPolicyPrecondition = errors.New("policy precondition failed")
-
-// invalidPolicyError marks a refusal as [ErrInvalidPolicy] and keeps the
-// reason's own text, which API answers show as is.
-type invalidPolicyError struct{ reason error }
-
-func (e invalidPolicyError) Error() string   { return e.reason.Error() }
-func (e invalidPolicyError) Unwrap() []error { return []error{ErrInvalidPolicy, e.reason} }
 
 // ErrNodeNotFound is returned when a node cannot be found by its ID.
 var ErrNodeNotFound = errors.New("node not found")
@@ -250,9 +236,41 @@ type State struct {
 	// policies land in the database in the order they are installed: a
 	// change of the policy takes it exclusive. A check that reads the policy
 	// and the write it guards take it shared, so no policy change comes
-	// between them while checks and their writes run together. It is taken
-	// before any other lock and never while holding it shared.
+	// between them while checks and their writes run together. A login
+	// takes it after the claim of its auth request, if it has one, and the
+	// machine's registration lock, and before ownersMu; every other holder
+	// takes it before any other lock. Never taken while holding it shared.
 	policyMu sync.RWMutex
+
+	// policyDoc is the policy in force; it changes only under policyMu.
+	policyDoc atomic.Pointer[PolicyDocument]
+	// policyFacts is what the server knows of the policy where it is kept,
+	// under policyMu; the warnings below derive from it alone.
+	policyFacts policyFacts
+	// policySourceErr is why the policy kept now cannot be used, nil when it
+	// can; see [State.PolicySourceError].
+	policySourceErr atomic.Pointer[error]
+	// policySourceRetry is whether the users can change that refusal.
+	policySourceRetry atomic.Bool
+	// policyUsers is the set of users the policy manager was last given, as
+	// [usersKey] makes it, under policyUsersMu.
+	policyUsers string
+	// storePolicy writes the policy row; a field so that a test can make it
+	// fail after it wrote.
+	storePolicy func(ctx context.Context, data string) (*types.Policy, error)
+	// policyNotStored is set while the policy in force is not the stored
+	// one; see [State.PolicyNotStored].
+	policyNotStored atomic.Bool
+	// policyFileRetry is signalled when the users change while the policy
+	// file is refused.
+	policyFileRetry chan struct{}
+	// updatePolicyHook, when set, runs inside a policy write; see
+	// [State.SetUpdatePolicyHookForTesting].
+	updatePolicyHook func()
+
+	// preparePolicyHook, when set by a test, runs as every policy is
+	// prepared, before it is read.
+	preparePolicyHook func()
 
 	// authCache holds pending Web, OIDC and SSH authentication requests.
 	// Admission preserves unexpired entries at capacity. Expiry resolves the
@@ -472,9 +490,43 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("loading users: %w", err)
 	}
 
-	pol, err := hsdb.PolicyBytes(db.DB, cfg)
+	pol, polUpdated, err := loadPolicy(db.DB, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
+	}
+
+	// Start-up does what it always did with a text a reload refuses: one of
+	// zero bytes, or null, is in force as no policy, now said; one
+	// of only white space stops the server, which must not open the tailnet
+	// because a deploy left a few newlines; one with a NUL byte is parsed as
+	// it always was, and said.
+	var refused error
+
+	kept := pol
+
+	if pol != nil {
+		textErr := policyv2.CheckPolicyText(pol)
+		if errors.Is(textErr, policyv2.ErrPolicyEmpty) && len(pol) > 0 {
+			return nil, fmt.Errorf("initializing policy manager: %w", textErr)
+		}
+
+		if errors.Is(textErr, policyv2.ErrPolicyNUL) {
+			log.Warn().Err(textErr).Msg("the policy where it is kept is refused by a reload; it is in force as before")
+
+			refused = &InvalidPolicyError{Policy: pol, Err: textErr}
+		} else if textErr != nil {
+			// The decoder start-up always used decides which of these failed
+			// it: a list or a scalar other than null still does.
+			_, err := policyv2.ParsePolicy(pol)
+			if err != nil {
+				return nil, fmt.Errorf("initializing policy manager: parsing policy: %w", err)
+			}
+
+			log.Warn().Err(textErr).Msg("the policy where it is kept is refused; no policy is in force")
+
+			refused = &InvalidPolicyError{Policy: pol, Err: textErr}
+			pol, polUpdated = nil, time.Time{}
+		}
 	}
 
 	polMan, err := policy.NewPolicyManager(pol, users, nodes.ViewSlice())
@@ -507,7 +559,15 @@ func NewState(cfg *types.Config) (*State, error) {
 		sshCheckAuth:  make(map[sshCheckPair]sshCheckAuthRecord),
 		publishing:    make(map[types.NodeID]UpdateNodeFunc),
 		registerLocks: xsync.NewMap[key.MachinePublic, *registerLock](),
+
+		policyFileRetry: make(chan struct{}, 1),
+		policyUsers:     usersKey(users),
 	}
+	s.storePolicy = db.SetPolicyContext
+	s.policyDoc.Store(s.documentOf(pol, polUpdated))
+
+	s.policyFacts = policyFacts{kept: kept, keptKnown: true, refused: refused}
+	s.settleWarnings()
 
 	// Last: NewLRU starts the TTL sweeper goroutine, which only Close stops.
 	s.authCache = expirable.NewLRU[types.AuthID, *types.AuthRequest](
@@ -607,75 +667,6 @@ func (s *State) applyPolicyDERPMap() bool {
 // DERPMap returns the current DERP relay configuration for peer-to-peer connectivity.
 func (s *State) DERPMap() tailcfg.DERPMapView {
 	return s.derpMap.Load().View()
-}
-
-// ReloadPolicy reloads the access control policy.
-//
-// It approves no routes: auto-approval waits for a node's next change to
-// its announced routes or its next node key rotation, as on Tailscale SaaS,
-// so a reload cannot undo an admin's revoke.
-func (s *State) ReloadPolicy() ([]change.Change, error) {
-	s.policyMu.Lock()
-	defer s.policyMu.Unlock()
-
-	_, derpChanged, err := s.reloadPolicyLocked()
-	if err != nil {
-		return nil, err
-	}
-
-	// Nodes whose CapMap shifted get their self refresh from
-	// [State.DrainSelfRefreshes] when these changes are dispatched.
-	changes := []change.Change{change.PolicyChange()}
-	if derpChanged {
-		changes = append(changes, change.DERPMap())
-	}
-
-	return changes, nil
-}
-
-// reloadPolicyLocked is [State.ReloadPolicy] for callers holding policyMu. It
-// reports whether the policy changed, and apart from that whether the DERP
-// map nodes get did: a derpMap edit changes no filter.
-func (s *State) reloadPolicyLocked() (bool, bool, error) {
-	pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
-	if err != nil {
-		return false, false, fmt.Errorf("loading policy: %w", err)
-	}
-
-	// nil means no policy is configured: nothing to install.
-	var policyChanged bool
-	if pol != nil {
-		policyChanged, err = s.polMan.SetPolicy(pol)
-		if err != nil {
-			return false, false, fmt.Errorf("setting policy: %w", err)
-		}
-	}
-
-	// Checked even when the policy is unchanged: [State.SetPolicy] may have
-	// installed it already.
-	derpChanged := s.applyPolicyDERPMap()
-
-	// Rebuild peer maps after policy changes because the peersFunc in [NodeStore]
-	// uses the [policy.PolicyManager]'s filters. Without this, nodes won't see
-	// newly allowed peers until a node is added/removed, causing autogroup:self
-	// policies to not propagate correctly when switching between policy types.
-	//
-	// An unchanged policy leaves the matchers as they were, and the other
-	// inputs of the peer map rebuild it themselves (node writes in the
-	// [NodeStore], [State.updatePolicyManagerNodes] and
-	// [State.updatePolicyManagerUsers]), so the O(n^2) rebuild is skipped
-	// then. The policy API handlers always get here that way: they apply
-	// the policy with [State.SetPolicy], which rebuilds, store it, and
-	// reload the very same bytes.
-	if policyChanged {
-		// Stale approvals must not persist if checkPeriod rules are modified
-		// or removed.
-		s.ClearSSHCheckAuth()
-		s.nodeStore.RebuildPeerMaps()
-		log.Info().Msg("Policy reload completed with changes")
-	}
-
-	return policyChanged, derpChanged, nil
 }
 
 // CreateUser creates a new user and updates the policy manager.
@@ -1436,11 +1427,12 @@ func (s *State) DeleteNode(node types.NodeView) ([]change.Change, error) {
 
 	genBefore := s.polMan.NodesGeneration()
 
-	s.persistMu.Lock()
+	err := func() error {
+		s.persistMu.Lock()
+		defer s.persistMu.Unlock()
 
-	err := s.db.DeleteNode(node.AsStruct())
-	s.persistMu.Unlock()
-
+		return s.db.DeleteNode(node.AsStruct())
+	}()
 	if err != nil {
 		if errors.Is(err, hsdb.ErrNodeNotFound) {
 			return nil, nil
@@ -2379,14 +2371,38 @@ func (s *State) WarnNodesHoldingExtraRecords() []types.NodeID {
 func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 	genBefore := s.polMan.NodesGeneration()
 
-	// Hold persistMu until NodeStore has the new addresses, or a concurrent
-	// persist writes the old ones back from NodeStore in between.
+	changes, readdressed, err := s.backfillNodeIPsLocked()
+	if err != nil {
+		return changes, nil, err
+	}
+
+	// IPs are policy inputs: without this, clients only learned the new
+	// addresses from whichever unrelated write next refreshed the policy.
+	c, err := s.updatePolicyManagerNodes(genBefore)
+
+	// A policy change carries no self node, so a readdressed node would
+	// not learn its own new addresses from it.
+	cs := make([]change.Change, 0, len(readdressed)+1)
+	if !c.IsEmpty() {
+		cs = append(cs, c)
+	}
+
+	for _, id := range readdressed {
+		cs = append(cs, change.NodeAdded(id))
+	}
+
+	return changes, cs, err
+}
+
+// backfillNodeIPsLocked is the part of [State.BackfillNodeIPs] under
+// persistMu, held until NodeStore has the new addresses, or a concurrent
+// persist writes the old ones back from NodeStore in between.
+func (s *State) backfillNodeIPsLocked() ([]string, []types.NodeID, error) {
 	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
 
 	changes, err := s.db.BackfillNodeIPs(s.ipAlloc)
 	if err != nil {
-		s.persistMu.Unlock()
-
 		return nil, nil, err
 	}
 
@@ -2397,8 +2413,6 @@ func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 	if len(changes) > 0 {
 		nodes, err := s.db.ListNodes()
 		if err != nil {
-			s.persistMu.Unlock()
-
 			return changes, nil, fmt.Errorf("refreshing NodeStore after IP backfill: %w", err)
 		}
 
@@ -2418,24 +2432,7 @@ func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 		s.nodeStore.UpdateNodes(updates)
 	}
 
-	s.persistMu.Unlock()
-
-	// IPs are policy inputs: without this, clients only learned the new
-	// addresses from whichever unrelated write next refreshed the policy.
-	c, err := s.updatePolicyManagerNodes(genBefore)
-
-	// A policy change carries no self node, so a readdressed node would
-	// not learn its own new addresses from it.
-	cs := make([]change.Change, 0, len(readdressed)+1)
-	if !c.IsEmpty() {
-		cs = append(cs, c)
-	}
-
-	for _, id := range readdressed {
-		cs = append(cs, change.NodeAdded(id))
-	}
-
-	return changes, cs, err
+	return changes, readdressed, nil
 }
 
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
@@ -2545,22 +2542,12 @@ func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return s.polMan.NodeCanHaveTag(node, tag)
 }
 
-// SetPolicy installs pol without storing it. Policy writes use
-// [State.UpdatePolicy].
+// SetPolicy writes pol as [State.UpdatePolicy] does, and reports whether
+// the policy in force changed; the caller sends the nodes no change.
 func (s *State) SetPolicy(pol []byte) (bool, error) {
-	changed, err := s.polMan.SetPolicy(pol)
-	if err != nil {
-		return changed, err
-	}
+	_, changes, err := s.UpdatePolicy(pol)
 
-	// Payload-only writes reuse the cached adjacency, so a policy swap
-	// must rebuild it here rather than wait for the next relation write.
-	if changed {
-		s.ClearSSHCheckAuth()
-		s.nodeStore.RebuildPeerMaps()
-	}
-
-	return changed, nil
+	return slices.ContainsFunc(changes, change.Change.IsBroadcastPolicyChange), err
 }
 
 // AutoApproveRoutes approves the announced routes the policy lets a node
@@ -2646,86 +2633,6 @@ func (s *State) GetPolicy() (*types.Policy, error) {
 // SetPolicyInDB stores policy data in the database.
 func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 	return s.db.SetPolicy(data)
-}
-
-// ValidatePolicy reports whether [State.UpdatePolicy] would accept pol,
-// checking it against the current users and nodes with
-// [policy.ValidatePolicy]; the live policy is not touched.
-func (s *State) ValidatePolicy(pol []byte) error {
-	users, err := s.ListAllUsers()
-	if err != nil {
-		return fmt.Errorf("loading users: %w", err)
-	}
-
-	err = policy.ValidatePolicy(pol, users, s.ListNodes())
-	if err != nil {
-		return invalidPolicyError{err}
-	}
-
-	return nil
-}
-
-// UpdatePolicy validates, stores and installs pol. The live policy is only
-// ever installed from what was stored, so a refused or unstored write leaves
-// it untouched. The changes are returned alongside a reload error, as from
-// [State.ReloadPolicy].
-func (s *State) UpdatePolicy(pol []byte) (*types.Policy, []change.Change, error) {
-	return s.UpdatePolicyIf(pol, nil)
-}
-
-// UpdatePolicyIf is [State.UpdatePolicy] that first passes the stored policy
-// data ("" when none is set) to match, under the same lock as the write, so
-// two writers cannot both pass a check against the same policy. A false match
-// returns [ErrPolicyPrecondition]; a nil match always passes.
-func (s *State) UpdatePolicyIf(pol []byte, match func(stored string) bool) (*types.Policy, []change.Change, error) {
-	err := s.ValidatePolicy(pol)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Held from store to install: on PostgreSQL a concurrent writer could
-	// otherwise commit an older row after a newer one pruned the rest.
-	s.policyMu.Lock()
-	defer s.policyMu.Unlock()
-
-	if match != nil {
-		current, err := s.db.GetPolicy()
-		if err != nil && !errors.Is(err, types.ErrPolicyNotFound) {
-			return nil, nil, fmt.Errorf("loading policy: %w", err)
-		}
-
-		var data string
-		if current != nil {
-			data = current.Data
-		}
-
-		if !match(data) {
-			return nil, nil, ErrPolicyPrecondition
-		}
-	}
-
-	stored, err := s.db.SetPolicy(string(pol))
-	if err != nil {
-		return nil, nil, fmt.Errorf("storing policy: %w", err)
-	}
-
-	changed, derpChanged, err := s.reloadPolicyLocked()
-	if err != nil {
-		return stored, nil, err
-	}
-
-	var changes []change.Change
-
-	// As on SaaS, a write that changes nothing sends clients nothing.
-	if changed {
-		changes = append(changes, change.PolicyChange())
-	}
-
-	if derpChanged {
-		changes = append(changes, change.DERPMap())
-	}
-
-	return stored, changes, nil
 }
 
 // GetNodePrimaryRoutes returns the primary routes for a node.
@@ -4261,6 +4168,11 @@ func (s *State) registerAuthRequest(
 	// resolve to a single node rather than racing the find-then-create section.
 	defer s.lockRegistration(machineKey)()
 
+	// The tags a node asks for are checked against the policy, and written,
+	// under the lock of every policy write.
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
+
 	// Before the user is read: a delete of the user then either finishes
 	// first, or waits until the node is the user's to remove with it.
 	s.ownersMu.RLock()
@@ -4613,6 +4525,11 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// Serialise registration for this machine so concurrent restarts resolve
 	// to a single node rather than racing the find-then-create section.
 	defer s.lockRegistration(machineKey)()
+
+	// The tags a node asks for are checked against the policy, and written,
+	// under the lock of every policy write.
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
 
 	// Before the key is read: a user deleted meanwhile has taken it along.
 	s.ownersMu.RLock()
@@ -5201,6 +5118,17 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 
 	log.Debug().Caller().Bool("policy.changed", changed).Msg("policy manager user update completed because SetUsers operation finished")
 
+	key := usersKey(users)
+	usersChanged := key != s.policyUsers
+	s.policyUsers = key
+
+	if usersChanged && s.PolicySourceError() != nil && s.policySourceRetry.Load() {
+		select {
+		case s.policyFileRetry <- struct{}{}:
+		default:
+		}
+	}
+
 	if peerMapChanged {
 		// User-driven matcher state changed: rebuild candidate adjacency
 		// so peer visibility reflects the new policy. Without this, the
@@ -5779,4 +5707,16 @@ func peerChangePersistWorthy(peerChange tailcfg.PeerChange) bool {
 		peerChange.Endpoints != nil ||
 		peerChange.DERPRegion != 0 ||
 		peerChange.KeyExpiry != nil
+}
+
+// usersKey is what the policy reads of users, as one text, to tell whether
+// the set changed.
+func usersKey(users []types.User) string {
+	var b strings.Builder
+
+	for _, u := range users {
+		fmt.Fprintf(&b, "%d\x00%s\x00%s\x00%s\x00%t\n", u.ID, u.Name, u.Email, u.ProviderIdentifier.String, u.ProviderIdentifier.Valid)
+	}
+
+	return b.String()
 }

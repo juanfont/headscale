@@ -194,6 +194,7 @@ func testProgram() Program[testS] {
 		MayBeMade: func(err error) bool { _, ok := errors.AsType[*madeError](err); return ok },
 		Aliases:   []string{"ls", "rm", "approve"},
 		ConfigEnv: "HEADSCALE_CONFIG",
+		MaxFile:   16 << 20,
 		Server:    "a running headscale",
 	}
 }

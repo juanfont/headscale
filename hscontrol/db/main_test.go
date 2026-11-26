@@ -11,6 +11,10 @@ import (
 // so that relative testdata/ paths resolve correctly when the test binary is
 // executed from an arbitrary location (e.g., via "go tool stress").
 func TestMain(m *testing.M) {
+	if path, ok := os.LookupEnv(holdDB); ok {
+		os.Exit(hold(path))
+	}
+
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		panic("could not determine test source directory")

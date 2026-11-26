@@ -126,6 +126,66 @@ func (e CredentialKind) Valid() bool {
 	}
 }
 
+// Defines values for FailedTestGot.
+const (
+	FailedTestGotAccept FailedTestGot = "accept"
+	FailedTestGotCheck  FailedTestGot = "check"
+	FailedTestGotDeny   FailedTestGot = "deny"
+)
+
+// Valid indicates whether the value is a known member of the FailedTestGot enum.
+func (e FailedTestGot) Valid() bool {
+	switch e {
+	case FailedTestGotAccept:
+		return true
+	case FailedTestGotCheck:
+		return true
+	case FailedTestGotDeny:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FailedTestKind.
+const (
+	FailedTestKindAcl FailedTestKind = "acl"
+	FailedTestKindSsh FailedTestKind = "ssh"
+)
+
+// Valid indicates whether the value is a known member of the FailedTestKind enum.
+func (e FailedTestKind) Valid() bool {
+	switch e {
+	case FailedTestKindAcl:
+		return true
+	case FailedTestKindSsh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FailedTestWant.
+const (
+	FailedTestWantAccept FailedTestWant = "accept"
+	FailedTestWantCheck  FailedTestWant = "check"
+	FailedTestWantDeny   FailedTestWant = "deny"
+)
+
+// Valid indicates whether the value is a known member of the FailedTestWant enum.
+func (e FailedTestWant) Valid() bool {
+	switch e {
+	case FailedTestWantAccept:
+		return true
+	case FailedTestWantCheck:
+		return true
+	case FailedTestWantDeny:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthMessageCode.
 const (
 	HealthMessageCodeAuthRequestsFull    HealthMessageCode = "auth_requests_full"
@@ -133,6 +193,10 @@ const (
 	HealthMessageCodeDatabaseUnreachable HealthMessageCode = "database_unreachable"
 	HealthMessageCodeNodeExpiryInvalid   HealthMessageCode = "node_expiry_invalid"
 	HealthMessageCodeNodeNameInvalid     HealthMessageCode = "node_name_invalid"
+	HealthMessageCodePolicyFileInvalid   HealthMessageCode = "policy_file_invalid"
+	HealthMessageCodePolicyNotStored     HealthMessageCode = "policy_not_stored"
+	HealthMessageCodePolicyStoredInvalid HealthMessageCode = "policy_stored_invalid"
+	HealthMessageCodePolicyUserAmbiguous HealthMessageCode = "policy_user_ambiguous"
 )
 
 // Valid indicates whether the value is a known member of the HealthMessageCode enum.
@@ -147,6 +211,14 @@ func (e HealthMessageCode) Valid() bool {
 	case HealthMessageCodeNodeExpiryInvalid:
 		return true
 	case HealthMessageCodeNodeNameInvalid:
+		return true
+	case HealthMessageCodePolicyFileInvalid:
+		return true
+	case HealthMessageCodePolicyNotStored:
+		return true
+	case HealthMessageCodePolicyStoredInvalid:
+		return true
+	case HealthMessageCodePolicyUserAmbiguous:
 		return true
 	default:
 		return false
@@ -189,6 +261,24 @@ func (e OAuthClientState) Valid() bool {
 	case OAuthClientStateRevoked:
 		return true
 	case OAuthClientStateValid:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyMode.
+const (
+	PolicyModeDatabase PolicyMode = "database"
+	PolicyModeFile     PolicyMode = "file"
+)
+
+// Valid indicates whether the value is a known member of the PolicyMode enum.
+func (e PolicyMode) Valid() bool {
+	switch e {
+	case PolicyModeDatabase:
+		return true
+	case PolicyModeFile:
 		return true
 	default:
 		return false
@@ -239,6 +329,9 @@ const (
 	ProblemCodeNameTaken            ProblemCode = "name_taken"
 	ProblemCodeNotFound             ProblemCode = "not_found"
 	ProblemCodeOwnerConflict        ProblemCode = "owner_conflict"
+	ProblemCodePolicyInvalid        ProblemCode = "policy_invalid"
+	ProblemCodePolicyReadOnly       ProblemCode = "policy_read_only"
+	ProblemCodePolicySourceChanging ProblemCode = "policy_source_changing"
 	ProblemCodePreconditionFailed   ProblemCode = "precondition_failed"
 	ProblemCodeRegistrationRefused  ProblemCode = "registration_refused"
 	ProblemCodeRequestTimeout       ProblemCode = "request_timeout"
@@ -287,6 +380,12 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeNotFound:
 		return true
 	case ProblemCodeOwnerConflict:
+		return true
+	case ProblemCodePolicyInvalid:
+		return true
+	case ProblemCodePolicyReadOnly:
+		return true
+	case ProblemCodePolicySourceChanging:
 		return true
 	case ProblemCodePreconditionFailed:
 		return true
@@ -767,6 +866,45 @@ type DeletedUser struct {
 	Nodes []NodeReference `json:"nodes"`
 }
 
+// FailedTest defines model for FailedTest.
+type FailedTest struct {
+	// Column The column of line, from 1, in bytes; null with line.
+	Column nullable.Nullable[int64] `json:"column"`
+
+	// Dst The destination that failed, as written.
+	Dst string `json:"dst"`
+
+	// Got What the policy does.
+	Got FailedTestGot `json:"got"`
+
+	// Index The position of the test in its list, from 0.
+	Index int64 `json:"index"`
+
+	// Kind acl for an entry of tests, ssh for one of sshTests.
+	Kind FailedTestKind `json:"kind"`
+
+	// Line Where the policy text has the test, from 1; null when it cannot be found.
+	Line nullable.Nullable[int64] `json:"line"`
+
+	// Src The source of the test, as written.
+	Src string `json:"src"`
+
+	// User The login user of an ssh test; null for acl.
+	User nullable.Nullable[string] `json:"user"`
+
+	// Want What the test asserts.
+	Want FailedTestWant `json:"want"`
+}
+
+// FailedTestGot What the policy does.
+type FailedTestGot string
+
+// FailedTestKind acl for an entry of tests, ssh for one of sshTests.
+type FailedTestKind string
+
+// FailedTestWant What the test asserts.
+type FailedTestWant string
+
 // FieldError defines model for FieldError.
 type FieldError struct {
 	// Location Where the field is, such as body.tags[2] or query.pageSize.
@@ -958,6 +1096,54 @@ type OwnerUser struct {
 	Name        string `json:"name"`
 }
 
+// Policy defines model for Policy.
+type Policy struct {
+	// Mode database, or file when the server reads the policy from a file. A file the server refused is not in force; GET /health warns of it.
+	Mode PolicyMode `json:"mode"`
+
+	// Path The policy file in file mode, else "".
+	Path string `json:"path"`
+
+	// Policy The policy as it is stored or read from the file: HuJSON, with its comments. "" when there is none.
+	Policy string `json:"policy"`
+
+	// Updated When the database stored it; null in file mode and when nothing is stored.
+	Updated nullable.Nullable[time.Time] `json:"updated"`
+}
+
+// PolicyError defines model for PolicyError.
+type PolicyError struct {
+	// Column The column of line, from 1, in bytes; null with line.
+	Column nullable.Nullable[int64] `json:"column"`
+
+	// Line Where the policy text has it, from 1; null when the problem has no place in the text.
+	Line nullable.Nullable[int64] `json:"line"`
+
+	// Message The problem, a sentence for a person.
+	Message string `json:"message"`
+}
+
+// PolicyInvalidDetails defines model for PolicyInvalidDetails.
+type PolicyInvalidDetails struct {
+	// FailedTestCount How many assertions failed in all.
+	FailedTestCount int64 `json:"failedTestCount"`
+
+	// FailedTests One entry per assertion that did not hold, the first ones up to a cap; failedTestCount counts them all.
+	FailedTests []FailedTest `json:"failedTests"`
+
+	// PolicyErrorCount How many problems there are in all.
+	PolicyErrorCount int64 `json:"policyErrorCount"`
+
+	// PolicyErrors One entry per problem, the first ones up to a cap; policyErrorCount counts them all.
+	PolicyErrors []PolicyError `json:"policyErrors"`
+
+	// TestsNotRun How many entries of tests and sshTests were not run because the policy was refused before them; 0 when they ran.
+	TestsNotRun int64 `json:"testsNotRun"`
+}
+
+// PolicyMode database, or file when the server reads the policy from a file. A file the server refused is not in force; GET /health warns of it.
+type PolicyMode string
+
 // Principal defines model for Principal.
 type Principal struct {
 	// Identity The identity at an outside identity provider. Reserved: null today.
@@ -1042,6 +1228,12 @@ type SetNodeRoutesBody struct {
 type SetNodeTagsBody struct {
 	// Tags At least one tag, each in tagOwners of the policy.
 	Tags []string `json:"tags"`
+}
+
+// SetPolicyBody defines model for SetPolicyBody.
+type SetPolicyBody struct {
+	// Policy The policy, HuJSON. With Content-Type application/hujson the body is the policy file itself.
+	Policy string `json:"policy"`
 }
 
 // Tag defines model for Tag.
@@ -1394,6 +1586,15 @@ type ListOAuthClientsParams struct {
 	PageToken *string `form:"pageToken,omitempty" json:"pageToken,omitempty"`
 }
 
+// SetPolicyParams defines parameters for SetPolicy.
+type SetPolicyParams struct {
+	// DryRun Run every check of the write, answer what it would answer, and store nothing. Works in file mode too.
+	DryRun *bool `form:"dryRun,omitempty" json:"dryRun,omitempty"`
+
+	// IfMatch The ETag of GET /policy. The write is refused with precondition_failed when the policy changed since; leave it out to write whatever is in force.
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
 // ListTagsParams defines parameters for ListTags.
 type ListTagsParams struct {
 	// PageSize Rows on one page.
@@ -1459,6 +1660,9 @@ type SetNodeTagsJSONRequestBody = SetNodeTagsBody
 
 // CreateOAuthClientJSONRequestBody defines body for CreateOAuthClient for application/json ContentType.
 type CreateOAuthClientJSONRequestBody = CreateOAuthClientBody
+
+// SetPolicyJSONRequestBody defines body for SetPolicy for application/json ContentType.
+type SetPolicyJSONRequestBody = SetPolicyBody
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = CreateUserBody
@@ -1824,6 +2028,38 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/headscale/v0/oauth-clients/{id} (the `GetOAuthClient` operationId).
 	GetOAuthClient(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPolicy Read the policy in force
+	//
+	// The ETag covers the whole answer; send it back in If-Match on PUT /policy.
+	//
+	// Corresponds with GET /api/headscale/v0/policy (the `GetPolicy` operationId).
+	GetPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPolicyWithBody Replace the policy, or with dryRun=true only check it
+	//
+	// The server parses the policy, checks it against its users and nodes, and runs its tests; a failure is policy_invalid with its problems and failed tests, the first ones up to a cap, and how many of each there are in all. The body is {"policy": "…"}, or the policy file itself with Content-Type application/hujson. An empty body is checked as the empty policy in both forms. The body holds at most 1 MiB (too_large); the JSON form holds less policy than the file itself, by its escapes. In file mode the write is policy_read_only; a dry run still checks. A dry run answers what the write would, with updated null, as nothing was stored, and no ETag.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/headscale/v0/policy (the `SetPolicy` operationId).
+	SetPolicyWithBody(ctx context.Context, params *SetPolicyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPolicy Replace the policy, or with dryRun=true only check it
+	//
+	// The server parses the policy, checks it against its users and nodes, and runs its tests; a failure is policy_invalid with its problems and failed tests, the first ones up to a cap, and how many of each there are in all. The body is {"policy": "…"}, or the policy file itself with Content-Type application/hujson. An empty body is checked as the empty policy in both forms. The body holds at most 1 MiB (too_large); the JSON form holds less policy than the file itself, by its escapes. In file mode the write is policy_read_only; a dry run still checks. A dry run answers what the write would, with updated null, as nothing was stored, and no ETag.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/headscale/v0/policy (the `SetPolicy` operationId).
+	SetPolicy(ctx context.Context, params *SetPolicyParams, body SetPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReloadPolicy Read the policy again from where it is kept, and install it
+	//
+	// Reads the policy file in file mode, the database otherwise. A policy the server refuses is policy_invalid, and the policy in force stays; in file mode GET /health warns of it until a valid file is in force.
+	//
+	// Corresponds with POST /api/headscale/v0/policy/reload (the `ReloadPolicy` operationId).
+	ReloadPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTags List tags
 	//
@@ -2532,6 +2768,78 @@ func (c *Client) DeleteOAuthClient(ctx context.Context, id string, reqEditors ..
 // Corresponds with GET /api/headscale/v0/oauth-clients/{id} (the `GetOAuthClient` operationId).
 func (c *Client) GetOAuthClient(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetOAuthClientRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetPolicy Read the policy in force
+//
+// The ETag covers the whole answer; send it back in If-Match on PUT /policy.
+//
+// Corresponds with GET /api/headscale/v0/policy (the `GetPolicy` operationId).
+func (c *Client) GetPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPolicyRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPolicyWithBody Replace the policy, or with dryRun=true only check it
+//
+// The server parses the policy, checks it against its users and nodes, and runs its tests; a failure is policy_invalid with its problems and failed tests, the first ones up to a cap, and how many of each there are in all. The body is {"policy": "…"}, or the policy file itself with Content-Type application/hujson. An empty body is checked as the empty policy in both forms. The body holds at most 1 MiB (too_large); the JSON form holds less policy than the file itself, by its escapes. In file mode the write is policy_read_only; a dry run still checks. A dry run answers what the write would, with updated null, as nothing was stored, and no ETag.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/headscale/v0/policy (the `SetPolicy` operationId).
+func (c *Client) SetPolicyWithBody(ctx context.Context, params *SetPolicyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPolicyRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPolicy Replace the policy, or with dryRun=true only check it
+//
+// The server parses the policy, checks it against its users and nodes, and runs its tests; a failure is policy_invalid with its problems and failed tests, the first ones up to a cap, and how many of each there are in all. The body is {"policy": "…"}, or the policy file itself with Content-Type application/hujson. An empty body is checked as the empty policy in both forms. The body holds at most 1 MiB (too_large); the JSON form holds less policy than the file itself, by its escapes. In file mode the write is policy_read_only; a dry run still checks. A dry run answers what the write would, with updated null, as nothing was stored, and no ETag.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/headscale/v0/policy (the `SetPolicy` operationId).
+func (c *Client) SetPolicy(ctx context.Context, params *SetPolicyParams, body SetPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPolicyRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReloadPolicy Read the policy again from where it is kept, and install it
+//
+// Reads the policy file in file mode, the database otherwise. A policy the server refuses is policy_invalid, and the policy in force stays; in file mode GET /health warns of it until a valid file is in force.
+//
+// Corresponds with POST /api/headscale/v0/policy/reload (the `ReloadPolicy` operationId).
+func (c *Client) ReloadPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReloadPolicyRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -3970,6 +4278,142 @@ func NewGetOAuthClientRequest(server string, id string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetPolicyRequest constructs an http.Request for the GetPolicy method
+func NewGetPolicyRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/policy")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetPolicyRequest calls the generic SetPolicy builder with application/json body
+func NewSetPolicyRequest(server string, params *SetPolicyParams, body SetPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetPolicyRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewSetPolicyRequestWithBody constructs an http.Request for the SetPolicy method, with any body, and a specified content type
+func NewSetPolicyRequestWithBody(server string, params *SetPolicyParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/policy")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.DryRun != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "dryRun", *params.DryRun, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewReloadPolicyRequest constructs an http.Request for the ReloadPolicy method
+func NewReloadPolicyRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/policy/reload")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListTagsRequest constructs an http.Request for the ListTags method
 func NewListTagsRequest(server string, params *ListTagsParams) (*http.Request, error) {
 	var err error
@@ -4745,6 +5189,42 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/headscale/v0/oauth-clients/{id} (the `GetOAuthClient` operationId).
 	GetOAuthClientWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetOAuthClientResponse, error)
+
+	// GetPolicyWithResponse Read the policy in force
+	//
+	// The ETag covers the whole answer; send it back in If-Match on PUT /policy.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/headscale/v0/policy (the `GetPolicy` operationId).
+	GetPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPolicyResponse, error)
+
+	// SetPolicyWithBodyWithResponse Replace the policy, or with dryRun=true only check it
+	//
+	// The server parses the policy, checks it against its users and nodes, and runs its tests; a failure is policy_invalid with its problems and failed tests, the first ones up to a cap, and how many of each there are in all. The body is {"policy": "…"}, or the policy file itself with Content-Type application/hujson. An empty body is checked as the empty policy in both forms. The body holds at most 1 MiB (too_large); the JSON form holds less policy than the file itself, by its escapes. In file mode the write is policy_read_only; a dry run still checks. A dry run answers what the write would, with updated null, as nothing was stored, and no ETag.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/headscale/v0/policy (the `SetPolicy` operationId).
+	SetPolicyWithBodyWithResponse(ctx context.Context, params *SetPolicyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPolicyResponse, error)
+
+	// SetPolicyWithResponse Replace the policy, or with dryRun=true only check it
+	//
+	// The server parses the policy, checks it against its users and nodes, and runs its tests; a failure is policy_invalid with its problems and failed tests, the first ones up to a cap, and how many of each there are in all. The body is {"policy": "…"}, or the policy file itself with Content-Type application/hujson. An empty body is checked as the empty policy in both forms. The body holds at most 1 MiB (too_large); the JSON form holds less policy than the file itself, by its escapes. In file mode the write is policy_read_only; a dry run still checks. A dry run answers what the write would, with updated null, as nothing was stored, and no ETag.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/headscale/v0/policy (the `SetPolicy` operationId).
+	SetPolicyWithResponse(ctx context.Context, params *SetPolicyParams, body SetPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPolicyResponse, error)
+
+	// ReloadPolicyWithResponse Read the policy again from where it is kept, and install it
+	//
+	// Reads the policy file in file mode, the database otherwise. A policy the server refuses is policy_invalid, and the policy in force stays; in file mode GET /health warns of it until a valid file is in force.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/headscale/v0/policy/reload (the `ReloadPolicy` operationId).
+	ReloadPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReloadPolicyResponse, error)
 
 	// ListTagsWithResponse List tags
 	//
@@ -9213,6 +9693,513 @@ func (r GetOAuthClientResponse) ContentType() string {
 	return ""
 }
 
+// GetPolicyResponse200Headers the declared response headers of an HTTP 200 response for GetPolicy
+type GetPolicyResponse200Headers struct {
+	ETag             string
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetPolicyResponse401Headers the declared response headers of an HTTP 401 response for GetPolicy
+type GetPolicyResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetPolicyResponse403Headers the declared response headers of an HTTP 403 response for GetPolicy
+type GetPolicyResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetPolicyResponse422Headers the declared response headers of an HTTP 422 response for GetPolicy
+type GetPolicyResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetPolicyResponse500Headers the declared response headers of an HTTP 500 response for GetPolicy
+type GetPolicyResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetPolicyResponse503Headers the declared response headers of an HTTP 503 response for GetPolicy
+type GetPolicyResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type GetPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Policy
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetPolicyResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *GetPolicyResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *GetPolicyResponse403Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *GetPolicyResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *GetPolicyResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *GetPolicyResponse503Headers
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *GetPolicyResponse) decodedSuccess() (any, []byte) {
+	if r.JSON200 != nil {
+		return r.JSON200, r.Body
+	}
+	return nil, nil
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetPolicyResponse) GetJSON200() *Policy {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetPolicyResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetPolicyResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetPolicyResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetPolicyResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetPolicyResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetPolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetPolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SetPolicyResponse200Headers the declared response headers of an HTTP 200 response for SetPolicy
+type SetPolicyResponse200Headers struct {
+	ETag             *string
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse400Headers the declared response headers of an HTTP 400 response for SetPolicy
+type SetPolicyResponse400Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse401Headers the declared response headers of an HTTP 401 response for SetPolicy
+type SetPolicyResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse403Headers the declared response headers of an HTTP 403 response for SetPolicy
+type SetPolicyResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse408Headers the declared response headers of an HTTP 408 response for SetPolicy
+type SetPolicyResponse408Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse409Headers the declared response headers of an HTTP 409 response for SetPolicy
+type SetPolicyResponse409Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse412Headers the declared response headers of an HTTP 412 response for SetPolicy
+type SetPolicyResponse412Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse413Headers the declared response headers of an HTTP 413 response for SetPolicy
+type SetPolicyResponse413Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse415Headers the declared response headers of an HTTP 415 response for SetPolicy
+type SetPolicyResponse415Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse422Headers the declared response headers of an HTTP 422 response for SetPolicy
+type SetPolicyResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse500Headers the declared response headers of an HTTP 500 response for SetPolicy
+type SetPolicyResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// SetPolicyResponse503Headers the declared response headers of an HTTP 503 response for SetPolicy
+type SetPolicyResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type SetPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Policy
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON408 the response for an HTTP 408 `application/problem+json` response
+	ApplicationproblemJSON408 *Problem
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Problem
+	// ApplicationproblemJSON412 the response for an HTTP 412 `application/problem+json` response
+	ApplicationproblemJSON412 *Problem
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *Problem
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *SetPolicyResponse200Headers
+	// Headers400 the parsed response headers for an HTTP 400 response
+	Headers400 *SetPolicyResponse400Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *SetPolicyResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *SetPolicyResponse403Headers
+	// Headers408 the parsed response headers for an HTTP 408 response
+	Headers408 *SetPolicyResponse408Headers
+	// Headers409 the parsed response headers for an HTTP 409 response
+	Headers409 *SetPolicyResponse409Headers
+	// Headers412 the parsed response headers for an HTTP 412 response
+	Headers412 *SetPolicyResponse412Headers
+	// Headers413 the parsed response headers for an HTTP 413 response
+	Headers413 *SetPolicyResponse413Headers
+	// Headers415 the parsed response headers for an HTTP 415 response
+	Headers415 *SetPolicyResponse415Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *SetPolicyResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *SetPolicyResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *SetPolicyResponse503Headers
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *SetPolicyResponse) decodedSuccess() (any, []byte) {
+	if r.JSON200 != nil {
+		return r.JSON200, r.Body
+	}
+	return nil, nil
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetPolicyResponse) GetJSON200() *Policy {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON408 returns the response for an HTTP 408 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON408() *Problem {
+	return r.ApplicationproblemJSON408
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON409() *Problem {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON412 returns the response for an HTTP 412 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON412() *Problem {
+	return r.ApplicationproblemJSON412
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON413() *Problem {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON415() *Problem {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r SetPolicyResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r SetPolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetPolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ReloadPolicyResponse200Headers the declared response headers of an HTTP 200 response for ReloadPolicy
+type ReloadPolicyResponse200Headers struct {
+	ETag             string
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ReloadPolicyResponse401Headers the declared response headers of an HTTP 401 response for ReloadPolicy
+type ReloadPolicyResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ReloadPolicyResponse403Headers the declared response headers of an HTTP 403 response for ReloadPolicy
+type ReloadPolicyResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ReloadPolicyResponse409Headers the declared response headers of an HTTP 409 response for ReloadPolicy
+type ReloadPolicyResponse409Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ReloadPolicyResponse422Headers the declared response headers of an HTTP 422 response for ReloadPolicy
+type ReloadPolicyResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ReloadPolicyResponse500Headers the declared response headers of an HTTP 500 response for ReloadPolicy
+type ReloadPolicyResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ReloadPolicyResponse503Headers the declared response headers of an HTTP 503 response for ReloadPolicy
+type ReloadPolicyResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type ReloadPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Policy
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ReloadPolicyResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *ReloadPolicyResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *ReloadPolicyResponse403Headers
+	// Headers409 the parsed response headers for an HTTP 409 response
+	Headers409 *ReloadPolicyResponse409Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *ReloadPolicyResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *ReloadPolicyResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *ReloadPolicyResponse503Headers
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *ReloadPolicyResponse) decodedSuccess() (any, []byte) {
+	if r.JSON200 != nil {
+		return r.JSON200, r.Body
+	}
+	return nil, nil
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReloadPolicyResponse) GetJSON200() *Policy {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ReloadPolicyResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ReloadPolicyResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r ReloadPolicyResponse) GetApplicationproblemJSON409() *Problem {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ReloadPolicyResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ReloadPolicyResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ReloadPolicyResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ReloadPolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReloadPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReloadPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReloadPolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListTagsResponse200Headers the declared response headers of an HTTP 200 response for ListTags
 type ListTagsResponse200Headers struct {
 	HeadscaleCommit  *string
@@ -10879,6 +11866,70 @@ func (c *ClientWithResponses) GetOAuthClientWithResponse(ctx context.Context, id
 		return nil, err
 	}
 	r, err := ParseGetOAuthClientResponse(rsp)
+	return told(ctx, r, err)
+}
+
+// GetPolicyWithResponse Read the policy in force
+//
+// The ETag covers the whole answer; send it back in If-Match on PUT /policy.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/headscale/v0/policy (the `GetPolicy` operationId).
+func (c *ClientWithResponses) GetPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPolicyResponse, error) {
+	rsp, err := c.GetPolicy(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseGetPolicyResponse(rsp)
+	return told(ctx, r, err)
+}
+
+// SetPolicyWithBodyWithResponse Replace the policy, or with dryRun=true only check it
+//
+// The server parses the policy, checks it against its users and nodes, and runs its tests; a failure is policy_invalid with its problems and failed tests, the first ones up to a cap, and how many of each there are in all. The body is {"policy": "…"}, or the policy file itself with Content-Type application/hujson. An empty body is checked as the empty policy in both forms. The body holds at most 1 MiB (too_large); the JSON form holds less policy than the file itself, by its escapes. In file mode the write is policy_read_only; a dry run still checks. A dry run answers what the write would, with updated null, as nothing was stored, and no ETag.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/headscale/v0/policy (the `SetPolicy` operationId).
+func (c *ClientWithResponses) SetPolicyWithBodyWithResponse(ctx context.Context, params *SetPolicyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPolicyResponse, error) {
+	rsp, err := c.SetPolicyWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseSetPolicyResponse(rsp)
+	return told(ctx, r, err)
+}
+
+// SetPolicyWithResponse Replace the policy, or with dryRun=true only check it
+//
+// The server parses the policy, checks it against its users and nodes, and runs its tests; a failure is policy_invalid with its problems and failed tests, the first ones up to a cap, and how many of each there are in all. The body is {"policy": "…"}, or the policy file itself with Content-Type application/hujson. An empty body is checked as the empty policy in both forms. The body holds at most 1 MiB (too_large); the JSON form holds less policy than the file itself, by its escapes. In file mode the write is policy_read_only; a dry run still checks. A dry run answers what the write would, with updated null, as nothing was stored, and no ETag.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/headscale/v0/policy (the `SetPolicy` operationId).
+func (c *ClientWithResponses) SetPolicyWithResponse(ctx context.Context, params *SetPolicyParams, body SetPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPolicyResponse, error) {
+	rsp, err := c.SetPolicy(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseSetPolicyResponse(rsp)
+	return told(ctx, r, err)
+}
+
+// ReloadPolicyWithResponse Read the policy again from where it is kept, and install it
+//
+// Reads the policy file in file mode, the database otherwise. A policy the server refuses is policy_invalid, and the policy in force stays; in file mode GET /health warns of it until a valid file is in force.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/headscale/v0/policy/reload (the `ReloadPolicy` operationId).
+func (c *ClientWithResponses) ReloadPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReloadPolicyResponse, error) {
+	rsp, err := c.ReloadPolicy(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseReloadPolicyResponse(rsp)
 	return told(ctx, r, err)
 }
 
@@ -17770,6 +18821,795 @@ func ParseGetOAuthClientResponse(rsp *http.Response) (*GetOAuthClientResponse, e
 	return response, nil
 }
 
+// ParseGetPolicyResponse parses an HTTP response from a GetPolicyWithResponse call
+func ParseGetPolicyResponse(rsp *http.Response) (*GetPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	// json reads the body by the exact member names (DecodeResponse): it
+	// shadows encoding/json for the unmarshal generated below.
+	json := exactJSON{rsp: rsp, page: false}
+	_ = json
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Policy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	if rsp.StatusCode == 200 && response.JSON200 == nil {
+		var dest Policy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+	}
+	if rsp.StatusCode == 401 {
+		response.ApplicationproblemJSON401 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 403 {
+		response.ApplicationproblemJSON403 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 422 {
+		response.ApplicationproblemJSON422 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 500 {
+		response.ApplicationproblemJSON500 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 503 {
+		response.ApplicationproblemJSON503 = problemIn(bodyBytes)
+	}
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetPolicyResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers GetPolicyResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers GetPolicyResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 422:
+		var headers GetPolicyResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers GetPolicyResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers GetPolicyResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSetPolicyResponse parses an HTTP response from a SetPolicyWithResponse call
+func ParseSetPolicyResponse(rsp *http.Response) (*SetPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	// json reads the body by the exact member names (DecodeResponse): it
+	// shadows encoding/json for the unmarshal generated below.
+	json := exactJSON{rsp: rsp, page: false}
+	_ = json
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Policy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 408:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON408 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	if rsp.StatusCode == 200 && response.JSON200 == nil {
+		var dest Policy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+	}
+	if rsp.StatusCode == 400 {
+		response.ApplicationproblemJSON400 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 401 {
+		response.ApplicationproblemJSON401 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 403 {
+		response.ApplicationproblemJSON403 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 408 {
+		response.ApplicationproblemJSON408 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 409 {
+		response.ApplicationproblemJSON409 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 412 {
+		response.ApplicationproblemJSON412 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 413 {
+		response.ApplicationproblemJSON413 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 415 {
+		response.ApplicationproblemJSON415 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 422 {
+		response.ApplicationproblemJSON422 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 500 {
+		response.ApplicationproblemJSON500 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 503 {
+		response.ApplicationproblemJSON503 = problemIn(bodyBytes)
+	}
+	switch {
+	case rsp.StatusCode == 200:
+		var headers SetPolicyResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 400:
+		var headers SetPolicyResponse400Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers400 = &headers
+	case rsp.StatusCode == 401:
+		var headers SetPolicyResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers SetPolicyResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 408:
+		var headers SetPolicyResponse408Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers408 = &headers
+	case rsp.StatusCode == 409:
+		var headers SetPolicyResponse409Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers409 = &headers
+	case rsp.StatusCode == 412:
+		var headers SetPolicyResponse412Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers412 = &headers
+	case rsp.StatusCode == 413:
+		var headers SetPolicyResponse413Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers413 = &headers
+	case rsp.StatusCode == 415:
+		var headers SetPolicyResponse415Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers415 = &headers
+	case rsp.StatusCode == 422:
+		var headers SetPolicyResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers SetPolicyResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers SetPolicyResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseReloadPolicyResponse parses an HTTP response from a ReloadPolicyWithResponse call
+func ParseReloadPolicyResponse(rsp *http.Response) (*ReloadPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReloadPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	// json reads the body by the exact member names (DecodeResponse): it
+	// shadows encoding/json for the unmarshal generated below.
+	json := exactJSON{rsp: rsp, page: false}
+	_ = json
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Policy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	if rsp.StatusCode == 200 && response.JSON200 == nil {
+		var dest Policy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+	}
+	if rsp.StatusCode == 401 {
+		response.ApplicationproblemJSON401 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 403 {
+		response.ApplicationproblemJSON403 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 409 {
+		response.ApplicationproblemJSON409 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 422 {
+		response.ApplicationproblemJSON422 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 500 {
+		response.ApplicationproblemJSON500 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 503 {
+		response.ApplicationproblemJSON503 = problemIn(bodyBytes)
+	}
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ReloadPolicyResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers ReloadPolicyResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers ReloadPolicyResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 409:
+		var headers ReloadPolicyResponse409Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers409 = &headers
+	case rsp.StatusCode == 422:
+		var headers ReloadPolicyResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers ReloadPolicyResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers ReloadPolicyResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListTagsResponse parses an HTTP response from a ListTagsWithResponse call
 func ParseListTagsResponse(rsp *http.Response) (*ListTagsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -19843,6 +21683,48 @@ func (r *DeleteOAuthClientResponse) Err() error {
 // Result is the 200 answer of GetOAuthClient, or the answer as an error:
 // a *ResponseError, or an *AnswerError.
 func (r *GetOAuthClientResponse) Result() (*OAuthClient, error) {
+	if r.JSON200 != nil {
+		return r.JSON200, nil
+	}
+	if err := answerOf(r.HTTPResponse, r.Body, []int{200}); err != nil {
+		return nil, err
+	}
+	// A documented success is always read by Parse; this is one made by
+	// hand.
+	return nil, &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrStatus}
+}
+
+// Result is the 200 answer of GetPolicy, or the answer as an error:
+// a *ResponseError, or an *AnswerError.
+func (r *GetPolicyResponse) Result() (*Policy, error) {
+	if r.JSON200 != nil {
+		return r.JSON200, nil
+	}
+	if err := answerOf(r.HTTPResponse, r.Body, []int{200}); err != nil {
+		return nil, err
+	}
+	// A documented success is always read by Parse; this is one made by
+	// hand.
+	return nil, &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrStatus}
+}
+
+// Result is the 200 answer of SetPolicy, or the answer as an error:
+// a *ResponseError, or an *AnswerError.
+func (r *SetPolicyResponse) Result() (*Policy, error) {
+	if r.JSON200 != nil {
+		return r.JSON200, nil
+	}
+	if err := answerOf(r.HTTPResponse, r.Body, []int{200}); err != nil {
+		return nil, err
+	}
+	// A documented success is always read by Parse; this is one made by
+	// hand.
+	return nil, &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrStatus}
+}
+
+// Result is the 200 answer of ReloadPolicy, or the answer as an error:
+// a *ResponseError, or an *AnswerError.
+func (r *ReloadPolicyResponse) Result() (*Policy, error) {
 	if r.JSON200 != nil {
 		return r.JSON200, nil
 	}

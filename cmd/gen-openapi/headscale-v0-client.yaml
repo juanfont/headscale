@@ -1,7 +1,8 @@
 # oapi-codegen settings for the v0 client, read by `make client`.
 # nullable-type lets it send and read an explicit null. always-prefix-enum-values names every enum
 # constant after its type; without it a constant is renamed when a later
-# enum gains the same value.
+# enum gains the same value. skip-prune keeps the schemas of problem details,
+# which only x-problem-details names.
 package: clientv0
 generate:
   models: true
@@ -25,5 +26,6 @@ output-options:
     # through DecodeResponse, so the public client holds 002's exact names.
     client-with-responses.tmpl: cmd/gen-openapi/headscale-v0-client-with-responses.tmpl
   nullable-type: true
+  skip-prune: true
 compatibility:
   always-prefix-enum-values: true

@@ -122,11 +122,38 @@ registration that waits.
 - **When:** A key with both a user and tags, or with neither.
 - **`details`:** `{}`
 
+## policy_invalid { #policy_invalid }
+
+- **Status:** 422
+- **Title:** The policy is not valid
+- **When:** The policy does not parse, does not validate against the users and nodes of the server, or fails its tests. Nothing was written; the policy in force stays.
+- **`details`:**
+    - `policyErrors`: one entry per problem, schema `PolicyError` (`{message, line, column}`); `line` and `column` count from 1, in bytes, and are `null` when the problem has no place in the text. A text that more than one user matches is a problem too, placed where the policy first names it
+    - `policyErrorCount`: how many problems there are in all; `policyErrors` holds the first of them, up to a cap
+    - `failedTests`: one entry per assertion that did not hold, schema `FailedTest` (`{kind, index, src, dst, user, want, got, line, column}`): `kind` is `acl` for `tests` and `ssh` for `sshTests`, `index` the position of the test in it from 0, `user` the login user of an `ssh` test and `null` for `acl`, `want` and `got` `accept`, `deny` or, for `ssh`, `check`, `line` and `column` where the policy text has the test
+    - `failedTestCount`: how many assertions failed in all; `failedTests` holds the first of them, up to a cap
+    - `testsNotRun`: how many entries of `tests` and `sshTests` were not run because the policy was refused before them; `0` when they ran, or when the text cannot be read far enough to count them
+
+## policy_read_only { #policy_read_only }
+
+- **Status:** 409
+- **Title:** The policy is a file
+- **When:** `PUT /policy` while the policy is read from a file. Edit the file; the server reloads it when it is saved. A dry run still checks the policy.
+- **`details`:**
+    - `path`: the policy file
+
+## policy_source_changing { #policy_source_changing }
+
+- **Status:** 409
+- **Title:** The policy changed while it was read
+- **When:** `POST /policy/reload` when the policy file, or the stored policy, changed between two reads that both worked, and the reload ran out of tries, as while something writes it. Nothing changed; the policy in force stays. Reload again.
+- **`details`:** `{}`
+
 ## precondition_failed { #precondition_failed }
 
 - **Status:** 412
 - **Title:** The resource changed
-- **When:** `If-Match` does not match: the resource changed since it was read, such as a node since its `revision` was read. Nothing was written; read it again.
+- **When:** `If-Match` does not match: the resource changed since it was read, such as a node since its `revision` was read, or the policy since its `ETag` was. Nothing was written; read it again.
 - **`details`:** `{}`
 
 ## registration_refused { #registration_refused }
@@ -258,6 +285,34 @@ An OAuth access token can give a new OAuth client only scopes that its own scope
 ### token_must_own_tags { #token_must_own_tags }
 
 An OAuth access token must hold, or own in the policy's tagOwners, every tag it gives: to a node, where it must also own every tag the node has now, and to an auth key or an OAuth client. GET /me lists these tags as authorization.tags. An API key may give any tag of the policy.
+
+## Warnings of health { #warnings }
+
+The `code` of each entry in `warnings` of `GET /health`. A client must accept one it does not know.
+
+### node_expiry_invalid { #node_expiry_invalid }
+
+Nodes hold a key expiry that is not valid. `details`: `count`, how many. The node object says which checks it fails.
+
+### node_name_invalid { #node_name_invalid }
+
+Nodes hold a name that is not valid. `details`: `count`, how many. The node object says which checks it fails.
+
+### policy_file_invalid { #policy_file_invalid }
+
+The policy file was refused when it was read last, at start-up or after it was saved; the last valid policy stays in force until a valid file is saved or reloaded. At start-up there is none before it: a file of zero bytes, or one that is not an object (such as `null`), is in force as no policy, which allows all, as it always was; a file of only white space stops the server; one with a NUL byte is in force as it always was. `POST /policy/reload` answers why. `details`: `{}`.
+
+### policy_not_stored { #policy_not_stored }
+
+The policy in force may not be the stored one, which a restart would install: a policy write failed and the stored policy could not be read to tell whether the write landed, or a read of the stored policy found another text than the one in force, byte for byte, that no other warning explains. It holds until a policy write or a reload succeeds, or a read finds the policy in force stored. `details`: `{}`.
+
+### policy_stored_invalid { #policy_stored_invalid }
+
+The stored policy was refused when it was read last, at start-up or by a reload, or a write of `/api/v1` or `/api/v2` stored a text that API v0 refuses: one that is not an object (such as `null`) is in force as no policy, which allows all; one with a NUL byte is in force as written; after a reload, the last valid policy stays in force. A policy write that succeeds ends it. `POST /policy/reload` answers why. `details`: `{}`.
+
+### policy_user_ambiguous { #policy_user_ambiguous }
+
+Texts of the policy in force, such as `alice@`, match more than one user, so each matches nobody. `details`: `count`, how many texts. A dry run of the policy in force names them.
 
 ## Reasons of unhealthy { #reasons }
 

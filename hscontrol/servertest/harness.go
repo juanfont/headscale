@@ -153,23 +153,16 @@ func (h *TestHarness) WaitForMeshComplete(tb testing.TB, timeout time.Duration) 
 	}
 }
 
-// ChangePolicy sets an ACL policy on the server and propagates changes
-// to all connected nodes. The policy should be a valid HuJSON policy document.
+// ChangePolicy writes an ACL policy as the policy APIs do and propagates
+// changes to all connected nodes. The policy should be a valid HuJSON policy document.
 func (h *TestHarness) ChangePolicy(tb testing.TB, policy []byte) {
 	tb.Helper()
 
-	changed, err := h.Server.State().SetPolicy(policy)
+	_, changes, err := h.Server.State().UpdatePolicy(policy)
+	h.Server.App.Change(changes...)
+
 	if err != nil {
 		tb.Fatalf("servertest: ChangePolicy: %v", err)
-	}
-
-	if changed {
-		changes, err := h.Server.State().ReloadPolicy()
-		h.Server.App.Change(changes...)
-
-		if err != nil {
-			tb.Fatalf("servertest: ReloadPolicy: %v", err)
-		}
 	}
 }
 

@@ -131,11 +131,24 @@ func withoutDefaults(tree *command.Tree, s string) string {
 }
 
 // exampleArgv is the argv after headscale of an example, as a shell splits
-// it with $id set to id: up to a pipe, after the variables it sets.
+// it with $id set to id: the stage of a pipe that runs headscale, up to a
+// redirection, after the variables it sets.
 func exampleArgv(tb testing.TB, e, id string) []string {
 	tb.Helper()
 
-	e, _, _ = strings.Cut(e, " |")
+	for stage := range strings.SplitSeq(e, " |") {
+		if strings.Contains(stage, "headscale ") {
+			e = stage
+
+			break
+		}
+	}
+
+	for _, op := range []string{" >", " <"} {
+		e, _, _ = strings.Cut(e, op)
+	}
+
+	e = strings.TrimSpace(e)
 
 	var (
 		words []string

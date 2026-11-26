@@ -1,0 +1,75 @@
+index idx_credentials_identifier
+CREATE UNIQUE INDEX idx_credentials_identifier ON credentials(kind, identifier)
+index idx_credentials_user_id
+CREATE INDEX idx_credentials_user_id ON credentials(user_id)
+index idx_name_no_provider_identifier
+CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL
+index idx_name_provider_identifier
+CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier)
+index idx_nodes_auth_key_id
+CREATE INDEX idx_nodes_auth_key_id ON nodes(auth_key_id)
+index idx_policies_deleted_at
+CREATE INDEX idx_policies_deleted_at ON policies(deleted_at)
+index idx_provider_identifier
+CREATE UNIQUE INDEX idx_provider_identifier ON users(provider_identifier) WHERE provider_identifier IS NOT NULL
+index idx_users_deleted_at
+CREATE INDEX idx_users_deleted_at ON users(deleted_at)
+table credentials
+CREATE TABLE credentials(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  kind text NOT NULL CHECK(kind IN ('api','authkey','oauth_client','oauth_token')),
+  identifier text,
+  hash blob,
+  user_id integer,
+  description text,
+  scopes text,
+  tags text,
+  reusable numeric,
+  ephemeral numeric DEFAULT false,
+  used numeric DEFAULT false,
+  last_seen datetime,
+  client_id text,
+  created_at datetime,
+  expiration datetime,
+  revoked datetime,
+  created_by_token numeric DEFAULT false,
+
+  CONSTRAINT fk_credentials_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT chk_credentials_hash CHECK(hash IS NOT NULL OR revoked IS NOT NULL),
+  CONSTRAINT chk_credentials_hash_format CHECK(hash IS NULL OR substr(CAST(hash AS TEXT), 1, 1) = '$')
+)
+table database_versions
+CREATE TABLE `database_versions` (`id` integer PRIMARY KEY AUTOINCREMENT,`version` text NOT NULL,`updated_at` datetime)
+table migrations
+CREATE TABLE `migrations` (`id` text,PRIMARY KEY (`id`))
+table nodes
+CREATE TABLE "nodes"(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  machine_key text,
+  node_key text,
+  disco_key text,
+  endpoints text,
+  host_info text,
+  ipv4 text,
+  ipv6 text,
+  hostname text,
+  given_name varchar(63),
+  user_id integer,
+  register_method text,
+  tags text,
+  auth_key_id integer,
+  last_seen datetime,
+  expiry datetime,
+  approved_routes text,
+
+  created_at datetime,
+  updated_at datetime,
+  deleted_at datetime, auto_approved_routes text, ephemeral numeric DEFAULT false, last_control_address text,
+
+  CONSTRAINT fk_nodes_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_nodes_auth_key FOREIGN KEY(auth_key_id) REFERENCES credentials(id)
+)
+table policies
+CREATE TABLE `policies` (`id` integer PRIMARY KEY AUTOINCREMENT,`created_at` datetime,`updated_at` datetime,`deleted_at` datetime,`data` text)
+table users
+CREATE TABLE `users` (`id` integer PRIMARY KEY AUTOINCREMENT,`created_at` datetime,`updated_at` datetime,`deleted_at` datetime,`name` text,`display_name` text,`email` text,`provider_identifier` text,`provider` text,`profile_pic_url` text)

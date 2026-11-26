@@ -18,6 +18,7 @@ import (
 	lib "github.com/juanfont/headscale/cmdline/command"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog"
 )
 
 // The library's types, with Headscale's session.
@@ -200,6 +201,10 @@ func program(name, short string) lib.Program[*API] {
 		Sentence: sentence,
 		Answer:   func(a *API, v any) (json.RawMessage, bool) { return a.answerOf(v) },
 		Target:   func(a *API) string { return a.target },
+		// The server's packages log through zerolog's global logger, which
+		// a command does not own: what it says goes past the edge, in the
+		// server's words. The command that is the server sets its own log.
+		Start: func() { zerolog.SetGlobalLevel(zerolog.Disabled) },
 
 		Refusal:      refusalCode,
 		Precondition: string(clientv0.ProblemCodePreconditionFailed),
@@ -230,6 +235,7 @@ func program(name, short string) lib.Program[*API] {
 
 		Aliases:   []string{"ls", "rm", "approve"},
 		ConfigEnv: "HEADSCALE_CONFIG",
+		MaxFile:   maxRead,
 		Server:    "a running headscale",
 	}
 }
@@ -247,3 +253,7 @@ func credentials() lib.Credentials {
 }
 
 const hskey = "hskey-"
+
+// maxRead is the most ReadFile reads: more than any file a command takes,
+// and an end for a device that never ends, such as /dev/zero.
+const maxRead = 16 << 20

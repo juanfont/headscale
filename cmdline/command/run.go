@@ -26,6 +26,10 @@ import (
 // the exit code. The hidden completion entry point is answered before
 // anything else, so Tab reads no config and calls no server.
 func Run(t *Tree, argv []string, env Env) int {
+	if t.prog.Start != nil {
+		t.prog.Start()
+	}
+
 	if env.Now == nil {
 		env.Now = time.Now
 	}
@@ -147,24 +151,26 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer, whole *[]wholeWord) er
 			string(file.Config),
 			getenv(env.Environ, t.prog.ConfigEnv),
 		),
-		stdin:    env.Stdin,
-		stdout:   env.Stdout,
-		raw:      raw,
-		stderr:   env.Stderr,
-		program:  t.name,
-		Environ:  env.Environ,
-		terminal: env.Terminal,
-		screen:   env.StdoutTerminal,
-		width:    env.Width,
-		askWidth: env.StderrWidth,
-		colour:   env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
-		answers:  bufio.NewReader(stdin),
-		discard:  env.DiscardInput,
-		line:     line,
-		json:     output.Output != "" || own.Output != "",
-		now:      env.Now,
-		tree:     t,
-		server:   l.server(line),
+		stdin:     env.Stdin,
+		stdout:    env.Stdout,
+		raw:       raw,
+		stderr:    env.Stderr,
+		program:   t.name,
+		Environ:   env.Environ,
+		terminal:  env.Terminal,
+		screen:    env.StdoutTerminal,
+		width:     env.Width,
+		askWidth:  env.StderrWidth,
+		colour:    env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
+		answers:   bufio.NewReader(stdin),
+		discard:   env.DiscardInput,
+		stdinFile: fromStdin(line),
+		local:     map[answerKey]json.RawMessage{},
+		line:      line,
+		json:      output.Output != "" || own.Output != "",
+		now:       env.Now,
+		tree:      t,
+		server:    l.server(line),
 	}
 
 	// A file that is named and not there is a mistake, for every command
@@ -355,6 +361,12 @@ var errNotAnswer = errors.New(
 // on a line that talks to no server, the CLI's own object encoded.
 func jsonOf(c *run, v any) (json.RawMessage, error) {
 	if !c.server {
+		if k, ok := keyOf(v); ok {
+			if raw, ok := c.local[k]; ok {
+				return raw, nil
+			}
+		}
+
 		return json.Marshal(v)
 	}
 
@@ -397,6 +409,35 @@ func printOne[Out any](
 	}
 
 	return table.Sheet(c.stdout, out, cols, blocks, c.Now())
+}
+
+// printVerbatim prints text, a text of the server's answer out, with
+// writeVerbatim; -o json prints out.
+func printVerbatim[Out any](c *run, out Out, text string) error {
+	raw, err := jsonOf(c, out)
+
+	switch {
+	case err != nil:
+		return err
+	case c.json:
+		return writeJSON(c.raw, raw)
+	}
+
+	return writeVerbatim(c, text)
+}
+
+// writeVerbatim writes text, which a file must hold as it is: into a pipe
+// or a file the bytes, past the rule at the edge; on a terminal as every
+// text of the CLI, its controls visible and a credential as its kind, since
+// a terminal acts on what a text holds and a person reads it.
+func writeVerbatim(c *run, text string) error {
+	if c.screen {
+		return writeText(c.stdout, text)
+	}
+
+	_, err := io.WriteString(c.raw, text)
+
+	return err
 }
 
 // printList prints the rows of a ListSpec: the array of their bodies as
@@ -462,7 +503,14 @@ func (c *run) confirm(p Prompt, before string) (bool, error) {
 		action += " " + warning
 	}
 
-	if !c.terminal {
+	switch {
+	case c.stdinFile:
+		//nolint:err113 // a sentence of the CLI
+		return false, fmt.Errorf(
+			"confirmation needed, but stdin is the file given as -, so it cannot answer.\n%s",
+			action,
+		)
+	case !c.terminal:
 		//nolint:err113 // a sentence of the CLI
 		return false, fmt.Errorf(
 			"confirmation needed, but there is no terminal.\n%s",

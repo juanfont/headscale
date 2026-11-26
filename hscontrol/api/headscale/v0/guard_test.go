@@ -756,6 +756,9 @@ var scopes002 = map[string]string{
 	"approveAuthRequest":  "devices:core",
 	"rejectAuthRequest":   "devices:core",
 	"createDebugNode":     "all",
+	"getPolicy":           "policy_file:read",
+	"setPolicy":           "policy_file",
+	"reloadPolicy":        "policy_file",
 }
 
 func TestScopesAre002s(t *testing.T) {

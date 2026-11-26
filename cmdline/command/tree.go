@@ -37,6 +37,10 @@ type leaf struct {
 	name, short, long          string
 	example, aliases, oldNames []string
 
+	// local is a command that needs no server as it is typed with no
+	// flag, as the root help lists it: a command that talks to the server
+	// unless a flag says otherwise, such as policy get with the database
+	// bypass, is a server command there.
 	local, output, config bool
 	// own is a result that is the CLI's own object, not one of the API.
 	own bool
@@ -61,6 +65,8 @@ type leaf struct {
 	secret bool
 	// noJSON is a test tool with no --output: Spec.NoJSON.
 	noJSON bool
+	// verbatim prints a text of the server byte for byte: Spec.Verbatim.
+	verbatim bool
 	// end is the delete of a credential, made by NewEnd.
 	end bool
 	// hint follows a wrong argument count or an empty list argument;
@@ -150,6 +156,9 @@ var (
 	errNoJSON = errors.New(
 		"NoJSON is a test tool that prints one sentence: it needs Done and no Columns",
 	)
+	errVerbatim = errors.New(
+		"a Verbatim text is printed as it is, so the spec needs a result, and neither Columns, Done nor Secret",
+	)
 )
 
 // specError is a spec that is wrong, named by its path.
@@ -162,6 +171,10 @@ func (e specError) Error() string { return string(e) }
 type configFile Path
 
 var errConfigEmpty = errors.New("it takes a path")
+
+// errPathEmpty is an empty file argument or flag, a Path: the same mistake
+// as an empty --config, and a Path may also be - for stdin.
+var errPathEmpty = errors.New("it takes a path, or - for stdin")
 
 func (p *configFile) UnmarshalText(b []byte) error {
 	if len(b) == 0 {
@@ -246,6 +259,7 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	l.changed = s.Changed != ""
 	l.secret = s.Secret != nil
 	l.noJSON = s.NoJSON
+	l.verbatim = s.Verbatim != nil
 	l.end = s.End
 
 	l.hint = s.Hint
@@ -309,6 +323,8 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 					}
 
 					return printSecret(c.run, out, s.Secret(out), done)
+				case s.Verbatim != nil && !notRead:
+					return printVerbatim(c.run, out, s.Verbatim(out))
 				}
 
 				// The change is made and there is no object: JSON has nothing
@@ -389,6 +405,10 @@ func checkSpec[S, In, Out any](p *program, s Spec[S, In, Out]) error {
 	}
 
 	switch {
+	case s.Verbatim != nil:
+		if noOut || s.Columns != nil || s.Done != nil || s.Secret != nil {
+			errs = append(errs, errVerbatim)
+		}
 	case !noOut && s.Columns == nil && s.Done == nil:
 		errs = append(errs, errNoShow)
 	case s.Columns != nil && s.Done != nil:
@@ -535,6 +555,8 @@ func common[In any](
 	needs func(In) bool,
 	readsConfig bool,
 ) *leaf {
+	var zero In
+
 	return &leaf{
 		name:     name,
 		short:    short,
@@ -542,7 +564,7 @@ func common[In any](
 		example:  slices.Clone(example),
 		aliases:  slices.Clone(aliases),
 		oldNames: oldNames,
-		local:    local,
+		local:    local && (needs == nil || !needs(zero)),
 		config:   !local || needs != nil || readsConfig,
 		server: func(line *cmdline.Line) bool {
 			if !local {
@@ -901,6 +923,9 @@ type Command struct {
 	// NoJSON is a test tool that takes no --output: a test lists each, with
 	// why.
 	NoJSON bool
+	// Verbatim prints a text of the server byte for byte, past the rule
+	// that masks a credential: a test lists each, with why.
+	Verbatim bool
 	// Whole are the arguments and flags that take a secret typed whole, such
 	// as <auth-id>: the tests that it leaves in one request and comes back
 	// in nothing run on each.
@@ -918,12 +943,13 @@ func (t *Tree) Commands() []Command {
 			out = append(
 				out,
 				Command{
-					Path:    strings.Join(c.Path, " "),
-					Example: l.example,
-					Aliases: l.aliases,
-					Secret:  l.secret,
-					NoJSON:  l.noJSON,
-					Whole:   wholeArgs(c),
+					Path:     strings.Join(c.Path, " "),
+					Example:  l.example,
+					Aliases:  l.aliases,
+					Secret:   l.secret,
+					NoJSON:   l.noJSON,
+					Verbatim: l.verbatim,
+					Whole:    wholeArgs(c),
 				},
 			)
 		}

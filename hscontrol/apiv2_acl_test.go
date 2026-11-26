@@ -183,6 +183,57 @@ func TestAPIv2ACLIfMatchPreconditions(t *testing.T) {
 	assert.JSONEq(t, allowAllPolicy, storedPolicy(t, app))
 }
 
+// TestAPIv2ACLIfMatchComparesWithGET: If-Match is compared with what GET
+// hands out, the stored policy, also when the policy in force is another,
+// as after a write to the database round the server.
+func TestAPIv2ACLIfMatchComparesWithGET(t *testing.T) {
+	app := createTestApp(t)
+	api := registerAPIV2(t, app)
+
+	inForce := setACL(t, api, allowAllPolicy, "application/json").Header().Get("Etag")
+
+	p2 := `{"hosts":{"h":"100.64.0.1"},"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`
+	_, err := app.state.SetPolicyInDB(p2)
+	require.NoError(t, err)
+
+	etag := api.Get("/api/v2/tailnet/-/acl", "Accept: application/hujson").Header().Get("Etag")
+	require.Equal(t, policyETagOf(p2), etag)
+
+	assert.Equal(t, http.StatusPreconditionFailed,
+		setACL(t, api, allowAllPolicy, "application/json", "If-Match: "+inForce).Code)
+	require.Equal(t, http.StatusOK, setACL(t, api, allowAllPolicy, "application/json", "If-Match: "+etag).Code)
+}
+
+// TestAPIv2ACLSetNull: /api/v2 keeps taking the text null, stored as sent;
+// API v0 refuses it.
+// TestAPIv2ACLSetNUL pins what /api/v2 answers for a text with a NUL byte:
+// on SQLite it stores it, as always. PostgreSQL cannot store it, so there
+// the write fails and the policy before stays (state's TestPolicyNULByte).
+func TestAPIv2ACLSetNUL(t *testing.T) {
+	app := createTestApp(t)
+	api := registerAPIV2(t, app)
+
+	text := "{}\n// \x00\n"
+
+	res := setACL(t, api, text, "application/hujson")
+	require.Equal(t, http.StatusOK, res.Code, res.Body.String())
+	assert.Equal(t, text, storedPolicy(t, app))
+}
+
+func TestAPIv2ACLSetNull(t *testing.T) {
+	app := createTestApp(t)
+	api := registerAPIV2(t, app)
+
+	res := setACL(t, api, "null", "application/hujson")
+	require.Equal(t, http.StatusOK, res.Code, res.Body.String())
+	assert.Equal(t, "null", res.Body.String())
+	assert.Equal(t, "null", storedPolicy(t, app))
+
+	v := api.Post("/api/v2/tailnet/-/acl/validate", bytes.NewReader([]byte("null")), "Content-Type: application/json")
+	require.Equal(t, http.StatusOK, v.Code)
+	assert.JSONEq(t, `{}`, v.Body.String())
+}
+
 func TestAPIv2ACLIfMatchTsDefault(t *testing.T) {
 	// No policy set: ts-default matches the allow-all default -> 200.
 	app := createTestApp(t)

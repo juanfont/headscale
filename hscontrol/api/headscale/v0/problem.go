@@ -50,6 +50,9 @@ const (
 	CodeAuthRequestKind      Code = "auth_request_kind"
 	CodeRegistrationRefused  Code = "registration_refused"
 	CodeUpdateRefused        Code = "update_refused"
+	CodePolicyInvalid        Code = "policy_invalid"
+	CodePolicyReadOnly       Code = "policy_read_only"
+	CodePolicySourceChanging Code = "policy_source_changing"
 	CodePreconditionFailed   Code = "precondition_failed"
 	CodeUnhealthy            Code = "unhealthy"
 	CodeInternal             Code = "internal"
@@ -227,10 +230,34 @@ var codes = map[Code]codeInfo{
 			"`clientError`: with `clientRefused`, the text the Tailscale client sent; `\"\"` when it sent none",
 		},
 	},
+	CodePolicyInvalid: {
+		http.StatusUnprocessableEntity,
+		"The policy is not valid",
+		"The policy does not parse, does not validate against the users and nodes of the server, or fails its tests. Nothing was written; the policy in force stays.",
+		[]string{
+			"`policyErrors`: one entry per problem, schema `PolicyError` (`{message, line, column}`); `line` and `column` count from 1, in bytes, and are `null` when the problem has no place in the text. A text that more than one user matches is a problem too, placed where the policy first names it",
+			"`policyErrorCount`: how many problems there are in all; `policyErrors` holds the first of them, up to a cap",
+			"`failedTests`: one entry per assertion that did not hold, schema `FailedTest` (`{kind, index, src, dst, user, want, got, line, column}`): `kind` is `acl` for `tests` and `ssh` for `sshTests`, `index` the position of the test in it from 0, `user` the login user of an `ssh` test and `null` for `acl`, `want` and `got` `accept`, `deny` or, for `ssh`, `check`, `line` and `column` where the policy text has the test",
+			"`failedTestCount`: how many assertions failed in all; `failedTests` holds the first of them, up to a cap",
+			"`testsNotRun`: how many entries of `tests` and `sshTests` were not run because the policy was refused before them; `0` when they ran, or when the text cannot be read far enough to count them",
+		},
+	},
+	CodePolicyReadOnly: {
+		http.StatusConflict,
+		"The policy is a file",
+		"`PUT /policy` while the policy is read from a file. Edit the file; the server reloads it when it is saved. A dry run still checks the policy.",
+		[]string{"`path`: the policy file"},
+	},
+	CodePolicySourceChanging: {
+		http.StatusConflict,
+		"The policy changed while it was read",
+		"`POST /policy/reload` when the policy file, or the stored policy, changed between two reads that both worked, and the reload ran out of tries, as while something writes it. Nothing changed; the policy in force stays. Reload again.",
+		nil,
+	},
 	CodePreconditionFailed: {
 		http.StatusPreconditionFailed,
 		"The resource changed",
-		"`If-Match` does not match: the resource changed since it was read, such as a node since its `revision` was read. Nothing was written; read it again.",
+		"`If-Match` does not match: the resource changed since it was read, such as a node since its `revision` was read, or the policy since its `ETag` was. Nothing was written; read it again.",
 		nil,
 	},
 	CodeUnhealthy: {
@@ -669,6 +696,17 @@ var healthReasons = map[HealthCode]string{ //nolint:gosec // messages, not secre
 	ReasonAuthRequestsFull:    "The server holds as many waiting auth requests as it may.",
 }
 
+// healthWarningsPage is what each warning of GET /health means and the
+// keys of its details, on the page of codes.
+var healthWarningsPage = map[HealthCode]string{
+	"node_expiry_invalid":      "Nodes hold a key expiry that is not valid. `details`: `count`, how many. The node object says which checks it fails.",
+	"node_name_invalid":        "Nodes hold a name that is not valid. `details`: `count`, how many. The node object says which checks it fails.",
+	WarningPolicyFileInvalid:   "The policy file was refused when it was read last, at start-up or after it was saved; the last valid policy stays in force until a valid file is saved or reloaded. At start-up there is none before it: a file of zero bytes, or one that is not an object (such as `null`), is in force as no policy, which allows all, as it always was; a file of only white space stops the server; one with a NUL byte is in force as it always was. `POST /policy/reload` answers why. `details`: `{}`.",
+	WarningPolicyStoredInvalid: "The stored policy was refused when it was read last, at start-up or by a reload, or a write of `/api/v1` or `/api/v2` stored a text that API v0 refuses: one that is not an object (such as `null`) is in force as no policy, which allows all; one with a NUL byte is in force as written; after a reload, the last valid policy stays in force. A policy write that succeeds ends it. `POST /policy/reload` answers why. `details`: `{}`.",
+	WarningPolicyUserAmbiguous: "Texts of the policy in force, such as `alice@`, match more than one user, so each matches nobody. `details`: `count`, how many texts. A dry run of the policy in force names them.",
+	WarningPolicyNotStored:     "The policy in force may not be the stored one, which a restart would install: a policy write failed and the stored policy could not be read to tell whether the write landed, or a read of the stored policy found another text than the one in force, byte for byte, that no other warning explains. It holds until a policy write or a reload succeeds, or a read finds the policy in force stored. `details`: `{}`.",
+}
+
 // healthCodes are the codes of today, reasons and warnings, listed in the
 // document.
 var healthCodes = []HealthCode{
@@ -677,6 +715,10 @@ var healthCodes = []HealthCode{
 	ReasonDatabaseUnreachable,
 	"node_expiry_invalid",
 	"node_name_invalid",
+	WarningPolicyNotStored,
+	WarningPolicyFileInvalid,
+	WarningPolicyStoredInvalid,
+	WarningPolicyUserAmbiguous,
 }
 
 func (HealthCode) Schema(huma.Registry) *huma.Schema {
@@ -734,6 +776,14 @@ registration that waits.
 
 	for _, r := range slices.SortedFunc(slices.Values(tokenRules), func(a, b *tokenRule) int { return strings.Compare(a.name, b.name) }) {
 		fmt.Fprintf(&b, "\n### %s { #%s }\n\n%s\n", r.name, r.name, r.why)
+	}
+
+	b.WriteString(
+		"\n## Warnings of health { #warnings }\n\nThe `code` of each entry in `warnings` of `GET /health`. A client must accept one it does not know.\n",
+	)
+
+	for _, w := range slices.Sorted(maps.Keys(healthWarningsPage)) {
+		fmt.Fprintf(&b, "\n### %s { #%s }\n\n%s\n", w, w, healthWarningsPage[w])
 	}
 
 	b.WriteString(

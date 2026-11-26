@@ -762,3 +762,61 @@ func TestMergeWriteKeepsALoginsKeyOverACopyChange(t *testing.T) {
 	mergeWrite(replaced, prior, candidate)
 	require.Equal(t, otherID, *replaced.AuthKeyID, "a later login's key stays")
 }
+
+// TestPersistLockSurvivesAPanic: a panic inside a hold of persistMu, here
+// in the database, releases it, as the server's recoverer keeps the process
+// up; held, every node write would wait for ever.
+func TestPersistLockSurvivesAPanic(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	nv, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	panicking := func(t *testing.T, register func(name string, fn func(*gorm.DB)) error) {
+		t.Helper()
+		require.NoError(t, register("test:panic", func(*gorm.DB) { panic("in the database") }))
+	}
+
+	holds := []struct {
+		name     string
+		register func(*gorm.DB) func(string, func(*gorm.DB)) error
+		remove   func(*gorm.DB) error
+		hold     func()
+	}{
+		{
+			name: "a node delete",
+			register: func(db *gorm.DB) func(string, func(*gorm.DB)) error {
+				return db.Callback().Delete().Before("gorm:delete").Register
+			},
+			remove: func(db *gorm.DB) error { return db.Callback().Delete().Remove("test:panic") },
+			hold:   func() { _, _ = s.DeleteNode(nv) },
+		},
+		{
+			name: "an address backfill",
+			register: func(db *gorm.DB) func(string, func(*gorm.DB)) error {
+				return db.Callback().Query().Before("gorm:query").Register
+			},
+			remove: func(db *gorm.DB) error { return db.Callback().Query().Remove("test:panic") },
+			hold:   func() { _, _, _ = s.BackfillNodeIPs() },
+		},
+	}
+
+	for _, h := range holds {
+		ok := t.Run(h.name, func(t *testing.T) {
+			panicking(t, h.register(s.db.DB))
+			require.Panics(t, h.hold)
+			require.NoError(t, h.remove(s.db.DB))
+
+			if !s.persistMu.TryLock() {
+				t.Fatal("persistMu is held after a panic inside it")
+			}
+
+			s.persistMu.Unlock()
+		})
+		// A lock left held would hang every later hold.
+		if !ok {
+			break
+		}
+	}
+}
