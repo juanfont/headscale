@@ -71,6 +71,7 @@ type serverConfig struct {
 	prefixV4              netip.Prefix
 	// revokedRetention is nil for the default; 0 is a value of its own.
 	revokedRetention *time.Duration
+	policyFile       string
 	connectedSeen    func() time.Time
 }
 
@@ -89,6 +90,11 @@ func defaultServerConfig() *serverConfig {
 // node, so the minute a test expects is the one the server prints.
 func WithConnectedSeen(now func() time.Time) ServerOption {
 	return func(c *serverConfig) { c.connectedSeen = now }
+}
+
+// WithPolicyFile reads the policy from path, and watches it as a server does.
+func WithPolicyFile(path string) ServerOption {
+	return func(c *serverConfig) { c.policyFile = path }
 }
 
 // WithBatchDelay sets the batcher's change coalescing delay.
@@ -219,6 +225,10 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		cfg.Credentials.RevokedRetention = *sc.revokedRetention
 	}
 
+	if sc.policyFile != "" {
+		cfg.Policy = types.PolicyConfig{Mode: types.PolicyModeFile, Path: sc.policyFile}
+	}
+
 	if sc.registerCacheExpiry > 0 {
 		cfg.Tuning.RegisterCacheExpiration = sc.registerCacheExpiry
 	}
@@ -311,6 +321,7 @@ func start(tb testing.TB, cfg types.Config, ephemeralTimeout time.Duration, real
 	// Start subsystems.
 	app.StartBatcherForTest(tb)
 	app.StartEphemeralGCForTest(tb)
+	app.StartPolicyWatchForTest(tb)
 
 	// Start the HTTP server. By default it binds an in-memory network so all
 	// TCP connections stay in-process; WithRealListener swaps in a real loopback
