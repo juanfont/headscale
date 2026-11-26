@@ -7,7 +7,17 @@
 
 Every error of `/api/headscale/v0` is a problem (RFC 9457). A program reads its `code`; the
 `type` of the problem leads to the heading of that code here. `details` holds the data of the
-code, and is `{}` when the code has none.
+code, and is `{}` when the code has none. `object` names the resource the problem is about; for an
+auth request its `id` is always `""`, as the auth ID is a secret, and `name` is the hostname of a
+registration that waits.
+
+## auth_request_kind { #auth_request_kind }
+
+- **Status:** 409
+- **Title:** The auth request is of another kind
+- **When:** `register` on an SSH check, or `approve` on a registration. Nothing is answered; the request still waits. `object` is the auth request, without its ID, which is a secret.
+- **`details`:**
+    - `kind`: the kind the request is, `registration` or `sshCheck`
 
 ## email_taken { #email_taken }
 
@@ -119,6 +129,14 @@ code, and is `{}` when the code has none.
 - **When:** `If-Match` does not match: the resource changed since it was read, such as a node since its `revision` was read. Nothing was written; read it again.
 - **`details`:** `{}`
 
+## registration_refused { #registration_refused }
+
+- **Status:** 409
+- **Title:** The registration cannot be made
+- **When:** `register` of a machine whose registration the server refuses for what the machine sent. Nothing is made; the request still waits.
+- **`details`:**
+    - `reason`: `nodeKeyInUse`: another machine has the node key it sent, and no user makes it pass; `reportTooLarge`: the machine logs in again as a node the user has, and its report merged with that node's is over the limit; a register to a user with no node of this machine can pass. A client must accept a reason it does not know
+
 ## request_timeout { #request_timeout }
 
 - **Status:** 408
@@ -138,9 +156,9 @@ code, and is `{}` when the code has none.
 
 - **Status:** 422
 - **Title:** The tags are not in the policy
-- **When:** Tags that are not in `tagOwners` of the policy.
+- **When:** Tags that are not in `tagOwners` of the policy; for `register`, tags the node asks for that its user may not give, and the request still waits.
 - **`details`:**
-    - `tags`: every tag of the request that the policy does not name
+    - `tags`: every tag of the request that the policy does not name, or that the user may not give
 
 ## tags_required { #tags_required }
 
@@ -167,7 +185,7 @@ code, and is `{}` when the code has none.
 
 - **Status:** 503
 - **Title:** The server is not healthy
-- **When:** A check of the server fails: `GET /health`, and any call whose credential cannot be checked because the database does not answer.
+- **When:** A check of the server fails: `GET /health`, and any call whose credential cannot be checked because the database does not answer; also `POST /debug/nodes` when the server holds as many auth requests as it may.
 - **`details`:**
     - `reasons`: one entry for each failed check, `{code, message, details}`; the codes are under [Reasons of unhealthy](#reasons)
 
@@ -213,6 +231,10 @@ code, and is `{}` when the code has none.
 
 The `rule` of a `forbidden` problem: what an OAuth access token may not do although its scopes allow it. An API key and the unix socket are not held by these rules. The OpenAPI document lists the rules of each operation under `x-token-rules`.
 
+### token_cannot_approve_ssh_check { #token_cannot_approve_ssh_check }
+
+An OAuth access token cannot approve an SSH check, whatever its scopes: the check is a person confirming who they are. It may reject one. Use an API key or the unix socket.
+
 ### token_cannot_change_user_name_or_email { #token_cannot_change_user_name_or_email }
 
 An OAuth access token cannot change the name or the email of a user that exists, because a policy names a user by them. It can create a user, and change the display name and the picture. Use an API key.
@@ -225,6 +247,10 @@ An OAuth access token cannot make an API key, whatever its scopes: an API key ma
 
 An OAuth access token can make an auth key for tags only, never for a user (userId). Use an API key.
 
+### token_cannot_register_node_to_user { #token_cannot_register_node_to_user }
+
+An OAuth access token cannot register a node to a user, whatever its scopes. Use an API key or the unix socket.
+
 ### token_must_hold_scopes { #token_must_hold_scopes }
 
 An OAuth access token can give a new OAuth client only scopes that its own scopes grant. GET /me lists them as authorization.scopes.
@@ -236,6 +262,10 @@ An OAuth access token must hold, or own in the policy's tagOwners, every tag it 
 ## Reasons of unhealthy { #reasons }
 
 The `code` of each entry in `details.reasons`. A client must accept one it does not know.
+
+### auth_requests_full { #auth_requests_full }
+
+The server holds as many waiting auth requests as it may.
 
 ### credential_check_busy { #credential_check_busy }
 
