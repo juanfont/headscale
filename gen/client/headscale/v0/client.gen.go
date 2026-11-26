@@ -27,6 +27,30 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AuthKeyState.
+const (
+	AuthKeyStateExpired AuthKeyState = "expired"
+	AuthKeyStateRevoked AuthKeyState = "revoked"
+	AuthKeyStateUsed    AuthKeyState = "used"
+	AuthKeyStateValid   AuthKeyState = "valid"
+)
+
+// Valid indicates whether the value is a known member of the AuthKeyState enum.
+func (e AuthKeyState) Valid() bool {
+	switch e {
+	case AuthKeyStateExpired:
+		return true
+	case AuthKeyStateRevoked:
+		return true
+	case AuthKeyStateUsed:
+		return true
+	case AuthKeyStateValid:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthorizationResources.
 const (
 	AuthorizationResourcesAll AuthorizationResources = "all"
@@ -143,6 +167,7 @@ const (
 	ProblemCodeEmailTaken           ProblemCode = "email_taken"
 	ProblemCodeEmptyPatch           ProblemCode = "empty_patch"
 	ProblemCodeExpiryInPast         ProblemCode = "expiry_in_past"
+	ProblemCodeExpiryRequired       ProblemCode = "expiry_required"
 	ProblemCodeForbidden            ProblemCode = "forbidden"
 	ProblemCodeInternal             ProblemCode = "internal"
 	ProblemCodeInvalidField         ProblemCode = "invalid_field"
@@ -151,6 +176,7 @@ const (
 	ProblemCodeMethodNotAllowed     ProblemCode = "method_not_allowed"
 	ProblemCodeNameTaken            ProblemCode = "name_taken"
 	ProblemCodeNotFound             ProblemCode = "not_found"
+	ProblemCodeOwnerConflict        ProblemCode = "owner_conflict"
 	ProblemCodePreconditionFailed   ProblemCode = "precondition_failed"
 	ProblemCodeRequestTimeout       ProblemCode = "request_timeout"
 	ProblemCodeTagsNotPermitted     ProblemCode = "tags_not_permitted"
@@ -172,6 +198,8 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeExpiryInPast:
 		return true
+	case ProblemCodeExpiryRequired:
+		return true
 	case ProblemCodeForbidden:
 		return true
 	case ProblemCodeInternal:
@@ -187,6 +215,8 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeNameTaken:
 		return true
 	case ProblemCodeNotFound:
+		return true
+	case ProblemCodeOwnerConflict:
 		return true
 	case ProblemCodePreconditionFailed:
 		return true
@@ -261,6 +291,56 @@ func (e UserProvider) Valid() bool {
 	}
 }
 
+// AuthKey defines model for AuthKey.
+type AuthKey struct {
+	// Created null for a key that does not record it.
+	Created nullable.Nullable[time.Time] `json:"created"`
+
+	// CreatedBy The user who owns the credential that made the key; null for a key older than this field, made over the socket, or whose user is deleted. Not the owner.
+	CreatedBy nullable.Nullable[UserReference] `json:"createdBy"`
+
+	// Description Free text for people, such as what the key is for; "" for none.
+	Description string `json:"description"`
+
+	// Ephemeral A node that joins with the key is removed some time after it disconnects.
+	Ephemeral bool `json:"ephemeral"`
+
+	// Expiry When the key stops working; null for a key that never expires.
+	Expiry nullable.Nullable[time.Time] `json:"expiry"`
+
+	// FirstUsed When a node first joined with the key; null for a key no node has joined with since the server recorded it.
+	FirstUsed nullable.Nullable[time.Time] `json:"firstUsed"`
+	Id        string                       `json:"id"`
+
+	// Owner The user, or the tags, that a node joining with the key gets; for a tagged key user is null.
+	Owner UserOrTags `json:"owner"`
+
+	// Prefix The part of the key that is not secret.
+	Prefix string `json:"prefix"`
+
+	// Removal When the server removes the revoked record; null while it is kept: not revoked, kept for ever, or a node still refers to the key.
+	Removal  nullable.Nullable[time.Time] `json:"removal"`
+	Reusable bool                         `json:"reusable"`
+
+	// Revoked When the key was revoked, or null.
+	Revoked nullable.Nullable[time.Time] `json:"revoked"`
+	State   AuthKeyState                 `json:"state"`
+
+	// Used A node has joined with the key. It does not go back to false, except for a key whose only use was before the server recorded firstUsed while no node refers to it any more.
+	Used bool `json:"used"`
+}
+
+// AuthKeyList defines model for AuthKeyList.
+type AuthKeyList struct {
+	AuthKeys []AuthKey `json:"authKeys"`
+
+	// NextPageToken Present when more rows can follow; send it back as pageToken. Missing on the last page.
+	NextPageToken *string `json:"nextPageToken,omitempty"`
+}
+
+// AuthKeyState revoked wins over used, which wins over expired; used is a single-use key that a node took. A client must accept a value it does not know.
+type AuthKeyState string
+
 // Authorization defines model for Authorization.
 type Authorization struct {
 	// Resources The resources the scopes apply to. own is reserved; a client that does not know a value must act as limited.
@@ -282,6 +362,27 @@ type ClientReference struct {
 	Id          string `json:"id"`
 }
 
+// CreateAuthKeyBody defines model for CreateAuthKeyBody.
+type CreateAuthKeyBody struct {
+	// Description Free text for people, such as what the key is for.
+	Description *string `json:"description,omitempty"`
+
+	// Ephemeral A node that joins with the key is removed some time after it disconnects.
+	Ephemeral *bool `json:"ephemeral,omitempty"`
+
+	// Expiry When the key stops working, in the future. Required; there is no upper limit.
+	Expiry *time.Time `json:"expiry,omitempty"`
+
+	// Reusable More than one node may join with the key.
+	Reusable *bool `json:"reusable,omitempty"`
+
+	// Tags The tags of the nodes that join with the key, each in tagOwners of the policy. Exactly one of userId and tags.
+	Tags *[]string `json:"tags,omitempty"`
+
+	// UserId The user who owns the nodes that join with the key. Exactly one of userId and tags.
+	UserId *string `json:"userId,omitempty"`
+}
+
 // CreateUserBody defines model for CreateUserBody.
 type CreateUserBody struct {
 	DisplayName *string `json:"displayName,omitempty"`
@@ -292,6 +393,48 @@ type CreateUserBody struct {
 
 	// ProfilePicUrl An absolute http or https URL.
 	ProfilePicUrl *string `json:"profilePicUrl,omitempty"`
+}
+
+// CreatedAuthKey defines model for CreatedAuthKey.
+type CreatedAuthKey struct {
+	// Created null for a key that does not record it.
+	Created nullable.Nullable[time.Time] `json:"created"`
+
+	// CreatedBy The user who owns the credential that made the key; null for a key older than this field, made over the socket, or whose user is deleted. Not the owner.
+	CreatedBy nullable.Nullable[UserReference] `json:"createdBy"`
+
+	// Description Free text for people, such as what the key is for; "" for none.
+	Description string `json:"description"`
+
+	// Ephemeral A node that joins with the key is removed some time after it disconnects.
+	Ephemeral bool `json:"ephemeral"`
+
+	// Expiry When the key stops working; null for a key that never expires.
+	Expiry nullable.Nullable[time.Time] `json:"expiry"`
+
+	// FirstUsed When a node first joined with the key; null for a key no node has joined with since the server recorded it.
+	FirstUsed nullable.Nullable[time.Time] `json:"firstUsed"`
+	Id        string                       `json:"id"`
+
+	// Key The secret. It is in this answer and no other; the server keeps only a hash of it.
+	Key string `json:"key"`
+
+	// Owner The user, or the tags, that a node joining with the key gets; for a tagged key user is null.
+	Owner UserOrTags `json:"owner"`
+
+	// Prefix The part of the key that is not secret.
+	Prefix string `json:"prefix"`
+
+	// Removal When the server removes the revoked record; null while it is kept: not revoked, kept for ever, or a node still refers to the key.
+	Removal  nullable.Nullable[time.Time] `json:"removal"`
+	Reusable bool                         `json:"reusable"`
+
+	// Revoked When the key was revoked, or null.
+	Revoked nullable.Nullable[time.Time] `json:"revoked"`
+	State   AuthKeyState                 `json:"state"`
+
+	// Used A node has joined with the key. It does not go back to false, except for a key whose only use was before the server recorded firstUsed while no node refers to it any more.
+	Used bool `json:"used"`
 }
 
 // Credential defines model for Credential.
@@ -723,7 +866,9 @@ var responseOptions = jsonv2.JoinOptions(
 	jsonv2.MatchCaseInsensitiveNames(false),
 	jsonv2.WithUnmarshalers(jsonv2.JoinUnmarshalers(
 		anyNumber(),
+		nullableResponse[UserReference](),
 		nullableResponse[[]string](),
+		nullableResponse[UserReference](),
 		nullableResponse[ClientReference](),
 		nullableResponse[Owner](),
 		nullableResponse[Credential](),
@@ -744,7 +889,9 @@ var pageOptions = jsonv2.JoinOptions(
 	jsonv2.WithUnmarshalers(jsonv2.JoinUnmarshalers(
 		jsonv2.UnmarshalFromFunc(func(d *jsontext.Decoder, _ **string) error { return d.SkipValue() }),
 		anyNumber(),
+		nullableResponse[UserReference](),
 		nullableResponse[[]string](),
+		nullableResponse[UserReference](),
 		nullableResponse[ClientReference](),
 		nullableResponse[Owner](),
 		nullableResponse[Credential](),
@@ -788,6 +935,21 @@ func nullableResponse[T any]() *jsonv2.Unmarshalers {
 		n.Set(value)
 		return nil
 	})
+}
+
+// ListAuthKeysParams defines parameters for ListAuthKeys.
+type ListAuthKeysParams struct {
+	// PageSize Rows on one page.
+	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+
+	// PageToken nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+	PageToken *string `form:"pageToken,omitempty" json:"pageToken,omitempty"`
+
+	// User Only the keys owned by the user with this ID; tagged keys never match, and an ID no user has matches no key. With tag, a key must match both.
+	User *string `form:"user,omitempty" json:"user,omitempty"`
+
+	// Tag Only the keys with this tag. With user, a key must match both.
+	Tag *string `form:"tag,omitempty" json:"tag,omitempty"`
 }
 
 // ListNodesParams defines parameters for ListNodes.
@@ -861,6 +1023,9 @@ type ListUsersParams struct {
 	// Email Only users with exactly this email.
 	Email *string `form:"email,omitempty" json:"email,omitempty"`
 }
+
+// CreateAuthKeyJSONRequestBody defines body for CreateAuthKey for application/json ContentType.
+type CreateAuthKeyJSONRequestBody = CreateAuthKeyBody
 
 // UpdateNodeJSONRequestBody defines body for UpdateNode for application/json ContentType.
 type UpdateNodeJSONRequestBody = UpdateNodeBody
@@ -956,6 +1121,45 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+
+	// ListAuthKeys List auth keys
+	//
+	// In ID order, revoked keys too, until the server removes them. No answer holds a secret.
+	//
+	// Corresponds with GET /api/headscale/v0/auth-keys (the `ListAuthKeys` operationId).
+	ListAuthKeys(ctx context.Context, params *ListAuthKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAuthKeyWithBody Create an auth key
+	//
+	// For one user or for tags. The answer holds the secret, in key; no other answer does. An OAuth access token makes keys for tags only, and only for tags it holds or that they own in the policy.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/headscale/v0/auth-keys (the `CreateAuthKey` operationId).
+	CreateAuthKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAuthKey Create an auth key
+	//
+	// For one user or for tags. The answer holds the secret, in key; no other answer does. An OAuth access token makes keys for tags only, and only for tags it holds or that they own in the policy.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/headscale/v0/auth-keys (the `CreateAuthKey` operationId).
+	CreateAuthKey(ctx context.Context, body CreateAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAuthKey Revoke an auth key
+	//
+	// The key stops working at once; nodes that joined with it stay. Its record stays, revoked, until the server removes it (removal). Repeating the call answers 204 again and changes nothing.
+	//
+	// Corresponds with DELETE /api/headscale/v0/auth-keys/{id} (the `DeleteAuthKey` operationId).
+	DeleteAuthKey(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAuthKey Read one auth key
+	//
+	// Without the secret. A revoked key is read until the server removes it.
+	//
+	// Corresponds with GET /api/headscale/v0/auth-keys/{id} (the `GetAuthKey` operationId).
+	GetAuthKey(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHealth The health of the server
 	//
@@ -1131,6 +1335,95 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/headscale/v0/version (the `GetVersion` operationId).
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// ListAuthKeys List auth keys
+//
+// In ID order, revoked keys too, until the server removes them. No answer holds a secret.
+//
+// Corresponds with GET /api/headscale/v0/auth-keys (the `ListAuthKeys` operationId).
+func (c *Client) ListAuthKeys(ctx context.Context, params *ListAuthKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAuthKeysRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAuthKeyWithBody Create an auth key
+//
+// For one user or for tags. The answer holds the secret, in key; no other answer does. An OAuth access token makes keys for tags only, and only for tags it holds or that they own in the policy.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/headscale/v0/auth-keys (the `CreateAuthKey` operationId).
+func (c *Client) CreateAuthKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAuthKeyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAuthKey Create an auth key
+//
+// For one user or for tags. The answer holds the secret, in key; no other answer does. An OAuth access token makes keys for tags only, and only for tags it holds or that they own in the policy.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/headscale/v0/auth-keys (the `CreateAuthKey` operationId).
+func (c *Client) CreateAuthKey(ctx context.Context, body CreateAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAuthKeyRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteAuthKey Revoke an auth key
+//
+// The key stops working at once; nodes that joined with it stay. Its record stays, revoked, until the server removes it (removal). Repeating the call answers 204 again and changes nothing.
+//
+// Corresponds with DELETE /api/headscale/v0/auth-keys/{id} (the `DeleteAuthKey` operationId).
+func (c *Client) DeleteAuthKey(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAuthKeyRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAuthKey Read one auth key
+//
+// Without the secret. A revoked key is read until the server removes it.
+//
+// Corresponds with GET /api/headscale/v0/auth-keys/{id} (the `GetAuthKey` operationId).
+func (c *Client) GetAuthKey(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAuthKeyRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // GetHealth The health of the server
@@ -1536,6 +1829,204 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewListAuthKeysRequest constructs an http.Request for the ListAuthKeys method
+func NewListAuthKeysRequest(server string, params *ListAuthKeysParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/auth-keys")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageSize", *params.PageSize, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PageToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageToken", *params.PageToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.User != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "user", *params.User, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Tag != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "tag", *params.Tag, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAuthKeyRequest calls the generic CreateAuthKey builder with application/json body
+func NewCreateAuthKeyRequest(server string, body CreateAuthKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAuthKeyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateAuthKeyRequestWithBody constructs an http.Request for the CreateAuthKey method, with any body, and a specified content type
+func NewCreateAuthKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/auth-keys")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteAuthKeyRequest constructs an http.Request for the DeleteAuthKey method
+func NewDeleteAuthKeyRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/auth-keys/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAuthKeyRequest constructs an http.Request for the GetAuthKey method
+func NewGetAuthKeyRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/headscale/v0/auth-keys/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewGetHealthRequest constructs an http.Request for the GetHealth method
@@ -2416,6 +2907,51 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// ListAuthKeysWithResponse List auth keys
+	//
+	// In ID order, revoked keys too, until the server removes them. No answer holds a secret.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/headscale/v0/auth-keys (the `ListAuthKeys` operationId).
+	ListAuthKeysWithResponse(ctx context.Context, params *ListAuthKeysParams, reqEditors ...RequestEditorFn) (*ListAuthKeysResponse, error)
+
+	// CreateAuthKeyWithBodyWithResponse Create an auth key
+	//
+	// For one user or for tags. The answer holds the secret, in key; no other answer does. An OAuth access token makes keys for tags only, and only for tags it holds or that they own in the policy.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/headscale/v0/auth-keys (the `CreateAuthKey` operationId).
+	CreateAuthKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAuthKeyResponse, error)
+
+	// CreateAuthKeyWithResponse Create an auth key
+	//
+	// For one user or for tags. The answer holds the secret, in key; no other answer does. An OAuth access token makes keys for tags only, and only for tags it holds or that they own in the policy.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/headscale/v0/auth-keys (the `CreateAuthKey` operationId).
+	CreateAuthKeyWithResponse(ctx context.Context, body CreateAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAuthKeyResponse, error)
+
+	// DeleteAuthKeyWithResponse Revoke an auth key
+	//
+	// The key stops working at once; nodes that joined with it stay. Its record stays, revoked, until the server removes it (removal). Repeating the call answers 204 again and changes nothing.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/headscale/v0/auth-keys/{id} (the `DeleteAuthKey` operationId).
+	DeleteAuthKeyWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteAuthKeyResponse, error)
+
+	// GetAuthKeyWithResponse Read one auth key
+	//
+	// Without the secret. A revoked key is read until the server removes it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/headscale/v0/auth-keys/{id} (the `GetAuthKey` operationId).
+	GetAuthKeyWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetAuthKeyResponse, error)
+
 	// GetHealthWithResponse The health of the server
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2612,6 +3148,619 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/headscale/v0/version (the `GetVersion` operationId).
 	GetVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVersionResponse, error)
+}
+
+// ListAuthKeysResponse200Headers the declared response headers of an HTTP 200 response for ListAuthKeys
+type ListAuthKeysResponse200Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListAuthKeysResponse401Headers the declared response headers of an HTTP 401 response for ListAuthKeys
+type ListAuthKeysResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListAuthKeysResponse403Headers the declared response headers of an HTTP 403 response for ListAuthKeys
+type ListAuthKeysResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListAuthKeysResponse422Headers the declared response headers of an HTTP 422 response for ListAuthKeys
+type ListAuthKeysResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListAuthKeysResponse500Headers the declared response headers of an HTTP 500 response for ListAuthKeys
+type ListAuthKeysResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// ListAuthKeysResponse503Headers the declared response headers of an HTTP 503 response for ListAuthKeys
+type ListAuthKeysResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type ListAuthKeysResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuthKeyList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListAuthKeysResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *ListAuthKeysResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *ListAuthKeysResponse403Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *ListAuthKeysResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *ListAuthKeysResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *ListAuthKeysResponse503Headers
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *ListAuthKeysResponse) decodedSuccess() (any, []byte) {
+	if r.JSON200 != nil {
+		return r.JSON200, r.Body
+	}
+	return nil, nil
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAuthKeysResponse) GetJSON200() *AuthKeyList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListAuthKeysResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListAuthKeysResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListAuthKeysResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListAuthKeysResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListAuthKeysResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAuthKeysResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAuthKeysResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAuthKeysResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAuthKeysResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateAuthKeyResponse201Headers the declared response headers of an HTTP 201 response for CreateAuthKey
+type CreateAuthKeyResponse201Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+	Location         string
+}
+
+// CreateAuthKeyResponse400Headers the declared response headers of an HTTP 400 response for CreateAuthKey
+type CreateAuthKeyResponse400Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// CreateAuthKeyResponse401Headers the declared response headers of an HTTP 401 response for CreateAuthKey
+type CreateAuthKeyResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// CreateAuthKeyResponse403Headers the declared response headers of an HTTP 403 response for CreateAuthKey
+type CreateAuthKeyResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// CreateAuthKeyResponse408Headers the declared response headers of an HTTP 408 response for CreateAuthKey
+type CreateAuthKeyResponse408Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// CreateAuthKeyResponse413Headers the declared response headers of an HTTP 413 response for CreateAuthKey
+type CreateAuthKeyResponse413Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// CreateAuthKeyResponse415Headers the declared response headers of an HTTP 415 response for CreateAuthKey
+type CreateAuthKeyResponse415Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// CreateAuthKeyResponse422Headers the declared response headers of an HTTP 422 response for CreateAuthKey
+type CreateAuthKeyResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// CreateAuthKeyResponse500Headers the declared response headers of an HTTP 500 response for CreateAuthKey
+type CreateAuthKeyResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// CreateAuthKeyResponse503Headers the declared response headers of an HTTP 503 response for CreateAuthKey
+type CreateAuthKeyResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type CreateAuthKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *CreatedAuthKey
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON408 the response for an HTTP 408 `application/problem+json` response
+	ApplicationproblemJSON408 *Problem
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *Problem
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *CreateAuthKeyResponse201Headers
+	// Headers400 the parsed response headers for an HTTP 400 response
+	Headers400 *CreateAuthKeyResponse400Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *CreateAuthKeyResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *CreateAuthKeyResponse403Headers
+	// Headers408 the parsed response headers for an HTTP 408 response
+	Headers408 *CreateAuthKeyResponse408Headers
+	// Headers413 the parsed response headers for an HTTP 413 response
+	Headers413 *CreateAuthKeyResponse413Headers
+	// Headers415 the parsed response headers for an HTTP 415 response
+	Headers415 *CreateAuthKeyResponse415Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *CreateAuthKeyResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *CreateAuthKeyResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *CreateAuthKeyResponse503Headers
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *CreateAuthKeyResponse) decodedSuccess() (any, []byte) {
+	if r.JSON201 != nil {
+		return r.JSON201, r.Body
+	}
+	return nil, nil
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateAuthKeyResponse) GetJSON201() *CreatedAuthKey {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateAuthKeyResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateAuthKeyResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateAuthKeyResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON408 returns the response for an HTTP 408 `application/problem+json` response
+func (r CreateAuthKeyResponse) GetApplicationproblemJSON408() *Problem {
+	return r.ApplicationproblemJSON408
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r CreateAuthKeyResponse) GetApplicationproblemJSON413() *Problem {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r CreateAuthKeyResponse) GetApplicationproblemJSON415() *Problem {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateAuthKeyResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateAuthKeyResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CreateAuthKeyResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateAuthKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAuthKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAuthKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateAuthKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// DeleteAuthKeyResponse204Headers the declared response headers of an HTTP 204 response for DeleteAuthKey
+type DeleteAuthKeyResponse204Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteAuthKeyResponse401Headers the declared response headers of an HTTP 401 response for DeleteAuthKey
+type DeleteAuthKeyResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteAuthKeyResponse403Headers the declared response headers of an HTTP 403 response for DeleteAuthKey
+type DeleteAuthKeyResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteAuthKeyResponse404Headers the declared response headers of an HTTP 404 response for DeleteAuthKey
+type DeleteAuthKeyResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteAuthKeyResponse422Headers the declared response headers of an HTTP 422 response for DeleteAuthKey
+type DeleteAuthKeyResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteAuthKeyResponse500Headers the declared response headers of an HTTP 500 response for DeleteAuthKey
+type DeleteAuthKeyResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// DeleteAuthKeyResponse503Headers the declared response headers of an HTTP 503 response for DeleteAuthKey
+type DeleteAuthKeyResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type DeleteAuthKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers204 the parsed response headers for an HTTP 204 response
+	Headers204 *DeleteAuthKeyResponse204Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *DeleteAuthKeyResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *DeleteAuthKeyResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *DeleteAuthKeyResponse404Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *DeleteAuthKeyResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *DeleteAuthKeyResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *DeleteAuthKeyResponse503Headers
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *DeleteAuthKeyResponse) decodedSuccess() (any, []byte) {
+	return nil, nil
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteAuthKeyResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteAuthKeyResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteAuthKeyResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteAuthKeyResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeleteAuthKeyResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteAuthKeyResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteAuthKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAuthKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAuthKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteAuthKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetAuthKeyResponse200Headers the declared response headers of an HTTP 200 response for GetAuthKey
+type GetAuthKeyResponse200Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetAuthKeyResponse401Headers the declared response headers of an HTTP 401 response for GetAuthKey
+type GetAuthKeyResponse401Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetAuthKeyResponse403Headers the declared response headers of an HTTP 403 response for GetAuthKey
+type GetAuthKeyResponse403Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetAuthKeyResponse404Headers the declared response headers of an HTTP 404 response for GetAuthKey
+type GetAuthKeyResponse404Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetAuthKeyResponse422Headers the declared response headers of an HTTP 422 response for GetAuthKey
+type GetAuthKeyResponse422Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetAuthKeyResponse500Headers the declared response headers of an HTTP 500 response for GetAuthKey
+type GetAuthKeyResponse500Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+// GetAuthKeyResponse503Headers the declared response headers of an HTTP 503 response for GetAuthKey
+type GetAuthKeyResponse503Headers struct {
+	HeadscaleCommit  *string
+	HeadscaleVersion string
+}
+
+type GetAuthKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuthKey
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Problem
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Problem
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetAuthKeyResponse200Headers
+	// Headers401 the parsed response headers for an HTTP 401 response
+	Headers401 *GetAuthKeyResponse401Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *GetAuthKeyResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *GetAuthKeyResponse404Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *GetAuthKeyResponse422Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *GetAuthKeyResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *GetAuthKeyResponse503Headers
+}
+
+// decodedSuccess is the success r holds, as read, with its bytes; nil for
+// none.
+func (r *GetAuthKeyResponse) decodedSuccess() (any, []byte) {
+	if r.JSON200 != nil {
+		return r.JSON200, r.Body
+	}
+	return nil, nil
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAuthKeyResponse) GetJSON200() *AuthKey {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetAuthKeyResponse) GetApplicationproblemJSON401() *Problem {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetAuthKeyResponse) GetApplicationproblemJSON403() *Problem {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetAuthKeyResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetAuthKeyResponse) GetApplicationproblemJSON422() *Problem {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetAuthKeyResponse) GetApplicationproblemJSON500() *Problem {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetAuthKeyResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAuthKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAuthKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAuthKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAuthKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 // GetHealthResponse200Headers the declared response headers of an HTTP 200 response for GetHealth
@@ -5234,6 +6383,86 @@ func (r GetVersionResponse) ContentType() string {
 	return ""
 }
 
+// ListAuthKeysWithResponse List auth keys
+//
+// In ID order, revoked keys too, until the server removes them. No answer holds a secret.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/headscale/v0/auth-keys (the `ListAuthKeys` operationId).
+func (c *ClientWithResponses) ListAuthKeysWithResponse(ctx context.Context, params *ListAuthKeysParams, reqEditors ...RequestEditorFn) (*ListAuthKeysResponse, error) {
+	rsp, err := c.ListAuthKeys(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseListAuthKeysResponse(rsp)
+	return told(ctx, r, err)
+}
+
+// CreateAuthKeyWithBodyWithResponse Create an auth key
+//
+// For one user or for tags. The answer holds the secret, in key; no other answer does. An OAuth access token makes keys for tags only, and only for tags it holds or that they own in the policy.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/headscale/v0/auth-keys (the `CreateAuthKey` operationId).
+func (c *ClientWithResponses) CreateAuthKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAuthKeyResponse, error) {
+	rsp, err := c.CreateAuthKeyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseCreateAuthKeyResponse(rsp)
+	return told(ctx, r, err)
+}
+
+// CreateAuthKeyWithResponse Create an auth key
+//
+// For one user or for tags. The answer holds the secret, in key; no other answer does. An OAuth access token makes keys for tags only, and only for tags it holds or that they own in the policy.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/headscale/v0/auth-keys (the `CreateAuthKey` operationId).
+func (c *ClientWithResponses) CreateAuthKeyWithResponse(ctx context.Context, body CreateAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAuthKeyResponse, error) {
+	rsp, err := c.CreateAuthKey(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseCreateAuthKeyResponse(rsp)
+	return told(ctx, r, err)
+}
+
+// DeleteAuthKeyWithResponse Revoke an auth key
+//
+// The key stops working at once; nodes that joined with it stay. Its record stays, revoked, until the server removes it (removal). Repeating the call answers 204 again and changes nothing.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/headscale/v0/auth-keys/{id} (the `DeleteAuthKey` operationId).
+func (c *ClientWithResponses) DeleteAuthKeyWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteAuthKeyResponse, error) {
+	rsp, err := c.DeleteAuthKey(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseDeleteAuthKeyResponse(rsp)
+	return told(ctx, r, err)
+}
+
+// GetAuthKeyWithResponse Read one auth key
+//
+// Without the secret. A revoked key is read until the server removes it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/headscale/v0/auth-keys/{id} (the `GetAuthKey` operationId).
+func (c *ClientWithResponses) GetAuthKeyWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetAuthKeyResponse, error) {
+	rsp, err := c.GetAuthKey(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseGetAuthKeyResponse(rsp)
+	return told(ctx, r, err)
+}
+
 // GetHealthWithResponse The health of the server
 //
 // Returns a wrapper object for the known response body format(s).
@@ -5590,6 +6819,936 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 	}
 	r, err := ParseGetVersionResponse(rsp)
 	return told(ctx, r, err)
+}
+
+// ParseListAuthKeysResponse parses an HTTP response from a ListAuthKeysWithResponse call
+func ParseListAuthKeysResponse(rsp *http.Response) (*ListAuthKeysResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAuthKeysResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	// json reads the body by the exact member names (DecodeResponse): it
+	// shadows encoding/json for the unmarshal generated below.
+	json := exactJSON{rsp: rsp, page: true}
+	_ = json
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuthKeyList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	if rsp.StatusCode == 200 && response.JSON200 == nil {
+		var dest AuthKeyList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+	}
+	if rsp.StatusCode == 401 {
+		response.ApplicationproblemJSON401 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 403 {
+		response.ApplicationproblemJSON403 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 422 {
+		response.ApplicationproblemJSON422 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 500 {
+		response.ApplicationproblemJSON500 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 503 {
+		response.ApplicationproblemJSON503 = problemIn(bodyBytes)
+	}
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListAuthKeysResponse200Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers ListAuthKeysResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers ListAuthKeysResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 422:
+		var headers ListAuthKeysResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers ListAuthKeysResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers ListAuthKeysResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateAuthKeyResponse parses an HTTP response from a CreateAuthKeyWithResponse call
+func ParseCreateAuthKeyResponse(rsp *http.Response) (*CreateAuthKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAuthKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	// json reads the body by the exact member names (DecodeResponse): it
+	// shadows encoding/json for the unmarshal generated below.
+	json := exactJSON{rsp: rsp, page: false}
+	_ = json
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest CreatedAuthKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 408:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON408 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	if rsp.StatusCode == 201 && response.JSON201 == nil {
+		var dest CreatedAuthKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+	}
+	if rsp.StatusCode == 400 {
+		response.ApplicationproblemJSON400 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 401 {
+		response.ApplicationproblemJSON401 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 403 {
+		response.ApplicationproblemJSON403 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 408 {
+		response.ApplicationproblemJSON408 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 413 {
+		response.ApplicationproblemJSON413 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 415 {
+		response.ApplicationproblemJSON415 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 422 {
+		response.ApplicationproblemJSON422 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 500 {
+		response.ApplicationproblemJSON500 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 503 {
+		response.ApplicationproblemJSON503 = problemIn(bodyBytes)
+	}
+	switch {
+	case rsp.StatusCode == 201:
+		var headers CreateAuthKeyResponse201Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = value
+		}
+		response.Headers201 = &headers
+	case rsp.StatusCode == 400:
+		var headers CreateAuthKeyResponse400Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers400 = &headers
+	case rsp.StatusCode == 401:
+		var headers CreateAuthKeyResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers CreateAuthKeyResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 408:
+		var headers CreateAuthKeyResponse408Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers408 = &headers
+	case rsp.StatusCode == 413:
+		var headers CreateAuthKeyResponse413Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers413 = &headers
+	case rsp.StatusCode == 415:
+		var headers CreateAuthKeyResponse415Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers415 = &headers
+	case rsp.StatusCode == 422:
+		var headers CreateAuthKeyResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers CreateAuthKeyResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers CreateAuthKeyResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseDeleteAuthKeyResponse parses an HTTP response from a DeleteAuthKeyWithResponse call
+func ParseDeleteAuthKeyResponse(rsp *http.Response) (*DeleteAuthKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAuthKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	// json reads the body by the exact member names (DecodeResponse): it
+	// shadows encoding/json for the unmarshal generated below.
+	json := exactJSON{rsp: rsp, page: false}
+	_ = json
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	if rsp.StatusCode == 401 {
+		response.ApplicationproblemJSON401 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 403 {
+		response.ApplicationproblemJSON403 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 404 {
+		response.ApplicationproblemJSON404 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 422 {
+		response.ApplicationproblemJSON422 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 500 {
+		response.ApplicationproblemJSON500 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 503 {
+		response.ApplicationproblemJSON503 = problemIn(bodyBytes)
+	}
+	switch {
+	case rsp.StatusCode == 204:
+		var headers DeleteAuthKeyResponse204Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers204 = &headers
+	case rsp.StatusCode == 401:
+		var headers DeleteAuthKeyResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers DeleteAuthKeyResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers DeleteAuthKeyResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 422:
+		var headers DeleteAuthKeyResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers DeleteAuthKeyResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers DeleteAuthKeyResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetAuthKeyResponse parses an HTTP response from a GetAuthKeyWithResponse call
+func ParseGetAuthKeyResponse(rsp *http.Response) (*GetAuthKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAuthKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	// json reads the body by the exact member names (DecodeResponse): it
+	// shadows encoding/json for the unmarshal generated below.
+	json := exactJSON{rsp: rsp, page: false}
+	_ = json
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuthKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	if rsp.StatusCode == 200 && response.JSON200 == nil {
+		var dest AuthKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+	}
+	if rsp.StatusCode == 401 {
+		response.ApplicationproblemJSON401 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 403 {
+		response.ApplicationproblemJSON403 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 404 {
+		response.ApplicationproblemJSON404 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 422 {
+		response.ApplicationproblemJSON422 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 500 {
+		response.ApplicationproblemJSON500 = problemIn(bodyBytes)
+	}
+	if rsp.StatusCode == 503 {
+		response.ApplicationproblemJSON503 = problemIn(bodyBytes)
+	}
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetAuthKeyResponse200Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 401:
+		var headers GetAuthKeyResponse401Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers401 = &headers
+	case rsp.StatusCode == 403:
+		var headers GetAuthKeyResponse403Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers GetAuthKeyResponse404Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 422:
+		var headers GetAuthKeyResponse422Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers422 = &headers
+	case rsp.StatusCode == 500:
+		var headers GetAuthKeyResponse500Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers GetAuthKeyResponse503Headers
+		if values := rsp.Header.Values("Headscale-Commit"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Commit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleCommit = &value
+		}
+		if values := rsp.Header.Values("Headscale-Version"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Headscale-Version", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.HeadscaleVersion = value
+		}
+		response.Headers503 = &headers
+	}
+
+	return response, nil
 }
 
 // ParseGetHealthResponse parses an HTTP response from a GetHealthWithResponse call
@@ -9690,6 +11849,57 @@ func answerOf(rsp *http.Response, body []byte, want []int) error {
 	return nil
 }
 
+// Result is the 200 answer of ListAuthKeys, or the answer as an error:
+// a *ResponseError, or an *AnswerError.
+func (r *ListAuthKeysResponse) Result() (*AuthKeyList, error) {
+	if r.JSON200 != nil {
+		return r.JSON200, nil
+	}
+	if err := answerOf(r.HTTPResponse, r.Body, []int{200}); err != nil {
+		return nil, err
+	}
+	// A documented success is always read by Parse; this is one made by
+	// hand.
+	return nil, &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrStatus}
+}
+
+// Result is the 201 answer of CreateAuthKey, or the answer as an error:
+// a *ResponseError, or an *AnswerError.
+func (r *CreateAuthKeyResponse) Result() (*CreatedAuthKey, error) {
+	if r.JSON201 != nil {
+		return r.JSON201, nil
+	}
+	if err := answerOf(r.HTTPResponse, r.Body, []int{201}); err != nil {
+		return nil, err
+	}
+	// A documented success is always read by Parse; this is one made by
+	// hand.
+	return nil, &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrStatus}
+}
+
+// Err is nil for a success of DeleteAuthKey, else the answer as an error: a
+// *ResponseError, or an *AnswerError.
+func (r *DeleteAuthKeyResponse) Err() error {
+	if err := answerOf(r.HTTPResponse, r.Body, []int{204}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Result is the 200 answer of GetAuthKey, or the answer as an error:
+// a *ResponseError, or an *AnswerError.
+func (r *GetAuthKeyResponse) Result() (*AuthKey, error) {
+	if r.JSON200 != nil {
+		return r.JSON200, nil
+	}
+	if err := answerOf(r.HTTPResponse, r.Body, []int{200}); err != nil {
+		return nil, err
+	}
+	// A documented success is always read by Parse; this is one made by
+	// hand.
+	return nil, &AnswerError{Response: r.HTTPResponse, Body: r.Body, Err: ErrStatus}
+}
+
 // Result is the 200 answer of GetHealth, or the answer as an error:
 // a *ResponseError, or an *AnswerError.
 func (r *GetHealthResponse) Result() (*Health, error) {
@@ -9929,6 +12139,64 @@ func Done[R interface{ Err() error }](r R, err error) error {
 		return err
 	}
 	return r.Err()
+}
+
+// ListAuthKeysPages walks ListAuthKeys from the page params names (the first,
+// when params has no PageToken) to the last, the page whose nextPageToken
+// is absent: every page as the client read it, Body included. A page is
+// yielded only once it is read whole, its token too: a nextPageToken that
+// is null, empty, not a string, or one the walk was at before is the
+// server's fault, and ends the walk with that error. Any error ends it as
+// a *PageError naming the token of the page it asked for. It never starts
+// over: the rows of the pages before were yielded.
+func (c *ClientWithResponses) ListAuthKeysPages(ctx context.Context, params *ListAuthKeysParams, reqEditors ...RequestEditorFn) iter.Seq2[*ListAuthKeysResponse, error] {
+	return func(yield func(*ListAuthKeysResponse, error) bool) {
+		var p ListAuthKeysParams
+		if params != nil {
+			p = *params
+		}
+		w := walkFrom(p.PageToken)
+		for {
+			resp, err := c.ListAuthKeysWithResponse(ctx, &p, reqEditors...)
+			if err == nil {
+				_, err = resp.Result()
+			}
+			var next *string
+			if err == nil {
+				next, err = w.next(resp.Body)
+			}
+			if err != nil {
+				yield(nil, &PageError{Token: w.token, Err: tokenKind[AuthKeyList](err)})
+				return
+			}
+			if !yield(resp, nil) || next == nil {
+				return
+			}
+			p.PageToken = next
+		}
+	}
+}
+
+// ListAuthKeysAll is every AuthKey of ListAuthKeys, from the first page, whatever
+// PageToken params holds. A token the server refuses (invalid_page_token,
+// as after a restart) starts the walk over, once.
+func (c *ClientWithResponses) ListAuthKeysAll(ctx context.Context, params *ListAuthKeysParams, reqEditors ...RequestEditorFn) ([]AuthKey, error) {
+	var p ListAuthKeysParams
+	if params != nil {
+		p = *params
+	}
+	p.PageToken = nil
+	return collect(func(yield func([]AuthKey, error) bool) {
+		for resp, err := range c.ListAuthKeysPages(ctx, &p, reqEditors...) {
+			var rows []AuthKey
+			if err == nil {
+				rows = resp.JSON200.AuthKeys
+			}
+			if !yield(rows, err) {
+				return
+			}
+		}
+	})
 }
 
 // ListNodesPages walks ListNodes from the page params names (the first,
