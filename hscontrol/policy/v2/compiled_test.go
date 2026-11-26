@@ -68,8 +68,14 @@ func (pol *Policy) compileOtherDestsReference(
 				continue
 			}
 
+			prefixes := ips.Prefixes()
+
+			if _, wildcard := dst.(Asterix); wildcard {
+				prefixes = append(prefixes, approvedSubnetPrefixes(nodes)...)
+			}
+
 			capGrants = append(capGrants, tailcfg.CapGrant{
-				Dsts:   ips.Prefixes(),
+				Dsts:   prefixes,
 				CapMap: grant.App,
 			})
 

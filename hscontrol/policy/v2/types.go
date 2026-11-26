@@ -432,6 +432,18 @@ func approvedSubnetRoutes(nodes views.Slice[types.NodeView]) []string {
 	return routes
 }
 
+// approvedSubnetPrefixes is [approvedSubnetRoutes] as prefixes.
+func approvedSubnetPrefixes(nodes views.Slice[types.NodeView]) []netip.Prefix {
+	routes := approvedSubnetRoutes(nodes)
+	prefixes := make([]netip.Prefix, 0, len(routes))
+
+	for _, route := range routes {
+		prefixes = append(prefixes, netip.MustParsePrefix(route))
+	}
+
+	return prefixes
+}
+
 // Username is a string that represents a username, it must contain an @.
 type Username string
 
