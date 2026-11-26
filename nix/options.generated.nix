@@ -996,6 +996,20 @@ in
       example = "/srv/headscale/tailsql";
     };
   };
+  api = {
+    cors = {
+      allowed_origins = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          The origins, `scheme://host[:port]`, whose pages may call `/api/headscale/v0` and `/api/v2` from a browser. Empty sends no CORS headers. `*` is not accepted: this is an admin API. `/api/v1` never sends CORS headers.
+        '';
+        example = [
+          "https://admin.example.com"
+        ];
+      };
+    };
+  };
   tuning = {
     batch_change_delay = lib.mkOption {
       type = t.duration;

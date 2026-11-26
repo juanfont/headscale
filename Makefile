@@ -91,21 +91,19 @@ openapi:
 	@echo "Emitting OpenAPI spec from code..."
 	go run ./cmd/gen-openapi
 
-# Generate the strongly-typed Go HTTP clients (v1 and v2). The served specs are
-# OpenAPI 3.1, but oapi-codegen v2 does not yet read 3.1, so each client is
-# generated from a transient 3.0.3 downgrade of its document. Pinned so the
-# committed clients are reproducible.
+# Generate the strongly-typed Go HTTP clients, each the same way: oapi-codegen
+# reads the API's 3.1 document with cmd/gen-openapi/<api>-client.yaml. The v0
+# document is also written where it is committed (docs/ref/api). oapi-codegen
+# is a tool of go.mod, so the committed clients are reproducible.
 .PHONY: client
 client:
 	@echo "Generating API clients..."
-	@tmp=$$(mktemp -t headscale-openapi-3.0.XXXXXX.yaml); \
-	go run ./cmd/gen-openapi -downgrade "$$tmp" && \
-	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.2 \
-		-generate types,client -package clientv1 -o gen/client/v1/client.gen.go "$$tmp" && \
-	go run ./cmd/gen-openapi -api v2 -downgrade "$$tmp" && \
-	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.2 \
-		-generate types,client -package clientv2 -o gen/client/v2/client.gen.go "$$tmp"; \
-	status=$$?; rm -f "$$tmp"; exit $$status
+	go run ./cmd/gen-openapi -api headscale/v0
+	@set -e; tmp=$$(mktemp -t headscale-openapi.XXXXXX.yaml); trap 'rm -f "$$tmp"' EXIT; \
+	for api in v1 v2 headscale/v0; do \
+		go run ./cmd/gen-openapi -api $$api -client "$$tmp"; \
+		go tool oapi-codegen -config cmd/gen-openapi/$$(echo $$api | tr / -)-client.yaml "$$tmp"; \
+	done
 
 # Clean targets
 .PHONY: clean

@@ -2427,6 +2427,12 @@ func (s *State) TagOwnedByTags(tag string, ownerTags []string) bool {
 	return s.polMan.TagOwnedByTags(tag, ownerTags)
 }
 
+// TagsOwnedByTags returns every tag a credential holding ownerTags may apply,
+// sorted; see [State.TagOwnedByTags].
+func (s *State) TagsOwnedByTags(ownerTags []string) []string {
+	return s.polMan.TagsOwnedByTags(ownerTags)
+}
+
 // TagExists reports whether tag is defined in the policy's tagOwners. Used to
 // reject OAuth clients and auth keys carrying tags that no policy authorises,
 // matching SetNodeTags.

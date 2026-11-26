@@ -212,6 +212,9 @@
             ./hscontrol/config/testdata
             ./hscontrol/db/testdata
             ./hscontrol/policy/v2/testdata
+            # The API v0 document and page of codes, compared with the code.
+            ./docs/ref/api/headscale-v0.yaml
+            ./docs/ref/api/problems.md
           ];
         };
         goChecks = {
@@ -237,7 +240,8 @@
           );
 
           # -race needs cgo; release build and dev shell stay CGO-free.
-          # Test hscontrol and cmdline recursively; servertest runs in its own workflow, without -race.
+          # Test hscontrol, cmdline and the v0 client recursively; servertest
+          # runs in its own workflow, without -race.
           gorace = fc.goTest (
             common
             // {
@@ -246,7 +250,7 @@
               testEnv = "export CGO_ENABLED=1";
               testFlags = [ "-p=2" ];
               goSkip = [ "TestPostgres" ];
-              testPackages = "./hscontrol/... ./cmdline/...";
+              testPackages = "./hscontrol/... ./cmdline/... ./client/...";
               testExclude = [ "/hscontrol/servertest" ];
             }
           );

@@ -262,3 +262,81 @@ func TestConfigValidator_AddErrSkipsNil(t *testing.T) {
 	assert.False(t, v.HasErrors())
 	assert.NoError(t, v.Err())
 }
+
+func TestValidateCORS(t *testing.T) {
+	for _, tt := range []struct {
+		origin string
+		ok     bool
+	}{
+		{"https://admin.example.com", true},
+		{"http://localhost:3000", true},
+		{"https://[2001:db8::1]:8443", true},
+		{"*", false},
+		{"admin.example.com", false},
+		{"https://admin.example.com/", false},
+		{"https://admin.example.com/ui", false},
+		{"https://admin.example.com?", false},
+		{"https://u:secret@admin.example.com", false},
+		{"ftp://admin.example.com", false},
+		{"https://*.example.com", false},
+		{"https://*", false},
+		{"https://admin.example.com:99999", false},
+		{"https://admin.example.com:", false},
+		{"https://admin.example.com#", false},
+		// A browser keeps the dot, and the origin is another one.
+		{"https://admin.example.com.", true},
+		// An address only as a browser serializes it, or it never matches.
+		{"http://[::1]:4444", true},
+		{"http://[0:0:0:0:0:0:0:1]:4444", false},
+		{"http://[::FFFF:7F00:1]", true},
+		{"http://[::ffff:127.0.0.1]", false},
+		{"http://[2001:db8:0:0:1::1]", false},
+		{"http://[2001:db8::1:0:0:1]", true},
+		{"http://[2001:db8:0:0:1:0:0:1]", false},
+		{"http://[fe80::1%25eth0]", false},
+		{"http://127.0.0.1:8080", true},
+		{"http://127.1", false},
+		{"http://0x7f.0.0.1", false},
+		{"http://127.0.0.01", false},
+		{"http://127.0.0.1.", false},
+		{"http://1.2.3.4.5", false},
+		{"http://host.1a", true},
+		// WHATWG "ends in a number": a last label of digits, or 0x and hex
+		// digits, is IPv4; a hex-like word is a domain. A row names the
+		// published validator's verdict where this one keeps it.
+		{"https://lab.0xray", true},  // published: accepted
+		{"https://lab.0xg", true},    // published: accepted
+		{"https://lab.0x1g", true},   // published: accepted
+		{"https://lab.0xray.", true}, // published: refused (trailing dot, V6-27)
+		{"https://lab.0x", false},    // 0x alone is the number 0
+		{"https://lab.0xab", false},
+		{"https://lab.0XAB", false},
+		{"https://lab.0xab.", false},
+		{"https://lab.010", false}, // octal-looking
+		{"https://lab.08", false},  // digits, not octal: the URL fails
+		{"https://0x7f000001", false},
+		{"https://127.0.0.1", true}, // published: accepted
+		{"https://.", false},        // published: refused
+		{"https://admin.example.com:443", false},
+		{"http://admin.example.com:80", false},
+		{"http://admin.example.com:443", true},
+		{"https://admin.example.com:08443", false},
+		{"https://bücher.example", false},
+		{"https://xn--bcher-kva.example", true},
+	} {
+		t.Run(tt.origin, func(t *testing.T) {
+			c := Default()
+			c.API.CORS.AllowedOrigins = []string{tt.origin}
+
+			v := &configValidator{}
+			validateCORS(&c, v)
+
+			if tt.ok {
+				require.NoError(t, v.Err())
+			} else {
+				require.ErrorContains(t, v.Err(), "api.cors.allowed_origins[0] is not an origin")
+				require.NotContains(t, v.Err().Error(), "secret")
+			}
+		})
+	}
+}

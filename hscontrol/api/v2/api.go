@@ -131,9 +131,9 @@ func Spec() ([]byte, error) {
 	return api.OpenAPI().YAML()
 }
 
-// Spec30 emits the document downgraded to OpenAPI 3.0.3, needed because
-// oapi-codegen cannot yet read 3.1; the typed client is generated from this.
-func Spec30() ([]byte, error) {
+// ClientSpec emits the document the typed client is generated from: Spec
+// with no additionalProperties: true.
+func ClientSpec() ([]byte, error) {
 	api := NewAPI(chi.NewMux(), Backend{})
 
 	// additionalProperties:true is the default, and spelled out it makes
@@ -145,7 +145,7 @@ func Spec30() ([]byte, error) {
 		}
 	}
 
-	return api.OpenAPI().DowngradeYAML()
+	return api.OpenAPI().YAML()
 }
 
 type contextKey int

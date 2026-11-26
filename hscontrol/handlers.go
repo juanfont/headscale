@@ -222,6 +222,11 @@ func (h *Headscale) KeyHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
+	// A Tailscale client in a browser reads /key with a plain request from
+	// another origin. The key is public and no credential is involved, so
+	// any origin may read it, whatever api.cors.allowed_origins says.
+	writer.Header().Set("Access-Control-Allow-Origin", "*")
+
 	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
 	capVer, err := parseCapabilityVersion(req)
 	if err != nil {

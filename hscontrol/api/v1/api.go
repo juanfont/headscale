@@ -128,13 +128,6 @@ func Spec() ([]byte, error) {
 	return api.OpenAPI().YAML()
 }
 
-// Spec30 emits the document downgraded to OpenAPI 3.0.3, needed because the
-// client generator (oapi-codegen v2) cannot yet read the 3.1 spec.
-func Spec30() ([]byte, error) {
-	api := NewAPI(chi.NewMux(), Backend{})
-	return api.OpenAPI().DowngradeYAML()
-}
-
 // Handler builds the v1 API on a fresh mux and returns both. Callers mount the
 // mux and may use mux.Match to detect which paths this API serves.
 func Handler(backend Backend) (*chi.Mux, huma.API) {

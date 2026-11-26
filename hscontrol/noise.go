@@ -152,7 +152,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 			return r.Method == http.MethodOptions
 		},
 	}))
-	r.Use(middleware.RequestID)
+	r.Use(requestID)
 
 	// The outer router resolved trusted_proxies on req before the
 	// upgrade; pin that value across the hijack so /machine/* logs the

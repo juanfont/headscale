@@ -1,15 +1,16 @@
-// Command gen-openapi emits a Headscale OpenAPI document from the authoritative
-// Huma definitions in hscontrol/api/v1 and hscontrol/api/v2. The server also
-// serves each spec live (at /openapi.yaml and /api/v2/openapi); this tool emits
-// them on demand, and with -downgrade the 3.0.3 form used to generate the typed
-// client. The output is not committed.
+// Command gen-openapi emits a Headscale OpenAPI 3.1 document from the
+// authoritative Huma definitions in hscontrol/api/v1, hscontrol/api/v2 and
+// hscontrol/api/headscale/v0, and with -client the document `make client`
+// generates that API's typed client from. The server also serves each
+// document live. Only the v0 document is committed: the docs site publishes
+// it, and a test fails when it is stale.
 //
 // Usage:
 //
-//	go run ./cmd/gen-openapi                       # write the v1 3.1 spec to its default path
-//	go run ./cmd/gen-openapi -api v2               # write the v2 3.1 spec to its default path
-//	go run ./cmd/gen-openapi -downgrade <path>     # write the v1 3.0.3 downgrade (for client gen)
-//	go run ./cmd/gen-openapi -api v2 -downgrade <path>  # the v2 3.0.3 downgrade
+//	go run ./cmd/gen-openapi                          # write the v1 document to its path
+//	go run ./cmd/gen-openapi -api v2                  # write the v2 document to its path
+//	go run ./cmd/gen-openapi -api headscale/v0        # write the committed v0 document
+//	go run ./cmd/gen-openapi -api v2 -client <path>   # the input of the v2 client
 package main
 
 import (
@@ -18,41 +19,53 @@ import (
 	"os"
 	"path/filepath"
 
+	apiv0 "github.com/juanfont/headscale/hscontrol/api/headscale/v0"
 	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 )
 
-// spec bundles a version's full (3.1) and downgraded (3.0.3) generators with the
-// committed output path. outPath is relative to the repository root.
+// spec is one API: the document it serves, the document its client is
+// generated from, and where the first is written, relative to the
+// repository root.
 type spec struct {
 	full    func() ([]byte, error)
-	down    func() ([]byte, error)
+	client  func() ([]byte, error)
 	outPath string
 }
 
-// specs maps the -api value to its generators.
+// specs is every API, each generated the same way: oapi-codegen reads its
+// 3.1 document with cmd/gen-openapi/<api>-client.yaml. The client of v2
+// alone reads a document of its own, because v2's request bodies spell out
+// additionalProperties: true (see [apiv2.ClientSpec]).
 var specs = map[string]spec{
-	"v1": {apiv1.Spec, apiv1.Spec30, "openapi/v1/headscale.yaml"},
-	"v2": {apiv2.Spec, apiv2.Spec30, "openapi/v2/headscale.yaml"},
+	"v1":           {apiv1.Spec, apiv1.Spec, "openapi/v1/headscale.yaml"},
+	"v2":           {apiv2.Spec, apiv2.ClientSpec, "openapi/v2/headscale.yaml"},
+	"headscale/v0": {apiv0.Spec, apiv0.Spec, "docs/ref/api/headscale-v0.yaml"},
 }
 
 func main() {
-	api := flag.String("api", "v1", "which API spec to emit: v1 or v2")
-	downgrade := flag.String("downgrade", "", "write the OpenAPI 3.0.3 downgrade to this path instead of the committed 3.1 spec")
+	api := flag.String("api", "v1", "which API spec to emit: v1, v2 or headscale/v0")
+	client := flag.String("client", "", "write the document the API's client is generated from to this path instead")
 	flag.Parse()
 
 	s, ok := specs[*api]
 	if !ok {
-		log.Fatalf("unknown -api %q (want v1 or v2)", *api)
+		log.Fatalf("unknown -api %q (want v1, v2 or headscale/v0)", *api)
 	}
 
-	if *downgrade != "" {
-		writeSpec(*downgrade, s.down)
+	if *client != "" {
+		writeSpec(*client, s.client)
 
 		return
 	}
 
 	writeSpec(s.outPath, s.full)
+
+	// The page of problem codes goes with the document: the type of every
+	// problem leads to it.
+	if *api == "headscale/v0" {
+		writeSpec("docs/ref/api/problems.md", func() ([]byte, error) { return apiv0.ProblemsPage(), nil })
+	}
 }
 
 func writeSpec(path string, gen func() ([]byte, error)) {

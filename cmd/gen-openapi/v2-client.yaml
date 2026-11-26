@@ -1,0 +1,6 @@
+# oapi-codegen settings for the Tailscale v2 client, read by `make client`.
+package: clientv2
+generate:
+  models: true
+  client: true
+output: gen/client/v2/client.gen.go

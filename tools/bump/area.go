@@ -50,8 +50,8 @@ type result struct {
 }
 
 // allAreas is the running order. Regeneration comes last because it consumes
-// what everything before it settled: the toolchain from the lock, the module
-// versions, and the generator pin from the Makefile.
+// what everything before it settled: the toolchain from the lock and the module
+// versions, the generators' own among them.
 func allAreas() []area {
 	areas := []area{
 		{
@@ -87,7 +87,7 @@ func allAreas() []area {
 
 	areas = append(areas, area{
 		Name:    "generate",
-		Needs:   []string{"gomod", "tools:oapi-codegen"},
+		Needs:   []string{"gomod"},
 		Apply:   applyGenerate,
 		Gate:    gateGenerate,
 		Message: func(change) string { return "all: regenerate generated files" },
