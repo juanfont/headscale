@@ -338,7 +338,13 @@ func (a *API) problemOf(resp *http.Response, body []byte) error {
 			http.StatusText(resp.StatusCode),
 		)
 	} else {
-		err = &ProblemError{Problem: p}
+		// A policy that a reload refuses leaves the one in force, and its
+		// sentence says so.
+		err = &ProblemError{
+			Problem: p,
+			kept: resp.Request != nil &&
+				strings.HasSuffix(resp.Request.URL.Path, "/policy/reload"),
+		}
 	}
 
 	if resp.StatusCode/100 == 5 && resp.Request != nil &&

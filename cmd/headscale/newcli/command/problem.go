@@ -1,9 +1,11 @@
 package command
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"reflect"
 	"slices"
@@ -15,6 +17,7 @@ import (
 	lib "github.com/juanfont/headscale/cmdline/command"
 	"github.com/juanfont/headscale/cmdline/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
+	"github.com/oapi-codegen/nullable"
 )
 
 // ProblemError is a problem the server answered. Its text is the CLI's own
@@ -37,6 +40,8 @@ type ProblemError struct {
 	// target changed again, whatever code the command's guard is refused
 	// with.
 	changed bool
+	// kept is a refusal of a reload: the policy in force stays.
+	kept bool
 }
 
 // sentence is the text of err. A problem of the server, a server that
@@ -152,6 +157,10 @@ func (e *ProblemError) Error() string {
 func (e *ProblemError) text() string {
 	p := e.Problem
 
+	if s := fixed(p.Code); s != "" {
+		return s
+	}
+
 	switch p.Code { //nolint:exhaustive // the others print their title
 	case clientv0.ProblemCodeUnauthorized:
 		// True of every credential and of every reason the server has: a
@@ -185,11 +194,6 @@ func (e *ProblemError) text() string {
 		if s := wrongVerb(p.Details["kind"]); s != "" {
 			return s
 		}
-	case clientv0.ProblemCodeOwnerConflict:
-		// The server answers it for a key with no owner too.
-		return "a key needs one owner: one user, or tags, not both."
-	case clientv0.ProblemCodeExpiryRequired:
-		return "a key must have an expiry."
 	case clientv0.ProblemCodeTagsRequired:
 		if e.target.Kind == "node" {
 			return "the tag list is empty. A tagged node needs at least one tag."
@@ -240,8 +244,10 @@ func (e *ProblemError) text() string {
 		return registrationRefused(p.Details["reason"])
 	case clientv0.ProblemCodeInvalidField:
 		return "the server refused a value:" + fieldErrors(p.Errors)
-	case clientv0.ProblemCodeTooLarge:
-		return "the file is too large for the server."
+	case clientv0.ProblemCodePolicyInvalid:
+		return policyInvalid(p.Details, e.kept)
+	case clientv0.ProblemCodePolicyReadOnly:
+		return readOnly(p.Details["path"])
 	case clientv0.ProblemCodeInternal:
 		return "the server had an internal error. Its log has the request " + table.Visible(
 			p.RequestId,
@@ -251,6 +257,160 @@ func (e *ProblemError) text() string {
 
 	// A code this build does not know.
 	return table.Visible(p.Title, "") + " (" + table.Visible(string(p.Code), "") + ")."
+}
+
+// fixed is the sentence of a code that says the same every time; "" for
+// another.
+func fixed(code clientv0.ProblemCode) string {
+	switch code { //nolint:exhaustive // the others need more than the code
+	case clientv0.ProblemCodeOwnerConflict:
+		// The server answers it for a key with no owner too.
+		return "a key needs one owner: one user, or tags, not both."
+	case clientv0.ProblemCodeExpiryRequired:
+		return "a key must have an expiry."
+	case clientv0.ProblemCodeTooLarge:
+		return "the file is too large for the server."
+	case clientv0.ProblemCodePolicySourceChanging:
+		return "the policy changed while the server read it; the policy in force stays. Reload again."
+	}
+
+	return ""
+}
+
+// policyInvalid is the sentence of policy_invalid: a line for each problem
+// and each failed test, at its line and column of the file, in the order
+// of the file and those with no place last; how many there are when the
+// server cut a list, and how many tests did not run. kept is a reload,
+// which leaves the policy in force.
+func policyInvalid(details map[string]any, kept bool) string {
+	var d clientv0.PolicyInvalidDetails
+
+	b, _ := json.Marshal(details) //nolint:errchkjson // a map that came from JSON
+	_ = clientv0.DecodeResponse(b, &d)
+
+	type entry struct {
+		line, column int64
+		text         string
+	}
+
+	var entries []entry
+
+	add := func(line, column nullable.Nullable[int64], placed, unplaced string) {
+		l, err := line.Get()
+		if err != nil {
+			entries = append(entries, entry{line: math.MaxInt64, text: unplaced})
+
+			return
+		}
+
+		c, err := column.Get()
+		if err != nil {
+			entries = append(
+				entries,
+				entry{
+					line: l,
+					text: "line " + strconv.FormatInt(l, 10) + ": " + placed,
+				},
+			)
+
+			return
+		}
+
+		entries = append(
+			entries,
+			entry{
+				line:   l,
+				column: c,
+				text: "line " + strconv.FormatInt(
+					l,
+					10,
+				) + ", column " + strconv.FormatInt(
+					c,
+					10,
+				) + ": " + placed,
+			},
+		)
+	}
+
+	for _, e := range d.PolicyErrors {
+		add(e.Line, e.Column, e.Message, e.Message)
+	}
+
+	for _, f := range d.FailedTests {
+		test, block := "test ", "tests"
+		if f.Kind == clientv0.FailedTestKindSsh {
+			test, block = "SSH test ", "sshTests"
+		}
+
+		said := f.Src + " -> " + f.Dst
+
+		user, err := f.User.Get()
+		if err == nil {
+			said += " as " + user
+		}
+
+		said += ": expected " + string(f.Want) + ", got " + string(f.Got)
+		add(
+			f.Line,
+			f.Column,
+			test+said,
+			block+"["+strconv.FormatInt(f.Index, 10)+"]: "+said,
+		)
+	}
+
+	slices.SortStableFunc(entries, func(a, b entry) int {
+		return cmp.Or(cmp.Compare(a.line, b.line), cmp.Compare(a.column, b.column))
+	})
+
+	var s strings.Builder
+
+	s.WriteString("the policy is not valid.")
+
+	if kept {
+		s.WriteString(" The old policy is still in use.")
+	}
+
+	for _, e := range entries {
+		s.WriteString("\n  " + table.Visible(e.text, ""))
+	}
+
+	more := func(all int64, shown int, what string) {
+		if all > int64(shown) {
+			s.WriteString(
+				"\n  " + table.Count(
+					int(all),
+					what,
+				) + " in all; the first " + strconv.Itoa(
+					shown,
+				) + " are shown.",
+			)
+		}
+	}
+
+	more(d.PolicyErrorCount, len(d.PolicyErrors), "problem")
+	more(d.FailedTestCount, len(d.FailedTests), "failed test")
+
+	if d.TestsNotRun > 0 {
+		s.WriteString(
+			"\n  " + table.Count(
+				int(d.TestsNotRun),
+				"test",
+			) + " did not run, because of the problems above.",
+		)
+	}
+
+	return s.String()
+}
+
+// readOnly is the sentence of policy_read_only: the file to edit, or that
+// none is set.
+func readOnly(path any) string {
+	file, _ := path.(string)
+	if file == "" {
+		return "no policy file is set (policy.path), and the policy cannot be written while policy.mode is file."
+	}
+
+	return "the policy is read from " + table.Visible(file, "") + ". Edit that file."
 }
 
 // notFound is the sentence of not_found about its object; false for none.

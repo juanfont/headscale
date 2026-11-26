@@ -1045,6 +1045,33 @@ func TestStatus(t *testing.T) {
 
 		return a.errorOf(err)
 	}
+	getPolicy := func(a *API) error {
+		_, err := clientv0.Got(a.GetPolicyWithResponse(t.Context()))
+		return a.errorOf(err)
+	}
+	setPolicy := func(dryRun bool) func(a *API) error {
+		return func(a *API) error {
+			var dry *bool
+			if dryRun {
+				dry = &dryRun
+			}
+
+			_, err := clientv0.Got(a.SetPolicyWithBodyWithResponse(
+				t.Context(),
+				&clientv0.SetPolicyParams{DryRun: dry},
+				"application/hujson",
+				strings.NewReader("{}"),
+			))
+
+			return a.errorOf(err)
+		}
+	}
+	reloadPolicy := func(a *API) error {
+		_, err := clientv0.Got(a.ReloadPolicyWithResponse(t.Context()))
+		return a.errorOf(err)
+	}
+
+	const policy = `{"policy": "{}", "mode": "database", "path": "", "updated": null}`
 
 	for _, tt := range []struct {
 		name   string
@@ -1079,6 +1106,13 @@ func TestStatus(t *testing.T) {
 		{name: "DELETE /nodes/3, 201", call: removeNode, status: 201, body: `{"id": "3"}`, want: "it is 201 Created, not the 204 No Content this operation answers." + written},
 		{name: "DELETE /nodes/3, 202", call: removeNode, status: 202, body: `{"id": "3"}`, want: "it is 202 Accepted, not the 204 No Content this operation answers." + written},
 		{name: "DELETE /nodes/3, 206", call: removeNode, status: 206, body: `{"id": "3"}`, want: "it is 206 Partial Content, not the 204 No Content this operation answers." + written},
+		{name: "GET /policy, 200", call: getPolicy, status: 200, body: policy},
+		{name: "GET /policy, 206", call: getPolicy, status: 206, body: policy, want: "it is 206 Partial Content, not the 200 OK this operation answers."},
+		{name: "PUT /policy, 200", call: setPolicy(false), status: 200, body: policy},
+		{name: "PUT /policy, 201", call: setPolicy(false), status: 201, body: policy, want: "it is 201 Created, not the 200 OK this operation answers." + written},
+		{name: "PUT /policy, a null policy", call: setPolicy(false), status: 200, body: `{"policy": null, "mode": "database", "path": "", "updated": null}`, want: "its policy is null." + written},
+		{name: "PUT /policy?dryRun=true, 204", call: setPolicy(true), status: 204, want: "it is 204 No Content, not the 200 OK this operation answers."},
+		{name: "POST /policy/reload, 202", call: reloadPolicy, status: 202, body: policy, want: "it is 202 Accepted, not the 200 OK this operation answers." + written},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

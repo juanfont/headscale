@@ -25,6 +25,7 @@ import (
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/oapi-codegen/nullable"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1483,6 +1484,32 @@ func TestAbout(t *testing.T) {
 		)
 		require.Equal(t, tt.want, sentence(tt.err), tt.name)
 	}
+}
+
+// TestRunTurnsTheServerLogOff: a command writes what it says and no line
+// of the server's log, whatever log the process had set up.
+func TestRunTurnsTheServerLogOff(t *testing.T) {
+	level := zerolog.GlobalLevel()
+
+	t.Cleanup(func() { zerolog.SetGlobalLevel(level) })
+
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+
+	tree, err := Build("prog", "A program", New(Spec[NoInput, NoOutput]{
+		Name:    "get",
+		Short:   "S",
+		Long:    "S.",
+		Example: []string{"prog get"},
+		Local:   true,
+		Run:     noop[NoInput, NoOutput],
+	}))
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		0,
+		Run(tree, []string{"get"}, Env{Stdout: io.Discard, Stderr: io.Discard}),
+	)
+	require.Equal(t, zerolog.Disabled, zerolog.GlobalLevel())
 }
 
 // TestWithheld: a run that took a secret typed whole never writes it, raw
