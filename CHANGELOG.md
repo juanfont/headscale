@@ -198,6 +198,13 @@ are always correct for their version:
   lists what replaced each removed option
 - The options of the NixOS module
 
+You can now inspect the configuration of the running server. It is printed in
+the same format, ready to use as a configuration file, with secrets redacted:
+
+```shell
+headscale generate config --running
+```
+
 [#3680](https://github.com/juanfont/headscale/pull/3680)
 
 ### NixOS module
@@ -337,7 +344,7 @@ maps each one to its replacement.
 
 - Headscale's own ACME certificate is managed by CertMagic instead of autocert. The first start registers a new ACME account and obtains a new certificate in `tls.acme.cache_dir`. [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Debug hosts must be localhost, an IP, or the configured `server_url` or `metrics_listen_addr` host. `/metrics` accepts other hosts. [#3619](https://github.com/juanfont/headscale/pull/3619)
-- `/debug/config` prints the configuration in JSON with the file's key names, such as `server_url` instead of Go field names such as `ServerURL`, and durations as text such as `3h` instead of nanoseconds. Update scripts that read it. [#3677](https://github.com/juanfont/headscale/pull/3677)
+- `/debug/config` prints the configuration as `headscale generate config --running` does, in JSON: key names such as `server_url` instead of Go field names such as `ServerURL`, and durations as text such as `3h` instead of nanoseconds. Update scripts that read it. [#3677](https://github.com/juanfont/headscale/pull/3677)
 - `headscale serve` exits with status 78 when it rejects the configuration file it loaded. The deb package and the NixOS module leave it stopped instead of restarting it. The deb package starts or restarts Headscale only when `headscale check config` passes. [#3683](https://github.com/juanfont/headscale/pull/3683)
 - The root `config-example.yaml` is removed. `headscale generate config` prints it, and packagers can run it at build time. [#3680](https://github.com/juanfont/headscale/pull/3680)
 - `HEADSCALE_DEBUG_TAILSQL_ENABLED`, `HEADSCALE_DEBUG_TAILSQL_STATE_DIR` and `TS_AUTHKEY` no longer start TailSQL on an external tailnet; use `tailsql.enabled` and `tailsql.state_dir`, which join headscale's own tailnet

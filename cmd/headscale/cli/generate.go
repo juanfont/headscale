@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/juanfont/headscale/hscontrol/config"
@@ -21,8 +20,6 @@ func init() {
 	generateNixOSOptionsCmd.Flags().Bool("release", false, "Stamp the version and commit of this binary, which must be a clean build of a known commit")
 	generateCmd.AddCommand(generateNixOSOptionsCmd)
 }
-
-var errNotRelease = errors.New("--release needs a binary built from a clean, known commit")
 
 var generateCmd = &cobra.Command{
 	Use:     "generate",
@@ -94,7 +91,7 @@ of the development tree.`,
 		var stamp *types.VersionInfo
 
 		if release {
-			stamp, err = releaseStamp(types.GetVersionInfo())
+			stamp, err = config.ReleaseStamp(types.GetVersionInfo())
 			if err != nil {
 				return err
 			}
@@ -109,14 +106,4 @@ of the development tree.`,
 
 		return err
 	},
-}
-
-// releaseStamp is v, if it can stamp a release: built from a known commit
-// without local changes.
-func releaseStamp(v *types.VersionInfo) (*types.VersionInfo, error) {
-	if v.Dirty || v.Commit == "unknown" {
-		return nil, fmt.Errorf("%w: commit %s, dirty %t", errNotRelease, v.Commit, v.Dirty)
-	}
-
-	return v, nil
 }

@@ -59,6 +59,7 @@ var reservedEnvNames = []string{
 type configSource struct {
 	k         *koanf.Koanf
 	file      string
+	read      read
 	fileBytes []byte
 	// keys is the file parsed for the positions of its keys, or nil.
 	keys     *keyNode
@@ -435,7 +436,30 @@ type Loaded struct {
 // removed and unknown file keys, and decodes them. It does not validate:
 // see [Validate].
 func Load(path string, isFile bool, environ []string) (*Loaded, error) {
-	s, err := newConfigSource(path, isFile, environ)
+	return load(path, isFile, read{}, environ)
+}
+
+// LoadData is [Load] of a configuration that the caller read, such as
+// stdin: name names it in messages, ext (".yaml", ".hujson", ...) names its
+// format, and paths in it are relative to the working directory.
+func LoadData(name, ext string, data []byte, environ []string) (*Loaded, error) {
+	if data == nil {
+		data = []byte{}
+	}
+
+	return load(name, true, read{data: data, ext: ext}, environ)
+}
+
+// read is how loadFile gets the file: data in the format ext when a caller
+// read it, else at most limit bytes of the file (0 is no limit).
+type read struct {
+	data  []byte
+	ext   string
+	limit int64
+}
+
+func load(path string, isFile bool, r read, environ []string) (*Loaded, error) {
+	s, err := newConfigSource(path, isFile, r, environ)
 
 	l := &Loaded{File: s.file, Warnings: s.warnings}
 	if err != nil {
@@ -453,8 +477,8 @@ func Load(path string, isFile bool, environ []string) (*Loaded, error) {
 // newConfigSource loads defaults, the config file found via path/isFile and
 // environ (os.Environ form), and rejects removed and unknown file keys. The
 // source is returned with what it found even on error.
-func newConfigSource(path string, isFile bool, environ []string) (*configSource, error) {
-	s := &configSource{k: koanf.New("."), envVars: map[string]string{}}
+func newConfigSource(path string, isFile bool, r read, environ []string) (*configSource, error) {
+	s := &configSource{k: koanf.New("."), envVars: map[string]string{}, read: r}
 	s.file = findConfigFile(path, isFile, environ)
 
 	d := Default()
@@ -481,21 +505,29 @@ func newConfigSource(path string, isFile bool, environ []string) (*configSource,
 // loadFile reads and parses s.file. What the file says fails as a
 // ConfigError, which serve does not retry; only reading it fails otherwise.
 func (s *configSource) loadFile() error {
-	parser, err := configParser(s.file)
+	ext := filepath.Ext(s.file)
+	if s.read.data != nil {
+		ext = s.read.ext
+	}
+
+	parser, err := configParser(ext)
 	if err != nil {
 		return &types.ConfigError{Reason: fmt.Sprintf("%s (%s)", err, s.file), Cause: err}
 	}
 
-	raw, err := os.ReadFile(s.file)
-	if err != nil {
-		return fmt.Errorf("fatal error reading config file: %w", err)
+	raw := s.read.data
+	if raw == nil {
+		raw, err = readFile(s.file, s.read.limit)
+		if err != nil {
+			return fmt.Errorf("fatal error reading config file: %w", err)
+		}
 	}
 
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
 	}
 
-	if strings.EqualFold(filepath.Ext(s.file), ".hujson") {
+	if strings.EqualFold(ext, ".hujson") {
 		// Comments and trailing commas become spaces, so line numbers, and
 		// error positions with them, still point into the file.
 		raw, err = hujson.Standardize(raw)
@@ -512,7 +544,7 @@ func (s *configSource) loadFile() error {
 	if err != nil {
 		return &types.ConfigError{
 			Reason: "cannot parse config file " + s.file,
-			Detail: parseDetail(filepath.Ext(s.file), s.fileBytes, err),
+			Detail: parseDetail(ext, s.fileBytes, err),
 		}
 	}
 
@@ -1133,7 +1165,7 @@ func providerText(v any) any {
 // config file's directory, or the working directory without a file.
 func (s *configSource) configDir() string {
 	dir := "."
-	if s.file != "" {
+	if s.file != "" && s.read.data == nil {
 		dir = filepath.Dir(s.file)
 	}
 

@@ -453,6 +453,12 @@ func TestSecretChecks(t *testing.T) {
 			"get: " + errSecret.Error() + "\nget: " + errSecretEnds.Error(),
 		},
 		{
+			// So no Failed text is printed past a secret's rule.
+			"a Secret on a Text",
+			[]Node{New(Spec[testS, NoInput, Text]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, Text], Secret: func(Text) string { return "" }})},
+			"get: " + errVerbatim.Error() + "\n" + errSecret.Error() + "\nget: " + errSecretEnds.Error(),
+		},
+		{
 			"a secret a struct down",
 			[]Node{New(Spec[testS, NoInput, nested]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, nested], Done: func(NoInput, nested, time.Time) string { return "" }})},
 			"get: " + errSecret.Error(),

@@ -4,11 +4,13 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/netip"
 	"net/url"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +40,7 @@ func Validate(c *types.Config) error {
 	v := &configValidator{}
 
 	validateValues(c, v)
+	validateNotRedacted(c, v)
 
 	// OIDC is activated by setting oidc.issuer (see app.go), not by a
 	// dedicated oidc.enabled key. Gate validation on the real activation
@@ -276,6 +279,65 @@ func validateValues(c *types.Config, v *configValidator) {
 			validateValue(v, key, elem)
 		}
 	}
+}
+
+// redactedValue is what a redacted copy of a configuration, as generate
+// config --running prints one, holds in place of a secret.
+const redactedValue = "<redacted>"
+
+// validateNotRedacted refuses a secret that is the placeholder of a redacted
+// copy: a server would start on it, then fail at its first connection to the
+// database or login, and be restarted for ever. Only the server's keys: the
+// redacted copy has no cli section.
+func validateNotRedacted(c *types.Config, v *configValidator) {
+	add := func(key string) {
+		v.Add(&types.ConfigError{
+			Reason: key + " is " + redactedValue + ": this is a redacted copy of a configuration",
+			Hint:   "set " + key + " to its real value, or to file:<path>",
+		})
+	}
+
+	for _, f := range types.ConfigFields(c) {
+		if clientOnly(f.Path) {
+			continue
+		}
+
+		if s, ok := reflect.TypeAssert[types.Secret](f.Value); ok && s == redactedValue {
+			add(f.Path)
+		}
+
+		if f.Path == providerKey {
+			for _, key := range redactedLeaves(f.Path, f.Value.Interface()) {
+				add(key)
+			}
+		}
+	}
+}
+
+// redactedLeaves are the keys below path whose value is the placeholder.
+func redactedLeaves(path string, v any) []string {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make([]string, 0, len(x))
+		for _, k := range slices.Sorted(maps.Keys(x)) {
+			out = append(out, redactedLeaves(path+"."+k, x[k])...)
+		}
+
+		return out
+	case []any:
+		out := make([]string, 0, len(x))
+		for i, e := range x {
+			out = append(out, redactedLeaves(fmt.Sprintf("%s[%d]", path, i), e)...)
+		}
+
+		return out
+	case string:
+		if x == redactedValue {
+			return []string{path}
+		}
+	}
+
+	return nil
 }
 
 func validateValue(v *configValidator, key string, val reflect.Value) {

@@ -301,7 +301,7 @@ func TestCheckAll(t *testing.T) {
 		cfg := writeServerConfig(t, dir, fmt.Sprintf("policy:\n  path: policy.hujson\nderp:\n  paths: [%q]\n", derpMap))
 
 		out, err := runCheck(t, checkAllCmd, cfg)
-		require.ErrorIs(t, err, errCheckFailed)
+		require.ErrorIs(t, err, config.ErrCheckFailed)
 		require.ErrorContains(t, err, "1 of 3 files")
 
 		// Keys are padded to the longest, noise.private_key_path.
@@ -332,7 +332,7 @@ func TestCheckAll(t *testing.T) {
 		cfg := writeFile(t, dir, "config.yaml", "server_url: ftp://x\n")
 
 		out, err := runCheck(t, checkAllCmd, cfg)
-		require.ErrorIs(t, err, errCheckFailed)
+		require.ErrorIs(t, err, config.ErrCheckFailed)
 		require.True(t, strings.HasPrefix(out, "FAIL  config  "+cfg+"\n"), out)
 		require.Contains(t, out, "server_url")
 	})
@@ -547,4 +547,23 @@ func TestCheckConfigWarnings(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestCheckFileNamedDash: the old commands read no stdin; "-" is a file of
+// that name, as it always was.
+func TestCheckFileNamedDash(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	env := []string{"HOME=" + t.TempDir()}
+
+	stdout, _, err := runHeadscale(t, env, "check", "all", "-f", "-")
+	require.Error(t, err)
+	require.True(t, strings.HasPrefix(stdout, "FAIL  config  -\n"), stdout)
+
+	writeFile(t, ".", "-", `{"Regions": {"900": {"RegionID": 900, "RegionCode": "t", "Nodes": [{"Name": "a", "RegionID": 900, "HostName": "d.example.com"}]}}}`)
+
+	stdout, stderr, err := runHeadscale(t, env, "check", "derp-map", "-f", "-")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Contains(t, stderr, "unknown file format, want .json, .hujson, .yaml or .yml")
 }

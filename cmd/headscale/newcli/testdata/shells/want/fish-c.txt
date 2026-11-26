@@ -1,10 +1,13 @@
 LINE: headscale |
   api	Authentication towards the headscale API
   auth	Authentication of nodes to headscale
+  check	Check files offline: no server, no database, no prompt
   completion	Print the completion script of a shell
   debug	A health check and test tools
+  generate	Print a key, a config file or the pages made from the code
   nodes	Manage nodes
   policy	Read, check and replace the policy
+  serve	Run the control server
   users	Manage users
   version	Print the version
 LINE: headscale ve|
@@ -70,10 +73,13 @@ LINE: headscale version -o json --|
 LINE: headscale -c -o |
   api	Authentication towards the headscale API
   auth	Authentication of nodes to headscale
+  check	Check files offline: no server, no database, no prompt
   completion	Print the completion script of a shell
   debug	A health check and test tools
+  generate	Print a key, a config file or the pages made from the code
   nodes	Manage nodes
   policy	Read, check and replace the policy
+  serve	Run the control server
   users	Manage users
   version	Print the version
 LINE: headscale -c x ve|
@@ -81,10 +87,13 @@ LINE: headscale -c x ve|
 LINE: headscale nodez |
   api	Authentication towards the headscale API
   auth	Authentication of nodes to headscale
+  check	Check files offline: no server, no database, no prompt
   completion	Print the completion script of a shell
   debug	A health check and test tools
+  generate	Print a key, a config file or the pages made from the code
   nodes	Manage nodes
   policy	Read, check and replace the policy
+  serve	Run the control server
   users	Manage users
   version	Print the version
 LINE: headscale versoin --|
@@ -136,10 +145,13 @@ LINE: headscale -h ve|
 LINE: headscale --version |
   api	Authentication towards the headscale API
   auth	Authentication of nodes to headscale
+  check	Check files offline: no server, no database, no prompt
   completion	Print the completion script of a shell
   debug	A health check and test tools
+  generate	Print a key, a config file or the pages made from the code
   nodes	Manage nodes
   policy	Read, check and replace the policy
+  serve	Run the control server
   users	Manage users
   version	Print the version
 LINE: headscale no|
@@ -230,6 +242,27 @@ LINE: headscale nodes list --filter=ow|
 LINE: headscale policy set |
   config.yaml
   policy.hujson
+LINE: headscale check config |
+  config.yaml
+  policy.hujson
+LINE: headscale check policy |
+  config.yaml
+  policy.hujson
+LINE: headscale check |
+  all	Check the config and every file it points at
+  config	Check a config file
+  derp-map	Check a DERP map file
+  extra-records	Check an extra records file
+  policy	Check a policy file and run its tests
+LINE: headscale generate |
+  cli-reference	Print the reference page of the command line
+  config	Print a configuration file with every key
+  man	Print the man page
+  nixos-options	Print the NixOS options for services.headscale.settings
+  private-key	Print a new private key
+LINE: headscale serve --|
+  --config	Config file
+  --help	Show this help
 LINE: headscale nodes list |
   (none)
 LINE: headscale nodes delete |

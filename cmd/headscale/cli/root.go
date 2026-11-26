@@ -2,13 +2,12 @@ package cli
 
 import (
 	"cmp"
-	"fmt"
-	"io"
 	"os"
 	"runtime"
 	"slices"
 	"strings"
 
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
@@ -68,33 +67,7 @@ func skipsInitConfig(args []string) bool {
 // headscale under each $XDG_CONFIG_DIRS entry, ~/.headscale or ".". Without
 // a file it loads defaults and environment only. The result is never nil.
 func loadConfig(path string) (*config.Loaded, error) {
-	path = cmp.Or(path, cfgFile, os.Getenv("HEADSCALE_CONFIG"))
-
-	l, err := config.Load(path, path != "", os.Environ())
-	switch {
-	case err != nil && path != "":
-		return l, fmt.Errorf("loading config file %s: %w", path, err)
-	case err != nil:
-		return l, fmt.Errorf("loading config: %w", err)
-	}
-
-	return l, nil
-}
-
-// useLogConfig applies cfg's log.level, and logs to w as JSON when cfg sets
-// log.format: json.
-func useLogConfig(cfg *types.Config, w io.Writer) {
-	zerolog.SetGlobalLevel(cfg.Log.Level.Zerolog())
-
-	if cfg.Log.Format == types.JSONLogFormat {
-		log.Logger = log.Output(w)
-	}
-}
-
-func logWarnings(warnings []string) {
-	for _, w := range warnings {
-		log.Warn().Msg(w)
-	}
+	return config.LoadFile(cmp.Or(path, cfgFile, os.Getenv("HEADSCALE_CONFIG")), os.Environ())
 }
 
 func initConfig() {
@@ -110,7 +83,7 @@ func initConfig() {
 	l, err := loadConfig("")
 	if err != nil {
 		// No log.format applies: main's console logger, on stderr.
-		logWarnings(l.Warnings)
+		hscontrol.LogWarnings(l.Warnings)
 
 		// A Cobra initializer cannot return err to Execute; report it the same way.
 		cmd, _, _ := rootCmd.Find(os.Args[1:])
@@ -126,9 +99,9 @@ func initConfig() {
 		logOut = os.Stderr
 	}
 
-	useLogConfig(cfg, logOut)
+	hscontrol.UseLogConfig(cfg, logOut)
 
-	logWarnings(l.Warnings)
+	hscontrol.LogWarnings(l.Warnings)
 
 	// If the user has requested a "node" readable format,
 	// then disable login so the output remains valid.

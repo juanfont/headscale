@@ -1,4 +1,4 @@
-# headscale: 206 rows: pass 191 seen 3 waits 12
+# headscale: 206 rows: pass 203 seen 3
 # model: 206 rows: pass 203 seen 3
 headscale	T01	pass
 headscale	T02	pass
@@ -8,13 +8,13 @@ headscale	T05	pass
 headscale	T06	pass
 headscale	T07	pass
 headscale	T08	pass
-headscale	T09	waits	check config
-headscale	T10	waits	check config
-headscale	T11	waits	serve
+headscale	T09	pass
+headscale	T10	pass
+headscale	T11	pass
 headscale	T12	pass
 headscale	T13	pass
 headscale	T14	pass
-headscale	T15	waits	check
+headscale	T15	pass
 headscale	H01	pass
 headscale	H02	pass
 headscale	H03	pass
@@ -96,10 +96,10 @@ headscale	G03	pass
 headscale	G04	pass
 headscale	G05	pass
 headscale	G06	pass
-headscale	G07	waits	check config
-headscale	G08	waits	check config
+headscale	G07	pass
+headscale	G08	pass
 headscale	G09	pass
-headscale	G10	waits	serve
+headscale	G10	pass
 headscale	G11	pass
 headscale	L01	pass
 headscale	L02	pass
@@ -132,7 +132,7 @@ headscale	E15	pass
 headscale	E16	pass
 headscale	E17	pass
 headscale	E18	pass
-headscale	E19	waits	check config
+headscale	E19	pass
 headscale	E20	pass
 headscale	E21	pass
 headscale	E22	pass
@@ -141,8 +141,8 @@ headscale	E24	pass
 headscale	E25	pass
 headscale	E26	pass
 headscale	E27	pass
-headscale	P01	waits	check config
-headscale	P02	waits	check config
+headscale	P01	pass
+headscale	P02	pass
 headscale	P03	pass
 headscale	P04	pass
 headscale	P05	pass
@@ -163,7 +163,7 @@ headscale	D07	pass
 headscale	D08	pass
 headscale	A01	pass
 headscale	A02	pass
-headscale	A03	waits	check config
+headscale	A03	pass
 headscale	A04	pass
 headscale	A05	pass
 headscale	R01	pass
@@ -205,7 +205,7 @@ headscale	J09	pass
 headscale	J10	pass
 headscale	J11	pass
 headscale	J12	pass
-headscale	J13	waits	check config
+headscale	J13	pass
 model	T01	pass
 model	T02	pass
 model	T03	pass

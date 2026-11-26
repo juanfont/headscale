@@ -14,6 +14,24 @@ import (
 // validation" without caring which rule triggered.
 var ErrConfig = errors.New("headscale: config validation")
 
+// ExitConfig is EX_CONFIG from sysexits.h. serve exits with it when its
+// configuration is the cause, which a restart with the same inputs cannot
+// fix, so the systemd units set RestartPreventExitStatus to it.
+const ExitConfig = 78
+
+// ServeExitCode is how serve exits on err, file being the configuration
+// file it loaded: ExitConfig when serve stops on what that configuration
+// says; 1 otherwise. Without a file, the one expected may be on a mount not
+// yet up, and a database, a port or a file the configuration names may yet
+// become available, so systemd keeps retrying those.
+func ServeExitCode(file string, err error) int {
+	if file != "" && errors.Is(err, ErrConfig) {
+		return ExitConfig
+	}
+
+	return 1
+}
+
 // ConfigError is a structured config-validation error. Pointer receivers
 // throughout, following the stdlib convention (*net.OpError,
 // *os.PathError, *url.Error). Implements error, Unwrap, Is. errors.As

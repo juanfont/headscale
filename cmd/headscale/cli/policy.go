@@ -8,6 +8,7 @@ import (
 	"os"
 
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
@@ -27,7 +28,7 @@ func bypassDatabase() (*db.HSDatabase, error) {
 	cfg := serverConfig()
 
 	err := config.Validate(cfg)
-	logWarnings(config.Warnings(cfg))
+	hscontrol.LogWarnings(config.Warnings(cfg))
 
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)

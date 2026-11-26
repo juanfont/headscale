@@ -60,7 +60,7 @@ var completionCases = []cliCase{
 	{
 		name:   "Tab offers the commands",
 		args:   "__complete ''",
-		stdout: "version\tPrint the version\ncompletion\tPrint the completion script of a shell\nnodes\tManage nodes\nusers\tManage users\nauth\tAuthentication of nodes to headscale\napi\tAuthentication towards the headscale API\npolicy\tRead, check and replace the policy\ndebug\tA health check and test tools\n:4\n",
+		stdout: "serve\tRun the control server\nversion\tPrint the version\ncheck\tCheck files offline: no server, no database, no prompt\ngenerate\tPrint a key, a config file or the pages made from the code\ncompletion\tPrint the completion script of a shell\nnodes\tManage nodes\nusers\tManage users\nauth\tAuthentication of nodes to headscale\napi\tAuthentication towards the headscale API\npolicy\tRead, check and replace the policy\ndebug\tA health check and test tools\n:4\n",
 	},
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/cmdline"
 	lib "github.com/juanfont/headscale/cmdline/command"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 )
@@ -35,6 +36,7 @@ type (
 	NoInput         = lib.NoInput
 	NoOutput        = lib.NoOutput
 	Said            = lib.Said
+	Text            = lib.Text
 	Opt[T any]      = lib.Opt[T]
 	Path            = lib.Path
 	OneOf[W Words]  = lib.OneOf[W]
@@ -50,6 +52,12 @@ func New[In, Out any](s Spec[In, Out]) Node { return lib.New(s) }
 
 // NewList makes the command of a list spec.
 func NewList[In, Row any](s ListSpec[In, Row]) Node { return lib.NewList(s) }
+
+// Failed is lib.Failed: a text printed and a run that fails.
+func Failed(err error) error { return lib.Failed(err) }
+
+// ExitCode is lib.ExitCode: err, ending the run with code.
+func ExitCode(code int, err error) error { return lib.ExitCode(code, err) }
 
 // Script writes the completion script of shell for program.
 func Script(w io.Writer, shell OneOf[Shells], program string) error {
@@ -235,8 +243,14 @@ func program(name, short string) lib.Program[*API] {
 
 		Aliases:   []string{"ls", "rm", "approve"},
 		ConfigEnv: "HEADSCALE_CONFIG",
-		MaxFile:   maxRead,
+		MaxFile:   config.MaxFileSize,
 		Server:    "a running headscale",
+		Doc: lib.Doc{
+			Reference: "headscale generate cli-reference",
+			Man:       "headscale generate man",
+			Source:    "cmd/headscale",
+			SeeAlso:   "https://headscale.net/stable/ref/cli/",
+		},
 	}
 }
 
@@ -253,7 +267,3 @@ func credentials() lib.Credentials {
 }
 
 const hskey = "hskey-"
-
-// maxRead is the most ReadFile reads: more than any file a command takes,
-// and an end for a device that never ends, such as /dev/zero.
-const maxRead = 16 << 20

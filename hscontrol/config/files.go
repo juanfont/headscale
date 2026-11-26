@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
-	"github.com/juanfont/headscale/hscontrol/derp"
 	"github.com/juanfont/headscale/hscontrol/dns"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -125,7 +125,7 @@ func secretFiles(cfg *types.Config) []File {
 // CheckPolicyFile checks a policy file as "headscale check policy" does,
 // tests and sshTests included.
 func CheckPolicyFile(path string) error {
-	b, err := os.ReadFile(path)
+	b, err := readFile(path, MaxFileSize)
 	if err != nil {
 		return err
 	}
@@ -169,16 +169,22 @@ func PolicyRefusal(pol []byte, err error) map[string]any {
 
 // CheckDERPMapFile parses a DERP map file as startup loads derp.paths.
 func CheckDERPMapFile(path string) error {
-	_, err := derp.GetDERPMap(types.DERPConfig{Paths: []string{path}}, "")
+	b, err := readFile(path, MaxFileSize)
+	if err != nil {
+		return fmt.Errorf("reading DERP map: %w", err)
+	}
 
-	return err
+	return CheckDERPMapData(path, filepath.Ext(path), b)
 }
 
 // CheckExtraRecordsFile parses a dns.extra_records_path file.
 func CheckExtraRecordsFile(path string) error {
-	_, _, err := dns.ReadExtraRecordsFromPath(path)
+	b, err := readFile(path, MaxFileSize)
+	if err != nil {
+		return fmt.Errorf("reading path: %s, err: %w", path, err)
+	}
 
-	return err
+	return CheckExtraRecordsData(path, filepath.Ext(path), b)
 }
 
 // ReadPrivateKey reads and parses a key file.

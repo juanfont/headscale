@@ -1,11 +1,18 @@
 package newcli
 
 import (
+	"bufio"
+	"context"
+	"encoding/json"
 	"errors"
 	"maps"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -291,4 +298,158 @@ func badNodes(tb testing.TB, f *fixture) {
 	} {
 		f.srv.State().PutNodeInStoreForTest(*n)
 	}
+}
+
+// mockOIDCEnv sets up debug mockoidc on a free port, which {port} names.
+func mockOIDCEnv(tb testing.TB, f *fixture) {
+	tb.Helper()
+
+	l, err := new(net.ListenConfig).Listen(tb.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(tb, err)
+
+	addr, ok := l.Addr().(*net.TCPAddr)
+	require.True(tb, ok)
+
+	f.vars["port"] = strconv.Itoa(addr.Port)
+
+	require.NoError(tb, l.Close())
+}
+
+// servesDiscovery waits until the mock OIDC server at {port} answers its
+// discovery document, and keeps its issuer as {issuer}.
+func servesDiscovery(ctx context.Context, f *fixture) {
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+
+	url := "http://127.0.0.1:" + f.vars["port"] + "/oidc/.well-known/openid-configuration"
+
+	for {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			var doc struct {
+				Issuer string `json:"issuer"`
+			}
+
+			_ = json.NewDecoder(resp.Body).Decode(&doc)
+			resp.Body.Close()
+
+			f.vars["issuer"] = doc.Issuer
+
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+var mockOIDCEnvs = []string{
+	"MOCKOIDC_ADDR=127.0.0.1", "MOCKOIDC_PORT={port}", "MOCKOIDC_CLIENT_ID=superclient",
+	"MOCKOIDC_CLIENT_SECRET=supersecret", "MOCKOIDC_USERS=[]",
+}
+
+var mockOIDCCases = []cliCase{
+	{
+		name:  "serves until it is stopped",
+		args:  "debug mockoidc",
+		env:   mockOIDCEnvs,
+		until: servesDiscovery,
+		check: func(tb testing.TB, f *fixture, _ result) {
+			tb.Helper()
+			require.Equal(
+				tb,
+				"http://127.0.0.1:"+f.vars["port"]+"/oidc",
+				f.vars["issuer"],
+			)
+		},
+	},
+	{
+		name:   "a variable that is missing",
+		args:   "debug mockoidc",
+		code:   1,
+		stderr: "Error: running mock OIDC server: MOCKOIDC_CLIENT_ID not defined\n",
+	},
+	{
+		name:   "users that are not JSON",
+		args:   "debug mockoidc",
+		env:    append(slices.Clone(mockOIDCEnvs), "MOCKOIDC_USERS=x"),
+		code:   1,
+		stderr: "Error: running mock OIDC server: unmarshalling users: invalid character 'x' looking for beginning of value\n",
+	},
+	{
+		name:   "reads no config",
+		args:   "debug mockoidc -c x.yaml",
+		code:   1,
+		stderr: "Error: --config does not apply to `debug mockoidc`.\nRun `headscale debug mockoidc --help`.\n",
+	},
+	{
+		name:   "no --output",
+		args:   "debug mockoidc -o json",
+		code:   1,
+		stderr: "Error: --output does not apply to `debug mockoidc`.\nRun `headscale debug mockoidc --help`.\n",
+	},
+	{
+		name:   "the old name points here",
+		args:   "mockoidc",
+		code:   1,
+		stderr: "Error: unknown command \"mockoidc\". It is now \"debug mockoidc\".\nRun `headscale debug mockoidc --help`.\n",
+	},
+}
+
+func TestDebugMockOIDC(t *testing.T) {
+	t.Parallel()
+
+	runCases(t, mockOIDCEnv, mockOIDCCases)
+}
+
+// TestMockOIDCLogs runs debug mockoidc as a process: it logs that it
+// listens, as the old mockoidc does, though every command starts with the
+// log off.
+func TestMockOIDCLogs(t *testing.T) {
+	t.Parallel()
+
+	f := &fixture{vars: map[string]string{}}
+	mockOIDCEnv(t, f)
+
+	line, err := json.Marshal([]string{"debug", "mockoidc"})
+	require.NoError(t, err)
+
+	// A server that never says it listens is stopped, and the test fails.
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, os.Args[0]) //nolint:gosec // this test binary
+	cmd.Env = []string{"HOME=" + t.TempDir(), childLine + "=" + string(line)}
+
+	for _, e := range mockOIDCEnvs {
+		cmd.Env = append(cmd.Env, f.expand(e))
+	}
+
+	stderr, err := cmd.StderrPipe()
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+
+	var seen []string
+
+	for s := bufio.NewScanner(stderr); s.Scan(); {
+		seen = append(seen, s.Text())
+		if strings.Contains(
+			s.Text(),
+			"mock OIDC server listening on 127.0.0.1:"+f.vars["port"],
+		) {
+			return
+		}
+	}
+
+	t.Fatalf("no line says the server listens; stderr:\n%s", strings.Join(seen, "\n"))
 }

@@ -82,6 +82,15 @@ type Program[S any] struct {
 	// Server is what the root help says a server command talks to: "a
 	// running headscale".
 	Server string
+	// Doc says where the generated pages come from and lead to.
+	Doc Doc
+}
+
+// Doc is what the reference page and the man page say of themselves.
+type Doc struct {
+	// Reference and Man are the commands that print the pages, Source the
+	// place of the specs, SeeAlso the web page of the reference.
+	Reference, Man, Source, SeeAlso string
 }
 
 // program is a Program with its session erased, as the tree keeps it.
@@ -103,7 +112,7 @@ func erase[S any](p Program[S]) program {
 		Entities: p.Entities, Readers: p.Readers, Owner: p.Owner,
 		Credentials: p.Credentials, OpenFields: p.OpenFields,
 		Unprintable: p.Unprintable, Aliases: p.Aliases, ConfigEnv: p.ConfigEnv,
-		MaxFile: p.MaxFile, Server: p.Server,
+		MaxFile: p.MaxFile, Server: p.Server, Doc: p.Doc,
 		sessionType: reflect.TypeFor[S](),
 	}
 

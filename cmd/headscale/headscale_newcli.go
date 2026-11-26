@@ -12,9 +12,13 @@ import (
 
 	"github.com/juanfont/headscale/cmd/headscale/newcli"
 	"github.com/juanfont/headscale/cmd/headscale/newcli/command"
+	"github.com/rs/zerolog"
 )
 
 func main() {
+	// log.level's default, until serve reads the configuration.
+	consoleLog(zerolog.InfoLevel)
+
 	env := command.OSEnv()
 	env.Releases = releases("https://api.github.com/repos/juanfont/headscale/tags?per_page=100")
 

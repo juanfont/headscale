@@ -49,7 +49,8 @@ type Spec[S, In, Out any] struct {
 	// Aliases are only ls, rm and approve.
 	Aliases []string
 	// OldNames are the paths this command had before the redesign, such as
-	// "health"; an unknown command that is one of them points here.
+	// "health"; an unknown command that is one of them points here. One may
+	// end in the flags that the old command meant: "dumpConfig --running".
 	OldNames []string
 
 	// Local is a command that needs no server.
@@ -62,6 +63,15 @@ type Spec[S, In, Out any] struct {
 	// NoJSON is a test tool that prints one fixed format: it takes no
 	// --output.
 	NoJSON bool
+	// IgnoresConfig decides, for a command with ReadsConfig, that this
+	// input reads no config, such as a check of a file it names: --config
+	// and HEADSCALE_CONFIG are not looked at then.
+	IgnoresConfig func(in In) bool
+	// MissingConfig runs when the config file that --config or
+	// HEADSCALE_CONFIG names does not exist, before the run ends with the
+	// base's sentence: serve logs what the environment warns about, as it
+	// does for a file it loads.
+	MissingConfig func(c Ctx[S])
 	// NeedsChange is a command whose Opt flags each change a field, such as
 	// a set: a line that gives none of them is refused before any call.
 	NeedsChange bool
@@ -177,6 +187,56 @@ type NoOutput struct{}
 // What is what the command read before it acted, for Done to name. -o json
 // prints nothing, as for NoOutput.
 type Said struct{ What string }
+
+// Text is the result of a local command that prints a text and no object,
+// such as a generated file: it is printed as a Verbatim text is, so it
+// holds its own line ends, and the command has no --output. Only a Local
+// spec may have it: a server command prints the server's answer.
+type Text string
+
+// Failed is what a Run returns with its Text when the text is printed and
+// the run fails all the same, such as a report with a line that failed:
+// the builder prints the text, then err. With any other result it is err
+// alone, so a server command's error stays the server's, and no secret is
+// printed past its rule. Failed(nil) is nil.
+func Failed(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return &failure{err: err}
+}
+
+type failure struct{ err error }
+
+func (f *failure) Error() string { return f.err.Error() }
+func (f *failure) Unwrap() error { return f.err }
+
+// ExitCode is err, ending the run with code in place of 1, for a command
+// whose exit code a caller reads, such as serve under systemd. Only a Local
+// spec has it; elsewhere, and for a code outside 1 to 255, the run exits 1
+// as for any error. ExitCode(code, nil) is nil.
+func ExitCode(code int, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return &exitError{code: code, err: err}
+}
+
+type exitError struct {
+	code int
+	err  error
+}
+
+func (e *exitError) Error() string { return e.err.Error() }
+func (e *exitError) Unwrap() error { return e.err }
+
+// codedError is an ExitCode that the builder took: the only one Run reads.
+type codedError exitError
+
+func (e *codedError) Error() string { return e.err.Error() }
+func (e *codedError) Unwrap() error { return e.err }
 
 // Opt is a value that may be left out; [Opt.Get] says whether it was given.
 // As an argument it makes the argument optional.
@@ -405,6 +465,11 @@ func fromStdin(line *cmdline.Line) bool {
 // Stderr is stderr past no rule but the edge's: a warning written to it is
 // read also with -o json, unlike a Note, for what a script must see too.
 func (c *run) Stderr() io.Writer { return c.stderr }
+
+// ServerOutput is stdout for the log of a server that a command runs, as
+// serve does: past the rule at the edge, since a log is no sentence of the
+// CLI, and written while the command runs.
+func (c *run) ServerOutput() io.Writer { return c.raw }
 
 // Now is the time the command runs at.
 func (c *run) Now() time.Time { return c.now() }

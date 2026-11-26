@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -242,7 +243,7 @@ func TestReadFile(t *testing.T) {
 			tree,
 			[]string{"read", "-"},
 			Env{
-				Stdin:  io.LimitReader(zeros{}, 16<<20+1),
+				Stdin:  io.LimitReader(zeros{}, config.MaxFileSize+1),
 				Stdout: io.Discard,
 				Stderr: &stderr,
 			},

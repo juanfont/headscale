@@ -79,6 +79,10 @@ func Run(t *Tree, argv []string, env Env) int {
 
 	fmt.Fprintf(env.Stderr, "Error: %s\n", t.sentence(err))
 
+	if e, ok := errors.AsType[*codedError](err); ok {
+		return e.code
+	}
+
 	return 1
 }
 
@@ -146,38 +150,49 @@ func (t *Tree) run(argv []string, env Env, raw io.Writer, whole *[]wholeWord) er
 		ctx = context.Background()
 	}
 
-	c := &run{
-		ConfigFile: cmp.Or(
+	// A run that reads no config does not look at the one named, as a check
+	// of a file given before that file is put where HEADSCALE_CONFIG says.
+	configFile := ""
+	if l.reads(line) {
+		configFile = cmp.Or(
 			string(file.Config),
 			getenv(env.Environ, t.prog.ConfigEnv),
-		),
-		stdin:     env.Stdin,
-		stdout:    env.Stdout,
-		raw:       raw,
-		stderr:    env.Stderr,
-		program:   t.name,
-		Environ:   env.Environ,
-		terminal:  env.Terminal,
-		screen:    env.StdoutTerminal,
-		width:     env.Width,
-		askWidth:  env.StderrWidth,
-		colour:    env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
-		answers:   bufio.NewReader(stdin),
-		discard:   env.DiscardInput,
-		stdinFile: fromStdin(line),
-		local:     map[answerKey]json.RawMessage{},
-		line:      line,
-		json:      output.Output != "" || own.Output != "",
-		now:       env.Now,
-		tree:      t,
-		server:    l.server(line),
+		)
 	}
 
-	// A file that is named and not there is a mistake, for every command
-	// that takes one; finding none in the default places is not.
-	if l.config && c.ConfigFile != "" {
+	c := &run{
+		ConfigFile: configFile,
+		stdin:      env.Stdin,
+		stdout:     env.Stdout,
+		raw:        raw,
+		stderr:     env.Stderr,
+		program:    t.name,
+		Environ:    env.Environ,
+		terminal:   env.Terminal,
+		screen:     env.StdoutTerminal,
+		width:      env.Width,
+		askWidth:   env.StderrWidth,
+		colour:     env.StdoutTerminal && getenv(env.Environ, "NO_COLOR") == "",
+		answers:    bufio.NewReader(stdin),
+		discard:    env.DiscardInput,
+		stdinFile:  fromStdin(line),
+		local:      map[answerKey]json.RawMessage{},
+		line:       line,
+		json:       output.Output != "" || own.Output != "",
+		now:        env.Now,
+		tree:       t,
+		server:     l.server(line),
+	}
+
+	// A file that is named and not there is a mistake, for every run that
+	// reads one; finding none in the default places is not.
+	if c.ConfigFile != "" {
 		_, err := os.Stat(c.ConfigFile)
 		if errors.Is(err, fs.ErrNotExist) {
+			if l.missingConfig != nil {
+				l.missingConfig(c, ctx)
+			}
+
 			//nolint:err113,staticcheck // a sentence of the CLI
 			return fmt.Errorf("the config file %s does not exist.", c.ConfigFile)
 		}
@@ -331,7 +346,9 @@ func ctxOf[S any](ctx context.Context) Ctx[S] {
 // CtxOf is the Ctx of the run of ctx, the context a lookup gets.
 func CtxOf[S any](ctx context.Context) Ctx[S] { return ctxOf[S](ctx) }
 
-// getenv is the last value of name, as config.Load reads it.
+// getenv is the last value of name. A process holds each variable once, so
+// only a test or an embedder can give one twice; config.Load's search takes
+// the first HOME or XDG_* then.
 func getenv(environ []string, name string) string {
 	for _, kv := range slices.Backward(environ) {
 		if v, ok := strings.CutPrefix(kv, name+"="); ok {
@@ -387,6 +404,11 @@ func printOne[Out any](
 	blocks table.Blocks[Out],
 	done func() string,
 ) error {
+	// A Text is printed as a Verbatim text is: it is the whole result.
+	if text, ok := any(out).(Text); ok {
+		return writeVerbatim(c, string(text))
+	}
+
 	if isNoOutput[Out]() {
 		if c.json {
 			return nil
@@ -1109,6 +1131,8 @@ func (t *Tree) unknownCommand(path []string, word string) error {
 	typed := strings.Join(append(slices.Clone(path), word), " ")
 
 	if now, ok := t.oldNames[typed]; ok {
+		at, _, _ := strings.Cut(now, " -")
+
 		return usagef(
 			cmdline.UnknownCommand,
 			path,
@@ -1116,7 +1140,7 @@ func (t *Tree) unknownCommand(path []string, word string) error {
 			"unknown command %q. It is now %q.\nRun `%s --help`.",
 			typed,
 			now,
-			t.line(strings.Fields(now)),
+			t.line(strings.Fields(at)),
 		)
 	}
 

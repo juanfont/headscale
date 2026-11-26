@@ -64,6 +64,10 @@ theme:
 # Excludes
 exclude_docs: |
   /requirements.txt
+  # The pages of the new CLI, built until it replaces the old one: the swap
+  # removes these two lines and adds ref/cli.md to the navigation.
+  /ref/cli.md
+  /ref/headscale.1
 
 # Plugins
 plugins:

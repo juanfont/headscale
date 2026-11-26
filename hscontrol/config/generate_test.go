@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -425,4 +426,37 @@ func TestGenerateExampleMinimal(t *testing.T) {
 		assert.Equal(t, []string{"server_url", "noise"}, top)
 		assert.Equal(t, []string{"server_url", "noise.private_key_path"}, leaves)
 	})
+}
+
+// TestSecretNamesAreSecrets: a redacted configuration knows a secret by its
+// type, so a key whose name looks like a credential is a types.Secret, is
+// under the DNS provider, whose settings are all hidden, or is listed here
+// with the reason it is not one. A new key that fails here would be shown
+// as written by GET /config and /debug/config.
+func TestSecretNamesAreSecrets(t *testing.T) {
+	words := []string{"secret", "secrets", "password", "passwd", "pass", "token", "key", "apikey", "credential", "credentials", "auth"}
+
+	notSecrets := map[string]string{
+		"oidc.use_expiry_from_token": "a switch, whether a node expires with its token",
+	}
+
+	d := Default()
+	for _, f := range types.ConfigFields(&d) {
+		name := f.Path[strings.LastIndex(f.Path, ".")+1:]
+		parts := strings.Split(name, "_")
+
+		// A file that holds a key is a path, shown as written, as a file:
+		// reference is.
+		if parts[len(parts)-1] == "path" || !slices.ContainsFunc(parts, func(p string) bool { return slices.Contains(words, p) }) {
+			continue
+		}
+
+		switch {
+		case f.Field.Type == reflect.TypeFor[types.Secret]():
+		case f.Path == providerKey || strings.HasPrefix(f.Path, providerKey+"."):
+		case notSecrets[f.Path] != "":
+		default:
+			t.Errorf("%s looks like a credential and is a %s: make it a types.Secret, or say here why it is none", f.Path, f.Field.Type)
+		}
+	}
 }

@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/config"
+	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 )
@@ -212,4 +215,205 @@ func TestGetHealth(t *testing.T) {
 			},
 		}}, p.Details)
 	})
+}
+
+// TestGetConfig: GET /config is what generate config prints for the running
+// configuration, redacted and without the cli section, and reads like the
+// rest of the server. It needs all: the answer names internal hosts, paths
+// and accounts, which all:read does not open.
+func TestGetConfig(t *testing.T) {
+	b := newBackend(t)
+	b.Cfg.OIDC.ClientSecret = "marker-oidc-secret"
+	api := newTestAPI(t, b)
+
+	key, _, err := b.State.CreateAPIKey(nil)
+	require.NoError(t, err)
+
+	for _, docs := range []bool{true, false} {
+		path := Prefix + "/config"
+		if !docs {
+			path += "?docs=false"
+		}
+
+		rec := api.Get(path, "Authorization: Bearer "+key)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		require.Equal(t, "application/yaml", rec.Header().Get("Content-Type"))
+
+		want, err := config.GenerateExample(
+			b.Cfg,
+			config.ExampleOptions{Docs: docs, Redact: true, OmitClientOnly: true},
+		)
+		require.NoError(t, err)
+		require.Equal(t, string(want), rec.Body.String())
+		require.NotContains(t, rec.Body.String(), "marker-oidc-secret")
+	}
+
+	for _, scopes := range []string{"all", "all:read", "users:read"} {
+		_, client, err := b.State.CreateOAuthClient([]string{scopes}, nil, "ci", nil)
+		require.NoError(t, err)
+
+		token, _, err := b.State.MintAccessToken(
+			client.ClientID,
+			[]string{scopes},
+			nil,
+			new(time.Now().Add(time.Hour)),
+		)
+		require.NoError(t, err)
+
+		rec := api.Get(Prefix+"/config", "Authorization: Bearer "+token)
+		if scopes == "all" {
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+			continue
+		}
+
+		p := decodeProblem(t, rec, CodeForbidden)
+		require.Equal(t, []any{"all"}, p.Details["scopes"], scopes)
+	}
+}
+
+// TestGetConfigHidesEverySecret: every secret of the configuration, the
+// userinfo of every URL and every setting of every DNS provider but its
+// name, set to a marker in the file and in the environment, is nowhere in
+// GET /config. A secret that a new key declares as a plain string fails
+// here; TestSecretNamesAreSecrets says which key.
+func TestGetConfigHidesEverySecret(t *testing.T) {
+	b := newBackend(t)
+	api := newTestAPI(t, b)
+
+	key, _, err := b.State.CreateAPIKey(nil)
+	require.NoError(t, err)
+
+	d := config.Default()
+
+	file := map[string]any{}
+	env := []string{}
+
+	set := func(path string, v any) {
+		m := file
+
+		parts := strings.Split(path, ".")
+		for _, p := range parts[:len(parts)-1] {
+			if m[p] == nil {
+				m[p] = map[string]any{}
+			}
+
+			m = m[p].(map[string]any) //nolint:forcetypeassert // built here
+		}
+
+		m[parts[len(parts)-1]] = v
+
+		b, err := json.Marshal(v)
+		require.NoError(t, err)
+
+		text := string(b)
+		if s, ok := v.(string); ok {
+			text = s
+		}
+
+		env = append(
+			env,
+			"HEADSCALE_"+strings.ToUpper(strings.ReplaceAll(path, ".", "_"))+"="+text,
+		)
+	}
+
+	for _, f := range types.ConfigFields(&d) {
+		switch f.Field.Type {
+		case reflect.TypeFor[types.Secret]():
+			set(f.Path, "marker-"+f.Path)
+		case reflect.TypeFor[types.HTTPURL]():
+			set(
+				f.Path,
+				"https://marker-user:marker-pass@"+strings.ReplaceAll(
+					f.Path,
+					".",
+					"-",
+				)+".example.com/x",
+			)
+		case reflect.TypeFor[[]types.HTTPURL]():
+			set(f.Path, []string{"https://marker-user:marker-pass@a.example.com/x"})
+		}
+	}
+
+	for _, name := range dns.ProviderNames() {
+		provider := map[string]any{ //nolint:gosec // markers, not credentials
+			"name":       name,
+			"api_token":  "marker-token",
+			"api_key":    "marker-key",
+			"key":        "marker-key",
+			"key_name":   "marker-key-name",
+			"server":     "marker-server",
+			"server_url": "https://marker-user:marker-pass@dns.example.com",
+			"username":   "marker-user",
+			"port":       4242424242,
+			"config": map[string]any{
+				"tailnet.example.com": map[string]any{"password": "marker-password"},
+			},
+		}
+		set("dns.challenge.provider", provider)
+
+		fileJSON, err := json.Marshal(file)
+		require.NoError(t, err)
+
+		fromFile, err := config.LoadData("config.json", ".json", fileJSON, nil)
+		require.NoError(t, err)
+
+		fromEnv, err := config.Load("", true, env)
+		require.NoError(t, err)
+
+		for source, cfg := range map[string]*types.Config{"file": fromFile.Config, "environment": fromEnv.Config} {
+			// What the source set reached the configuration.
+			require.Equal(
+				t,
+				types.Secret("marker-oidc.client_secret"),
+				cfg.OIDC.ClientSecret,
+				source,
+			)
+			require.Contains(t, string(cfg.OIDC.Issuer), "marker-user", source)
+			require.Equal(
+				t,
+				"marker-token",
+				cfg.DNSConfig.Challenge.ProviderSettings["api_token"],
+				source,
+			)
+
+			*b.Cfg = *cfg
+
+			for _, path := range []string{Prefix + "/config", Prefix + "/config?docs=false"} {
+				rec := api.Get(path, "Authorization: Bearer "+key)
+				require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+				body := rec.Body.String()
+				require.Contains(
+					t,
+					body,
+					"name: "+name,
+					"%s, %s: the name is shown",
+					name,
+					source,
+				)
+				require.NotContains(
+					t,
+					body,
+					"4242424242",
+					"%s, %s: a number is a setting too, and hidden",
+					name,
+					source,
+				)
+
+				for line := range strings.Lines(body) {
+					require.NotContains(
+						t,
+						line,
+						"marker",
+						"%s, %s: %s",
+						name,
+						source,
+						path,
+					)
+				}
+			}
+		}
+
+		env = env[:len(env)-1]
+	}
 }

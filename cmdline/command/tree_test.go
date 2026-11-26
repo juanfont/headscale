@@ -152,6 +152,29 @@ func TestBuildChecks(t *testing.T) {
 			"get: " + errVerbatim.Error(),
 		},
 		{
+			"a Text with Done",
+			[]Node{New(Spec[testS, NoInput, Text]{
+				Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Local: true, Run: noop[NoInput, Text],
+				Done: func(NoInput, Text, time.Time) string { return "done" },
+			})},
+			"get: " + errVerbatim.Error(),
+		},
+		{
+			"a Text of a server command",
+			[]Node{New(Spec[testS, NoInput, Text]{Name: "get", Short: "S", Long: "S.", Example: []string{"prog get"}, Run: noop[NoInput, Text]})},
+			"get: " + errTextLocal.Error(),
+		},
+		{
+			"IgnoresConfig without ReadsConfig",
+			[]Node{New(func() Spec[testS, NoInput, item] {
+				s := spec()
+				s.IgnoresConfig = func(NoInput) bool { return true }
+
+				return s
+			}())},
+			"get: " + errIgnores.Error(),
+		},
+		{
 			"a list with no default column",
 			[]Node{NewList(ListSpec[testS, NoInput, item]{
 				Name: "list", Short: "List", Long: "List.", Example: []string{"prog list"}, Local: true,

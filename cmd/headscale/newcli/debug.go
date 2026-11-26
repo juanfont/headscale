@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/cmd/headscale/mockoidc"
 	"github.com/juanfont/headscale/cmd/headscale/newcli/command"
 	"github.com/juanfont/headscale/cmdline/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
@@ -14,7 +15,7 @@ import (
 var debugGroup = command.Group{
 	Name:     "debug",
 	Short:    "A health check and test tools",
-	Commands: []command.Node{debugHealth, debugCreateNode},
+	Commands: []command.Node{debugHealth, debugCreateNode, debugMockOIDC},
 }
 
 // errUnhealthy is a 200 whose body says the server is not healthy; a
@@ -155,5 +156,26 @@ hskey-authreq-***, so keep it for auth register:
 		return "Registration of " + strconv.Quote(
 			name,
 		) + " waits: headscale auth register <auth-id> <user> answers it."
+	},
+})
+
+var debugMockOIDC = command.New(command.Spec[command.NoInput, command.NoOutput]{
+	Name:  "mockoidc",
+	Short: "Run a mock OIDC server for tests",
+	Long: `Run a mock OpenID Connect server until it gets SIGINT or SIGTERM. It is a
+test tool for the integration tests: unstable, and outside the rules of the
+rest of the CLI.
+
+It reads no headscale config. The environment sets it up: MOCKOIDC_ADDR and
+MOCKOIDC_PORT where it listens, MOCKOIDC_CLIENT_ID and
+MOCKOIDC_CLIENT_SECRET, MOCKOIDC_USERS (a JSON list of users, served in
+order), and MOCKOIDC_ACCESS_TTL (a Go duration, with a default when unset).`,
+	Example: []string{
+		`MOCKOIDC_ADDR=127.0.0.1 MOCKOIDC_PORT=10000 MOCKOIDC_CLIENT_ID=superclient MOCKOIDC_CLIENT_SECRET=supersecret MOCKOIDC_USERS='[]' headscale debug mockoidc`,
+	},
+	OldNames: []string{"mockoidc"},
+	Local:    true,
+	Run: func(c command.Ctx, _ command.NoInput) (command.NoOutput, error) {
+		return command.NoOutput{}, mockoidc.Run(c, c.Environ)
 	},
 })

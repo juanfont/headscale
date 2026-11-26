@@ -1,5 +1,5 @@
 LINE: headscale |
-LISTED: [headscale  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             users       (Manage users) / auth        (Authentication of nodes to headscale)      nodes       (Manage nodes)                              version     (Print the version) / completion  (Print the completion script of a shell)    policy      (Read, check and replace the policy)         / $ headscale ]
+LISTED: [headscale  / api         (Authentication towards the headscale API)                    nodes       (Manage nodes) / auth        (Authentication of nodes to headscale)                        policy      (Read, check and replace the policy) / check       (Check files offline: no server, no database, no prompt)      serve       (Run the control server) / completion  (Print the completion script of a shell)                      users       (Manage users) / debug       (A health check and test tools)                               version     (Print the version) / generate    (Print a key, a config file or the pages made from the code)   / $ headscale ]
 FINAL: [headscale ]
 
 LINE: headscale ve|
@@ -87,7 +87,7 @@ LISTED: [headscale version -o json -- / --config  (Config file)     --help    (S
 FINAL: [headscale version -o json --]
 
 LINE: headscale -c -o |
-LISTED: [headscale -c -o  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             users       (Manage users) / auth        (Authentication of nodes to headscale)      nodes       (Manage nodes)                              version     (Print the version) / completion  (Print the completion script of a shell)    policy      (Read, check and replace the policy)         / $ headscale -c -o ]
+LISTED: [headscale -c -o  / api         (Authentication towards the headscale API)                    nodes       (Manage nodes) / auth        (Authentication of nodes to headscale)                        policy      (Read, check and replace the policy) / check       (Check files offline: no server, no database, no prompt)      serve       (Run the control server) / completion  (Print the completion script of a shell)                      users       (Manage users) / debug       (A health check and test tools)                               version     (Print the version) / generate    (Print a key, a config file or the pages made from the code)   / $ headscale -c -o ]
 FINAL: [headscale -c -o ]
 
 LINE: headscale -c x ve|
@@ -95,7 +95,7 @@ LISTED: [headscale -c x version ]
 FINAL: [headscale -c x version ]
 
 LINE: headscale nodez |
-LISTED: [headscale nodez  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             users       (Manage users) / auth        (Authentication of nodes to headscale)      nodes       (Manage nodes)                              version     (Print the version) / completion  (Print the completion script of a shell)    policy      (Read, check and replace the policy)         / $ headscale nodez ]
+LISTED: [headscale nodez  / api         (Authentication towards the headscale API)                    nodes       (Manage nodes) / auth        (Authentication of nodes to headscale)                        policy      (Read, check and replace the policy) / check       (Check files offline: no server, no database, no prompt)      serve       (Run the control server) / completion  (Print the completion script of a shell)                      users       (Manage users) / debug       (A health check and test tools)                               version     (Print the version) / generate    (Print a key, a config file or the pages made from the code)   / $ headscale nodez ]
 FINAL: [headscale nodez ]
 
 LINE: headscale versoin --|
@@ -143,7 +143,7 @@ LISTED: [headscale -h version ]
 FINAL: [headscale -h version ]
 
 LINE: headscale --version |
-LISTED: [headscale --version  / api         (Authentication towards the headscale API)  debug       (A health check and test tools)             users       (Manage users) / auth        (Authentication of nodes to headscale)      nodes       (Manage nodes)                              version     (Print the version) / completion  (Print the completion script of a shell)    policy      (Read, check and replace the policy)         / $ headscale --version ]
+LISTED: [headscale --version  / api         (Authentication towards the headscale API)                    nodes       (Manage nodes) / auth        (Authentication of nodes to headscale)                        policy      (Read, check and replace the policy) / check       (Check files offline: no server, no database, no prompt)      serve       (Run the control server) / completion  (Print the completion script of a shell)                      users       (Manage users) / debug       (A health check and test tools)                               version     (Print the version) / generate    (Print a key, a config file or the pages made from the code)   / $ headscale --version ]
 FINAL: [headscale --version ]
 
 LINE: headscale no|
@@ -201,6 +201,26 @@ FINAL: [headscale nodes list --filter=owner]
 LINE: headscale policy set |
 LISTED: [headscale policy set  / config.yaml    policy.hujson   / $ headscale policy set ]
 FINAL: [headscale policy set ]
+
+LINE: headscale check config |
+LISTED: [headscale check config  / config.yaml    policy.hujson   / $ headscale check config ]
+FINAL: [headscale check config ]
+
+LINE: headscale check policy |
+LISTED: [headscale check policy  / config.yaml    policy.hujson   / $ headscale check policy ]
+FINAL: [headscale check policy ]
+
+LINE: headscale check |
+LISTED: [headscale check  / all            (Check the config and every file it points at)  derp-map       (Check a DERP map file)                         policy         (Check a policy file and run its tests) / config         (Check a config file)                           extra-records  (Check an extra records file)                    / $ headscale check ]
+FINAL: [headscale check ]
+
+LINE: headscale generate |
+LISTED: [headscale generate  / cli-reference  (Print the reference page of the command line)             nixos-options  (Print the NixOS options for services.headscale.settings) / config         (Print a configuration file with every key)                private-key    (Print a new private key) / man            (Print the man page)                                        / $ headscale generate ]
+FINAL: [headscale generate ]
+
+LINE: headscale serve --|
+LISTED: [headscale serve -- / --config  (Config file)     --help    (Show this help)   / $ headscale serve --]
+FINAL: [headscale serve --]
 
 LINE: headscale nodes list |
 LISTED: [headscale nodes list <BEL>]

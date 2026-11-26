@@ -15,7 +15,6 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
-	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
@@ -61,17 +60,6 @@ func mustMarkRequired(cmd *cobra.Command, names ...string) {
 			panic(fmt.Sprintf("marking flag %q required on %q: %v", n, cmd.Name(), err))
 		}
 	}
-}
-
-// newHeadscaleServerWithConfig builds the server, which validates the
-// configuration.
-func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
-	app, err := hscontrol.NewHeadscale(serverConfig())
-	if err != nil {
-		return nil, fmt.Errorf("creating new headscale: %w", err)
-	}
-
-	return app, nil
 }
 
 // serverConfig is the loaded configuration as the server takes it,

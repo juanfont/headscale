@@ -312,3 +312,29 @@ func TestNixLiteral(t *testing.T) {
 		})
 	}
 }
+
+func TestReleaseStamp(t *testing.T) {
+	tests := []struct {
+		name    string
+		info    types.VersionInfo
+		wantErr bool
+	}{
+		{name: "release", info: types.VersionInfo{Version: "v1.2.3", Commit: "abc"}},
+		{name: "dirty", info: types.VersionInfo{Version: "v1.2.3", Commit: "abc", Dirty: true}, wantErr: true},
+		{name: "unknown commit", info: types.VersionInfo{Version: "dev", Commit: "unknown"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ReleaseStamp(&tt.info)
+			if tt.wantErr {
+				require.ErrorIs(t, err, ErrNotRelease)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, &tt.info, got)
+		})
+	}
+}

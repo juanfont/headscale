@@ -323,6 +323,12 @@ func TestExplainTestsNotRun(t *testing.T) {
 			e := Explain([]byte(tt.pol), err)
 			require.Equal(t, tt.notRun, e.TestsNotRun)
 			require.Equal(t, tt.failed, e.FailedTestCount)
+
+			// CheckPolicy, which runs the tests against stand-ins, counts
+			// the same.
+			e = Explain([]byte(tt.pol), CheckPolicy([]byte(tt.pol)))
+			require.Equal(t, tt.notRun, e.TestsNotRun, "CheckPolicy")
+			require.Equal(t, tt.failed, e.FailedTestCount, "CheckPolicy")
 		})
 	}
 }
