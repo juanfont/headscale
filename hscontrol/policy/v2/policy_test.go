@@ -3158,6 +3158,22 @@ func TestRouterSelfRulesCostFollowsCover(t *testing.T) {
 	assert.LessOrEqual(t, allocs[1000], allocs[100]+2, "a router's self rules cost the tailnet's size")
 }
 
+// TestCapabilityNamedTwiceOnce holds that an app grant writes a destination
+// the document repeats once (grant-app-destination-repeated), and each
+// destination it names apart its own, though two name the same nodes.
+func TestCapabilityNamedTwiceOnce(t *testing.T) {
+	t.Parallel()
+
+	pm, nodes, _ := listedPeers(t, `{"groups": {"group:o": ["odin@"]}, "grants": [
+		{"src": ["thor@"], "dst": ["odin@", "group:o", "odin@"], "app": {"example.com/cap/x": [{"v": 1}]}}]}`,
+		peerSpec{name: "bulb"}, peerSpec{name: "ivy", user: 1})
+
+	rules, err := pm.FilterForNode(nodes[0].View())
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	require.Len(t, rules[0].CapGrant, 2, "odin@ once, group:o once")
+}
+
 // Reproduction for #3160: ambiguous user@ used to silently drop rules.
 func TestNewPolicyManager_DuplicateUsername(t *testing.T) {
 	users := types.Users{

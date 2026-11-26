@@ -717,7 +717,12 @@ func (pol *Policy) compileOtherDests(
 			dstIPStrings []string
 		)
 
-		for _, dst := range otherDests {
+		for i, dst := range otherDests {
+			// Tailscale writes a destination the document repeats once.
+			if slices.ContainsFunc(otherDests[:i], func(o Alias) bool { return o.String() == dst.String() }) {
+				continue
+			}
+
 			ips, err := dst.Resolve(pol, users, nodes)
 			if err != nil {
 				continue
@@ -730,13 +735,6 @@ func (pol *Policy) compileOtherDests(
 			// reduced to a node, but its sources are given the route.
 			if _, wildcard := dst.(Asterix); wildcard {
 				prefixes = append(prefixes, approvedSubnetPrefixes(nodes)...)
-			}
-
-			// Tailscale grants a capability once to a destination named twice.
-			if slices.ContainsFunc(capGrants, func(cg tailcfg.CapGrant) bool {
-				return slices.Equal(cg.Dsts, prefixes)
-			}) {
-				continue
 			}
 
 			capGrants = append(capGrants, tailcfg.CapGrant{
