@@ -6,8 +6,8 @@
 # with want/, faults of cobra's scripts included, and fails on a change.
 # Run it in the dev shell that carries the shells, from the repository:
 #
-#   nix develop .#shells -c cmd/headscale/newcli/testdata/shells/run.sh           # compare
-#   nix develop .#shells -c cmd/headscale/newcli/testdata/shells/run.sh -update   # rewrite want/
+#   nix develop .#shells -c cmd/headscale/cli/testdata/shells/run.sh           # compare
+#   nix develop .#shells -c cmd/headscale/cli/testdata/shells/run.sh -update   # rewrite want/
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -20,11 +20,11 @@ if [[ -z ${BASH_COMPLETION_SH:-} ]]; then
   exit 2
 fi
 
-(cd "$root" && CGO_ENABLED=0 go build -tags newcli -o "$work/bin/headscale" ./cmd/headscale)
-(cd "$root" && CGO_ENABLED=0 go build -o "$work/ptyrun" ./cmd/headscale/newcli/testdata/shells/ptyrun)
+(cd "$root" && CGO_ENABLED=0 go build -o "$work/bin/headscale" ./cmd/headscale)
+(cd "$root" && CGO_ENABLED=0 go build -o "$work/ptyrun" ./cmd/headscale/cli/testdata/shells/ptyrun)
 # The job runs on Linux and macOS; each checks that the other's driver builds.
 for os in linux darwin; do
-  (cd "$root" && CGO_ENABLED=0 GOOS=$os go vet ./cmd/headscale/newcli/testdata/shells/ptyrun)
+  (cd "$root" && CGO_ENABLED=0 GOOS=$os go vet ./cmd/headscale/cli/testdata/shells/ptyrun)
 done
 
 # A line waits while the command it names is not in the tree; the Go test
