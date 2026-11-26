@@ -616,6 +616,67 @@ components:
         - apiKeyCount
         - expect
       type: object
+    FailedTest:
+      additionalProperties: false
+      properties:
+        column:
+          description: The column of line, from 1, in bytes; null with line.
+          format: int64
+          type:
+            - integer
+            - "null"
+        dst:
+          description: The destination that failed, as written.
+          type: string
+        got:
+          description: What the policy does.
+          enum:
+            - accept
+            - deny
+            - check
+          type: string
+        index:
+          description: The position of the test in its list, from 0.
+          format: int64
+          type: integer
+        kind:
+          description: acl for an entry of tests, ssh for one of sshTests.
+          enum:
+            - acl
+            - ssh
+          type: string
+        line:
+          description: Where the policy text has the test, from 1; null when it cannot be found.
+          format: int64
+          type:
+            - integer
+            - "null"
+        src:
+          description: The source of the test, as written.
+          type: string
+        user:
+          description: The login user of an ssh test; null for acl.
+          type:
+            - string
+            - "null"
+        want:
+          description: What the test asserts.
+          enum:
+            - accept
+            - deny
+            - check
+          type: string
+      required:
+        - kind
+        - index
+        - src
+        - dst
+        - user
+        - want
+        - got
+        - line
+        - column
+      type: object
     FieldError:
       properties:
         location:
@@ -681,6 +742,10 @@ components:
         - database_unreachable
         - node_expiry_invalid
         - node_name_invalid
+        - policy_not_stored
+        - policy_file_invalid
+        - policy_stored_invalid
+        - policy_user_ambiguous
       type: string
     Identity:
       properties:
@@ -976,6 +1041,93 @@ components:
       type:
         - object
         - "null"
+    Policy:
+      properties:
+        mode:
+          anyOf:
+            - $ref: "#/components/schemas/PolicyMode"
+            - type: string
+          description: database, or file when the server reads the policy from a file. A file the server refused is not in force; GET /health warns of it.
+          x-go-type: PolicyMode
+        path:
+          description: The policy file in file mode, else "".
+          type: string
+        policy:
+          description: "The policy as it is stored or read from the file: HuJSON, with its comments. \"\" when there is none."
+          type: string
+        updated:
+          description: When the database stored it; null in file mode and when nothing is stored.
+          format: date-time
+          type:
+            - string
+            - "null"
+      required:
+        - policy
+        - updated
+        - mode
+        - path
+      type: object
+    PolicyError:
+      additionalProperties: false
+      properties:
+        column:
+          description: The column of line, from 1, in bytes; null with line.
+          format: int64
+          type:
+            - integer
+            - "null"
+        line:
+          description: Where the policy text has it, from 1; null when the problem has no place in the text.
+          format: int64
+          type:
+            - integer
+            - "null"
+        message:
+          description: The problem, a sentence for a person.
+          type: string
+      required:
+        - message
+        - line
+        - column
+      type: object
+    PolicyInvalidDetails:
+      additionalProperties: false
+      properties:
+        failedTestCount:
+          description: How many assertions failed in all.
+          format: int64
+          type: integer
+        failedTests:
+          description: One entry per assertion that did not hold, the first ones up to a cap; failedTestCount counts them all.
+          items:
+            $ref: "#/components/schemas/FailedTest"
+          type: array
+        policyErrorCount:
+          description: How many problems there are in all.
+          format: int64
+          type: integer
+        policyErrors:
+          description: One entry per problem, the first ones up to a cap; policyErrorCount counts them all.
+          items:
+            $ref: "#/components/schemas/PolicyError"
+          type: array
+        testsNotRun:
+          description: How many entries of tests and sshTests were not run because the policy was refused before them; 0 when they ran.
+          format: int64
+          type: integer
+      required:
+        - policyErrors
+        - policyErrorCount
+        - failedTests
+        - failedTestCount
+        - testsNotRun
+      type: object
+    PolicyMode:
+      description: database, or file when the server reads the policy from a file. A file the server refused is not in force; GET /health warns of it.
+      enum:
+        - database
+        - file
+      type: string
     Principal:
       properties:
         identity:
@@ -1069,6 +1221,9 @@ components:
         - name_taken
         - not_found
         - owner_conflict
+        - policy_invalid
+        - policy_read_only
+        - policy_source_changing
         - precondition_failed
         - registration_refused
         - request_timeout
@@ -1179,6 +1334,15 @@ components:
           type: array
       required:
         - tags
+      type: object
+    SetPolicyBody:
+      additionalProperties: false
+      properties:
+        policy:
+          description: The policy, HuJSON. With Content-Type application/hujson the body is the policy file itself.
+          type: string
+      required:
+        - policy
       type: object
     Tag:
       properties:
@@ -5764,6 +5928,508 @@ paths:
         - not_found
         - unauthorized
         - unhealthy
+  /api/headscale/v0/policy:
+    get:
+      description: The ETag covers the whole answer; send it back in If-Match on PUT /policy.
+      operationId: getPolicy
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+          description: OK
+          headers:
+            ETag:
+              required: true
+              schema:
+                description: A strong hash of the whole answer, quoted, to send back in If-Match on PUT /policy.
+                type: string
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - policy_file:read
+      summary: Read the policy in force
+      tags:
+        - Policy
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - unauthorized
+        - unhealthy
+    put:
+      description: "The server parses the policy, checks it against its users and nodes, and runs its tests; a failure is policy_invalid with its problems and failed tests, the first ones up to a cap, and how many of each there are in all. The body is {\"policy\": \"…\"}, or the policy file itself with Content-Type application/hujson. An empty body is checked as the empty policy in both forms. The body holds at most 1 MiB (too_large); the JSON form holds less policy than the file itself, by its escapes. In file mode the write is policy_read_only; a dry run still checks. A dry run answers what the write would, with updated null, as nothing was stored, and no ETag."
+      operationId: setPolicy
+      parameters:
+        - description: Run every check of the write, answer what it would answer, and store nothing. Works in file mode too.
+          explode: false
+          in: query
+          name: dryRun
+          schema:
+            description: Run every check of the write, answer what it would answer, and store nothing. Works in file mode too.
+            type: boolean
+        - description: The ETag of GET /policy. The write is refused with precondition_failed when the policy changed since; leave it out to write whatever is in force.
+          in: header
+          name: If-Match
+          schema:
+            description: The ETag of GET /policy. The write is refused with precondition_failed when the policy changed since; leave it out to write whatever is in force.
+            type: string
+      requestBody:
+        content:
+          application/hujson:
+            schema:
+              description: The policy file, HuJSON.
+              type: string
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPolicyBody"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+          description: OK
+          headers:
+            ETag:
+              schema:
+                description: A strong hash of the whole answer, quoted, to send back in If-Match. A dry run sends none.
+                type: string
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Bad Request: invalid_request"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "408":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Timeout: request_timeout"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Conflict: policy_read_only"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "412":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Precondition Failed: precondition_failed"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Entity Too Large: too_large"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unsupported Media Type: unsupported_media_type"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field, policy_invalid"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - policy_file
+      summary: Replace the policy, or with dryRun=true only check it
+      tags:
+        - Policy
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_request
+        - policy_invalid
+        - policy_read_only
+        - precondition_failed
+        - request_timeout
+        - too_large
+        - unauthorized
+        - unhealthy
+        - unsupported_media_type
+      x-problem-details:
+        policy_invalid:
+          $ref: "#/components/schemas/PolicyInvalidDetails"
+  /api/headscale/v0/policy/reload:
+    post:
+      description: Reads the policy file in file mode, the database otherwise. A policy the server refuses is policy_invalid, and the policy in force stays; in file mode GET /health warns of it until a valid file is in force.
+      operationId: reloadPolicy
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+          description: OK
+          headers:
+            ETag:
+              required: true
+              schema:
+                description: A strong hash of the whole answer, quoted, to send back in If-Match on PUT /policy.
+                type: string
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Conflict: policy_source_changing"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field, policy_invalid"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - policy_file
+      summary: Read the policy again from where it is kept, and install it
+      tags:
+        - Policy
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - policy_invalid
+        - policy_source_changing
+        - unauthorized
+        - unhealthy
+      x-problem-details:
+        policy_invalid:
+          $ref: "#/components/schemas/PolicyInvalidDetails"
   /api/headscale/v0/tags:
     get:
       description: Every tag in tagOwners of the policy and every tag on a node, by name, byte by byte.
