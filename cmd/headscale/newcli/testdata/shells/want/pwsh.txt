@@ -3,7 +3,7 @@ LINE: headscale |
 LINE: headscale ve|
   [version ]
 LINE: headscale api |
-  [whoami ]
+  [keys           (Manage API keys)] [oauth-clients  (Manage OAuth clients)] [whoami         (Show who the server sees calling)]
 LINE: headscale debug h|
   [health ]
 LINE: headscale completion |
@@ -106,6 +106,14 @@ LINE: headscale nodes rm --f|
   [--force ]
 LINE: headscale nodes list -o=|
   THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale api oauth-clients create devices:core --tags tag:p|
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale api oauth-clients create devices:core --tags tag:ci,tag:p|
+  THROWS Exception calling "CompleteInput" with "3" argument(s): "Cannot process argument because the value of argument "completionText" is null. Change the value of argument "completionText" to a non-null value."
+LINE: headscale api oauth-clients create devices:core --|
+  [--config       (Config file)] [--description  (What the client is for, shown by list and get)] [--help         (Show this help)] [--output       (Output format: json (the API object))] [--tags         (The tags the client may give its tokens, comma separated, each named in tagOwners of the policy)]
+LINE: headscale api oauth-clients create devices:core --t|
+  [--tags ]
 LINE: headscale nodes list --config |
   [./config.yaml] [./policy.hujson]
 LINE: headscale nodes list --config=|

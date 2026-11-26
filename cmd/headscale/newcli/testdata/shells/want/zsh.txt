@@ -7,8 +7,8 @@ LISTED: [headscale version ]
 FINAL: [headscale version]
 
 LINE: headscale api |
-LISTED: [headscale api whoami ]
-FINAL: [headscale api whoami]
+LISTED: [headscale api <BEL> / keys           -- Manage API keys / oauth-clients  -- Manage OAuth clients / whoami         -- Show who the server sees calling / $ headscale api ]
+FINAL: [headscale api ]
 
 LINE: headscale debug h|
 LISTED: [headscale debug health ]
@@ -213,6 +213,22 @@ FINAL: [headscale nodes rm --force]
 LINE: headscale nodes list -o=|
 LISTED: [headscale nodes list -o=json ]
 FINAL: [headscale nodes list -o=json]
+
+LINE: headscale api oauth-clients create devices:core --tags tag:p|
+LISTED: [headscale api oauth-clients create devices:core --tags tag:p<BEL>]
+FINAL: [headscale api oauth-clients create devices:core --tags tag:p]
+
+LINE: headscale api oauth-clients create devices:core --tags tag:ci,tag:p|
+LISTED: [headscale api oauth-clients create devices:core --tags tag:ci,tag:p<BEL>]
+FINAL: [headscale api oauth-clients create devices:core --tags tag:ci,tag:p]
+
+LINE: headscale api oauth-clients create devices:core --|
+LISTED: [headscale api oauth-clients create devices:core --<BEL> / --config       -- Config file / --description  -- What the client is for, shown by list and get / --help         -- Show this help / --output       -- Output format: json (the API object) / --tags         -- The tags the client may give its tokens, comma separated, each named in tagOwners of the policy / $ headscale api oauth-clients create devices:core --]
+FINAL: [headscale api oauth-clients create devices:core --]
+
+LINE: headscale api oauth-clients create devices:core --t|
+LISTED: [headscale api oauth-clients create devices:core --tags ]
+FINAL: [headscale api oauth-clients create devices:core --tags]
 
 LINE: headscale nodes list --config |
 LISTED: [headscale nodes list --config <BEL> / config.yaml    policy.hujson / $ headscale nodes list --config ]

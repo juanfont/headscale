@@ -7,8 +7,8 @@ LISTED: [$ headscale $ headscale version $ headscale version ]
 FINAL: [headscale version ]
 
 LINE: headscale api |
-LISTED: [$ headscale $ headscale api $ headscale api whoami $ headscale api whoami ]
-FINAL: [headscale api whoami ]
+LISTED: [$ headscale $ headscale api $ headscale api $ headscale api ]
+FINAL: [headscale api ]
 
 LINE: headscale debug h|
 LISTED: [$ headscale $ headscale debug $ headscale debug health $ headscale debug health ]
@@ -213,6 +213,22 @@ FINAL: [headscale nodes rm --force ]
 LINE: headscale nodes list -o=|
 LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list -o=json $ headscale nodes list -o=json ]
 FINAL: [headscale nodes list -o=json ]
+
+LINE: headscale api oauth-clients create devices:core --tags tag:p|
+LISTED: [$ headscale $ headscale api $ headscale api oauth-clients $ headscale api oauth-clients create $ headscale api oauth-clients create devices:core $ headscale api oauth-clients create devices:core --tags $ headscale api oauth-clients create devices:core --tags tag:p$ headscale api oauth-clients create devices:core --tags tag:p$ headscale api oauth-clients create devices:core --tags tag:p$ headscale api oauth-clients create devices:core --tags tag:p$ headscale api oauth-clients create devices:core --tags tag:p]
+FINAL: [headscale api oauth-clients create devices:core --tags tag:p]
+
+LINE: headscale api oauth-clients create devices:core --tags tag:ci,tag:p|
+LISTED: [$ headscale $ headscale api $ headscale api oauth-clients $ headscale api oauth-clients create $ headscale api oauth-clients create devices:core $ headscale api oauth-clients create devices:core --tags $ headscale api oauth-clients create devices:core --tags tag:ci,tag:p$ headscale api oauth-clients create devices:core --tags tag:ci,tag:p$ headscale api oauth-clients create devices:core --tags tag:ci,tag:p$ headscale api oauth-clients create devices:core --tags tag:ci,tag:p$ headscale api oauth-clients create devices:core --tags tag:ci,tag:p]
+FINAL: [headscale api oauth-clients create devices:core --tags tag:ci,tag:p]
+
+LINE: headscale api oauth-clients create devices:core --|
+LISTED: [$ headscale $ headscale api $ headscale api oauth-clients $ headscale api oauth-clients create $ headscale api oauth-clients create devices:core $ headscale api oauth-clients create devices:core --$ headscale api oauth-clients create devices:core --]
+FINAL: [headscale api oauth-clients create devices:core --]
+
+LINE: headscale api oauth-clients create devices:core --t|
+LISTED: [$ headscale $ headscale api $ headscale api oauth-clients $ headscale api oauth-clients create $ headscale api oauth-clients create devices:core $ headscale api oauth-clients create devices:core --tags $ headscale api oauth-clients create devices:core --tags ]
+FINAL: [headscale api oauth-clients create devices:core --tags ]
 
 LINE: headscale nodes list --config |
 LISTED: [$ headscale $ headscale nodes $ headscale nodes list $ headscale nodes list --config $ headscale nodes list --config $ headscale nodes list --config ]
