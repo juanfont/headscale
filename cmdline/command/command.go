@@ -14,11 +14,19 @@ package command
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"reflect"
+	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/juanfont/headscale/cmdline"
 	"github.com/juanfont/headscale/cmdline/table"
@@ -100,6 +108,13 @@ type Spec[S, In, Out any] struct {
 	// at any depth, needs Secret, and no other may have it; the command
 	// needs list and delete beside it, which a lost secret names.
 	Secret func(out Out) string
+	// Verbatim is a text of the result that the server keeps, such as the
+	// policy, printed to stdout byte for byte: not trimmed, not made
+	// visible, past the rule that shows a credential as its kind, so a file
+	// it is written to holds what the server holds. -o json prints the
+	// result. It takes neither Columns nor Done, and a test lists each
+	// command that has it, with why.
+	Verbatim func(out Out) string
 	// End is the delete of what a Secret command beside it makes: a
 	// Secret's group needs one, and only such a group has one.
 	End bool
@@ -209,10 +224,14 @@ type run struct {
 	// askWidth is the width of stderr's terminal, which a question is
 	// written to; 0 when unknown.
 	askWidth int
-	// answers reads the replies to prompts from stdin.
-	answers *bufio.Reader
+	// answers reads the replies to prompts from stdin; stdinFile is a line
+	// that gives - for a Path, so stdin is that file and answers nothing.
+	answers   *bufio.Reader
+	stdinFile bool
 	// discard drops the answers typed and not yet read; nil drops none.
 	discard func()
+	// local keeps the JSON of the results a Local command made: Answer.
+	local map[answerKey]json.RawMessage
 	// line is the command line, for the flags the builder adds.
 	line *cmdline.Line
 
@@ -229,12 +248,158 @@ type run struct {
 	guard atomic.Pointer[revision]
 }
 
+// answerKey is a value: its type, and its value in a canonical encoding.
+// The encoding is only a key; it is never printed.
+type answerKey struct {
+	t reflect.Type
+	v string
+}
+
+func keyOf(v any) (answerKey, bool) {
+	b, err := json.Marshal(v)
+
+	return answerKey{t: reflect.TypeOf(v), v: string(b)}, err == nil
+}
+
 // Note writes a line for the human to stderr. With -o json it writes
 // nothing: the object takes its place.
 func (c *run) Note(line string) {
 	if !c.json {
 		_, _ = io.WriteString(c.stderr, line+"\n")
 	}
+}
+
+// Answer makes as the JSON that -o json prints for v, a result that a
+// Local command makes as the server would answer it: a type of the client
+// writes its keys in another order than the server.
+func (c *run) Answer(v, as any) {
+	b, err := json.Marshal(as)
+
+	k, ok := keyOf(v)
+	if err == nil && ok {
+		c.local[k] = b
+	}
+}
+
+// Stdin is what the command reads, such as a file given as -.
+func (c *run) Stdin() io.Reader {
+	if c.stdin == nil {
+		return strings.NewReader("")
+	}
+
+	return c.stdin
+}
+
+// ReadFile is the file p, or stdin for -, whole, at most the program's
+// MaxFile, and UTF-8 text: every file a command takes is a text, and the
+// server reads no other. Its error is a sentence that names the file as typed, and
+// stdin as (stdin). Stdin on a terminal says on stderr how to end it.
+func (c *run) ReadFile(p Path) ([]byte, error) {
+	name := table.Visible(string(p), "")
+	if p == "-" {
+		name = "(stdin)"
+	}
+
+	if p == "-" && c.terminal {
+		_, _ = io.WriteString(
+			c.stderr,
+			"Reading from stdin: end with Ctrl-D at the start of a line.\n",
+		)
+	}
+
+	r := c.Stdin()
+
+	if p != "-" {
+		f, err := os.Open(string(p))
+
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			//nolint:err113,staticcheck // a sentence of the CLI
+			return nil, fmt.Errorf("the file %s does not exist.", name)
+		case err != nil:
+			//nolint:err113,staticcheck // a sentence of the CLI
+			return nil, fmt.Errorf(
+				"the file %s cannot be read: %s.",
+				name,
+				CauseOf(err),
+			)
+		}
+
+		defer f.Close()
+
+		st, err := f.Stat()
+		if err == nil && st.IsDir() {
+			//nolint:err113,staticcheck // a sentence of the CLI
+			return nil, fmt.Errorf("%s is a directory, not a file.", name)
+		}
+
+		r = f
+	}
+
+	limit := c.tree.prog.MaxFile
+
+	b, err := io.ReadAll(io.LimitReader(r, limit+1))
+
+	switch {
+	case err == nil && int64(len(b)) > limit:
+		//nolint:err113,staticcheck // a sentence of the CLI
+		return nil, fmt.Errorf(
+			"%s is larger than %d MiB, more than a command reads.",
+			name,
+			limit>>20,
+		)
+	case err != nil:
+		//nolint:err113,staticcheck // a sentence of the CLI
+		return nil, fmt.Errorf("the file %s cannot be read: %s.", name, CauseOf(err))
+	case !utf8.Valid(b):
+		//nolint:err113,staticcheck // a sentence of the CLI
+		return nil, fmt.Errorf(
+			"%s is not UTF-8 text: line %d holds a byte that is not.",
+			name,
+			notUTF8(b),
+		)
+	}
+
+	return b, nil
+}
+
+// notUTF8 is the line of the first byte of b that is not UTF-8, from 1.
+func notUTF8(b []byte) int {
+	i := 0
+	for i < len(b) {
+		r, n := utf8.DecodeRune(b[i:])
+		if r == utf8.RuneError && n == 1 {
+			break
+		}
+
+		i += n
+	}
+
+	return 1 + bytes.Count(b[:i], []byte("\n"))
+}
+
+// fromStdin reports whether line gives - for an argument or a flag that is
+// a Path: stdin is then that file.
+func fromStdin(line *cmdline.Line) bool {
+	path := reflect.TypeFor[Path]()
+
+	for i, a := range line.Command.Args {
+		if i < len(line.Args) && a.Type == path && !a.List && line.Args[i] == "-" {
+			return true
+		}
+	}
+
+	// --config is the builder's, and never reads stdin.
+	for _, g := range line.Flags {
+		for _, f := range line.Command.Flags {
+			if f.Name == g.Name && f.Name != "config" && f.Type == path &&
+				g.Value == "-" {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // Stderr is stderr past no rule but the edge's: a warning written to it is

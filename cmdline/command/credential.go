@@ -350,6 +350,11 @@ func inputRule[In any]() (
 		in, _ := cmdline.Get[In](line)
 		v := reflect.ValueOf(in)
 
+		err := emptyPath(line)
+		if err != nil {
+			return err
+		}
+
 		for _, f := range fields {
 			for _, s := range valuesOf(v.Field(f.index)) {
 				err := cr.typed(f, s)
@@ -408,6 +413,40 @@ func (cr *Credentials) checkKinds(kinds []textField) error {
 // a credential: a value that is sent is held to the rule on the way in.
 func (cr *Credentials) Check(word, s string) error {
 	return cr.typed(textField{word: word}, s)
+}
+
+// emptyPath refuses a file given as an empty word, as --config= is: it
+// names no file, so nothing is read.
+func emptyPath(line *cmdline.Line) error {
+	isPath := func(t reflect.Type) bool { return t == reflect.TypeFor[Path]() }
+
+	for _, g := range line.Flags {
+		for _, f := range line.Command.Flags {
+			if f.Name == g.Name && isPath(f.Type) && g.Value == "" {
+				//nolint:staticcheck // a sentence of the CLI
+				return fmt.Errorf(
+					"%q is not a valid --%s: %w.",
+					"",
+					f.Name,
+					errPathEmpty,
+				)
+			}
+		}
+	}
+
+	for i, a := range line.Args {
+		if i < len(line.Command.Args) && isPath(line.Command.Args[i].Type) && a == "" {
+			//nolint:staticcheck // a sentence of the CLI
+			return fmt.Errorf(
+				"%q is not a valid <%s>: %w.",
+				"",
+				line.Command.Args[i].Name,
+				errPathEmpty,
+			)
+		}
+	}
+
+	return nil
 }
 
 // valuesOf are the words of a text field: none for an Opt not given, each

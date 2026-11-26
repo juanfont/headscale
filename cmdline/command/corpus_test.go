@@ -953,6 +953,7 @@ func TestTestTreesUseTheBuilder(t *testing.T) {
 		"Run",
 		"Done",
 		"Secret",
+		"Verbatim",
 		"End",
 	}
 	for _, typ := range []reflect.Type{reflect.TypeFor[Spec[testS, NoInput, NoOutput]](), reflect.TypeFor[ListSpec[testS, NoInput, item]]()} {

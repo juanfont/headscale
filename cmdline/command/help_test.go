@@ -119,3 +119,42 @@ func TestHelpDefault(t *testing.T) {
 		"      --expiry string   When it ends (default 1h)\n",
 	)
 }
+
+// TestRootHelpSections: a command that needs no server unless a flag says
+// so is local, and one that talks to the server unless a flag says not,
+// such as a read with the database bypass, is a server command.
+func TestRootHelpSections(t *testing.T) {
+	t.Parallel()
+
+	type in struct {
+		Flip bool `flag:"flip" help:"Flip"`
+	}
+
+	cmd := func(name string, needs func(in) bool) Node {
+		return New(Spec[testS, in, NoOutput]{
+			Name:        name,
+			Short:       "S " + name,
+			Long:        "S.",
+			Example:     []string{"prog " + name},
+			Local:       true,
+			NeedsServer: needs,
+			Run:         noop[in, NoOutput],
+		})
+	}
+
+	tree, err := testBuild("prog", "A program",
+		cmd("local", nil),
+		cmd("when-flipped", func(i in) bool { return i.Flip }),
+		cmd("unless-flipped", func(i in) bool { return !i.Flip }),
+	)
+	require.NoError(t, err)
+
+	var b bytes.Buffer
+
+	require.Equal(t, 0, Run(tree, nil, Env{Stdout: &b}))
+	require.Contains(
+		t,
+		b.String(),
+		"Local commands (no server needed):\n\n  local            S local\n  when-flipped     S when-flipped\n\nServer commands (talk to a running headscale):\n\n  unless-flipped   S unless-flipped\n",
+	)
+}
