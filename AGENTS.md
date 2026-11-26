@@ -60,6 +60,14 @@ zizmor, `golangci-lint --new-from-rev=HEAD~1`, vendor hash). Never skip them
   the record; use it only for DB writes and mutable working copies.
   `grep AsStruct hscontrol/api` must come back empty.
 
+- **Line length 88 in the new packages only.** `golines` wraps
+  `cmd/headscale/newcli/`, `cmdline/`, `client/`, `hscontrol/api/headscale/v0/`
+  and `hscontrol/offline/` (the `path-except` rule in `.golangci.yaml`); the
+  rest of the tree has no limit. `make fmt` and the hook keep that scope;
+  `golangci-lint fmt` ignores it and rewraps old files. A `//nolint` goes on
+  its own line above a statement golines may split: a trailing one moves to
+  the statement's last line and stops covering the line it was for.
+
 - **zerolog**: prefer single-line chains. When building an event
   incrementally, reassign it (`e = e.Str("k", v)`); otherwise the field is
   silently dropped.

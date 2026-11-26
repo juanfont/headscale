@@ -105,6 +105,11 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      # golines (formatters below) wraps only the packages that were written
+      # wrapped; the rest of the tree keeps its long lines.
+      - path-except: ^(cmd/headscale/newcli|cmdline|client|hscontrol/api/headscale/v0|hscontrol/offline)/
+        linters:
+          - golines
       # Config key names repeat across the key tables, validation and error
       # reports until the config reshape gives each key one home.
       - path: hscontrol/(types/config|config/(keys|validate))\.go
@@ -117,7 +122,13 @@ linters:
       - gen
 
 formatters:
+  settings:
+    golines:
+      max-len: 88
+      # tagalign owns struct tags; golines' tag reformatting fights it.
+      reformat-tags: false
   enable:
+    - golines
     - gci
     - gofmt
     - gofumpt
