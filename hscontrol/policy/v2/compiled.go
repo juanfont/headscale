@@ -653,8 +653,17 @@ func (pol *Policy) compileOtherDests(
 				continue
 			}
 
+			prefixes := ips.Prefixes()
+
+			// The wildcard takes in every approved subnet route, as it does
+			// in a source. No route keeps the capability once the rule is
+			// reduced to a node, but its sources are given the route.
+			if _, wildcard := dst.(Asterix); wildcard {
+				prefixes = append(prefixes, approvedSubnetPrefixes(nodes)...)
+			}
+
 			capGrants = append(capGrants, tailcfg.CapGrant{
-				Dsts:   ips.Prefixes(),
+				Dsts:   prefixes,
 				CapMap: grant.App,
 			})
 
