@@ -303,7 +303,29 @@ func TestSecretChecks(t *testing.T) {
 			ID  string  `json:"id"`
 			Key *string `json:"key"`
 		}
+		noID struct {
+			Key string `json:"key"`
+		}
 	)
+
+	beside := func(n Node) []Node {
+		return []Node{Group{Name: "keys", Short: "Keys", Commands: []Node{
+			n,
+			NewList(
+				ListSpec[testS, NoInput, item]{
+					Name:    "list",
+					Short:   "S",
+					Long:    "S.",
+					Example: []string{"prog keys list"},
+					Local:   true,
+					Columns: itemColumns,
+					NoRows:  "None.",
+					Run:     noop[NoInput, []item],
+				},
+			),
+			endOf(),
+		}}}
+	}
 
 	create := func(s Spec[testS, NoInput, secreted]) Node {
 		s.Name, s.Short, s.Long, s.Example, s.Local, s.Run = "create", "S", "S.", []string{
@@ -318,6 +340,13 @@ func TestSecretChecks(t *testing.T) {
 		nodes []Node
 		want  string
 	}{
+		{"a secret with no Secret", beside(create(Spec[testS, NoInput, secreted]{Done: note})), "keys create: " + errSecret.Error() + "\nkeys delete: " + errEndAlone.Error()},
+		{"a Secret with no note", beside(create(Spec[testS, NoInput, secreted]{Secret: key})), "keys create: " + errNoShow.Error() + "\n" + errSecretNote.Error()},
+		{
+			"a Secret and a sheet",
+			beside(create(Spec[testS, NoInput, secreted]{Secret: key, Done: note, Columns: table.Columns[secreted]{{Name: "id", Field: "id", Default: true}}})),
+			"keys create: " + errBoth.Error() + "\n" + errSecretNote.Error(),
+		},
 		{"a Secret with nothing beside it", []Node{create(Spec[testS, NoInput, secreted]{Secret: key, Done: note})}, "create: " + errSecretEnds.Error()},
 		{
 			"a Secret on a result with no secret",
@@ -345,6 +374,14 @@ func TestSecretChecks(t *testing.T) {
 			"get: interface {} " + errOpaque.Error(),
 		},
 		{
+			"a Secret's result with no ID",
+			beside(New(Spec[testS, NoInput, noID]{
+				Name: "create", Short: "S", Long: "S.", Example: []string{"prog keys create"}, Local: true, Run: noop[NoInput, noID],
+				Done: func(NoInput, noID, time.Time) string { return "" }, Secret: func(noID) string { return "" },
+			})),
+			"keys create: " + errSecretID.Error(),
+		},
+		{
 			"a list of rows that hold a secret",
 			[]Node{NewList(ListSpec[testS, NoInput, secreted]{
 				Name: "list", Short: "S", Long: "S.", Example: []string{"prog list"}, Local: true, NoRows: "None.", Run: noop[NoInput, []secreted],
@@ -368,6 +405,22 @@ func TestSecretChecks(t *testing.T) {
 		Done:    func(NoInput, *item, time.Time) string { return "" },
 	}))
 	require.NoError(t, err)
+}
+
+// TestCreatedNote: the owner ends at a semicolon, a name with no owner at a
+// colon, and the last line says what is shown once.
+func TestCreatedNote(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct{ name, owner, what, word, want string }{
+		{"Auth key 9 (ef34gh)", "tag:build, tag:ci", "ephemeral, expires in 1h", "key", "Auth key 9 (ef34gh) for tag:build, tag:ci; ephemeral, expires in 1h.\nThis is the only time the key is shown."},
+		{"API key 3 (vw56xy)", "User 3 (alice)", "expires in 90d", "key", "API key 3 (vw56xy) for User 3 (alice); expires in 90d.\nThis is the only time the key is shown."},
+		{"API key 3 (vw56xy)", "", "expires in 90d", "key", "API key 3 (vw56xy): expires in 90d.\nThis is the only time the key is shown."},
+		{"OAuth client c9f2", "", "scopes devices:core; tags tag:ci", "secret", "OAuth client c9f2: scopes devices:core; tags tag:ci.\nThis is the only time the secret is shown."},
+		{"API key 3 (vw56xy)", "User 3 (alice)", "", "key", "API key 3 (vw56xy) for User 3 (alice).\nThis is the only time the key is shown."},
+	} {
+		require.Equal(t, tt.want, CreatedNote(tt.name, tt.owner, tt.what, tt.word))
+	}
 }
 
 // madeError is an error that leaves a write unknown, as the test program

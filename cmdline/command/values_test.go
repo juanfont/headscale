@@ -56,11 +56,16 @@ func TestExpiry(t *testing.T) {
 	require.EqualError(
 		t,
 		key.UnmarshalText([]byte("never")),
-		"it is a time, a date or a duration such as 90d",
+		"a key must have an expiry: a time, a date or a duration such as 90d.",
 	)
 	require.EqualError(
 		t,
 		key.UnmarshalText([]byte("now")),
+		"a key must have an expiry: a time, a date or a duration such as 90d.",
+	)
+	require.EqualError(
+		t,
+		key.UnmarshalText([]byte("soon")),
 		"it is a time, a date or a duration such as 90d",
 	)
 	require.NoError(t, key.UnmarshalText([]byte("1h")))

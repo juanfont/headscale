@@ -2,10 +2,15 @@ package command
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/juanfont/headscale/cmdline"
 )
 
 // The rule at the edge: a word that has the form of a credential of the
@@ -168,4 +173,177 @@ func (m *masking) Flush() error {
 	_, err := io.WriteString(m.w, out)
 
 	return err
+}
+
+// The rule on the way in: a value typed on the line that has the form of a
+// credential is not sent, so that a key pasted in the wrong place is not
+// stored as a name, sent in a body, or answered back in a problem's
+// details. It is refused before any call, with its kind and no more. A
+// field whose type names the kind it takes, [TakesCredential], takes that
+// kind only. A target is not a value: its lookup reads the word and puts
+// none of it in a request. An owner's lookup holds its tags to the rule,
+// and looks a user up. A path is not a value either: the CLI reads the
+// file, it does not send the path.
+
+// TakesCredential is the type of a value that is a credential of one kind,
+// such as the ID of an auth request: Credential is the word after the
+// Prefix.
+type TakesCredential interface{ Credential() string }
+
+var errCredentialKind = errors.New(
+	"takes a kind of credential that is none of the program's Kinds",
+)
+
+// textField is a field of an input struct that holds text a request may
+// carry: its index, the flag or argument as messages name it, and the kind
+// of credential it takes, "" for none.
+type textField struct {
+	index      int
+	word, kind string
+}
+
+// inputRule is the check of the rule on the way in for In, and the fields
+// that take a kind of credential, which the tree checks against the
+// program's kinds when it is built.
+func inputRule[In any]() (
+	func(*cmdline.Line, *Credentials) error,
+	[]textField,
+	error,
+) {
+	var kinds []textField
+
+	t := reflect.TypeFor[In]()
+	if t.Kind() != reflect.Struct {
+		return func(*cmdline.Line, *Credentials) error { return nil },
+			nil, nil
+	}
+
+	var (
+		fields []textField
+		errs   []error
+	)
+
+	for i, sf := range slices.Collect(t.Fields()) {
+		word := "--" + sf.Tag.Get("flag")
+		if arg := sf.Tag.Get("arg"); arg != "" {
+			word = "<" + arg + ">"
+		}
+
+		ft := sf.Type
+		if get, ok := ft.MethodByName("Get"); ok && get.Type.NumOut() == 2 {
+			ft = get.Type.Out(0)
+		}
+
+		if ft.Kind() == reflect.Slice {
+			ft = ft.Elem()
+		}
+
+		if ft.Kind() != reflect.String || ft == reflect.TypeFor[Path]() {
+			continue
+		}
+
+		f := textField{index: i, word: word}
+
+		if k, ok := reflect.TypeAssert[TakesCredential](reflect.Zero(ft)); ok {
+			f.kind = k.Credential()
+			kinds = append(kinds, f)
+		}
+
+		fields = append(fields, f)
+	}
+
+	return func(line *cmdline.Line, cr *Credentials) error {
+		in, _ := cmdline.Get[In](line)
+		v := reflect.ValueOf(in)
+
+		for _, f := range fields {
+			for _, s := range valuesOf(v.Field(f.index)) {
+				err := cr.typed(f, s)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		return nil
+	}, kinds, errors.Join(errs...)
+}
+
+// checkKinds is what is wrong with kinds, the kinds of credential that the
+// fields of a command take: one that is none of the program's.
+func (cr *Credentials) checkKinds(kinds []textField) error {
+	for _, f := range kinds {
+		if !slices.Contains(cr.Kinds, f.kind) {
+			return fmt.Errorf("%s %w", f.word, errCredentialKind)
+		}
+	}
+
+	return nil
+}
+
+// Check refuses s, a value typed for word (--name, <owner>), when it holds
+// a credential: a value that is sent is held to the rule on the way in.
+func (cr *Credentials) Check(word, s string) error {
+	return cr.typed(textField{word: word}, s)
+}
+
+// valuesOf are the words of a text field: none for an Opt not given, each
+// item of a list.
+func valuesOf(v reflect.Value) []string {
+	if get := v.MethodByName("Get"); get.IsValid() && get.Type().NumOut() == 2 {
+		out := get.Call(nil)
+		if !out[1].Bool() {
+			return nil
+		}
+
+		v = out[0]
+	}
+
+	if v.Kind() != reflect.Slice {
+		return []string{v.String()}
+	}
+
+	out := make([]string, 0, v.Len())
+	for i := range v.Len() {
+		out = append(out, v.Index(i).String())
+	}
+
+	return out
+}
+
+// typed refuses s, the value of f, when it holds a credential f does not
+// take.
+func (cr *Credentials) typed(f textField, s string) error {
+	var refused string
+
+	cr.each(s, func(w string) string {
+		// The kind is the word after the front's first dash, as in
+		// tskey-client-.
+		_, after, _ := strings.Cut(w, "-")
+
+		kind, _, _ := strings.Cut(after, "-")
+		if refused == "" && cr.kindOf(w) != w &&
+			(f.kind == "" || !strings.EqualFold(kind, f.kind)) {
+			refused = cr.kindOf(w)
+		}
+
+		return w
+	})
+
+	switch {
+	case refused == "":
+		return nil
+	case f.kind == "":
+		//nolint:err113,staticcheck // a sentence of the CLI
+		return fmt.Errorf("%s takes no credential: %s is not sent.", f.word, refused)
+	}
+
+	//nolint:err113,staticcheck // a sentence of the CLI
+	return fmt.Errorf(
+		"%s takes only a credential %s%s-: %s is not sent.",
+		f.word,
+		cr.Prefix,
+		f.kind,
+		refused,
+	)
 }

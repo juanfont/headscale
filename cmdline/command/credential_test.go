@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -156,16 +157,17 @@ func TestCredentialAtTheEdge(t *testing.T) {
 				return NoOutput{}, fmt.Errorf("no thing matches %q.", in.Word)
 			},
 		}),
-		New(Spec[testS, wordIn, NoOutput]{
+		// An auth request is named by its secret, which its field takes.
+		New(Spec[testS, requestIn, NoOutput]{
 			Name:    "gone",
 			Short:   "Gone",
 			Long:    "Gone.",
 			Example: []string{"prog gone x"},
 			Local:   true,
-			Run: func(_ Ctx[testS], in wordIn) (NoOutput, error) {
+			Run: func(_ Ctx[testS], in requestIn) (NoOutput, error) {
 				//nolint:err113 // the sentence of a problem whose object is the ID
 				return NoOutput{}, errors.New(
-					"Auth request " + in.Word + " no longer exists.",
+					"Auth request " + string(in.ID) + " no longer exists.",
 				)
 			},
 		}),
@@ -250,4 +252,98 @@ func TestCredentialAtTheEdge(t *testing.T) {
 		"Error: Auth request hskey-authreq-*** no longer exists.\n",
 		stderr.String(),
 	)
+}
+
+// requestID is a value that is a credential of one kind.
+type requestID string
+
+func (requestID) Credential() string { return "authreq" }
+
+func (r *requestID) UnmarshalText(b []byte) error { *r = requestID(b); return nil }
+
+type requestIn struct {
+	ID requestID `arg:"id"`
+}
+
+// wrongKind takes a kind of credential that does not exist.
+type wrongKind string
+
+func (wrongKind) Credential() string { return "nope" }
+
+func (w *wrongKind) UnmarshalText(b []byte) error { *w = wrongKind(b); return nil }
+
+type wrongIn struct {
+	ID wrongKind `arg:"id"`
+}
+
+type typedIn struct {
+	Name string         `arg:"name"`
+	Tags []string       `flag:"tags" help:"Tags"`
+	Note Opt[string]    `flag:"note" help:"Note"`
+	File Path           `flag:"file" help:"File"`
+	ID   Opt[requestID] `flag:"id"   help:"ID"`
+}
+
+// TestInputRule: a value that holds a credential is refused before Run,
+// with its kind and no more, in an argument, an item of a list and an Opt;
+// a path, a help word and a masked form are no credential, and a field
+// whose type names its kind takes that kind only.
+func TestInputRule(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		args   []string
+		stderr string
+	}{
+		{args: []string{"x", "--tags", "tag:a", "--note", "n", "--file", "f"}},
+		{args: []string{"hskey-api-***", "--note", "hskey-auth-"}},
+		{args: []string{"x", "--file", "hskey-api-ab12cd345678-s3cret"}},
+		{args: []string{"x", "--id", "hskey-authreq-s3cret"}},
+		{args: []string{"x", "--id", "HSKEY-AUTHREQ-s3cret"}},
+		{args: []string{"hskey-api-ab12cd345678-s3cret"}, stderr: "Error: <name> takes no credential: hskey-api-*** is not sent.\n"},
+		{args: []string{"hskey-api-ab12cd345678-s3cret-***"}, stderr: "Error: <name> takes no credential: hskey-api-*** is not sent.\n"},
+		{args: []string{"x", "--tags", "tag:a,hskey-auth-ab12cd345678-s3cret"}, stderr: "Error: --tags takes no credential: hskey-auth-*** is not sent.\n"},
+		{args: []string{"x", "--note", "a hskey-oops-s3cret b"}, stderr: "Error: --note takes no credential: hskey-*** is not sent.\n"},
+		{args: []string{"x", "--id", "hskey-api-ab12cd345678-s3cret"}, stderr: "Error: --id takes only a credential hskey-authreq-: hskey-api-*** is not sent.\n"},
+		{args: []string{"tskey-client-c9f2aa000001-s3cret"}, stderr: "Error: <name> takes no credential: tskey-client-*** is not sent.\n"},
+		{args: []string{"x", "--note", "TSKEY-CLIENT-c9f2aa000001-s3cret?ephemeral=true"}, stderr: "Error: --note takes no credential: tskey-client-*** is not sent.\n"},
+		{args: []string{"x", "--id", "tskey-client-c9f2aa000001-s3cret"}, stderr: "Error: --id takes only a credential hskey-authreq-: tskey-client-*** is not sent.\n"},
+	} {
+		ran := false
+		tree, err := testBuild("prog", "A program", New(Spec[testS, typedIn, NoOutput]{
+			Name:    "run",
+			Short:   "Run",
+			Long:    "Run.",
+			Example: []string{"prog run x"},
+			Local:   true,
+			Run:     func(Ctx[testS], typedIn) (NoOutput, error) { ran = true; return NoOutput{}, nil },
+		}))
+		require.NoError(t, err)
+
+		var stderr bytes.Buffer
+
+		code := Run(
+			tree,
+			append([]string{"run"}, tt.args...),
+			Env{Stdout: io.Discard, Stderr: &stderr},
+		)
+		require.Equal(t, tt.stderr, stderr.String(), tt.args)
+		require.Equal(t, tt.stderr == "", ran, tt.args)
+		require.Equal(
+			t,
+			map[bool]int{true: 0, false: 1}[tt.stderr == ""],
+			code,
+			tt.args,
+		)
+	}
+
+	_, err := testBuild("prog", "A program", New(Spec[testS, wrongIn, NoOutput]{
+		Name:    "run",
+		Short:   "Run",
+		Long:    "Run.",
+		Example: []string{"prog run x"},
+		Local:   true,
+		Run:     noop[wrongIn, NoOutput],
+	}))
+	require.ErrorContains(t, err, "run: <id> "+errCredentialKind.Error())
 }

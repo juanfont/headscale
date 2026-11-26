@@ -127,7 +127,17 @@ func (t *Tree) columnNames(answer string) string {
 			}
 		}
 
-		prefix, sign, ok := signed(mark[0], strings.TrimSuffix(rest, "\n"))
+		prefix := strings.TrimSuffix(rest, "\n")
+
+		// The run drops the space around an item of --columns and --filter,
+		// so Tab completes the name after it and keeps it.
+		if mark[0] != sortMark[1] {
+			name := strings.TrimLeftFunc(prefix, unicode.IsSpace)
+			before += prefix[:len(prefix)-len(name)]
+			prefix = name
+		}
+
+		prefix, sign, ok := signed(mark[0], prefix)
 		if !ok {
 			continue
 		}
@@ -138,7 +148,8 @@ func (t *Tree) columnNames(answer string) string {
 
 		if mark[0] == columnsMark[1] {
 			for w := range strings.SplitSeq(before, ",") {
-				taken[strings.TrimLeft(w, "+-")] = true
+				// The space around an item comes off before its sign.
+				taken[strings.TrimLeft(strings.TrimSpace(w), "+-")] = true
 			}
 		}
 
@@ -208,7 +219,7 @@ func listCheck[R any](
 			}
 		case "filter":
 			for item := range strings.SplitSeq(g.Value, ",") {
-				_, err := cols.ParseFilter(item)
+				_, err := cols.ParseFilter(strings.TrimSpace(item))
 				if err != nil {
 					return g.At, bad(g, err)
 				}
@@ -253,6 +264,9 @@ func columnsCheck[R any](cols table.Columns[R], value string) error {
 	words := strings.Split(value, ",")
 
 	for _, w := range words {
+		// The parser drops the space around an item; g.Value keeps it.
+		w = strings.TrimSpace(w)
+
 		name := w
 		if w != "" && (w[0] == '+' || w[0] == '-') {
 			name = w[1:]

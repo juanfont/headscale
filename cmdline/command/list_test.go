@@ -323,6 +323,73 @@ func TestColumnsOfTheList(t *testing.T) {
 	}
 }
 
+// TestListItemSpaces: an item of --columns and --filter is read without
+// the space around it, as the parser reads it, also where a value is
+// checked against the columns.
+func TestListItemSpaces(t *testing.T) {
+	t.Parallel()
+
+	run := func(args ...string) (int, string, string) {
+		var stdout, stderr bytes.Buffer
+
+		code := Run(
+			testTree(t),
+			append([]string{"items", "list"}, args...),
+			Env{Stdout: &stdout, Stderr: &stderr},
+		)
+
+		return code, stdout.String(), stderr.String()
+	}
+
+	for _, tt := range []struct{ compact, spaced []string }{
+		{[]string{"--columns", "name,id"}, []string{"--columns", "name, id"}},
+		{[]string{"--columns", "+id,-name"}, []string{"--columns", " +id , -name"}},
+		{[]string{"--filter", "name=apple,id=1"}, []string{"--filter", "name=apple, id=1"}},
+		{[]string{"--filter", "id>0", "--filter", "id=1"}, []string{"--filter", " id>0", "--filter", "id=1 "}},
+	} {
+		code, stdout, stderr := run(tt.compact...)
+		require.Equal(t, 0, code, stderr)
+
+		gotCode, gotStdout, gotStderr := run(tt.spaced...)
+		require.Equal(
+			t,
+			[]any{0, stdout, ""},
+			[]any{gotCode, gotStdout, gotStderr},
+			tt.spaced,
+		)
+	}
+}
+
+// TestTabAfterSpace: the run drops the space around an item of --columns
+// and --filter, so Tab completes the name after it and keeps the space.
+// --sort is one name, which the run does not trim.
+func TestTabAfterSpace(t *testing.T) {
+	for _, tt := range []struct{ flag, word, want string }{
+		{"--columns", " na", " name\n"},
+		{"--columns", "id, na", "id, name\n"},
+		{"--columns", "id, -na", "id, -name\n"},
+		{"--columns", "id, na", "id, name\n"},
+		{"--filter", "id=1, na", "id=1, name\n"},
+		{"--sort", " na", ""},
+		// A column named already is not offered again, also with space
+		// before its sign.
+		{"--columns", " +id, -", " +id, -name\n"},
+		{"--columns", "id , ", "id , name\n"},
+		{"--columns=", " +id, -", " +id, -name\n"},
+	} {
+		var stdout bytes.Buffer
+
+		argv := []string{"__complete", "items", "list", tt.flag, tt.word}
+		if strings.HasSuffix(tt.flag, "=") {
+			argv = []string{"__completeNoDesc", "items", "list", tt.flag + tt.word}
+		}
+
+		require.Equal(t, 0, Run(testTree(t), argv, Env{Stdout: &stdout}), argv)
+		words, _, _ := strings.Cut(stdout.String(), ":")
+		require.Equal(t, tt.want, words, argv)
+	}
+}
+
 // TestNoColumnLeft: a --columns that takes away every column the table
 // would show is a mistake of the line, refused before any call, with -o json
 // as without. --all adds the column a list hides rows by, which is then left;
