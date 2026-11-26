@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,17 +20,22 @@ import (
 	"github.com/juanfont/headscale/client"
 	"github.com/juanfont/headscale/client/shape"
 	"github.com/juanfont/headscale/cmdline/command"
+	"github.com/juanfont/headscale/cmdline/table"
 	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/config"
 	"github.com/juanfont/headscale/hscontrol/types"
 )
 
 // API is the v0 client of a run: the generated client, which a command
-// calls directly, with what the run keeps beside it. The builder turns what
-// the client returns into the CLI's sentences (errorOf), and prints -o json
-// from the bodies the server sent.
+// calls directly, with what the run keeps beside it. A command passes the
+// guard of a write itself (Ctx.IfMatch, Ctx.Expect) and asks a list with
+// PageSize; the builder turns what the client returns into the CLI's
+// sentences (errorOf), and prints -o json from the bodies the server sent.
 type API struct {
 	*clientv0.ClientWithResponses
+
+	// PageSize is the rows of one page of a walk.
+	PageSize *int64
 
 	// target is the socket or the host, as messages name it.
 	target string
@@ -134,6 +140,13 @@ func (a *API) answerOf(v any) (json.RawMessage, bool) {
 	return raw, ok
 }
 
+// errRestarted is a walk whose token the server refused twice.
+//
+//nolint:staticcheck // a sentence of the CLI
+var errRestarted = errors.New(
+	"the server restarted while the list was read. Run the command again.",
+)
+
 // errorOf is err, an error of the client, as the CLI says it: a problem
 // the server answered, an answer the CLI cannot read, a server that is
 // slow, not there, or of another version, a write that may have been
@@ -143,7 +156,29 @@ func (a *API) errorOf(err error) error {
 		return err
 	}
 
+	_, list := errors.AsType[*clientv0.PageError](err)
+
+	switch {
+	case errors.Is(err, clientv0.ErrEmptyPageToken):
+		//nolint:err113,staticcheck // a sentence of the CLI
+		return fmt.Errorf(
+			"the server at %s sent an empty page token. This is a fault of the server.",
+			a.target,
+		)
+	case errors.Is(err, clientv0.ErrRepeatedPageToken):
+		//nolint:err113,staticcheck // a sentence of the CLI
+		return fmt.Errorf(
+			"the server at %s sent a page token it had sent before, so the list would never end. This is a fault of the server.",
+			a.target,
+		)
+	}
+
 	if re, ok := errors.AsType[*clientv0.ResponseError](err); ok {
+		if list && re.Problem != nil &&
+			re.Problem.Code == clientv0.ProblemCodeInvalidPageToken {
+			return errRestarted
+		}
+
 		return a.problemOf(re.Response, re.Body)
 	}
 
@@ -159,16 +194,27 @@ func (a *API) errorOf(err error) error {
 	sent = sent && re.Sent
 
 	if ve, ok := errors.AsType[*client.VersionError](err); ok {
-		return a.versionOf(ve)
+		v := a.versionOf(ve)
+		if sent && re.Write {
+			return &writeError{target: a.target, err: v}
+		}
+
+		return v
 	}
 
 	if r, ok := errors.AsType[*client.RedirectError](err); ok {
-		return &redirectError{target: a.target, to: r.To}
+		return &redirectError{target: a.target, to: table.Visible(r.To, "")}
 	}
 
 	// Any other error is not the client's.
 	if re == nil {
 		return err
+	}
+
+	// A write that was sent may have been made, whatever went wrong after,
+	// until its answer is read whole and taken.
+	if sent && re.Write {
+		return &writeError{target: a.target, err: re.Err}
 	}
 
 	deadline := errors.Is(err, context.DeadlineExceeded)
@@ -177,9 +223,19 @@ func (a *API) errorOf(err error) error {
 	// A server that answered before, or that has the request, is reached:
 	// it is slow, or it hung up, not gone.
 	case deadline && (sent || re.Reached):
-		return &slowError{target: a.target, timeout: a.timeout}
+		return &slowError{
+			target:  a.target,
+			timeout: a.timeout,
+			dryRun:  sent && re.DryRun,
+			list:    list,
+		}
 	case sent:
-		return &slowError{target: a.target, cause: re.Err}
+		return &slowError{
+			target: a.target,
+			cause:  re.Err,
+			dryRun: re.DryRun,
+			list:   list,
+		}
 	}
 
 	// A request that ran out of time while the socket was not there says
@@ -196,10 +252,12 @@ func cliError(err error) bool {
 	for _, is := range []func(error) bool{
 		func(err error) bool { _, ok := errors.AsType[*ProblemError](err); return ok },
 		func(err error) bool { _, ok := errors.AsType[*unreadableError](err); return ok },
+		func(err error) bool { _, ok := errors.AsType[*writeError](err); return ok },
 		func(err error) bool { _, ok := errors.AsType[*slowError](err); return ok },
 		func(err error) bool { _, ok := errors.AsType[*connectError](err); return ok },
 		func(err error) bool { _, ok := errors.AsType[*versionError](err); return ok },
 		func(err error) bool { _, ok := errors.AsType[*redirectError](err); return ok },
+		func(err error) bool { return errors.Is(err, errRestarted) },
 	} {
 		if is(err) {
 			return true
@@ -257,13 +315,24 @@ func (a *API) unreadable(ae *clientv0.AnswerError) error {
 			strings.Join(names, " or ") + " this operation answers"
 	case isShape:
 		why = se.Why
+	case errors.Is(ae.Err, clientv0.ErrPageTokenNotString):
+		why = "its nextPageToken is not a string"
 	default:
-		why = ae.Err.Error()
+		// The decoder quotes what it could not read, which the server wrote.
+		why = table.Visible(ae.Err.Error(), "")
 	}
 
-	return &unreadableError{
+	err := &unreadableError{
 		text: "the server at " + a.target + " sent an answer this CLI cannot read: " + why + ".",
 	}
+
+	req := resp.Request
+	if req != nil && req.Method != http.MethodGet &&
+		req.URL.Query().Get("dryRun") != "true" {
+		return &writeError{target: a.target, err: err, answered: true}
+	}
+
+	return err
 }
 
 // statusText is a status as a sentence names it: 204 No Content.
@@ -283,12 +352,21 @@ type slowError struct {
 	target  string
 	timeout time.Duration
 	cause   error
+	// list is a page of a walk; dryRun the dry run of a write, which a
+	// person may take for the write.
+	list, dryRun bool
 }
 
 func (e *slowError) Error() string {
 	what := "answer"
+	if e.list {
+		what = "send the next page of the list"
+	}
 
 	again := "Run the command again"
+	if e.dryRun {
+		again = "Nothing was changed: run the command again"
+	}
 
 	if e.cause != nil {
 		return "the server at " + e.target + " did not " + what + ": " + command.CauseOf(
@@ -298,6 +376,42 @@ func (e *slowError) Error() string {
 
 	return "the server at " + e.target + " did not " + what + " in " + e.timeout.String() + ".\n" +
 		again + ", or wait longer with HEADSCALE_CLI_TIMEOUT or cli.timeout."
+}
+
+// writeError is a write that was sent and got no answer: the server may
+// have made the change.
+type writeError struct {
+	target string
+	err    error
+	// answered is an answer that came and was refused.
+	answered bool
+}
+
+func (e *writeError) Error() string {
+	// An answer that came and was refused says what was wrong with it.
+	if _, version := errors.AsType[*versionError](e.err); e.answered || version {
+		return e.err.Error() + "\nThe change may have been made: look before you run the command again."
+	}
+
+	return "the server at " + e.target + " did not answer the change: " + command.CauseOf(
+		e.err,
+	) + ".\n" +
+		"The change may have been made: look before you run the command again."
+}
+
+func (e *writeError) Unwrap() error { return e.err }
+
+// MayBeMade is err with look after it when err is a write whose answer
+// was lost or refused: what a person runs to see whether the change was
+// made. Any other error is err, as the CLI says it.
+func (a *API) MayBeMade(err error, look string) error {
+	err = a.errorOf(err)
+	if !sentWrite(err) {
+		return err
+	}
+
+	//nolint:err113 // a sentence of the CLI
+	return fmt.Errorf("%s\n%s", sentence(err), look)
 }
 
 // connectError is a server that cannot be reached, with what was wrong.
@@ -365,7 +479,7 @@ func (a *API) versionOf(v *client.VersionError) *versionError {
 	if v.Missing {
 		return &versionError{
 			tooOld: v.TooOld,
-			status: v.Status,
+			status: table.Visible(v.Status, ""),
 			target: a.target,
 		}
 	}
@@ -376,15 +490,28 @@ func (a *API) versionOf(v *client.VersionError) *versionError {
 	}
 }
 
+// sentWrite reports whether err is a write that went out and whose answer
+// was not read, or was refused: it may have been made.
+func sentWrite(err error) bool {
+	_, ok := errors.AsType[*writeError](err)
+
+	return ok
+}
+
 // named is a version as the messages write it, with the commit when the
 // build knows it. Both can come from the server's headers.
 func named(version, commit string) string {
+	version, commit = table.Visible(version, ""), table.Visible(commit, "")
 	if commit == "" {
 		return version
 	}
 
 	return version + " (" + commit + ")"
 }
+
+// maxPage is the most rows v0 gives on one page; a walk asks for it, so a
+// list of up to 1000 rows is one call.
+const maxPage = 1000
 
 var errNoAPIKey = errors.New(
 	"a remote server needs an API key: set HEADSCALE_CLI_API_KEY, or cli.api_key in the config",
@@ -523,6 +650,7 @@ func connect(cfg *types.Config, env Env, stderr io.Writer) (*API, error) {
 	}
 
 	a.ClientWithResponses = c
+	a.PageSize = new(int64(cmp.Or(env.PageSize, maxPage)))
 
 	return a, nil
 }
