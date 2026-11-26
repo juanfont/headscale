@@ -1537,6 +1537,12 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 			if isGroup(u) {
 				return fmt.Errorf("groups[%q]: %q: %w", key, u, ErrGroupMembersCannotBeRecursive)
 			}
+
+			// SaaS takes a domain's users as a source or destination,
+			// never as the members of a group.
+			if strings.HasPrefix(u, "user:*@") {
+				return fmt.Errorf("groups[%q]: %q: %w", key, u, ErrInvalidGroupMember)
+			}
 		}
 	}
 

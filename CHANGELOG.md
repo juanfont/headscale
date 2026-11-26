@@ -262,7 +262,7 @@ maps each one to its replacement.
 - A user's devices are always peers of each other. The packet filter still controls access. [#3649](https://github.com/juanfont/headscale/pull/3649)
 - SSH `dst` rejects `autogroup:member`, as Tailscale does. Use `autogroup:self`, tags, or the source's own user. A policy file that still uses it stops headscale at startup. [#3343](https://github.com/juanfont/headscale/pull/3343)
 - A grant with `via` accepts only prefixes, hosts and `autogroup:internet` as `dst`, as Tailscale does. A `dst` inside the Tailscale address ranges is rejected too, except the 4via6 range. A policy file that still uses one stops headscale at startup. [#3757](https://github.com/juanfont/headscale/pull/3757)
-- `tagOwners` rejects `user:*@domain`, as Tailscale does. List the users, or use a group. [#3757](https://github.com/juanfont/headscale/pull/3757)
+- `tagOwners` and `groups` reject `user:*@domain`, as Tailscale does. List the users. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - An `app` grant that names a destination twice grants the capability once, as on Tailscale SaaS. [#3757](https://github.com/juanfont/headscale/pull/3757)
 
 #### Nodes and routes
