@@ -62,7 +62,12 @@ func (pol *Policy) compileOtherDestsReference(
 			dstIPStrings []string
 		)
 
-		for _, dst := range otherDests {
+		for i, dst := range otherDests {
+			// Tailscale writes a destination the document repeats once.
+			if slices.ContainsFunc(otherDests[:i], func(o Alias) bool { return o.String() == dst.String() }) {
+				continue
+			}
+
 			ips, err := dst.Resolve(pol, users, nodes)
 			if err != nil {
 				continue
@@ -71,12 +76,6 @@ func (pol *Policy) compileOtherDestsReference(
 			prefixes := ips.Prefixes()
 			if _, wildcard := dst.(Asterix); wildcard {
 				prefixes = append(prefixes, approvedSubnetPrefixes(nodes)...)
-			}
-
-			if slices.ContainsFunc(capGrants, func(cg tailcfg.CapGrant) bool {
-				return slices.Equal(cg.Dsts, prefixes)
-			}) {
-				continue
 			}
 
 			capGrants = append(capGrants, tailcfg.CapGrant{
