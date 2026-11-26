@@ -83,11 +83,14 @@ type result struct {
 	stdout, stderr string
 	code           int
 	// answers are the bodies the server sent in this run, by path, in the
-	// order sent; asked are the requests, as "METHOD path?query", and sent
-	// the same with the body of each, as the CLI wrote them.
+	// order sent; asked are the requests that got an answer, as "METHOD
+	// path?query". sent is every request that left for the server, answered
+	// or not, GET /version among them, as "METHOD path?query body", and
+	// headers the headers of each.
 	answers map[string][][]byte
 	asked   []string
 	sent    []string
+	headers []http.Header
 }
 
 // fixture is the server of one case, reached over its socket and its TCP
@@ -190,6 +193,7 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		mu          sync.Mutex
 		answers     = map[string][][]byte{}
 		asked, sent []string
+		headers     []http.Header
 	)
 
 	pageSize := tc.pageSize
@@ -201,7 +205,7 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		pageSize = 0
 	}
 
-	code := command.Run(Tree(), words(f.expand(tc.args)), command.Env{
+	code := command.Run(Tree(), words(f.expand(shell(tc.args))), command.Env{
 		Stdin:          strings.NewReader(f.expand(tc.stdin)),
 		Stdout:         &out,
 		Stderr:         &errOut,
@@ -220,11 +224,17 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 
 			answers[req.URL.Path] = append(answers[req.URL.Path], body)
 			asked = append(asked, req.Method+" "+req.URL.RequestURI())
-			sent = append(sent, req.Method+" "+req.URL.RequestURI()+" "+bodyOf(tb, req))
 
 			if tc.answered != nil {
 				tc.answered(tb, f, req.Method+" "+req.URL.RequestURI())
 			}
+		},
+		Sent: func(req *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			sent = append(sent, req.Method+" "+req.URL.RequestURI()+" "+bodyOf(tb, req))
+			headers = append(headers, req.Header.Clone())
 		},
 	})
 
@@ -235,6 +245,7 @@ func (f *fixture) run(tb testing.TB, tc cliCase) result {
 		answers: answers,
 		asked:   asked,
 		sent:    sent,
+		headers: headers,
 	}
 }
 
@@ -414,6 +425,13 @@ func indent(tb testing.TB, body []byte) string {
 	require.NoError(tb, json.Indent(&b, bytes.TrimSpace(body), "", "  "))
 
 	return b.String() + "\n"
+}
+
+// shell reads the shell variable an example may hold, $id, as the
+// fixture's var id, so the example runs as it is written; the walk sees it
+// unread.
+func shell(line string) string {
+	return strings.ReplaceAll(line, "$id", "{id}")
 }
 
 // words splits a line as a shell does, for the quotes the examples use.
@@ -889,6 +907,9 @@ Server commands (talk to a running headscale):
   users create <name>   Create a local user
   users set <user>   Change a local user
   users delete <user>   Delete a user with its keys (alias: rm)
+  auth register <auth-id> <user>   Register a node that waits to join
+  auth approve <auth-id>   Let an SSH check pass
+  auth reject <auth-id>   Refuse a registration or an SSH check
   auth keys list   List the auth keys (alias: ls)
   auth keys get <key>   Show one auth key
   auth keys create <owner>   Create an auth key
@@ -906,6 +927,7 @@ Server commands (talk to a running headscale):
 Debug:
 
   debug health   Check that the server is healthy
+  debug create-node   Make a registration of a made-up node, for tests
 
 Server commands take -o json, which prints the API object.
 See ` + "`headscale <command> --help`" + ` for examples.
