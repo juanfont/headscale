@@ -1975,7 +1975,8 @@ func waitParkedOnWriteQueue(t *testing.T, fn string) {
 		stacks := string(buf[:runtime.Stack(buf, true)])
 		for g := range strings.SplitSeq(stacks, "\n\n") {
 			if strings.Contains(g, "[select") &&
-				strings.Contains(g, "(*NodeStore).updateNodes(") &&
+				(strings.Contains(g, "(*NodeStore).updateNodes(") ||
+					strings.Contains(g, "(*NodeStore).writeIf(")) &&
 				strings.Contains(g, "."+fn+"(") {
 				return true
 			}

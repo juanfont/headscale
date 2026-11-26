@@ -48,6 +48,9 @@ type PolicyManager interface {
 	// TagExists reports whether the given tag is defined in the policy.
 	TagExists(tag string) bool
 
+	// PolicyTags returns every tag in tagOwners, sorted.
+	PolicyTags() []string
+
 	// UndefinedTag returns the first of tags the policy does not define.
 	// Without a policy it returns none: such a server has always taken
 	// tagged keys.

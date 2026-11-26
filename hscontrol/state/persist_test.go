@@ -2253,6 +2253,68 @@ func TestAcceptedExpirySurvivesRestart(t *testing.T) {
 	}
 }
 
+// TestRegistrationRecordsCreator: a node remembers the user who registered
+// it — the user of a login, the user of a user's key, the maker of a tagged
+// key — and nobody for a key a token made. It stays when the node is
+// tagged later.
+func TestRegistrationRecordsCreator(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err := s.SetPolicy([]byte(`{"tagOwners": {"tag:ci": ["creator-user@"]}}`))
+	require.NoError(t, err)
+
+	user := s.CreateUserForTest("creator-user")
+
+	viaKey := func(t *testing.T, pak *types.PreAuthKeyNew) types.NodeView {
+		t.Helper()
+
+		nv, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "creator-node"},
+		}, key.NewMachine().Public())
+		require.NoError(t, err)
+
+		return nv
+	}
+
+	creator := func(nv types.NodeView) *uint {
+		got, _ := s.GetNodeByID(nv.ID())
+
+		return got.AsStruct().CreatedByUserID
+	}
+
+	userKey, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	byUserKey := viaKey(t, userKey)
+	assert.Equal(t, new(user.ID), creator(byUserKey), "a user's key")
+
+	_, _, err = s.SetNodeTags(byUserKey.ID(), []string{"tag:ci"})
+	require.NoError(t, err)
+	assert.Equal(t, new(user.ID), creator(byUserKey), "it stays when the node is tagged")
+
+	taggedKey, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+	assert.Equal(t, new(user.ID), creator(viaKey(t, taggedKey)), "the maker of a tagged key")
+
+	tokenKey, err := s.CreateTokenPreAuthKey(nil, false, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+	assert.Nil(t, creator(viaKey(t, tokenKey)), "a key a token made")
+
+	authID := types.MustAuthID()
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: key.NewMachine().Public(),
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "cli-node",
+	})))
+
+	byLogin, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodCLI)
+	require.NoError(t, err)
+	assert.Equal(t, new(user.ID), creator(byLogin), "a login")
+}
+
 // TestLoadedExpiryIsUTC proves an expiry the database returns in another zone is
 // served in UTC. PostgreSQL returns the server's zone, where the latest accepted
 // expiry is in the year 10000 and cannot be encoded.
@@ -3314,4 +3376,436 @@ func TestLocalUserCannotMovePolicyRules(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotContains(t, sources(), bobIP, "mallory's email wins over bob's name: his rule means her")
+}
+
+// TestNodeWritesRefuseAnOldRevision holds every guarded node write: with
+// the revision read before another change, it is ErrNodeRevisionChanged and
+// changes nothing; with the current one, it writes.
+func TestNodeWritesRefuseAnOldRevision(t *testing.T) {
+	writes := map[string]func(s *State, id types.NodeID, rev string) error{
+		"patch": func(s *State, id types.NodeID, rev string) error {
+			_, _, err := s.PatchNode(id, rev, NodePatch{Name: new("web-1"), NeverExpires: true})
+
+			return err
+		},
+		"expire": func(s *State, id types.NodeID, rev string) error {
+			_, _, err := s.ExpireNodeIf(id, rev)
+
+			return err
+		},
+		"tags": func(s *State, id types.NodeID, rev string) error {
+			_, _, err := s.SetNodeTagsIf(id, []string{"tag:ci"}, rev)
+
+			return err
+		},
+		"routes": func(s *State, id types.NodeID, rev string) error {
+			_, _, err := s.SetApprovedRoutesIf(id, []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}, rev)
+
+			return err
+		},
+		"delete": func(s *State, id types.NodeID, rev string) error {
+			_, err := s.DeleteNodeIf(id, rev)
+
+			return err
+		},
+	}
+
+	for name, write := range writes {
+		t.Run(name, func(t *testing.T) {
+			_, s, id := persistTestSetup(t)
+			t.Cleanup(func() { _ = s.Close() })
+
+			_, err := s.SetPolicy([]byte(`{"tagOwners": {"tag:ci": ["persist-user@"]}}`))
+			require.NoError(t, err)
+
+			old, _ := s.GetNodeByID(id)
+
+			_, _, err = s.RenameNode(id, "moved")
+			require.NoError(t, err)
+
+			now, _ := s.GetNodeByID(id)
+
+			require.ErrorIs(t, write(s, id, old.Revision()), ErrNodeRevisionChanged)
+
+			after, ok := s.GetNodeByID(id)
+			require.True(t, ok, "a refused write keeps the node")
+			assert.Equal(t, now.Revision(), after.Revision(), "a refused write changes nothing")
+
+			require.NoError(t, write(s, id, now.Revision()))
+		})
+	}
+}
+
+// TestTagWriteAfterUserLoginIsRefused: a tag write read before the node
+// logged in again as a user must not take the node from that user. The
+// login is the owner change the login path makes, through the same writer.
+func TestTagWriteAfterUserLoginIsRefused(t *testing.T) {
+	_, s, id := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err := s.SetPolicy([]byte(`{"tagOwners": {"tag:ci": ["persist-user@"], "tag:db": ["persist-user@"]}}`))
+	require.NoError(t, err)
+
+	userOwned, _ := s.GetNodeByID(id)
+	owner := userOwned.UserID().Get()
+
+	tagged, _, err := s.SetNodeTags(id, []string{"tag:ci"})
+	require.NoError(t, err)
+
+	read := tagged.Revision()
+
+	s.nodeStore.UpdateNode(id, func(n *types.Node) {
+		n.Tags = nil
+		n.UserID = new(owner)
+	})
+
+	_, _, err = s.SetNodeTagsIf(id, []string{"tag:db"}, read)
+	require.ErrorIs(t, err, ErrNodeRevisionChanged)
+
+	n, _ := s.GetNodeByID(id)
+	assert.False(t, n.IsTagged(), "the node stays with its user")
+}
+
+// TestTwoTagWritesFromOneRevision: two writers that read the same revision
+// race; exactly one writes.
+func TestTwoTagWritesFromOneRevision(t *testing.T) {
+	_, s, id := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err := s.SetPolicy([]byte(`{"tagOwners": {"tag:ci": ["persist-user@"], "tag:db": ["persist-user@"]}}`))
+	require.NoError(t, err)
+
+	n, _ := s.GetNodeByID(id)
+	rev := n.Revision()
+
+	errs := make(chan error, 2)
+
+	for _, tag := range []string{"tag:ci", "tag:db"} {
+		go func() {
+			_, _, err := s.SetNodeTagsIf(id, []string{tag}, rev)
+			errs <- err
+		}()
+	}
+
+	first, second := <-errs, <-errs
+	refused := 0
+
+	for _, err := range []error{first, second} {
+		if errors.Is(err, ErrNodeRevisionChanged) {
+			refused++
+		} else {
+			require.NoError(t, err)
+		}
+	}
+
+	assert.Equal(t, 1, refused)
+}
+
+// TestPatchNode holds the name and the expiry changing together: a name
+// taken refuses the expiry too, "" resets to the hostname's name, and null
+// keeps the stored time behind the switch.
+func TestPatchNode(t *testing.T) {
+	_, s, id := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	other := s.CreateRegisteredNodeForTest(s.CreateUserForTest("bob"), "other")
+	s.PutNodeInStoreForTest(*other)
+
+	before, _ := s.GetNodeByID(id)
+	later := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Microsecond)
+
+	_, _, err := s.PatchNode(id, "", NodePatch{Name: new(other.GivenName), Expiry: &later})
+	require.ErrorIs(t, err, ErrNodeNameNotUnique)
+
+	n, _ := s.GetNodeByID(id)
+	assert.Equal(t, before.Revision(), n.Revision(), "neither changed")
+
+	_, _, err = s.PatchNode(id, "", NodePatch{Name: new("Web-1"), Expiry: &later})
+	require.ErrorIs(t, err, ErrGivenNameInvalid, "a capital letter is refused, not lowered")
+
+	_, _, err = s.PatchNode(id, "", NodePatch{Expiry: &later, NeverExpires: true})
+	require.ErrorIs(t, err, ErrNodePatchExpiryAndNever)
+
+	n, _, err = s.PatchNode(id, "", NodePatch{Name: new("web-1"), Expiry: &later})
+	require.NoError(t, err)
+	assert.Equal(t, "web-1", n.GivenName())
+
+	exp, ok := n.KeyExpiry()
+	require.True(t, ok)
+	assert.True(t, exp.Equal(later))
+
+	// Cut to microseconds, as PostgreSQL keeps it: SQLite would keep the
+	// nanoseconds that the answer does not show.
+	nanos := time.Date(2099, 7, 1, 0, 0, 0, 123456999, time.UTC)
+	n, _, err = s.PatchNode(id, "", NodePatch{Expiry: &nanos})
+	require.NoError(t, err)
+
+	stored, err := s.DB().GetNodeByID(id)
+	require.NoError(t, err)
+	assert.Equal(t, nanos.Truncate(time.Microsecond), stored.Expiry.UTC())
+	assert.Equal(t, nanos.Truncate(time.Microsecond), n.Expiry().Get())
+
+	_, _, err = s.PatchNode(id, "", NodePatch{Expiry: &later})
+	require.NoError(t, err)
+
+	n, _, err = s.PatchNode(id, "", NodePatch{Name: new(""), NeverExpires: true})
+	require.NoError(t, err)
+	assert.Equal(t, "persist-node", n.GivenName(), "reset to the hostname's name")
+
+	_, ok = n.KeyExpiry()
+	assert.False(t, ok)
+	assert.True(t, n.Expiry().Get().Equal(later), "the stored time stays")
+
+	// A reset that ends on the name the node has renames nothing, so the
+	// node is not sent a new DNS config.
+	s.selfRefreshMu.Lock()
+	s.selfRefresh = nil
+	s.selfRefreshMu.Unlock()
+
+	_, _, err = s.PatchNode(id, "", NodePatch{Name: new("")})
+	require.NoError(t, err)
+
+	s.selfRefreshMu.Lock()
+	assert.Empty(t, s.selfRefresh, "no rename, no refresh")
+	s.selfRefreshMu.Unlock()
+}
+
+// TestRevisionSurvivesRestart: a revision read before a restart still
+// guards the write after it, though the database keeps less of a time than
+// memory does.
+func TestRevisionSurvivesRestart(t *testing.T) {
+	for name, open := range map[string]func(*testing.T) *State{
+		"sqlite": func(t *testing.T) *State {
+			t.Helper()
+
+			_, s, _ := persistTestSetup(t)
+			t.Cleanup(func() { _ = s.Close() })
+
+			return s
+		},
+		"postgres": newPostgresStateForTest,
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := open(t)
+
+			node := s.CreateRegisteredNodeForTest(s.CreateUserForTest("restart-user"), "restart-node")
+			s.PutNodeInStoreForTest(*node)
+
+			// A time with nanoseconds, as an expire at the server's clock.
+			at := time.Now().Add(time.Hour).Truncate(time.Microsecond).Add(789 * time.Nanosecond)
+
+			n, _, err := s.PatchNode(node.ID, "", NodePatch{Expiry: &at})
+			require.NoError(t, err)
+
+			rev := n.Revision()
+
+			require.NoError(t, s.Close())
+
+			s, err = NewState(s.cfg)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = s.Close() })
+
+			_, _, err = s.PatchNode(node.ID, rev, NodePatch{Name: new("after-restart")})
+			require.NoError(t, err, "the revision read before the restart still matches")
+		})
+	}
+}
+
+// TestDeleteNodeIfAfterAnotherDelete: a guarded delete that finds the row
+// gone, because an old delete removed it and has not reached the NodeStore
+// yet, frees nothing: that delete frees the addresses, once, and a node
+// registered between the two never shares an address.
+func TestDeleteNodeIfAfterAnotherDelete(t *testing.T) {
+	s, node := deleteRaceSetup(t)
+
+	// The old delete's row delete commits; it has not reached the NodeStore.
+	require.NoError(t, s.db.DeleteNode(node.AsStruct()))
+
+	_, err := s.DeleteNodeIf(node.ID(), "")
+	require.ErrorIs(t, err, ErrNodeNotInNodeStore)
+
+	_, _, err = s.ipAlloc.Next()
+	require.ErrorIs(t, err, db.ErrCouldNotAllocateIP, "the guarded delete freed nothing")
+
+	// The old delete goes on.
+	s.nodeStore.DeleteNode(node.ID())
+	s.ipAlloc.FreeIPs(node.IPs())
+
+	_, _, err = s.ipAlloc.Next()
+	require.NoError(t, err)
+
+	_, _, err = s.ipAlloc.Next()
+	require.ErrorIs(t, err, db.ErrCouldNotAllocateIP, "freed once")
+}
+
+// TestDeleteNodeIfRacingDeleteNoDataRace runs a guarded delete and an old
+// delete of one node at once, for the race detector: the node ends deleted
+// and its address free. It cannot see a second free, which removes from a
+// set; TestDeleteNodeIfAfterAnotherDelete holds that.
+func TestDeleteNodeIfRacingDeleteNoDataRace(t *testing.T) {
+	for range 50 {
+		s, node := deleteRaceSetup(t)
+
+		var wg sync.WaitGroup
+
+		wg.Go(func() { _, _ = s.DeleteNodeIf(node.ID(), "") })
+		wg.Go(func() { _, _ = s.DeleteNode(node) })
+		wg.Wait()
+
+		_, ok := s.GetNodeByID(node.ID())
+		require.False(t, ok)
+
+		_, _, err := s.ipAlloc.Next()
+		require.NoError(t, err)
+
+		require.NoError(t, s.Close())
+	}
+}
+
+// TestDeleteNodeIfPanicGivesClaimBack: a row delete that panics, recovered
+// as the HTTP server's recoverer does, leaves no claim behind: the node
+// takes admin writes and a delete again.
+func TestDeleteNodeIfPanicGivesClaimBack(t *testing.T) {
+	_, s, id := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	require.NoError(t, s.db.DB.Callback().Delete().Before("gorm:delete").
+		Register("panic_node_delete", func(tx *gorm.DB) {
+			if tx.Statement.Table == "nodes" {
+				panic("injected")
+			}
+		}))
+
+	func() {
+		defer func() { require.NotNil(t, recover()) }()
+
+		_, _ = s.DeleteNodeIf(id, "")
+	}()
+
+	require.NoError(t, s.db.DB.Callback().Delete().Remove("panic_node_delete"))
+
+	_, _, err := s.PatchNode(id, "", NodePatch{Name: new("after-panic")})
+	require.NoError(t, err, "no claim left behind")
+
+	_, _, err = s.SetApprovedRoutes(id, nil)
+	require.NoError(t, err)
+
+	_, err = s.DeleteNodeIf(id, "")
+	require.NoError(t, err, "persistMu was released")
+}
+
+// TestDeleteNodeRowOfNoNode: the row delete refuses a node view that holds
+// no node rather than dereference it.
+func TestDeleteNodeRowOfNoNode(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	require.ErrorIs(t, s.deleteNodeRow(types.NodeView{}), ErrNodeNotInNodeStore)
+}
+
+// deleteRaceSetup is a State whose IPv4 range holds two addresses: one node
+// has the first, the second is taken, so a free shows in the next
+// allocation.
+func deleteRaceSetup(t *testing.T) (*State, types.NodeView) {
+	t.Helper()
+
+	prefix := netip.MustParsePrefix("100.64.0.0/30")
+	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+	cfg.Prefixes.V4 = &prefix
+	cfg.Prefixes.V6 = nil
+	cfg.Prefixes.Allocation = types.IPAllocationStrategyRandom
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("delete-user")
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "delete-node"},
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	_, _, err = s.ipAlloc.Next()
+	require.NoError(t, err)
+
+	return s, node
+}
+
+// TestDeleteNodeIfKeepsNodeWholeOnDBFailure: when the row delete fails, the
+// node is as it would be had nobody tried. A write the node made while the
+// row was being deleted stays, its name does not move, the delete returns
+// no change, and the node takes guarded writes again.
+func TestDeleteNodeIfKeepsNodeWholeOnDBFailure(t *testing.T) {
+	_, s, id := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	before, _ := s.GetNodeByID(id)
+
+	require.NoError(t, s.db.DB.Callback().Delete().Before("gorm:delete").
+		Register("fail_node_delete", func(tx *gorm.DB) {
+			if tx.Statement.Table == "nodes" {
+				// A session ends while the row is being deleted.
+				s.nodeStore.UpdateNode(id, func(n *types.Node) { n.Hostname = "reported-meanwhile" })
+
+				_ = tx.AddError(errInjectedNodeDelete)
+			}
+		}))
+	t.Cleanup(func() { _ = s.db.DB.Callback().Delete().Remove("fail_node_delete") })
+
+	c, err := s.DeleteNodeIf(id, before.Revision())
+	require.ErrorIs(t, err, errInjectedNodeDelete)
+	assert.Empty(t, c)
+
+	after, ok := s.GetNodeByID(id)
+	require.True(t, ok)
+	assert.Equal(t, "reported-meanwhile", after.Hostname(), "a write made in the window is not lost")
+	assert.Equal(t, before.GivenName(), after.GivenName())
+	assert.Equal(t, before.Revision(), after.Revision())
+
+	_, _, err = s.PatchNode(id, after.Revision(), NodePatch{Name: new("still-here")})
+	require.NoError(t, err, "the node takes guarded writes again")
+
+	_, err = s.db.GetNodeByID(id)
+	require.NoError(t, err, "the row stays")
+}
+
+// TestPatchNodeResetOntoItsNameTellsNobody: a reset whose base name another
+// node holds is bumped back to the name the node already has; peers hear of
+// a rename only when the stored name moves.
+func TestPatchNodeResetOntoItsNameTellsNobody(t *testing.T) {
+	_, s, id := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	first, ok := s.GetNodeByID(id)
+	require.True(t, ok)
+
+	base := first.Hostname()
+
+	_, _, err := s.PatchNode(id, "", NodePatch{Name: new("custom")})
+	require.NoError(t, err)
+
+	second := s.CreateRegisteredNodeForTest(s.CreateUserForTest("second"), "other")
+	s.PutNodeInStoreForTest(*second)
+
+	_, _, err = s.PatchNode(second.ID, "", NodePatch{Name: &base})
+	require.NoError(t, err)
+	s.DrainSelfRefreshes()
+
+	n, c, err := s.PatchNode(id, "", NodePatch{Name: new("")})
+	require.NoError(t, err)
+	require.NotEqual(t, base, n.GivenName(), "the reset is bumped off the taken name")
+	require.False(t, c.IsEmpty(), "the first reset renames the node")
+	require.NotEmpty(t, s.DrainSelfRefreshes())
+
+	again, repeat, err := s.PatchNode(id, n.Revision(), NodePatch{Name: new("")})
+	require.NoError(t, err)
+	require.Equal(t, n.GivenName(), again.GivenName())
+	require.Equal(t, n.Revision(), again.Revision())
+	require.Empty(t, s.DrainSelfRefreshes())
+	require.True(t, repeat.IsEmpty(), "a reset that keeps the stored name tells no peer")
 }
