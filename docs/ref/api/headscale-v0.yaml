@@ -192,6 +192,149 @@ components:
         - credential
         - authorization
       type: object
+    Node:
+      properties:
+        addresses:
+          description: IPv4 first.
+          items:
+            type: string
+          type: array
+        advertisedRoutes:
+          description: Routes the node offers.
+          items:
+            type: string
+          type: array
+        attributes:
+          additionalProperties:
+            type: string
+          description: Node attributes, by name.
+          type: object
+        authKeyId:
+          description: The ID of the auth key the node joined with.
+          type:
+            - string
+            - "null"
+        clientVersion:
+          description: The short version of the Tailscale client; "" when unknown.
+          type: string
+        connectedToControl:
+          description: The node holds a session with the server, expired or not. A node that is not expired stays connected for a short grace after its session ends; an expired node is released at once.
+          type: boolean
+        created:
+          format: date-time
+          type: string
+        createdBy:
+          $ref: "#/components/schemas/UserReference"
+          description: "The user whose key or login last registered the node in place: for a tagged node the maker of its key, for a node a user took back that user. null for a key an OAuth client made, or when the server does not know. Not the owner of a tagged node."
+        discoKey:
+          type: string
+        enabledRoutes:
+          description: Routes an admin or the policy approved.
+          items:
+            type: string
+          type: array
+        ephemeral:
+          description: The node is removed some time after it disconnects.
+          type: boolean
+        expired:
+          description: The expiry has passed, by the server's clock.
+          type: boolean
+        expiry:
+          description: "null: the node never expires, or its stored expiry is out of range (problems names it)."
+          format: date-time
+          type:
+            - string
+            - "null"
+        fqdn:
+          description: name and the base domain, without a trailing dot; "" when no base domain is set, or when name is not a DNS label (problems has node_name_invalid).
+          type: string
+        hostname:
+          description: What the node reports. Read-only.
+          type: string
+        id:
+          type: string
+        lastSeen:
+          description: Now while the node is connected; otherwise its last connection, or its registration if it has not connected since.
+          format: date-time
+          type:
+            - string
+            - "null"
+        machineKey:
+          type: string
+        name:
+          description: The name in Headscale, which can be changed.
+          type: string
+        nodeKey:
+          type: string
+        os:
+          description: As the node reports it; "" when unknown.
+          type: string
+        owner:
+          $ref: "#/components/schemas/UserOrTags"
+          description: One user, or tags.
+        problems:
+          description: The codes of the health checks the node fails, as in the warnings of GET /health; [] for a good node.
+          items:
+            type: string
+          type: array
+        registerMethod:
+          anyOf:
+            - $ref: "#/components/schemas/NodeRegisterMethod"
+            - type: string
+          description: How the node registered; "" for a node that does not record it, as os and clientVersion are "" when unknown. A client must accept a value it does not know.
+          x-go-type: NodeRegisterMethod
+        revision:
+          description: Changes when the owner, the tags, the enabled routes, the name or the expiry change. Send it back in If-Match.
+          type: string
+        servingRoutes:
+          description: "Routes the node serves to others now: approved, offered, and with this node chosen to serve them; exit routes too."
+          items:
+            type: string
+          type: array
+        updateAvailable:
+          description: A newer stable Tailscale client exists; false also when the server does not know.
+          type: boolean
+      required:
+        - id
+        - name
+        - hostname
+        - fqdn
+        - owner
+        - addresses
+        - connectedToControl
+        - lastSeen
+        - expiry
+        - expired
+        - created
+        - clientVersion
+        - updateAvailable
+        - os
+        - enabledRoutes
+        - advertisedRoutes
+        - servingRoutes
+        - ephemeral
+        - registerMethod
+        - authKeyId
+        - createdBy
+        - machineKey
+        - nodeKey
+        - discoKey
+        - attributes
+        - revision
+        - problems
+      type: object
+    NodeList:
+      properties:
+        nextPageToken:
+          description: Present when more rows can follow; send it back as pageToken. Missing on the last page.
+          type: string
+        nodes:
+          items:
+            $ref: "#/components/schemas/Node"
+          type: array
+      required:
+        - nodes
+      type: object
     NodeReference:
       properties:
         id:
@@ -202,6 +345,14 @@ components:
         - id
         - name
       type: object
+    NodeRegisterMethod:
+      description: How the node registered; "" for a node that does not record it, as os and clientVersion are "" when unknown. A client must accept a value it does not know.
+      enum:
+        - authKey
+        - cli
+        - oidc
+        - ""
+      type: string
     Owner:
       properties:
         tags:
@@ -317,6 +468,7 @@ components:
       enum:
         - email_taken
         - empty_patch
+        - expiry_in_past
         - forbidden
         - internal
         - invalid_field
@@ -325,11 +477,15 @@ components:
         - method_not_allowed
         - name_taken
         - not_found
+        - precondition_failed
         - request_timeout
+        - tags_not_permitted
+        - tags_required
         - too_large
         - unauthorized
         - unhealthy
         - unsupported_media_type
+        - update_refused
         - user_managed_by_oidc
       type: string
     ProblemObject:
@@ -359,6 +515,78 @@ components:
         - oauthClient
         - authRequest
       type: string
+    SetNodeRoutesBody:
+      additionalProperties: false
+      properties:
+        routes:
+          description: IP prefixes; [] removes them all. One exit prefix approves both.
+          items:
+            type: string
+          maxItems: 4096
+          type: array
+      required:
+        - routes
+      type: object
+    SetNodeTagsBody:
+      additionalProperties: false
+      properties:
+        tags:
+          description: At least one tag, each in tagOwners of the policy.
+          items:
+            type: string
+          maxItems: 256
+          type: array
+      required:
+        - tags
+      type: object
+    Tag:
+      properties:
+        inPolicy:
+          description: The tag is in tagOwners of the policy; false for a tag nodes still have that the policy no longer names.
+          type: boolean
+        nodeCount:
+          description: Every node that has the tag, also with the node filter.
+          format: int64
+          type: integer
+        nodes:
+          description: The same nodes, in ID order.
+          items:
+            $ref: "#/components/schemas/NodeReference"
+          type: array
+        tag:
+          type: string
+      required:
+        - tag
+        - inPolicy
+        - nodeCount
+        - nodes
+      type: object
+    TagList:
+      properties:
+        nextPageToken:
+          description: Present when more rows can follow; send it back as pageToken. Missing on the last page.
+          type: string
+        tags:
+          items:
+            $ref: "#/components/schemas/Tag"
+          type: array
+      required:
+        - tags
+      type: object
+    UpdateNodeBody:
+      additionalProperties: false
+      properties:
+        expiry:
+          description: An RFC 3339 time in the future, "now" for the server's clock, or null for never. A time turns key expiry on.
+          maxLength: 64
+          type:
+            - string
+            - "null"
+        name:
+          description: A DNS label; "" resets it to the name made from the hostname.
+          maxLength: 63
+          type: string
+      type: object
     UpdateUserBody:
       additionalProperties: false
       properties:
@@ -441,6 +669,32 @@ components:
       required:
         - users
       type: object
+    UserOrTags:
+      oneOf:
+        - properties:
+            tags:
+              maxItems: 0
+              type: array
+            user:
+              type: object
+        - properties:
+            tags:
+              minItems: 1
+              type: array
+            user:
+              type: "null"
+      properties:
+        tags:
+          items:
+            type: string
+          type: array
+        user:
+          $ref: "#/components/schemas/OwnerUser"
+      required:
+        - user
+        - tags
+      type: object
+      x-go-type: nullable.Nullable[Owner]
     UserProvider:
       description: Where the user comes from. A client must accept a value it does not know.
       enum:
@@ -674,6 +928,1664 @@ paths:
       x-problem-codes:
         - internal
         - invalid_field
+        - unauthorized
+        - unhealthy
+  /api/headscale/v0/nodes:
+    get:
+      description: In ID order. A page and its computed fields show one moment.
+      operationId: listNodes
+      parameters:
+        - description: Rows on one page.
+          explode: false
+          in: query
+          name: pageSize
+          schema:
+            default: 25
+            description: Rows on one page.
+            format: int64
+            maximum: 1000
+            minimum: 1
+            type: integer
+        - description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+          explode: false
+          in: query
+          name: pageToken
+          schema:
+            description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+            type: string
+        - description: Only the nodes of the user with this ID; tagged nodes never match.
+          explode: false
+          in: query
+          name: user
+          schema:
+            description: Only the nodes of the user with this ID; tagged nodes never match.
+            type: string
+        - description: Only the nodes with this tag.
+          explode: false
+          in: query
+          name: tag
+          schema:
+            description: Only the nodes with this tag.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeList"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field, invalid_page_token"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - devices:core:read
+      summary: List nodes
+      tags:
+        - Nodes
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_page_token
+        - unauthorized
+        - unhealthy
+  /api/headscale/v0/nodes/{id}:
+    delete:
+      description: The node must register again to come back.
+      operationId: deleteNode
+      parameters:
+        - description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+          in: header
+          name: If-Match
+          schema:
+            description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+            type: string
+        - description: The ID of the node.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the node.
+            type: string
+      responses:
+        "204":
+          description: No Content
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "412":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Precondition Failed: precondition_failed"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - devices:core
+      summary: Delete a node
+      tags:
+        - Nodes
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - precondition_failed
+        - unauthorized
+        - unhealthy
+    get:
+      description: The ETag is the revision, to send back in If-Match.
+      operationId: getNode
+      parameters:
+        - description: The ID of the node.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the node.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+          description: OK
+          headers:
+            ETag:
+              required: true
+              schema:
+                description: The revision of the node, quoted.
+                type: string
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - devices:core:read
+      summary: Read one node
+      tags:
+        - Nodes
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - unauthorized
+        - unhealthy
+    patch:
+      description: Changes the fields that are sent, as JSON Merge Patch (RFC 7396); both change, or neither. A name another node has is name_taken.
+      operationId: updateNode
+      parameters:
+        - description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+          in: header
+          name: If-Match
+          schema:
+            description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+            type: string
+        - description: The ID of the node.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the node.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNodeBody"
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/UpdateNodeBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+          description: OK
+          headers:
+            ETag:
+              required: true
+              schema:
+                description: The revision of the node, quoted.
+                type: string
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Bad Request: invalid_request"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "408":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Timeout: request_timeout"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Conflict: name_taken"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "412":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Precondition Failed: precondition_failed"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Entity Too Large: too_large"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unsupported Media Type: unsupported_media_type"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: empty_patch, expiry_in_past, invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - devices:core
+      summary: Change the name or the expiry of a node
+      tags:
+        - Nodes
+      x-problem-codes:
+        - empty_patch
+        - expiry_in_past
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_request
+        - name_taken
+        - not_found
+        - precondition_failed
+        - request_timeout
+        - too_large
+        - unauthorized
+        - unhealthy
+        - unsupported_media_type
+  /api/headscale/v0/nodes/{id}/expire:
+    post:
+      description: Sets the expiry to the server's clock and turns key expiry on, so the node must log in again, tagged or not.
+      operationId: expireNode
+      parameters:
+        - description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+          in: header
+          name: If-Match
+          schema:
+            description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+            type: string
+        - description: The ID of the node.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the node.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+          description: OK
+          headers:
+            ETag:
+              required: true
+              schema:
+                description: The revision of the node, quoted.
+                type: string
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "412":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Precondition Failed: precondition_failed"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - devices:core
+      summary: Expire a node now
+      tags:
+        - Nodes
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - precondition_failed
+        - unauthorized
+        - unhealthy
+  /api/headscale/v0/nodes/{id}/routes:
+    put:
+      description: Replaces enabledRoutes, the policy's approvals too. A route the node does not offer is stored and takes effect when it does. One exit prefix approves both.
+      operationId: setNodeRoutes
+      parameters:
+        - description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+          in: header
+          name: If-Match
+          schema:
+            description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+            type: string
+        - description: The ID of the node.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the node.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetNodeRoutesBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+          description: OK
+          headers:
+            ETag:
+              required: true
+              schema:
+                description: The revision of the node, quoted.
+                type: string
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Bad Request: invalid_request"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "408":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Timeout: request_timeout"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "412":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Precondition Failed: precondition_failed"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Entity Too Large: too_large"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unsupported Media Type: unsupported_media_type"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - devices:routes
+            - devices:core:read
+      summary: Replace the enabled routes of a node
+      tags:
+        - Nodes
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_request
+        - not_found
+        - precondition_failed
+        - request_timeout
+        - too_large
+        - unauthorized
+        - unhealthy
+        - unsupported_media_type
+  /api/headscale/v0/nodes/{id}/tags:
+    put:
+      description: A user-owned node becomes a tagged node, and the API cannot undo that. Key expiry stays as it was.
+      operationId: setNodeTags
+      parameters:
+        - description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+          in: header
+          name: If-Match
+          schema:
+            description: "The revision of the node, as its ETag: \"<revision>\". The write is refused with precondition_failed when the node changed; leave it out to write whatever it holds."
+            type: string
+        - description: The ID of the node.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the node.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetNodeTagsBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+          description: OK
+          headers:
+            ETag:
+              required: true
+              schema:
+                description: The revision of the node, quoted.
+                type: string
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Bad Request: invalid_request"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "408":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Timeout: request_timeout"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "412":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Precondition Failed: precondition_failed"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Entity Too Large: too_large"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unsupported Media Type: unsupported_media_type"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field, tags_not_permitted, tags_required"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - devices:core
+      summary: Replace the tags of a node
+      tags:
+        - Nodes
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_request
+        - not_found
+        - precondition_failed
+        - request_timeout
+        - tags_not_permitted
+        - tags_required
+        - too_large
+        - unauthorized
+        - unhealthy
+        - unsupported_media_type
+      x-token-rules:
+        - token_must_own_tags
+  /api/headscale/v0/nodes/{id}/update-client:
+    post:
+      description: Answers once the node started the update, not when it is done. A node that does not start it is update_refused, with the reason.
+      operationId: updateNodeClient
+      parameters:
+        - description: The ID of the node.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the node.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+          description: OK
+          headers:
+            ETag:
+              required: true
+              schema:
+                description: The revision of the node, quoted.
+                type: string
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Conflict: update_refused"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - devices:core
+      summary: Ask a node to update its Tailscale client
+      tags:
+        - Nodes
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - unauthorized
+        - unhealthy
+        - update_refused
+  /api/headscale/v0/tags:
+    get:
+      description: Every tag in tagOwners of the policy and every tag on a node, by name, byte by byte.
+      operationId: listTags
+      parameters:
+        - description: Rows on one page.
+          explode: false
+          in: query
+          name: pageSize
+          schema:
+            default: 25
+            description: Rows on one page.
+            format: int64
+            maximum: 1000
+            minimum: 1
+            type: integer
+        - description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+          explode: false
+          in: query
+          name: pageToken
+          schema:
+            description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+            type: string
+        - description: Only the tags of the node with this ID; the counts still cover every node.
+          explode: false
+          in: query
+          name: node
+          schema:
+            description: Only the tags of the node with this ID; the counts still cover every node.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagList"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field, invalid_page_token"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - devices:core:read
+      summary: List tags
+      tags:
+        - Tags
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_page_token
         - unauthorized
         - unhealthy
   /api/headscale/v0/users:
