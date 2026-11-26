@@ -3068,6 +3068,60 @@ func TestViaRouterOfOtherFamilyUnlinked(t *testing.T) {
 	}
 }
 
+// TestSelfSiblingsListCoveredDevices holds the one-way listing a router
+// over another user's device brings under autogroup:self: the other devices
+// of the router's user list the covered device (acl-self-routed-by-other-user,
+// -by-third-user, -wide-route), and no device of that user the route does not
+// cover.
+func TestSelfSiblingsListCoveredDevices(t *testing.T) {
+	t.Parallel()
+
+	self := `{` + peerTagOwners + `, "acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}]}`
+
+	for _, c := range []struct {
+		name  string
+		specs []peerSpec
+		want  map[string][]string
+	}{
+		{
+			name: "one covered device",
+			specs: []peerSpec{
+				{name: "bulb1"},
+				{name: "bulb2"},
+				{name: "krouter", user: 1, routes: []string{"100.64.0.1/32"}},
+				{name: "ivy", user: 1},
+				{name: "ven", user: 2},
+			},
+			want: map[string][]string{
+				"bulb1": {"bulb2", "krouter"}, "bulb2": {"bulb1", "krouter"},
+				"krouter": {"bulb1", "bulb2", "ivy"}, "ivy": {"bulb1", "krouter"},
+			},
+		},
+		{
+			name: "a route over two users' devices",
+			specs: []peerSpec{
+				{name: "bulb1"},
+				{name: "bulb2"},
+				{name: "ven", user: 2},
+				{name: "krouter", user: 1, routes: []string{"100.64.0.0/30"}},
+				{name: "bulb3"},
+				{name: "ivy", user: 1},
+			},
+			want: map[string][]string{
+				"bulb1": {"bulb2", "bulb3", "krouter"}, "bulb2": {"bulb1", "bulb3", "krouter"}, "bulb3": {"bulb1", "bulb2", "krouter"},
+				"ven": {"krouter"}, "krouter": {"bulb1", "bulb2", "bulb3", "ivy", "ven"}, "ivy": {"bulb1", "bulb2", "krouter", "ven"},
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, got := listedPeers(t, self, c.specs...)
+			require.Equal(t, c.want, got)
+		})
+	}
+}
+
 // Reproduction for #3160: ambiguous user@ used to silently drop rules.
 func TestNewPolicyManager_DuplicateUsername(t *testing.T) {
 	users := types.Users{

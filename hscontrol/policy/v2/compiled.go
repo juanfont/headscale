@@ -1230,3 +1230,68 @@ func viaSources(grants []compiledGrant, node types.NodeView) []matcher.Match {
 
 // noViaRules leaves via grants out of a node's matchers.
 func noViaRules(*compiledGrant, types.NodeView) []tailcfg.FilterRule { return nil }
+
+// siblingSelfSources returns, per user, the devices of other users that a
+// subnet route of a device of the user covers and that are sources of their
+// own user's autogroup:self rules. SaaS lists such a device on every device
+// of the router's user; it lists the router alone.
+func siblingSelfSources(
+	grants []compiledGrant,
+	nodes views.Slice[types.NodeView],
+	userIdx userNodeIndex,
+) map[uint]map[types.NodeID]bool {
+	out := map[uint]map[types.NodeID]bool{}
+
+	if !slices.ContainsFunc(grants, func(cg compiledGrant) bool { return cg.self != nil }) {
+		return out
+	}
+
+	for _, router := range nodes.All() {
+		if !nodeHasUserIdentity(router) {
+			continue
+		}
+
+		routes := router.SubnetRoutes()
+		if len(routes) == 0 {
+			continue
+		}
+
+		owner := router.User().ID()
+
+		for uid, devices := range userIdx {
+			if uid == owner {
+				continue
+			}
+
+			for _, d := range devices {
+				if routesCoverAny(routes, []types.NodeView{d}) && selfSource(grants, uid, d, userIdx) {
+					if out[owner] == nil {
+						out[owner] = map[types.NodeID]bool{}
+					}
+
+					out[owner][d.ID()] = true
+				}
+			}
+		}
+	}
+
+	return out
+}
+
+// selfSource reports whether d is a source of an autogroup:self rule of its
+// user uid.
+func selfSource(grants []compiledGrant, uid uint, d types.NodeView, userIdx userNodeIndex) bool {
+	for i := range grants {
+		if grants[i].self == nil {
+			continue
+		}
+
+		if slices.ContainsFunc(userSelfRules(&grants[i], uid, userIdx).matchers, func(m matcher.Match) bool {
+			return m.SrcsContainsIPs(d.IPs()...)
+		}) {
+			return true
+		}
+	}
+
+	return false
+}
