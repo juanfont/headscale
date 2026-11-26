@@ -70,12 +70,7 @@ func TestProbeFailedStaysFirst(t *testing.T) {
 			require.NoError(t, err)
 
 			for range 2 {
-				_, err := clientv0.Got(
-					c.CreateUserWithResponse(
-						t.Context(),
-						clientv0.CreateUserBody{Name: "a"},
-					),
-				)
+				err := clientv0.Done(c.DeleteNodeWithResponse(t.Context(), "1", nil))
 				require.Error(t, err)
 			}
 
@@ -107,5 +102,63 @@ func TestDialEnds(t *testing.T) {
 		require.ErrorIs(t, err, syscall.ENOENT)
 	case <-time.After(10 * time.Second):
 		t.Fatal("the dial still retries after the timeout")
+	}
+}
+
+// TestBodyless: an answer of the caller's transport with no Body, as a 204
+// may come, is read as an empty one, a success and a refusal alike.
+func TestBodyless(t *testing.T) {
+	t.Parallel()
+
+	const version = `{"version":"0.30.0","commit":"","buildTime":"","dirty":false,"go":{"version":"","os":"","arch":""}}`
+
+	for _, tt := range []struct {
+		name    string
+		header  http.Header
+		wantErr bool
+	}{
+		{"a success", http.Header{"Headscale-Version": {"0.30.0"}}, false},
+		{"refused: no Headscale-Version", http.Header{}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, err := New(Options{
+				Address: "http://hs.test",
+				APIKey:  "key",
+				Version: "0.30.0",
+				Timeout: time.Minute,
+				Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+					if r.Method == http.MethodGet {
+						return &http.Response{
+							Request:    r,
+							StatusCode: http.StatusOK,
+							Header: http.Header{
+								"Headscale-Version": {"0.30.0"},
+								"Content-Type":      {"application/json"},
+							},
+							Body: io.NopCloser(strings.NewReader(version)),
+						}, nil
+					}
+
+					return &http.Response{
+						Request:    r,
+						StatusCode: http.StatusNoContent,
+						Header:     tt.header,
+					}, nil
+				}),
+			})
+			require.NoError(t, err)
+
+			require.NotPanics(t, func() {
+				err = clientv0.Done(c.DeleteNodeWithResponse(t.Context(), "1", nil))
+			})
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
 }
