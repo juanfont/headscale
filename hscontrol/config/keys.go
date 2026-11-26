@@ -206,4 +206,6 @@ var removedKeys = []removedKey{
 	{Old: "oidc.user", Since: "0.30"},
 	{Old: "oidc.client_secret_path", New: "oidc.client_secret", Value: "file:<path>", Since: "0.30"},
 	{Old: "database.postgres.password_file", New: "database.postgres.pass", Value: "file:<path>", Since: "0.30"},
+	{Old: "preauth_keys", New: "credentials", Since: "0.30", Hint: "move preauth_keys.revoked_retention to credentials.revoked_retention"},
+	{Old: "preauth_keys.revoked_retention", New: "credentials.revoked_retention", Since: "0.30"},
 }

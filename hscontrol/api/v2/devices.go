@@ -14,9 +14,18 @@ import (
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/net/tsaddr"
 )
+
+// tagWriteAttempts is how often a token's tag write of a device is checked
+// and tried. Each refused try means an admin changed the device between the
+// check and the write; the next try checks the device as it is then, so a
+// token can never take off a tag it does not own. Three lets two such
+// changes land within one request; a device changed more often than that
+// in a moment is answered 409, and the client sends the write again.
+const tagWriteAttempts = 3
 
 func init() {
 	registrations = append(registrations, registerDevices, registerDeviceUpdates)
@@ -352,6 +361,11 @@ func registerDevices(api huma.API, b Backend) {
 		DefaultStatus: http.StatusOK,
 		MaxBodyBytes:  maxBodyBytes,
 		Errors:        []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
+		// Declared as it is sent, v2's own body, so a generated client reads
+		// the message.
+		Responses: map[string]*huma.Response{
+			"409": errorResponse(api, "The device kept changing between the check and the write; send the request again."),
+		},
 	}, scope.DevicesCore), func(ctx context.Context, in *setTagsInput) (*emptyOutput, error) {
 		node, err := lookupNode(b, in.DeviceID)
 		if err != nil {
@@ -373,18 +387,56 @@ func registerDevices(api huma.API, b Backend) {
 		// tag exists in policy. SetNodeTags replaces the set, so the token must
 		// also own every tag the device holds; as on Tailscale SaaS, the refusal
 		// then names them all.
-		if tokenTags, isOAuth := principalTags(ctx); isOAuth {
-			current := node.Tags().AsSlice()
-			if len(unownedTags(b, current, tokenTags)) > 0 {
-				return nil, tagsRefused("cannot remove current tags: ", current)
-			}
+		// The checks read the policy; they run under the lock of every policy
+		// write, so the tags are written under the policy that allowed them. A
+		// token's checks read the device, so its write is guarded by the
+		// device's revision. A change of the device between the check and the
+		// write refuses the write (state.ErrNodeRevisionChanged), and the
+		// check runs again on the device as it is then, up to
+		// tagWriteAttempts times: /api/v2 has no If-Match to hand the
+		// refusal to the caller, as v0 does.
+		var refused error
 
-			if refused := unownedTags(b, in.Body.Tags, tokenTags); len(refused) > 0 {
-				return nil, tagsRefused("", refused)
+		write := func() (change.Change, error) {
+			refused = nil
+
+			_, c, err := b.State.SetNodeTagsIf(node.ID(), in.Body.Tags, func(pol state.TagPolicy) (string, error) {
+				tokenTags, isOAuth := principalTags(ctx)
+				if !isOAuth {
+					return "", nil
+				}
+
+				now, ok := b.State.GetNodeByID(node.ID())
+				if !ok {
+					return "", nil
+				}
+
+				current := now.Tags().AsSlice()
+				if len(unownedTags(pol, current, tokenTags)) > 0 {
+					refused = tagsRefused("cannot remove current tags: ", current)
+				} else if unowned := unownedTags(pol, in.Body.Tags, tokenTags); len(unowned) > 0 {
+					refused = tagsRefused("", unowned)
+				}
+
+				return now.Revision(), refused
+			})
+
+			return c, err
+		}
+
+		var nodeChange change.Change
+
+		for range tagWriteAttempts {
+			nodeChange, err = write()
+			if !errors.Is(err, state.ErrNodeRevisionChanged) {
+				break
 			}
 		}
 
-		_, nodeChange, err := b.State.SetNodeTags(node.ID(), in.Body.Tags)
+		if refused != nil {
+			return nil, refused
+		}
+
 		b.Change(nodeChange)
 
 		if err != nil {

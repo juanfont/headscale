@@ -12,7 +12,9 @@ import (
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/validation"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 )
@@ -39,6 +41,8 @@ const (
 	CodeOwnerConflict        Code = "owner_conflict"
 	CodeTagsRequired         Code = "tags_required"
 	CodeTagsNotPermitted     Code = "tags_not_permitted"
+	CodeScopeRequiresTags    Code = "scope_requires_tags"
+	CodeInvalidScope         Code = "invalid_scope"
 	CodeExpiryRequired       Code = "expiry_required"
 	CodeExpiryInPast         Code = "expiry_in_past"
 	CodeUpdateRefused        Code = "update_refused"
@@ -157,6 +161,17 @@ var codes = map[Code]codeInfo{
 		http.StatusUnprocessableEntity, "The tags are not in the policy",
 		"Tags that are not in `tagOwners` of the policy.",
 		[]string{"`tags`: every tag of the request that the policy does not name"},
+	},
+	CodeScopeRequiresTags: {
+		http.StatusUnprocessableEntity,
+		"The scopes need tags",
+		"An OAuth client with a scope that makes tagged keys or nodes (`devices:core`, `auth_keys`), and no tags.",
+		[]string{"`scopes`: every scope of the request that needs tags"},
+	},
+	CodeInvalidScope: {
+		http.StatusUnprocessableEntity, "The scope does not exist",
+		"A scope that the server does not know.",
+		[]string{"`scopes`: every scope of the request that the server does not know"},
 	},
 	CodeExpiryRequired: {
 		http.StatusUnprocessableEntity,
@@ -339,6 +354,12 @@ func onError(err error, c Code, detail string) answer {
 // its text.
 func mapError(ctx context.Context, err error, declared []Code, own []answer) error {
 	p, ok := errors.AsType[*Problem](err)
+	if !ok && errors.Is(err, db.ErrCredentialEnded) {
+		// The credential was revoked while its request ran; the write it
+		// asked for was refused.
+		p, ok = unauthorized(), true
+	}
+
 	if !ok {
 		for _, a := range own {
 			if a.err != nil && errors.Is(err, a.err) {
@@ -483,12 +504,16 @@ func fromHumaError(em *huma.ErrorModel) *Problem {
 			continue
 		}
 
+		// A missing property is located where it is missing, so a client
+		// marks the field without reading the message.
+		loc := d.Location
+		if name, ok := requiredProperty(d.Message); ok {
+			loc += "." + name
+		}
+
 		p.Errors = append(
 			p.Errors,
-			FieldError{
-				Location: fieldLocation(d.Location),
-				Message:  humaMessage(d.Message),
-			},
+			FieldError{Location: fieldLocation(loc), Message: humaMessage(d.Message)},
 		)
 	}
 
@@ -501,6 +526,22 @@ func fromHumaError(em *huma.ErrorModel) *Problem {
 	}
 
 	return p
+}
+
+// requiredProperty is the property huma's message m says is missing. It
+// reads m by huma's own format; TestCreateOAuthClient fails if huma
+// stops using it.
+func requiredProperty(m string) (string, bool) {
+	before, after, _ := strings.Cut(validation.MsgExpectedRequiredProperty, "%s")
+
+	name, ok := strings.CutPrefix(m, before)
+	if !ok {
+		return "", false
+	}
+
+	name, ok = strings.CutSuffix(name, after)
+
+	return name, ok && name != ""
 }
 
 // maxLocation bounds a location: the name of an unknown field is the

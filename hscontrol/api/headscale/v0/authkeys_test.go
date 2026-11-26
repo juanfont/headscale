@@ -311,14 +311,27 @@ func TestCreateAuthKeyTokenRules(t *testing.T) {
 
 	for name, body := range map[string]string{
 		"a user's key":               `{"userId": "` + userID + `", "expiry": "` + inAnHour() + `"}`,
-		"a user and tags":            `{"userId": "` + userID + `", "tags": ["tag:ci"], "expiry": "` + inAnHour() + `"}`,
-		"a user, before the body":    `{"userId": "nobody"}`,
-		"a user given as null":       `{"userId": null, "tags": ["tag:ci"], "expiry": "` + inAnHour() + `"}`,
 		"a user no one is, no owner": `{"userId": "999", "expiry": "` + inAnHour() + `"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := decodeProblem(t, postKey(api, token, body), CodeForbidden)
 			require.Equal(t, "token_cannot_create_key_for_user", p.Details["rule"])
+		})
+	}
+
+	// The rule is checked on a body that is right in itself.
+	for name, tc := range map[string]struct {
+		body string
+		code Code
+	}{
+		"a user and tags":       {`{"userId": "` + userID + `", "tags": ["tag:ci"], "expiry": "` + inAnHour() + `"}`, CodeOwnerConflict},
+		"a user that is no ID":  {`{"userId": "nobody"}`, CodeInvalidField},
+		"a user given as null":  {`{"userId": null, "tags": ["tag:ci"], "expiry": "` + inAnHour() + `"}`, CodeInvalidField},
+		"a user and no expiry":  {`{"userId": "` + userID + `"}`, CodeExpiryRequired},
+		"a user, expiry passed": {`{"userId": "` + userID + `", "expiry": "2000-01-01T00:00:00Z"}`, CodeExpiryInPast},
+	} {
+		t.Run(name, func(t *testing.T) {
+			decodeProblem(t, postKey(api, token, tc.body), tc.code)
 		})
 	}
 
@@ -828,7 +841,7 @@ func TestGetAuthKey(t *testing.T) {
 			[]byte(strings.Replace(authKeysPolicy, `, "tag:prod": []`, "", 1)),
 		)
 		require.NoError(t, err)
-		require.False(t, b.State.TagExists("tag:prod"))
+		require.NotContains(t, b.State.PolicyTags(), "tag:prod")
 
 		got := getKey(t, api, auth, k.ID)
 		require.Equal(t, []string{"tag:prod"}, got.Owner.Tags)
@@ -933,9 +946,9 @@ func TestDeleteAuthKey(t *testing.T) {
 	})
 
 	t.Run("a retention of 0 keeps it for ever", func(t *testing.T) {
-		b.Cfg.PreAuthKeys.RevokedRetention = 0
+		b.Cfg.Credentials.RevokedRetention = 0
 
-		t.Cleanup(func() { b.Cfg.PreAuthKeys.RevokedRetention = 7 * 24 * time.Hour })
+		t.Cleanup(func() { b.Cfg.Credentials.RevokedRetention = 7 * 24 * time.Hour })
 
 		require.Nil(t, getKey(t, api, auth, k.ID).Removal)
 	})

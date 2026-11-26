@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,17 @@ type apiError struct {
 	Message string         `json:"message"`
 	Data    []apiErrorData `json:"data,omitempty"`
 	Status  int            `json:"status"`
+}
+
+// errorResponse declares an answer of status code as v2 sends it:
+// application/json with an [apiError] body.
+func errorResponse(api huma.API, description string) *huma.Response {
+	return &huma.Response{
+		Description: description,
+		Content: map[string]*huma.MediaType{
+			"application/json": {Schema: api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[apiError](), true, "")},
+		},
+	}
 }
 
 type apiErrorData struct {
@@ -125,11 +137,11 @@ func policyRefusal(err error) (string, []apiErrorData) {
 }
 
 // unownedTags returns the tags a token holding tokenTags may not apply.
-func unownedTags(b Backend, tags, tokenTags []string) []string {
+func unownedTags(pol state.TagPolicy, tags, tokenTags []string) []string {
 	var out []string
 
 	for _, tag := range tags {
-		if !b.State.TagOwnedByTags(tag, tokenTags) {
+		if !pol.TagOwnedByTags(tag, tokenTags) {
 			out = append(out, tag)
 		}
 	}
@@ -139,11 +151,11 @@ func unownedTags(b Backend, tags, tokenTags []string) []string {
 
 // undefinedTagsRefused refuses the tags no policy defines, as Tailscale does
 // for any caller (probe-A A1, probe-R).
-func undefinedTagsRefused(b Backend, tags []string) error {
+func undefinedTagsRefused(pol state.TagPolicy, tags []string) error {
 	var refused []string
 
 	for _, tag := range tags {
-		if !b.State.TagExists(tag) {
+		if !pol.TagExists(tag) {
 			refused = append(refused, tag)
 		}
 	}
@@ -186,6 +198,10 @@ func mapError(msg string, err error) error {
 		errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted):
 		// As on Tailscale SaaS, the reason is the message.
 		return huma.Error400BadRequest(err.Error(), err)
+
+	// The device kept changing between a check and its write.
+	case errors.Is(err, state.ErrNodeRevisionChanged):
+		return huma.Error409Conflict("the device changed while its tags were set; send the request again", err)
 
 	// A refused policy is answered with its own reason as the message.
 	case errors.Is(err, state.ErrInvalidPolicy):

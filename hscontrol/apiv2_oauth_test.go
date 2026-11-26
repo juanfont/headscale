@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,10 +12,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	clientv2 "github.com/juanfont/headscale/gen/client/v2"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
@@ -943,4 +946,171 @@ func TestAPIv2OAuth_SetDeviceRoutesCompat(t *testing.T) {
 
 		return v2RouteCall(t, resp.StatusCode, raw)
 	})
+}
+
+// TestAPIv2RevokedAPIKey: an API key revoked through /api/headscale/v0 is
+// refused by /api/v2 from its next request on.
+func TestAPIv2RevokedAPIKey(t *testing.T) {
+	app, baseURL, _ := newOAuthTestServer(t)
+
+	secret, key, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, apiGet(t, baseURL+"/api/v2/tailnet/-/keys", secret))
+	require.NoError(t, app.state.RevokeAPIKey(key.ID))
+	require.Equal(t, http.StatusUnauthorized, apiGet(t, baseURL+"/api/v2/tailnet/-/keys", secret))
+}
+
+// changeOnFirstAsk runs between once, the first time a check asks whether a
+// token owns a tag: after the check read the device, before the write.
+type changeOnFirstAsk struct {
+	policy.PolicyManager
+
+	once    sync.Once
+	between func()
+}
+
+func (c *changeOnFirstAsk) TagOwnedByTags(tag string, ownerTags []string) bool {
+	c.once.Do(c.between)
+
+	return c.PolicyManager.TagOwnedByTags(tag, ownerTags)
+}
+
+// changeOnAsks runs between[n] when a check asks for the n-th time (from 1)
+// whether a token owns a tag.
+type changeOnAsks struct {
+	policy.PolicyManager
+
+	mu      sync.Mutex
+	asks    int
+	between map[int]func()
+}
+
+func (c *changeOnAsks) TagOwnedByTags(tag string, ownerTags []string) bool {
+	c.mu.Lock()
+	c.asks++
+	f := c.between[c.asks]
+	c.mu.Unlock()
+
+	if f != nil {
+		f()
+	}
+
+	return c.PolicyManager.TagOwnedByTags(tag, ownerTags)
+}
+
+// TestAPIv2SetDeviceTagsChangedBetween: each change of the device that
+// lands between a token's check and its write is checked again, up to
+// tagWriteAttempts: two changes still end in the token's write; a third
+// is a 409 the client can send again, and the device keeps the admin's tags.
+func TestAPIv2SetDeviceTagsChangedBetween(t *testing.T) {
+	for name, tc := range map[string]struct {
+		changes map[int]string
+		status  int
+		tags    []string
+	}{
+		"twice: the third attempt writes":    {changes: map[int]string{1: "tag:b", 3: "tag:a"}, status: http.StatusOK, tags: []string{"tag:b"}},
+		"three times: a conflict, unwritten": {changes: map[int]string{1: "tag:b", 3: "tag:a", 5: "tag:c"}, status: http.StatusConflict, tags: []string{"tag:c"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			app, baseURL, admin := newOAuthTestServer(t)
+
+			node := app.state.CreateRegisteredNodeForTest(app.state.CreateUserForTest("dut"), "dut")
+			view := app.state.PutNodeInStoreForTest(*node)
+			devURL := baseURL + "/api/v2/device/" + view.StringID() + "/tags"
+
+			st, body := apiPost(t, devURL, admin, map[string]any{"tags": []string{"tag:a"}})
+			require.Equalf(t, http.StatusOK, st, "%s", body)
+
+			_, secret := createClient(t, baseURL, admin, []string{"devices:core"}, []string{"tag:a", "tag:b"})
+			tok := tokenFor(t, baseURL, secret)
+
+			retag := func(tag string) func() {
+				return func() {
+					st, body := apiPost(t, devURL, admin, map[string]any{"tags": []string{tag}})
+					require.Equalf(t, http.StatusOK, st, "%s", body)
+				}
+			}
+
+			// Each attempt asks about the device's one tag, then the wanted
+			// one; the admin retags the device on the first ask of an attempt.
+			between := map[int]func(){}
+			for ask, tag := range tc.changes {
+				between[ask] = retag(tag)
+			}
+
+			app.state.WrapPolicyManagerForTest(func(pm policy.PolicyManager) policy.PolicyManager {
+				return &changeOnAsks{PolicyManager: pm, between: between}
+			})
+
+			// Through the generated client: the 409 is read with its message.
+			c, err := clientv2.NewClientWithResponses(baseURL, clientv2.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+				req.Header.Set("Authorization", "Bearer "+tok)
+
+				return nil
+			}))
+			require.NoError(t, err)
+
+			resp, err := c.SetDeviceTagsWithResponse(t.Context(), view.StringID(), clientv2.SetTagsRequest{Tags: &[]string{"tag:b"}})
+			require.NoError(t, err)
+			require.Equalf(t, tc.status, resp.StatusCode(), "%s", resp.Body)
+
+			if tc.status == http.StatusConflict {
+				require.NotNil(t, resp.JSON409)
+				assert.Contains(t, resp.JSON409.Message, "send the request again")
+			}
+
+			got, ok := app.state.GetNodeByID(view.ID())
+			require.True(t, ok)
+			assert.Equal(t, tc.tags, got.Tags().AsSlice())
+		})
+	}
+}
+
+// TestAPIv2SetDeviceTagsGuarded: a token's tag write of a device is guarded
+// by the device its check read. A change of the device's tags between the
+// check and the write, by a re-registration or by another tag write at the
+// same moment, refuses the write, which is checked again on the device as it
+// is now: the token never takes off a tag it does not own.
+func TestAPIv2SetDeviceTagsGuarded(t *testing.T) {
+	for name, between := range map[string]func(app *Headscale, id types.NodeID, url, admin string){
+		"a re-registration": func(app *Headscale, id types.NodeID, _, _ string) {
+			nv, ok := app.state.GetNodeByID(id)
+			require.True(t, ok)
+
+			n := nv.AsStruct()
+			n.Tags = []string{"tag:c"}
+			app.state.PutNodeInStoreForTest(*n)
+		},
+		"another tag write at the same moment": func(_ *Headscale, _ types.NodeID, url, admin string) {
+			st, body := apiPost(t, url, admin, map[string]any{"tags": []string{"tag:c"}})
+			require.Equalf(t, http.StatusOK, st, "%s", body)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			app, baseURL, admin := newOAuthTestServer(t)
+
+			node := app.state.CreateRegisteredNodeForTest(app.state.CreateUserForTest("dut"), "dut")
+			view := app.state.PutNodeInStoreForTest(*node)
+			devURL := baseURL + "/api/v2/device/" + view.StringID() + "/tags"
+
+			st, body := apiPost(t, devURL, admin, map[string]any{"tags": []string{"tag:a"}})
+			require.Equalf(t, http.StatusOK, st, "%s", body)
+
+			_, secret := createClient(t, baseURL, admin, []string{"devices:core"}, []string{"tag:a", "tag:b"})
+			tok := tokenFor(t, baseURL, secret)
+
+			app.state.WrapPolicyManagerForTest(func(pm policy.PolicyManager) policy.PolicyManager {
+				return &changeOnFirstAsk{PolicyManager: pm, between: func() { between(app, view.ID(), devURL, admin) }}
+			})
+
+			st, body = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:b"}})
+			assert.Equal(t, http.StatusBadRequest, st)
+			assert.Contains(t, string(body), "cannot remove current tags: requested tags [tag:c]")
+
+			got, ok := app.state.GetNodeByID(view.ID())
+			require.True(t, ok)
+			assert.Equal(t, []string{"tag:c"}, got.Tags().AsSlice())
+		})
+	}
 }

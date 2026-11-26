@@ -91,7 +91,7 @@ const maxUserBody = 16 << 10
 var tokenCannotChangeUserNameOrEmail = tokenRule{
 	name: "token_cannot_change_user_name_or_email",
 	why:  "An OAuth access token cannot change the name or the email of a user that exists, because a policy names a user by them. It can create a user, and change the display name and the picture. Use an API key.",
-	refuses: func(in any) bool {
+	refuses: func(_ *caller, in any) bool {
 		u, ok := in.(*updateUserInput)
 
 		return ok && (u.Body.Name.Set || u.Body.Email.Set)
@@ -486,6 +486,6 @@ func userFromView(u types.UserView, owned views.Slice[types.NodeView]) User {
 		ProviderID:    u.ProviderIdentifier().String,
 		NodeCount:     len(nodes),
 		Nodes:         nodes,
-		Created:       u.CreatedAt().UTC(),
+		Created:       micro(u.CreatedAt()),
 	}
 }

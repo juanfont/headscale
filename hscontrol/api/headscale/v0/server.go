@@ -191,7 +191,7 @@ func whoAmI(ctx context.Context, b Backend, c *caller) (Me, error) {
 	}
 
 	if cred.expiry != nil {
-		me.Credential.Expiry = new(cred.expiry.UTC())
+		me.Credential.Expiry = new(micro(*cred.expiry))
 	}
 
 	if cred.owner != nil {
@@ -205,13 +205,13 @@ func whoAmI(ctx context.Context, b Backend, c *caller) (Me, error) {
 	}
 
 	if cred.clientID != "" {
-		client, err := b.State.GetOAuthClientByClientID(cred.clientID)
+		client, err := b.State.GetOAuthClientCredentialContext(ctx, cred.clientID)
 		if err != nil {
 			return Me{}, fmt.Errorf("reading the client of token %d: %w", cred.id, err)
 		}
 
 		me.Credential.Client = &ClientReference{
-			ID:          client.ClientID,
+			ID:          client.Identifier,
 			Description: client.Description,
 		}
 	}

@@ -29,6 +29,7 @@ import (
 
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/servertest"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
@@ -1159,7 +1160,7 @@ func (r *stepReplay) api(t *testing.T, stepName string, i int, a testcapture.Act
 		if strings.HasPrefix(a.Principal, "token:") {
 			_, pak, err = r.srv.State().CreateAuthKeyIf(hsdb.NewPreAuthKey{
 				Tags: create.Tags, Reusable: create.Reusable, Ephemeral: create.Ephemeral, Expiration: &expiry, ByToken: true,
-			}, func() error { return nil })
+			}, func(state.TagPolicy) error { return nil })
 		} else {
 			if name, ok := strings.CutPrefix(a.Principal, "user:"); ok {
 				user, ok = r.users[name]

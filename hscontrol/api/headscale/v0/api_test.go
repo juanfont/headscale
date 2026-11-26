@@ -716,13 +716,15 @@ func TestResponsesAreOpen(t *testing.T) {
 	requests, responses := documentRoots(oapi)
 
 	for name := range reachedSchemas(reg, requests) {
-		require.Equal(
-			t,
-			false,
-			reg.Map()[name].AdditionalProperties,
-			"request schema %s must refuse an unknown field",
-			name,
-		)
+		if reg.Map()[name].Type == huma.TypeObject {
+			require.Equal(
+				t,
+				false,
+				reg.Map()[name].AdditionalProperties,
+				"request schema %s must refuse an unknown field",
+				name,
+			)
+		}
 	}
 
 	for name := range reachedSchemas(reg, responses) {
