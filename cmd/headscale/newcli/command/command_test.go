@@ -34,6 +34,12 @@ type item struct {
 	Name string `json:"name"`
 }
 
+type getIn struct {
+	Name  string      `arg:"name"   help:"<name> is any word."`
+	Extra Opt[string] `arg:"extra"`
+	Count int         `flag:"count" help:"How many"            short:"n"`
+}
+
 var itemColumns = table.Columns[item]{
 	{Name: "id", Field: "id", Default: true},
 	{Name: "name", Field: "name", Default: true},
@@ -86,6 +92,16 @@ func connectTest(cfg *types.Config, env Env) (*API, error) {
 
 	return a, err
 }
+
+// The library's refusals of a spec, as its error says them.
+var (
+	errNotEnd = errors.New(
+		"a delete of a credential, beside a Secret or of a target with revoked, is made by NewEnd",
+	)
+	errEndAlone = errors.New(
+		"NewEnd is the delete of a credential, and no Secret beside it makes one",
+	)
+)
 
 // masked is s as the edge of Headscale's program writes it.
 func masked(s string) string {
@@ -430,7 +446,7 @@ func TestSentence(t *testing.T) {
 	}
 	require.Equal(
 		t,
-		"the server did not accept the API key.",
+		"the server did not accept the credential of this CLI: it is unknown, expired or revoked.\nIt is set by cli.api_key in the config file, or HEADSCALE_CLI_API_KEY.",
 		sentence(fmt.Errorf("getting user: %w", p)),
 	)
 	require.Equal(

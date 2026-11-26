@@ -68,7 +68,9 @@ type serverConfig struct {
 	dnsResolvers          []string
 	certProvider          hsdns.Provider
 	prefixV4              netip.Prefix
-	connectedSeen         func() time.Time
+	// revokedRetention is nil for the default; 0 is a value of its own.
+	revokedRetention *time.Duration
+	connectedSeen    func() time.Time
 }
 
 func defaultServerConfig() *serverConfig {
@@ -118,6 +120,12 @@ func WithEphemeralTimeout(d time.Duration) ServerOption {
 // WithNodeExpiry sets the default node key expiry duration.
 func WithNodeExpiry(d time.Duration) ServerOption {
 	return func(c *serverConfig) { c.nodeExpiry = d }
+}
+
+// WithRevokedRetention sets credentials.revoked_retention; 0 keeps the
+// record of a revoked credential for ever.
+func WithRevokedRetention(d time.Duration) ServerOption {
+	return func(c *serverConfig) { c.revokedRetention = &d }
 }
 
 // WithRealListener binds the HTTP API to a real loopback TCP port instead of
@@ -199,6 +207,10 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 	cfg.Tuning.BatchChangeDelay = sc.batchDelay
 	cfg.Tuning.BatcherWorkers = sc.batcherWorkers
 	cfg.Tuning.NodeMapSessionBufferedChanSize = sc.bufferedChanSize
+
+	if sc.revokedRetention != nil {
+		cfg.Credentials.RevokedRetention = *sc.revokedRetention
+	}
 
 	if sc.nodeStoreBatchTimeout > 0 {
 		cfg.Tuning.NodeStoreBatchTimeout = sc.nodeStoreBatchTimeout

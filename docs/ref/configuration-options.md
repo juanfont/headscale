@@ -724,43 +724,47 @@ The maximum time to wait for a probe response before declaring a node unhealthy;
     services.headscale.settings.node.routes.ha.probe_timeout = "3s";
     ```
 
-## `preauth_keys` { #preauth_keys data-toc-label="preauth_keys" }
+## `credentials` { #credentials data-toc-label="credentials" }
 
-Covers the cleanup of revoked pre-auth keys. See [Pre authenticated key](registration.md#pre-authenticated-key).
+Covers the removal of revoked auth keys, API keys and OAuth clients.
 
-??? example "All `preauth_keys` keys and defaults"
+Replaces `preauth_keys` ([removed](#preauth_keys)).
+
+??? example "All `credentials` keys and defaults"
 
     ```yaml
-    preauth_keys:
+    credentials:
       revoked_retention: 168h
     ```
 
-### `preauth_keys.revoked_retention` { #preauth_keys.revoked_retention data-toc-label="revoked_retention" }
+### `credentials.revoked_retention` { #credentials.revoked_retention data-toc-label="revoked_retention" }
 
 - **Type:** [duration](#type-duration)
 - **Default:** `168h`
-- **Env:** `HEADSCALE_PREAUTH_KEYS_REVOKED_RETENTION`
+- **Env:** `HEADSCALE_CREDENTIALS_REVOKED_RETENTION`
 
-How long a revoked pre-auth key or OAuth client is kept retrievable before the background collector hard-deletes it. Keys still backing a node are kept until the node is deleted. A zero or negative duration disables the collector.
+How long a revoked auth key, API key or OAuth client is kept readable, with its state revoked, before an hourly job removes it. An auth key that a node still refers to is kept until the node is deleted. A zero or negative duration keeps revoked records for ever.
 
 === "YAML"
 
     ```yaml
-    preauth_keys:
+    credentials:
       revoked_retention: 720h
     ```
 
 === "Environment"
 
     ```shell
-    export HEADSCALE_PREAUTH_KEYS_REVOKED_RETENTION=720h
+    export HEADSCALE_CREDENTIALS_REVOKED_RETENTION=720h
     ```
 
 === "NixOS"
 
     ```nix
-    services.headscale.settings.preauth_keys.revoked_retention = "720h";
+    services.headscale.settings.credentials.revoked_retention = "720h";
     ```
+
+Replaces `preauth_keys.revoked_retention` ([removed](#preauth_keys.revoked_retention)).
 
 ## `derp` { #derp data-toc-label="derp" }
 
@@ -3622,6 +3626,8 @@ one logs a warning, each saying what to do instead, as the table does.
 | <span id="oidc.namespace"></span>`oidc.namespace`                                             | 0.30       | remove `oidc.namespace`; see the CHANGELOG for context                                                                                                                                                                                         |
 | <span id="oidc.strip_email_domain"></span>`oidc.strip_email_domain`                           | 0.26       | remove `oidc.strip_email_domain`; see the CHANGELOG for context                                                                                                                                                                                |
 | <span id="oidc.user"></span>`oidc.user`                                                       | 0.30       | remove `oidc.user`; see the CHANGELOG for context                                                                                                                                                                                              |
+| <span id="preauth_keys"></span>`preauth_keys`                                                 | 0.30       | move preauth_keys.revoked_retention to [`credentials.revoked_retention`](#credentials.revoked_retention)                                                                                                                                       |
+| <span id="preauth_keys.revoked_retention"></span>`preauth_keys.revoked_retention`             | 0.30       | use [`credentials.revoked_retention`](#credentials.revoked_retention)                                                                                                                                                                          |
 | <span id="private_key_path"></span>`private_key_path`                                         | 0.23       | use [`noise.private_key_path`](#noise.private_key_path)                                                                                                                                                                                        |
 | <span id="randomize_client_port"></span>`randomize_client_port`                               | 0.29       | set "randomizeClientPort": true at the top level of the policy file, or grant the cap per node via a "nodeAttrs" entry                                                                                                                         |
 | <span id="tls_cert_path"></span>`tls_cert_path`                                               | 0.30       | use [`tls.cert_path`](#tls.cert_path)                                                                                                                                                                                                          |

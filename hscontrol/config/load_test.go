@@ -2038,6 +2038,21 @@ func TestRemovedKeysAreRejected(t *testing.T) {
 			env:   map[string]string{"HEADSCALE_DATABASE_POSTGRES_PASSWORD_FILE": "/run/secret"},
 			warns: []string{"HEADSCALE_DATABASE_POSTGRES_PASSWORD_FILE was removed", "use HEADSCALE_DATABASE_POSTGRES_PASS=file:<path>"},
 		},
+		{
+			name: "revoked retention",
+			file: "preauth_keys:\n  revoked_retention: 0s\n",
+			want: []string{"preauth_keys was removed", "move preauth_keys.revoked_retention to credentials.revoked_retention"},
+		},
+		{
+			// Variables only warn: the default retention applies.
+			name:  "revoked retention env",
+			env:   map[string]string{"HEADSCALE_PREAUTH_KEYS_REVOKED_RETENTION": "0s"},
+			warns: []string{"HEADSCALE_PREAUTH_KEYS_REVOKED_RETENTION was removed in 0.30; use HEADSCALE_CREDENTIALS_REVOKED_RETENTION"},
+			check: func(t *testing.T, cfg *types.Config) {
+				t.Helper()
+				assert.Equal(t, 168*time.Hour, cfg.Credentials.RevokedRetention)
+			},
+		},
 		// The old NixOS module's settings, which headscale never read.
 		{
 			name: "nixos db password file",
@@ -3782,7 +3797,7 @@ func compatView(cfg *types.Config) compatConfig {
 			Ephemeral: compatEphemeralConfig(cfg.Node.Ephemeral),
 			Routes:    compatRouteConfig{HA: compatHARouteConfig(cfg.Node.Routes.HA)},
 		},
-		PreAuthKeys:         compatPreAuthKeysConfig(cfg.PreAuthKeys),
+		PreAuthKeys:         compatPreAuthKeysConfig(cfg.Credentials),
 		PrefixV4:            cfg.Prefixes.V4,
 		PrefixV6:            cfg.Prefixes.V6,
 		IPAllocation:        string(cfg.Prefixes.Allocation),

@@ -9,6 +9,8 @@ LINE: headscale |
 LINE: headscale ve|
   version	Print the version
 LINE: headscale api |
+  keys	Manage API keys
+  oauth-clients	Manage OAuth clients
   whoami	Show who the server sees calling
 LINE: headscale debug h|
   health	Check that the server is healthy
@@ -228,6 +230,18 @@ LINE: headscale nodes rm --f|
   --force	Do not ask
 LINE: headscale nodes list -o=|
   -o=json
+LINE: headscale api oauth-clients create devices:core --tags tag:p|
+  (none)
+LINE: headscale api oauth-clients create devices:core --tags tag:ci,tag:p|
+  (none)
+LINE: headscale api oauth-clients create devices:core --|
+  --config	Config file
+  --description	What the client is for, shown by list and get
+  --help	Show this help
+  --output	Output format: json (the API object)
+  --tags	The tags the client may give its tokens, comma separated, each named in tagOwners of the policy
+LINE: headscale api oauth-clients create devices:core --t|
+  --tags	The tags the client may give its tokens, comma separated, each named in tagOwners of the policy
 LINE: headscale nodes list --config |
   config.yaml
   policy.hujson

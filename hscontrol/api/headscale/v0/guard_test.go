@@ -515,6 +515,67 @@ func TestNoAsStruct(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// policyAnswers are the only functions of the API packages that read the
+// policy's tags from State, each for an answer that shows them. A check
+// before a write reads them from the [state.TagPolicy] that its State …If
+// call hands it under the policy's lock, so that a policy change cannot come
+// between the check and the write.
+var policyAnswers = map[string]string{
+	"TagsOwnedByTags": "headscale/v0.whoAmI",
+	"PolicyTags":      "headscale/v0.registerTags",
+}
+
+// TestPolicyIsReadInTheCheck holds the API packages to [policyAnswers]. It
+// reads the source; a State reached by another name is not seen.
+func TestPolicyIsReadInTheCheck(t *testing.T) {
+	err := filepath.WalkDir("../..", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") ||
+			strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+
+			ast.Inspect(fn, func(n ast.Node) bool {
+				sel, ok := n.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+
+				owner, isState := sel.X.(*ast.SelectorExpr)
+				// The function is named with its package, from hscontrol/api.
+				where := filepath.ToSlash(
+					filepath.Dir(strings.TrimPrefix(path, "../../")),
+				) + "." + fn.Name.Name
+				if allowed, reads := policyAnswers[sel.Sel.Name]; reads && isState &&
+					owner.Sel.Name == "State" &&
+					where != allowed {
+					t.Errorf(
+						"%s: %s reads State.%s; a check reads the TagPolicy its …If call hands it",
+						path,
+						fn.Name.Name,
+						sel.Sel.Name,
+					)
+				}
+
+				return true
+			})
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
+}
+
 // problemFillers are the functions whose arguments become the detail of a
 // problem.
 var problemFillers = []string{"newProblem", "unhealthy", "forbidden"}
@@ -629,26 +690,34 @@ func a(err error) {
 // scopes and its operations: the guard and the document both read the
 // operation's declaration, so only a list of its own catches a wrong one.
 var scopes002 = map[string]string{
-	"getVersion":       "none",
-	"getMe":            "any",
-	"getHealth":        "any",
-	"listUsers":        "users:read",
-	"getUser":          "users:read",
-	"createUser":       "users",
-	"updateUser":       "users",
-	"listNodes":        "devices:core:read",
-	"getNode":          "devices:core:read",
-	"updateNode":       "devices:core",
-	"deleteNode":       "devices:core",
-	"expireNode":       "devices:core",
-	"updateNodeClient": "devices:core",
-	"setNodeTags":      "devices:core",
-	"setNodeRoutes":    "devices:routes devices:core:read",
-	"listTags":         "devices:core:read",
-	"listAuthKeys":     "auth_keys:read",
-	"getAuthKey":       "auth_keys:read",
-	"createAuthKey":    "auth_keys",
-	"deleteAuthKey":    "auth_keys",
+	"getVersion":        "none",
+	"getMe":             "any",
+	"getHealth":         "any",
+	"listUsers":         "users:read",
+	"getUser":           "users:read",
+	"createUser":        "users",
+	"updateUser":        "users",
+	"listNodes":         "devices:core:read",
+	"getNode":           "devices:core:read",
+	"updateNode":        "devices:core",
+	"deleteNode":        "devices:core",
+	"expireNode":        "devices:core",
+	"updateNodeClient":  "devices:core",
+	"setNodeTags":       "devices:core",
+	"setNodeRoutes":     "devices:routes devices:core:read",
+	"listTags":          "devices:core:read",
+	"listAuthKeys":      "auth_keys:read",
+	"getAuthKey":        "auth_keys:read",
+	"createAuthKey":     "auth_keys",
+	"deleteAuthKey":     "auth_keys",
+	"listAPIKeys":       "all:read",
+	"getAPIKey":         "all:read",
+	"createAPIKey":      "all",
+	"deleteAPIKey":      "all",
+	"listOAuthClients":  "oauth_keys:read",
+	"getOAuthClient":    "oauth_keys:read",
+	"createOAuthClient": "oauth_keys",
+	"deleteOAuthClient": "oauth_keys",
 }
 
 func TestScopesAre002s(t *testing.T) {

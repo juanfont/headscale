@@ -2300,11 +2300,11 @@ func TestRegistrationRecordsCreator(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, new(user.ID), creator(viaKey(t, taggedKey)), "the maker of a tagged key")
 
-	_, tokenKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, ByToken: true}, func() error { return nil })
+	_, tokenKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, ByToken: true}, func(TagPolicy) error { return nil })
 	require.NoError(t, err)
 	assert.Nil(t, creator(viaKey(t, tokenKey)), "a key a token made")
 
-	_, apiKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, CreatedBy: user.TypedID()}, func() error { return nil })
+	_, apiKey, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}, CreatedBy: user.TypedID()}, func(TagPolicy) error { return nil })
 	require.NoError(t, err)
 	assert.Equal(t, new(user.ID), creator(viaKey(t, apiKey)), "the maker of a tagged key that records it apart")
 
@@ -2339,8 +2339,8 @@ func TestCreateAuthKeyIfHoldsThePolicy(t *testing.T) {
 	made := make(chan error, 1)
 
 	go func() {
-		_, _, err := s.CreateAuthKeyIf(k, func() error {
-			if !s.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
+		_, _, err := s.CreateAuthKeyIf(k, func(pol TagPolicy) error {
+			if !pol.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
 				return errRefused
 			}
 
@@ -2371,14 +2371,147 @@ func TestCreateAuthKeyIfHoldsThePolicy(t *testing.T) {
 	require.NoError(t, <-made)
 	require.NoError(t, <-policyDone)
 
-	_, _, err = s.CreateAuthKeyIf(k, func() error {
-		if !s.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
+	_, _, err = s.CreateAuthKeyIf(k, func(pol TagPolicy) error {
+		if !pol.TagOwnedByTags("tag:prod", []string{"tag:ci"}) {
 			return errRefused
 		}
 
 		return nil
 	})
 	require.ErrorIs(t, err, errRefused, "the new policy holds for the next key")
+}
+
+// TestCredentialCreatesHoldThePolicy: the check of each credential that
+// reads the policy runs under the lock every policy write takes, and the
+// write follows before the lock is let go. TryLock shows it without timing;
+// TestCreateAuthKeyIfHoldsThePolicy shows a policy write waiting.
+func TestCredentialCreatesHoldThePolicy(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": []}}`))
+	require.NoError(t, err)
+
+	held := func(TagPolicy) error {
+		if s.policyMu.TryLock() {
+			s.policyMu.Unlock()
+
+			return errors.New("the check ran without the policy lock") //nolint:err113
+		}
+
+		return nil
+	}
+
+	_, _, err = s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}}, held)
+	require.NoError(t, err, "auth key")
+
+	_, _, err = s.CreateOAuthClientIf(db.NewOAuthClient{Scopes: []string{"auth_keys"}, Tags: []string{"tag:ci"}}, held)
+	require.NoError(t, err, "OAuth client")
+
+	_, _, err = s.CreateOAuthClientIf(db.NewOAuthClient{Scopes: []string{"auth_keys"}}, func(TagPolicy) error { return errRefused })
+	require.ErrorIs(t, err, errRefused, "a refused check writes nothing")
+
+	clients, err := s.ListOAuthClients()
+	require.NoError(t, err)
+	require.Len(t, clients, 1)
+
+	node := s.CreateRegisteredNodeForTest(s.CreateUserForTest("tagged"), "tagged")
+	nv := s.PutNodeInStoreForTest(*node)
+
+	_, _, err = s.SetNodeTagsIf(nv.ID(), []string{"tag:ci"}, func(pol TagPolicy) (string, error) { return "", held(pol) })
+	require.NoError(t, err, "node tags")
+
+	_, _, err = s.SetNodeTagsIf(nv.ID(), []string{"tag:ci"}, func(TagPolicy) (string, error) { return "", errRefused })
+	require.ErrorIs(t, err, errRefused)
+}
+
+// TestPolicyChecksRunTogether: checks hold the policy lock shared, so tag
+// writes and credential creates do not queue behind each other, and tag
+// writes share a batch of the NodeStore's writer. Each check waits inside
+// the lock until every other is inside too; an exclusive lock fails it.
+func TestPolicyChecksRunTogether(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": []}}`))
+	require.NoError(t, err)
+
+	user := s.CreateUserForTest("together")
+
+	const writes = 4
+
+	var inside sync.WaitGroup
+	inside.Add(writes + 1)
+
+	all := make(chan struct{})
+
+	go func() { inside.Wait(); close(all) }()
+
+	together := func(TagPolicy) error {
+		inside.Done()
+
+		select {
+		case <-all:
+			return nil
+		case <-time.After(10 * time.Second):
+			return errors.New("a check ran alone") //nolint:err113
+		}
+	}
+
+	errs := make(chan error, writes+1)
+
+	var wg sync.WaitGroup
+
+	for i := range writes {
+		nv := s.PutNodeInStoreForTest(*s.CreateRegisteredNodeForTest(user, fmt.Sprintf("together-%d", i)))
+
+		wg.Go(func() {
+			_, _, err := s.SetNodeTagsIf(nv.ID(), []string{"tag:ci"}, func(pol TagPolicy) (string, error) { return "", together(pol) })
+			errs <- err
+		})
+	}
+
+	wg.Go(func() {
+		_, _, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:ci"}}, together)
+		errs <- err
+	})
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+}
+
+// TestCheckFinishesBehindAQueuedPolicyWrite: a policy write that queues
+// while a check holds the lock shared waits for that check's write, which
+// still finishes: the writer of the NodeStore never waits for the lock.
+func TestCheckFinishesBehindAQueuedPolicyWrite(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": []}}`))
+	require.NoError(t, err)
+
+	policyDone := make(chan error, 1)
+
+	_, _, err = s.SetNodeTagsIf(nodeID, []string{"tag:ci"}, func(TagPolicy) (string, error) {
+		go func() {
+			_, _, err := s.UpdatePolicy([]byte(`{"tagOwners": {"tag:ci": [], "tag:web": []}}`))
+			policyDone <- err
+		}()
+
+		// A queued writer makes TryRLock fail.
+		for s.policyMu.TryRLock() {
+			s.policyMu.RUnlock()
+			runtime.Gosched()
+		}
+
+		return "", nil
+	})
+	require.NoError(t, err, "the tag write finishes with a policy write queued")
+	require.NoError(t, <-policyDone)
 }
 
 // TestLoadedExpiryIsUTC proves an expiry the database returns in another zone is
@@ -3460,7 +3593,7 @@ func TestNodeWritesRefuseAnOldRevision(t *testing.T) {
 			return err
 		},
 		"tags": func(s *State, id types.NodeID, rev string) error {
-			_, _, err := s.SetNodeTagsIf(id, []string{"tag:ci"}, rev)
+			_, _, err := s.SetNodeTagsIf(id, []string{"tag:ci"}, func(TagPolicy) (string, error) { return rev, nil })
 
 			return err
 		},
@@ -3525,7 +3658,7 @@ func TestTagWriteAfterUserLoginIsRefused(t *testing.T) {
 		n.UserID = new(owner)
 	})
 
-	_, _, err = s.SetNodeTagsIf(id, []string{"tag:db"}, read)
+	_, _, err = s.SetNodeTagsIf(id, []string{"tag:db"}, func(TagPolicy) (string, error) { return read, nil })
 	require.ErrorIs(t, err, ErrNodeRevisionChanged)
 
 	n, _ := s.GetNodeByID(id)
@@ -3548,7 +3681,7 @@ func TestTwoTagWritesFromOneRevision(t *testing.T) {
 
 	for _, tag := range []string{"tag:ci", "tag:db"} {
 		go func() {
-			_, _, err := s.SetNodeTagsIf(id, []string{tag}, rev)
+			_, _, err := s.SetNodeTagsIf(id, []string{tag}, func(TagPolicy) (string, error) { return rev, nil })
 			errs <- err
 		}()
 	}

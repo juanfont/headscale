@@ -1,5 +1,80 @@
 components:
   schemas:
+    APIKey:
+      properties:
+        created:
+          description: null for a key that does not record it.
+          format: date-time
+          type:
+            - string
+            - "null"
+        expiry:
+          description: When the key stops working; null for a key that never expires.
+          format: date-time
+          type:
+            - string
+            - "null"
+        id:
+          type: string
+        lastSeen:
+          description: "When the key was last used, to the minute: a use within a minute of the last is not written. null for a key never used since it was recorded."
+          format: date-time
+          type:
+            - string
+            - "null"
+        owner:
+          $ref: "#/components/schemas/Owner"
+          description: The user recorded on the key; tags is always []. null for a key with no owner. The owner does not limit what the key may do.
+        prefix:
+          description: The part of the key that is not secret.
+          type: string
+        removal:
+          description: "When the server removes the revoked record; null while it is kept: not revoked, or kept for ever."
+          format: date-time
+          type:
+            - string
+            - "null"
+        revoked:
+          description: When the key was revoked, or null.
+          format: date-time
+          type:
+            - string
+            - "null"
+        state:
+          anyOf:
+            - $ref: "#/components/schemas/APIKeyState"
+            - type: string
+          x-go-type: APIKeyState
+      required:
+        - id
+        - prefix
+        - owner
+        - state
+        - expiry
+        - created
+        - lastSeen
+        - revoked
+        - removal
+      type: object
+    APIKeyList:
+      properties:
+        apiKeys:
+          items:
+            $ref: "#/components/schemas/APIKey"
+          type: array
+        nextPageToken:
+          description: Present when more rows can follow; send it back as pageToken. Missing on the last page.
+          type: string
+      required:
+        - apiKeys
+      type: object
+    APIKeyState:
+      description: revoked wins over expired. A client must accept a value it does not know.
+      enum:
+        - valid
+        - expired
+        - revoked
+      type: string
     AuthKey:
       properties:
         created:
@@ -138,6 +213,18 @@ components:
       type:
         - object
         - "null"
+    CreateAPIKeyBody:
+      additionalProperties: false
+      properties:
+        expiry:
+          description: When the key stops working, in the future. Required; there is no upper limit.
+          format: date-time
+          type: string
+        userId:
+          description: The user recorded on the key as its owner. It does not limit what the key may do.
+          maxLength: 20
+          type: string
+      type: object
     CreateAuthKeyBody:
       additionalProperties: false
       properties:
@@ -166,6 +253,32 @@ components:
           maxLength: 20
           type: string
       type: object
+    CreateOAuthClientBody:
+      additionalProperties: false
+      properties:
+        description:
+          description: Free text for people, such as what the client is for.
+          maxLength: 50
+          type: string
+        scopes:
+          description: The scopes the client may give its tokens; at least one. devices:core and auth_keys need tags.
+          items:
+            anyOf:
+              - $ref: "#/components/schemas/Scope"
+              - type: string
+            x-go-type: string
+          maxItems: 64
+          minItems: 1
+          type: array
+        tags:
+          description: The tags the client may give its tokens, each in tagOwners of the policy.
+          items:
+            type: string
+          maxItems: 256
+          type: array
+      required:
+        - scopes
+      type: object
     CreateUserBody:
       additionalProperties: false
       properties:
@@ -185,6 +298,66 @@ components:
           type: string
       required:
         - name
+      type: object
+    CreatedAPIKey:
+      properties:
+        created:
+          description: null for a key that does not record it.
+          format: date-time
+          type:
+            - string
+            - "null"
+        expiry:
+          description: When the key stops working; null for a key that never expires.
+          format: date-time
+          type:
+            - string
+            - "null"
+        id:
+          type: string
+        key:
+          description: The secret. It is in this answer and no other; the server keeps only a hash of it.
+          type: string
+        lastSeen:
+          description: "When the key was last used, to the minute: a use within a minute of the last is not written. null for a key never used since it was recorded."
+          format: date-time
+          type:
+            - string
+            - "null"
+        owner:
+          $ref: "#/components/schemas/Owner"
+          description: The user recorded on the key; tags is always []. null for a key with no owner. The owner does not limit what the key may do.
+        prefix:
+          description: The part of the key that is not secret.
+          type: string
+        removal:
+          description: "When the server removes the revoked record; null while it is kept: not revoked, or kept for ever."
+          format: date-time
+          type:
+            - string
+            - "null"
+        revoked:
+          description: When the key was revoked, or null.
+          format: date-time
+          type:
+            - string
+            - "null"
+        state:
+          anyOf:
+            - $ref: "#/components/schemas/APIKeyState"
+            - type: string
+          x-go-type: APIKeyState
+      required:
+        - key
+        - id
+        - prefix
+        - owner
+        - state
+        - expiry
+        - created
+        - lastSeen
+        - revoked
+        - removal
       type: object
     CreatedAuthKey:
       properties:
@@ -262,6 +435,65 @@ components:
         - ephemeral
         - expiry
         - created
+        - revoked
+        - removal
+      type: object
+    CreatedOAuthClient:
+      properties:
+        created:
+          description: null for a client that does not record it.
+          format: date-time
+          type:
+            - string
+            - "null"
+        createdBy:
+          $ref: "#/components/schemas/UserReference"
+          description: The user who owns the credential that made the client; null when it was a token or the socket, or the user is deleted.
+        description:
+          description: Free text for people, such as what the client is for; "" for none.
+          type: string
+        id:
+          description: The client ID; it is also the middle of the secret.
+          type: string
+        key:
+          description: The client secret. It is in this answer and no other; the server keeps only a hash of it. Trade it for a token at POST /api/v2/oauth/token.
+          type: string
+        removal:
+          description: "When the server removes the revoked record; null while it is kept: not revoked, or kept for ever."
+          format: date-time
+          type:
+            - string
+            - "null"
+        revoked:
+          description: When the client was revoked, or null.
+          format: date-time
+          type:
+            - string
+            - "null"
+        scopes:
+          description: The scopes the client may give its tokens.
+          items:
+            type: string
+          type: array
+        state:
+          anyOf:
+            - $ref: "#/components/schemas/OAuthClientState"
+            - type: string
+          x-go-type: OAuthClientState
+        tags:
+          description: The tags the client may give its tokens, and they to keys and nodes; not an owner.
+          items:
+            type: string
+          type: array
+      required:
+        - key
+        - id
+        - description
+        - scopes
+        - tags
+        - createdBy
+        - created
+        - state
         - revoked
         - removal
       type: object
@@ -555,6 +787,79 @@ components:
         - oidc
         - ""
       type: string
+    OAuthClient:
+      properties:
+        created:
+          description: null for a client that does not record it.
+          format: date-time
+          type:
+            - string
+            - "null"
+        createdBy:
+          $ref: "#/components/schemas/UserReference"
+          description: The user who owns the credential that made the client; null when it was a token or the socket, or the user is deleted.
+        description:
+          description: Free text for people, such as what the client is for; "" for none.
+          type: string
+        id:
+          description: The client ID; it is also the middle of the secret.
+          type: string
+        removal:
+          description: "When the server removes the revoked record; null while it is kept: not revoked, or kept for ever."
+          format: date-time
+          type:
+            - string
+            - "null"
+        revoked:
+          description: When the client was revoked, or null.
+          format: date-time
+          type:
+            - string
+            - "null"
+        scopes:
+          description: The scopes the client may give its tokens.
+          items:
+            type: string
+          type: array
+        state:
+          anyOf:
+            - $ref: "#/components/schemas/OAuthClientState"
+            - type: string
+          x-go-type: OAuthClientState
+        tags:
+          description: The tags the client may give its tokens, and they to keys and nodes; not an owner.
+          items:
+            type: string
+          type: array
+      required:
+        - id
+        - description
+        - scopes
+        - tags
+        - createdBy
+        - created
+        - state
+        - revoked
+        - removal
+      type: object
+    OAuthClientList:
+      properties:
+        nextPageToken:
+          description: Present when more rows can follow; send it back as pageToken. Missing on the last page.
+          type: string
+        oauthClients:
+          items:
+            $ref: "#/components/schemas/OAuthClient"
+          type: array
+      required:
+        - oauthClients
+      type: object
+    OAuthClientState:
+      description: A client must accept a value it does not know.
+      enum:
+        - valid
+        - revoked
+      type: string
     Owner:
       properties:
         tags:
@@ -677,12 +982,14 @@ components:
         - invalid_field
         - invalid_page_token
         - invalid_request
+        - invalid_scope
         - method_not_allowed
         - name_taken
         - not_found
         - owner_conflict
         - precondition_failed
         - request_timeout
+        - scope_requires_tags
         - tags_not_permitted
         - tags_required
         - too_large
@@ -718,6 +1025,28 @@ components:
         - apiKey
         - oauthClient
         - authRequest
+      type: string
+    Scope:
+      description: A scope this release knows.
+      enum:
+        - all
+        - all:read
+        - auth_keys
+        - auth_keys:read
+        - oauth_keys
+        - oauth_keys:read
+        - devices:core
+        - devices:core:read
+        - devices:routes
+        - devices:routes:read
+        - devices:posture_attributes
+        - devices:posture_attributes:read
+        - policy_file
+        - policy_file:read
+        - feature_settings
+        - feature_settings:read
+        - users
+        - users:read
       type: string
     SetNodeRoutesBody:
       additionalProperties: false
@@ -946,6 +1275,611 @@ info:
   version: v0
 openapi: 3.1.0
 paths:
+  /api/headscale/v0/api-keys:
+    get:
+      description: In ID order, expired and revoked keys too, until the server removes them. No answer holds a secret.
+      operationId: listAPIKeys
+      parameters:
+        - description: Rows on one page.
+          explode: false
+          in: query
+          name: pageSize
+          schema:
+            default: 25
+            description: Rows on one page.
+            format: int64
+            maximum: 1000
+            minimum: 1
+            type: integer
+        - description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+          explode: false
+          in: query
+          name: pageToken
+          schema:
+            description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+            type: string
+        - description: Only the keys owned by the user with this ID; an ID no user has matches no key.
+          explode: false
+          in: query
+          name: user
+          schema:
+            description: Only the keys owned by the user with this ID; an ID no user has matches no key.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyList"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field, invalid_page_token"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - all:read
+      summary: List API keys
+      tags:
+        - API keys
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_page_token
+        - unauthorized
+        - unhealthy
+    post:
+      description: An API key may do everything, so only an API key or the unix socket can make one; an OAuth access token cannot, whatever its scopes. The answer holds the secret, in key; no other answer does.
+      operationId: createAPIKey
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAPIKeyBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedAPIKey"
+          description: Created
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+            Location:
+              required: true
+              schema:
+                type: string
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Bad Request: invalid_request"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "408":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Timeout: request_timeout"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Entity Too Large: too_large"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unsupported Media Type: unsupported_media_type"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: expiry_in_past, expiry_required, invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - all
+      summary: Create an API key
+      tags:
+        - API keys
+      x-problem-codes:
+        - expiry_in_past
+        - expiry_required
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_request
+        - request_timeout
+        - too_large
+        - unauthorized
+        - unhealthy
+        - unsupported_media_type
+      x-token-rules:
+        - token_cannot_create_api_key
+  /api/headscale/v0/api-keys/{id}:
+    delete:
+      description: The key is refused from its next request on; a key can revoke itself. Its record stays, revoked, until the server removes it (removal). Repeating the call answers 204 again and changes nothing.
+      operationId: deleteAPIKey
+      parameters:
+        - description: The ID of the API key.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the API key.
+            type: string
+      responses:
+        "204":
+          description: No Content
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - all
+      summary: Revoke an API key
+      tags:
+        - API keys
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - unauthorized
+        - unhealthy
+    get:
+      description: Without the secret. A revoked key is read until the server removes it.
+      operationId: getAPIKey
+      parameters:
+        - description: The ID of the API key.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the API key.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKey"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - all:read
+      summary: Read one API key
+      tags:
+        - API keys
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - unauthorized
+        - unhealthy
   /api/headscale/v0/auth-keys:
     get:
       description: In ID order, revoked keys too, until the server removes them. No answer holds a secret.
@@ -3268,6 +4202,606 @@ paths:
         - unauthorized
         - unhealthy
         - update_refused
+  /api/headscale/v0/oauth-clients:
+    get:
+      description: In the order they were made, revoked clients too, until the server removes them. No answer holds a secret.
+      operationId: listOAuthClients
+      parameters:
+        - description: Rows on one page.
+          explode: false
+          in: query
+          name: pageSize
+          schema:
+            default: 25
+            description: Rows on one page.
+            format: int64
+            maximum: 1000
+            minimum: 1
+            type: integer
+        - description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+          explode: false
+          in: query
+          name: pageToken
+          schema:
+            description: nextPageToken of the page before, unchanged, with the same filters. Leave it out for the first page.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthClientList"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field, invalid_page_token"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - oauth_keys:read
+      summary: List OAuth clients
+      tags:
+        - OAuth clients
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_page_token
+        - unauthorized
+        - unhealthy
+    post:
+      description: The answer holds the secret, in key; no other answer does. An OAuth access token gives the client only scopes its own scopes grant, and only tags it holds or that they own in the policy; a token with all and tags may make a client with all and no tags, as on Tailscale.
+      operationId: createOAuthClient
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOAuthClientBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedOAuthClient"
+          description: Created
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+            Location:
+              required: true
+              schema:
+                type: string
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Bad Request: invalid_request"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "408":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Timeout: request_timeout"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Request Entity Too Large: too_large"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unsupported Media Type: unsupported_media_type"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field, invalid_scope, scope_requires_tags, tags_not_permitted"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - oauth_keys
+      summary: Create an OAuth client
+      tags:
+        - OAuth clients
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - invalid_request
+        - invalid_scope
+        - request_timeout
+        - scope_requires_tags
+        - tags_not_permitted
+        - too_large
+        - unauthorized
+        - unhealthy
+        - unsupported_media_type
+      x-token-rules:
+        - token_must_hold_scopes
+        - token_must_own_tags
+  /api/headscale/v0/oauth-clients/{id}:
+    delete:
+      description: The client mints no token from now on, and every token it minted is refused from its next request on; a token can revoke its own client. The record stays, revoked, until the server removes it (removal). Repeating the call answers 204 again and changes nothing.
+      operationId: deleteOAuthClient
+      parameters:
+        - description: The client ID of the OAuth client.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The client ID of the OAuth client.
+            type: string
+      responses:
+        "204":
+          description: No Content
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - oauth_keys
+      summary: Revoke an OAuth client
+      tags:
+        - OAuth clients
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - unauthorized
+        - unhealthy
+    get:
+      description: Without the secret. A revoked client is read until the server removes it.
+      operationId: getOAuthClient
+      parameters:
+        - description: The client ID of the OAuth client.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The client ID of the OAuth client.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthClient"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - oauth_keys:read
+      summary: Read one OAuth client
+      tags:
+        - OAuth clients
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - unauthorized
+        - unhealthy
   /api/headscale/v0/tags:
     get:
       description: Every tag in tagOwners of the policy and every tag on a node, by name, byte by byte.

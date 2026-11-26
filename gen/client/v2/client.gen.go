@@ -36,6 +36,13 @@ func (e DeviceUpdateStatusStatus) Valid() bool {
 	}
 }
 
+// ApiError defines model for ApiError.
+type ApiError struct {
+	Data    *[]ApiErrorData `json:"data,omitempty"`
+	Message string          `json:"message"`
+	Status  int64           `json:"status"`
+}
+
 // ApiErrorData defines model for ApiErrorData.
 type ApiErrorData struct {
 	Errors *[]string `json:"errors,omitempty"`
@@ -3636,6 +3643,8 @@ type SetDeviceTagsResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *ErrorModel
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ApiError
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ErrorModel
 	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
@@ -3665,6 +3674,11 @@ func (r SetDeviceTagsResponse) GetApplicationproblemJSON403() *ErrorModel {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r SetDeviceTagsResponse) GetApplicationproblemJSON404() *ErrorModel {
 	return r.ApplicationproblemJSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r SetDeviceTagsResponse) GetJSON409() *ApiError {
+	return r.JSON409
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
@@ -5940,6 +5954,13 @@ func ParseSetDeviceTagsResponse(rsp *http.Response) (*SetDeviceTagsResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ApiError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel

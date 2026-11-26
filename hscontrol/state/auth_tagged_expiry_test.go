@@ -3355,3 +3355,142 @@ func TestExpiredNodeSameKeyLoginAsksForNewKey(t *testing.T) {
 		})
 	}
 }
+
+// TestTaggedNodeClaimByKeyMaker covers both ways a user takes a tagged node
+// back, a login and a key of the user's own: the maker of a key that tags
+// owned from the start may, as /api/headscale/v0 records the maker apart
+// from an owner; the maker of another user's key may not, once that user's
+// node is tagged, and the owner still may.
+func TestTaggedNodeClaimByKeyMaker(t *testing.T) {
+	type joined struct {
+		s       *State
+		machine key.MachinePublic
+		node    types.NodeView
+		users   map[string]*types.User
+	}
+
+	// tagsKey: a key that tags own, made by maker's API key.
+	tagsKey := func(t *testing.T) joined {
+		t.Helper()
+
+		s := newRetagTestState(t)
+		users := map[string]*types.User{"maker": s.CreateUserForTest("maker"), "other": s.CreateUserForTest("other")}
+		_, err := s.SetPolicy([]byte(`{"tagOwners":{"tag:prod":["maker@"]}}`))
+		require.NoError(t, err)
+
+		_, made, err := s.CreateAuthKeyIf(db.NewPreAuthKey{Tags: []string{"tag:prod"}, CreatedBy: users["maker"].TypedID()}, func(TagPolicy) error { return nil })
+		require.NoError(t, err)
+
+		machine := key.NewMachine().Public()
+		node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: made.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "tagged-node"},
+		}, machine)
+		require.NoError(t, err)
+		require.True(t, node.IsTagged())
+
+		return joined{s: s, machine: machine, node: node, users: users}
+	}
+
+	// ownerKey: owner's key, made by issuer's API key; the node is tagged
+	// after it joins.
+	ownerKey := func(t *testing.T) joined {
+		t.Helper()
+
+		s := newRetagTestState(t)
+		users := map[string]*types.User{"owner": s.CreateUserForTest("owner"), "issuer": s.CreateUserForTest("issuer")}
+		_, err := s.SetPolicy([]byte(`{"tagOwners":{"tag:prod":["owner@"]}}`))
+		require.NoError(t, err)
+
+		_, made, err := s.CreateAuthKeyIf(db.NewPreAuthKey{User: users["owner"].TypedID(), CreatedBy: users["issuer"].TypedID()}, func(TagPolicy) error { return nil })
+		require.NoError(t, err)
+
+		machine := key.NewMachine().Public()
+		node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: made.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "owned-node"},
+		}, machine)
+		require.NoError(t, err)
+
+		node, _, err = s.SetNodeTags(node.ID(), []string{"tag:prod"})
+		require.NoError(t, err)
+		require.True(t, node.IsTagged())
+
+		return joined{s: s, machine: machine, node: node, users: users}
+	}
+
+	// The two callers of ClaimableBy, under a new node key.
+	paths := map[string]func(t *testing.T, j joined, user *types.User) types.NodeView{
+		"login": func(t *testing.T, j joined, user *types.User) types.NodeView {
+			t.Helper()
+
+			authID := types.MustAuthID()
+			require.NoError(t, j.s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+				MachineKey: j.machine,
+				NodeKey:    key.NewNode().Public(),
+				Hostname:   "relogin",
+				Hostinfo:   &tailcfg.Hostinfo{Hostname: "relogin"},
+			})))
+
+			node, _, err := j.s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodOIDC)
+			require.NoError(t, err)
+
+			return node
+		},
+		"user's key": func(t *testing.T, j joined, user *types.User) types.NodeView {
+			t.Helper()
+
+			pak, err := j.s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+			require.NoError(t, err)
+
+			node, _, err := j.s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+				Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+				NodeKey:  key.NewNode().Public(),
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "relogin"},
+			}, j.machine)
+			require.NoError(t, err)
+
+			return node
+		},
+	}
+
+	tests := []struct {
+		name   string
+		join   func(*testing.T) joined
+		user   string
+		claims bool
+	}{
+		{"the maker of a key for tags", tagsKey, "maker", true},
+		{"another user, key for tags", tagsKey, "other", false},
+		{"the issuer of the owner's key", ownerKey, "issuer", false},
+		{"the owner of the key", ownerKey, "owner", true},
+	}
+
+	for _, tt := range tests {
+		for path, login := range paths {
+			t.Run(tt.name+"/"+path, func(t *testing.T) {
+				j := tt.join(t)
+				user := j.users[tt.user]
+
+				got := login(t, j, user)
+				assert.Equal(t, user.ID, got.UserID().Get(), "the device is the user's")
+
+				if tt.claims {
+					assert.Equal(t, j.node.ID(), got.ID(), "the user takes the tagged node back")
+					assert.Equal(t, 1, j.s.ListNodes().Len())
+
+					return
+				}
+
+				assert.NotEqual(t, j.node.ID(), got.ID(), "the user gets a device of their own")
+
+				current, ok := j.s.GetNodeByID(j.node.ID())
+				require.True(t, ok)
+				assert.True(t, current.IsTagged(), "the tagged node is untouched")
+				assert.Equal(t, 2, j.s.ListNodes().Len())
+			})
+		}
+	}
+}

@@ -116,12 +116,13 @@ type RouteConfig struct {
 	HA HARouteConfig `koanf:"ha"`
 }
 
-// PreAuthKeysConfig contains configuration for pre-auth key lifecycle.
-type PreAuthKeysConfig struct {
-	// RevokedRetention is how long a revoked pre-auth key or OAuth client is
-	// kept retrievable before the background collector hard-deletes it. Keys
-	// still backing a node are kept until the node is deleted. A zero or
-	// negative duration disables the collector.
+// CredentialsConfig contains configuration for the end of auth keys, API keys
+// and OAuth clients.
+type CredentialsConfig struct {
+	// RevokedRetention is how long a revoked auth key, API key or OAuth client
+	// is kept readable, with its state revoked, before an hourly job removes
+	// it. An auth key that a node still refers to is kept until the node is
+	// deleted. A zero or negative duration keeps revoked records for ever.
 	RevokedRetention time.Duration `example:"\"720h\"" koanf:"revoked_retention"`
 }
 
@@ -206,9 +207,9 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// Node covers node key expiry, ephemeral nodes and subnet routes.
 	Node NodeConfig `koanf:"node"`
 
-	// PreAuthKeys covers the cleanup of revoked pre-auth keys. See
-	// [Pre authenticated key](https://headscale.net/stable/ref/registration/#pre-authenticated-key).
-	PreAuthKeys PreAuthKeysConfig `koanf:"preauth_keys"`
+	// Credentials covers the removal of revoked auth keys, API keys and
+	// OAuth clients.
+	Credentials CredentialsConfig `koanf:"credentials"`
 
 	// DERP is the DERP map: the relay servers clients use when they cannot
 	// connect directly, from `derp.urls`, `derp.paths` and the embedded

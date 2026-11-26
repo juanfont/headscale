@@ -62,10 +62,13 @@ type leaf struct {
 	// emptyList follows the sentence of an empty list argument.
 	hint      func(args []string) string
 	emptyList string
-	// valid checks the line, read but not looked up, before any call.
+	// valid checks the line, read but not looked up, before any call: the
+	// rule on the way in, then Spec.Valid.
 	valid func(*cmdline.Line, *Credentials) error
 	// session is the S of its spec, the session it runs with.
 	session reflect.Type
+	// kinds are the kinds of credential its fields take.
+	kinds []textField
 	// target is the type of the command's target: the first argument that
 	// is an entity; nil for none.
 	target reflect.Type
@@ -205,8 +208,11 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	)
 	l.output = !noOut || !s.Local || s.NeedsServer != nil
 	l.own = !noOut && s.Local && s.NeedsServer == nil
+	rule, kinds, ruleErr := inputRule[In]()
+	l.valid = rule
+	l.kinds = kinds
 	l.session = reflect.TypeFor[S]()
-	l.check = func(p *program) error { return checkSpec(p, s) }
+	l.check = func(p *program) error { return errors.Join(checkSpec(p, s), ruleErr) }
 	l.set = s.NeedsChange
 	l.force = s.Confirm != nil
 	l.secret = s.Secret != nil
@@ -217,7 +223,12 @@ func New[S, In, Out any](s Spec[S, In, Out]) Node {
 	l.target, _ = targetType(reflect.TypeFor[In]())
 
 	if s.Valid != nil {
-		l.valid = func(line *cmdline.Line, _ *Credentials) error {
+		l.valid = func(line *cmdline.Line, cr *Credentials) error {
+			err := rule(line, cr)
+			if err != nil {
+				return err
+			}
+
 			in, _ := cmdline.Get[In](line)
 
 			return s.Valid(in)
@@ -344,9 +355,12 @@ func NewList[S, In, Row any](s ListSpec[S, In, Row]) Node {
 	l.checkList = func(line *cmdline.Line, command string) (int, error) {
 		return listCheck(s.Columns, s.Only, line, command)
 	}
+	rule, kinds, ruleErr := inputRule[In]()
+	l.valid = rule
+	l.kinds = kinds
 	l.session = reflect.TypeFor[S]()
 	l.check = func(p *program) error {
-		var errs []error
+		errs := []error{ruleErr}
 
 		if s.Run == nil {
 			errs = append(errs, errNoRun)
@@ -611,17 +625,17 @@ func buildOf(p program, nodes ...Node) (*Tree, error) {
 				}
 			}
 
-			err := n.check(&p)
+			err := errors.Join(n.check(&p), p.Credentials.checkKinds(n.kinds))
 			if err != nil {
 				bad("%v", err)
 			}
 
-			if n.name == "delete" && revokable(n.target) && !n.end {
-				bad("%v", errNotEnd)
-			}
-
 			if n.name == "delete" && !n.force {
 				bad("%v", errNoAsk)
+			}
+
+			if n.name == "delete" && revokable(n.target) && !n.end {
+				bad("%v", errNotEnd)
 			}
 
 			err = checkTarget(n, t.entities)
@@ -797,6 +811,9 @@ type Command struct {
 	Path    string
 	Example []string
 	Aliases []string
+	// Secret prints a secret once: it makes a credential, whose group the
+	// tests of every kind of credential run on.
+	Secret bool
 }
 
 // Commands lists every command that runs, in the order of the tree.
@@ -813,6 +830,7 @@ func (t *Tree) Commands() []Command {
 					Path:    strings.Join(c.Path, " "),
 					Example: l.example,
 					Aliases: l.aliases,
+					Secret:  l.secret,
 				},
 			)
 		}

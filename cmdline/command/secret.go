@@ -221,22 +221,6 @@ func (c *run) lost(id, why string) error {
 	)
 }
 
-// revokable reports whether t, the target of a command, is a credential:
-// a struct with a field revoked.
-func revokable(t reflect.Type) bool {
-	if t == nil || t.Kind() != reflect.Struct {
-		return false
-	}
-
-	for f := range t.Fields() {
-		if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name == "revoked" {
-			return true
-		}
-	}
-
-	return false
-}
-
 // CreatedNote is the note of a create, on stderr before the secret: the new
 // credential as messages name it, for its owner when it has one, what it
 // is, and that its secret is shown this once, the secret named as word. A
@@ -257,4 +241,20 @@ func CreatedNote(name, owner, what, word string) string {
 	}
 
 	return s + ".\nThis is the only time the " + word + " is shown."
+}
+
+// revokable reports whether t, the target of a command, is a credential:
+// a struct with a field revoked.
+func revokable(t reflect.Type) bool {
+	if t == nil || t.Kind() != reflect.Struct {
+		return false
+	}
+
+	for f := range t.Fields() {
+		if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name == "revoked" {
+			return true
+		}
+	}
+
+	return false
 }

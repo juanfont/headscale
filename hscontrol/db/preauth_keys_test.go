@@ -148,13 +148,13 @@ func TestDestroyPreAuthKeyKeepsReferencedEphemeralKey(t *testing.T) {
 	require.Equal(t, retained.Revoked, again.Revoked)
 
 	cutoff := time.Now().Add(time.Hour)
-	count, err := db.DestroyRevokedPreAuthKeysBefore(cutoff)
+	count, err := db.DestroyRevokedCredentialsBefore(cutoff)
 	require.NoError(t, err)
 	require.Zero(t, count)
 	require.NoError(t, db.DeleteNode(node))
-	count, err = db.DestroyRevokedPreAuthKeysBefore(cutoff)
+	count, err = db.DestroyRevokedCredentialsBefore(cutoff)
 	require.NoError(t, err)
-	require.Equal(t, 1, count)
+	require.Equal(t, int64(1), count)
 
 	_, err = db.GetPreAuthKeyByID(pak.ID)
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)

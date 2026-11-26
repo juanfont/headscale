@@ -62,6 +62,7 @@ var nodeColumns = table.Columns[clientv0.Node]{
 		Help:    "Whether the node is connected",
 	},
 	{Name: "last-seen", Field: "lastSeen", Default: true, Help: "Time of last contact"},
+	//nolint:goconst // a column is named as its field
 	{
 		Name:    "expiry",
 		Field:   "expiry",

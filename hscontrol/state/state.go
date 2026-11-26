@@ -240,8 +240,12 @@ type State struct {
 	polMan policy.PolicyManager
 
 	// policyMu makes storing, loading and installing a policy one step, so
-	// policies land in the database in the order they are installed.
-	policyMu sync.Mutex
+	// policies land in the database in the order they are installed: a
+	// change of the policy takes it exclusive. A check that reads the policy
+	// and the write it guards take it shared, so no policy change comes
+	// between them while checks and their writes run together. It is taken
+	// before any other lock and never while holding it shared.
+	policyMu sync.RWMutex
 
 	// authCache holds pending Web, OIDC and SSH authentication requests.
 	// Admission preserves unexpired entries at capacity. Expiry resolves the
@@ -1901,12 +1905,30 @@ func (s *State) deleteNodeRow(node types.NodeView) error {
 // Once a node is tagged, it cannot be un-tagged (only tags can be changed).
 // Setting tags clears UserID since tagged nodes are owned by their tags.
 func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, change.Change, error) {
-	return s.setNodeTags(nodeID, tags, "")
+	return s.SetNodeTagsIf(nodeID, tags, func(TagPolicy) (string, error) { return "", nil })
 }
 
-// SetNodeTagsIf is [State.SetNodeTags] when the node still has revision;
-// else it writes nothing and returns [ErrNodeRevisionChanged].
-func (s *State) SetNodeTagsIf(nodeID types.NodeID, tags []string, revision string) (types.NodeView, change.Change, error) {
+// SetNodeTagsIf is [State.SetNodeTags] when check passes, and the node still
+// has the revision check returns ("" guards nothing); else it writes nothing
+// and returns check's error or [ErrNodeRevisionChanged]. check runs with the
+// policy under the lock of every policy write, which the write holds too;
+// see [underPolicy].
+func (s *State) SetNodeTagsIf(
+	nodeID types.NodeID,
+	tags []string,
+	check func(TagPolicy) (string, error),
+) (types.NodeView, change.Change, error) {
+	// The NodeStore's writer and persistMu are taken under policyMu here, as
+	// a policy reload does; neither ever waits for policyMu. Shared, so tag
+	// writes share a batch of the writer.
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
+
+	revision, err := check(TagPolicy{s.polMan})
+	if err != nil {
+		return types.NodeView{}, change.Change{}, err
+	}
+
 	return s.setNodeTags(nodeID, tags, revision)
 }
 
@@ -2738,6 +2760,12 @@ func (s *State) ListAPIKeys() ([]types.APIKey, error) {
 	return s.db.ListAPIKeys()
 }
 
+// RevokeAPIKey ends an API key from its next request on; its record stays,
+// revoked, until the removal.
+func (s *State) RevokeAPIKey(id uint64) error {
+	return s.db.RevokeAPIKey(id)
+}
+
 // DestroyAPIKey permanently removes an API key.
 func (s *State) DestroyAPIKey(key types.APIKey) error {
 	return s.db.DestroyAPIKey(key)
@@ -2750,33 +2778,119 @@ func (s *State) CreatePreAuthKey(userID *types.UserID, reusable bool, ephemeral 
 }
 
 // CreateAuthKeyIf makes the key k describes when check passes, and returns
-// it as stored and once with its secret. check runs under the lock that
-// every policy write takes, so a key is stored under the policy check read:
-// a policy that took a tag from the caller has either not been installed
-// yet, or the check already sees it.
-func (s *State) CreateAuthKeyIf(k hsdb.NewPreAuthKey, check func() error) (*types.PreAuthKey, *types.PreAuthKeyNew, error) {
-	s.policyMu.Lock()
-	defer s.policyMu.Unlock()
-
-	err := check()
-	if err != nil {
-		return nil, nil, err
+// it as stored and once with its secret. See [underPolicy].
+func (s *State) CreateAuthKeyIf(k hsdb.NewPreAuthKey, check func(TagPolicy) error) (*types.PreAuthKey, *types.PreAuthKeyNew, error) {
+	type made struct {
+		stored *types.PreAuthKey
+		new    *types.PreAuthKeyNew
 	}
 
-	var stored *types.PreAuthKey
+	m, err := underPolicy(s, check, func(tx *gorm.DB) (made, error) {
+		stored, secret, err := hsdb.CreatePreAuthKeyFrom(tx, k)
 
-	made, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.PreAuthKeyNew, error) {
-		var (
-			made *types.PreAuthKeyNew
-			err  error
-		)
-
-		stored, made, err = hsdb.CreatePreAuthKeyFrom(tx, k)
-
-		return made, err
+		return made{stored, secret}, err
 	})
 
-	return stored, made, err
+	return m.stored, m.new, err
+}
+
+// CreateOAuthClientIf makes the client c describes when check passes, and
+// returns it as stored and once its secret. See [underPolicy].
+func (s *State) CreateOAuthClientIf(c hsdb.NewOAuthClient, check func(TagPolicy) error) (*types.Credential, string, error) {
+	type made struct {
+		stored *types.Credential
+		secret string
+	}
+
+	m, err := underPolicy(s, check, func(tx *gorm.DB) (made, error) {
+		stored, secret, err := hsdb.CreateOAuthClientFrom(tx, c)
+
+		return made{stored, secret}, err
+	})
+
+	return m.stored, m.secret, err
+}
+
+// underPolicy runs check with the policy, then write in one transaction,
+// under the lock that every policy write takes. What the check reads of the
+// policy, such as which tags a token may give, then holds for the write: a
+// policy that took a tag from the caller has either not been installed yet,
+// or the check sees it.
+func underPolicy[T any](s *State, check func(TagPolicy) error, write func(tx *gorm.DB) (T, error)) (T, error) {
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
+
+	err := check(TagPolicy{s.polMan})
+	if err != nil {
+		var none T
+
+		return none, err
+	}
+
+	return hsdb.Write(s.db.DB, write)
+}
+
+// CreateAPIKeyFrom makes the API key k describes, and returns it as stored
+// and once its secret.
+func (s *State) CreateAPIKeyFrom(k hsdb.NewAPIKey) (*types.Credential, string, error) {
+	type made struct {
+		stored *types.Credential
+		secret string
+	}
+
+	m, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (made, error) {
+		stored, secret, err := hsdb.CreateAPIKeyFrom(tx, k)
+
+		return made{stored, secret}, err
+	})
+
+	return m.stored, m.secret, err
+}
+
+// ListAPIKeysPage is up to limit API keys with an ID above after, in ID
+// order, expired and revoked too; owner 0 is every owner.
+func (s *State) ListAPIKeysPage(ctx context.Context, after uint64, limit int, owner types.UserID) ([]types.Credential, error) {
+	return s.db.ListAPIKeysPage(ctx, after, limit, owner)
+}
+
+// GetAPIKeyCredential is the API key with id, revoked or not.
+func (s *State) GetAPIKeyCredential(id uint64) (*types.Credential, error) {
+	return s.db.GetAPIKeyCredential(id)
+}
+
+// GetAPIKeyCredentialContext is [State.GetAPIKeyCredential] for a request:
+// it gives up when ctx ends.
+func (s *State) GetAPIKeyCredentialContext(ctx context.Context, id uint64) (*types.Credential, error) {
+	return hsdb.GetAPIKeyCredential(s.db.DB.WithContext(ctx), id)
+}
+
+// ListOAuthClientsPage is up to limit OAuth clients made after the one with
+// the row ID after, in the order they were made, revoked too.
+func (s *State) ListOAuthClientsPage(ctx context.Context, after uint64, limit int) ([]types.Credential, error) {
+	return s.db.ListOAuthClientsPage(ctx, after, limit)
+}
+
+// GetOAuthClientCredential is the OAuth client with clientID, revoked or not.
+func (s *State) GetOAuthClientCredential(clientID string) (*types.Credential, error) {
+	return s.db.GetOAuthClientCredential(clientID)
+}
+
+// GetOAuthClientCredentialContext is [State.GetOAuthClientCredential] for a
+// request: it gives up when ctx ends.
+func (s *State) GetOAuthClientCredentialContext(ctx context.Context, clientID string) (*types.Credential, error) {
+	return hsdb.GetOAuthClientCredential(s.db.DB.WithContext(ctx), clientID)
+}
+
+// AuthenticateAPIKeyContext is [State.AuthenticateAPIKey] for a request: it
+// gives up when ctx ends.
+func (s *State) AuthenticateAPIKeyContext(ctx context.Context, keyStr string) (*types.APIKey, error) {
+	return hsdb.AuthenticateAPIKey(s.db.DB.WithContext(ctx), keyStr)
+}
+
+// AuthenticateAccessTokenContext is [State.AuthenticateAccessToken] for a
+// request: it gives up when ctx ends.
+func (s *State) AuthenticateAccessTokenContext(ctx context.Context, token string) (*types.OAuthAccessToken, error) {
+	return hsdb.AuthenticateAccessToken(s.db.DB.WithContext(ctx), token)
 }
 
 // ListAuthKeysPage is up to limit auth keys with an ID above after, in ID
@@ -2872,10 +2986,11 @@ func (s *State) RevokePreAuthKey(id uint64) error {
 	return s.db.RevokePreAuthKey(id)
 }
 
-// DestroyRevokedPreAuthKeysBefore hard-deletes pre-auth keys revoked before
-// cutoff, returning how many were removed.
-func (s *State) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, error) {
-	return s.db.DestroyRevokedPreAuthKeysBefore(cutoff)
+// DestroyRevokedCredentialsBefore removes the auth keys, API keys and OAuth
+// clients revoked before cutoff, but an auth key a node refers to, and
+// returns how many.
+func (s *State) DestroyRevokedCredentialsBefore(cutoff time.Time) (int64, error) {
+	return s.db.DestroyRevokedCredentialsBefore(cutoff)
 }
 
 // ListPreAuthKeys returns all pre-authentication keys for a user.
@@ -2919,11 +3034,6 @@ func (s *State) RevokeOAuthClient(clientID string) error {
 	return s.db.RevokeOAuthClient(clientID)
 }
 
-// DestroyRevokedOAuthClientsBefore hard-deletes clients revoked before cutoff.
-func (s *State) DestroyRevokedOAuthClientsBefore(cutoff time.Time) (int64, error) {
-	return s.db.DestroyRevokedOAuthClientsBefore(cutoff)
-}
-
 // MintAccessToken stores a new scoped access token for an OAuth client.
 func (s *State) MintAccessToken(clientID string, scopes, tags []string, expiration *time.Time) (string, *types.OAuthAccessToken, error) {
 	return s.db.MintAccessToken(clientID, scopes, tags, expiration)
@@ -2935,15 +3045,35 @@ func (s *State) AuthenticateAccessToken(token string) (*types.OAuthAccessToken, 
 	return s.db.AuthenticateAccessToken(token)
 }
 
-// TagOwnedByTags reports whether a credential holding ownerTags may apply tag,
-// per the policy's tag-to-tag ownership. Used to authorise the tags an OAuth
-// access token sets on the auth keys it mints.
-func (s *State) TagOwnedByTags(tag string, ownerTags []string) bool {
-	return s.polMan.TagOwnedByTags(tag, ownerTags)
+// TagPolicy is what a check reads of the policy. A State …If call hands it to
+// its check under the lock of every policy write, and the write follows
+// under the same lock, so the check and the write see one policy. State has
+// no other way to read it but [State.TagsOwnedByTags], which is for answers.
+//
+// It is a struct, not the policy manager, so a check cannot reach more of
+// the policy than these reads.
+type TagPolicy struct {
+	pm policy.PolicyManager
+}
+
+// TagExists reports whether tag is in the policy's tagOwners.
+func (p TagPolicy) TagExists(tag string) bool { return p.pm.TagExists(tag) }
+
+// TagOwnedByTags reports whether a credential holding ownerTags may apply
+// tag, per the policy's tag-to-tag ownership.
+func (p TagPolicy) TagOwnedByTags(tag string, ownerTags []string) bool {
+	return p.pm.TagOwnedByTags(tag, ownerTags)
+}
+
+// TagsOwnedByTags is every tag a credential holding ownerTags may apply,
+// sorted.
+func (p TagPolicy) TagsOwnedByTags(ownerTags []string) []string {
+	return p.pm.TagsOwnedByTags(ownerTags)
 }
 
 // TagsOwnedByTags returns every tag a credential holding ownerTags may apply,
-// sorted; see [State.TagOwnedByTags].
+// sorted, for an answer that shows them. A check before a write reads them
+// from the [TagPolicy] its …If call hands it.
 func (s *State) TagsOwnedByTags(ownerTags []string) []string {
 	return s.polMan.TagsOwnedByTags(ownerTags)
 }
@@ -2957,8 +3087,8 @@ func (s *State) PolicyTags() []string {
 // moment: no policy is installed between the two reads, and a tag a node
 // takes meanwhile is one the policy has.
 func (s *State) PolicyTagsAndIndex() ([]string, *SnapshotIndex) {
-	s.policyMu.Lock()
-	defer s.policyMu.Unlock()
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
 
 	return s.polMan.PolicyTags(), s.nodeStore.Index()
 }
@@ -2989,13 +3119,6 @@ func (s *State) GetUsersByIDs(ids []types.UserID) (map[types.UserID]types.UserVi
 	}
 
 	return out, nil
-}
-
-// TagExists reports whether tag is defined in the policy's tagOwners. Used to
-// reject OAuth clients and auth keys carrying tags that no policy authorises,
-// matching SetNodeTags.
-func (s *State) TagExists(tag string) bool {
-	return s.polMan.TagExists(tag)
 }
 
 // DeleteExpiredAccessTokens hard-deletes OAuth access tokens that expired before

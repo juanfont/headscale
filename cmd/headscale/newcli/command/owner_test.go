@@ -106,15 +106,22 @@ func TestOwner(t *testing.T) {
 	for _, tt := range []struct {
 		line, stdout, stderr string
 		calls                int
+		// argv is the line when a word holds a space.
+		argv []string
 	}{
 		{line: "make alice", stdout: "user 3\n", calls: 1},
 		{line: "make 4", stdout: "user 4\n", calls: 1},
 		{line: "make tag:ci,tag:build", stdout: "tags tag:ci tag:build\n"},
 		{line: "make alcie", stderr: "Error: no user matches \"alcie\".\n", calls: 1},
-		{line: "make alice,tag:ci", stderr: "Error: a key is owned by one user or by tags, not both.\n"},
+		{line: "make alice,tag:ci", stderr: "Error: a key needs one owner: one user, or tags, not both.\n"},
 		{line: "make alice,bob", stderr: "Error: a key is owned by one user. Got 2: alice, bob.\n"},
 		{line: "make tag:ci,,tag:b", stderr: "Error: the owner list has an empty item.\n"},
 		{line: "make ''", stderr: "Error: an empty word names no owner.\n"},
+		{line: "tags with space", argv: []string{"make", "tag:ci, tag:build"}, stdout: "tags tag:ci tag:build\n"},
+		{line: "a user with space", argv: []string{"make", " alice "}, stdout: "user 3\n", calls: 1},
+		{line: "an item of space", argv: []string{"make", "tag:ci, ,tag:b"}, stderr: "Error: the owner list has an empty item.\n"},
+		{line: "space alone", argv: []string{"make", " "}, stderr: "Error: an empty word names no owner.\n"},
+		{line: "make tag:ci,tag:hskey-api-ab12cd345678-s3cret", stderr: "Error: <owner> takes no credential: hskey-api-*** is not sent.\n"},
 	} {
 		mu.Lock()
 		asked = 0
@@ -122,7 +129,12 @@ func TestOwner(t *testing.T) {
 
 		var stdout, stderr bytes.Buffer
 
-		Run(tree, words(tt.line), Env{
+		argv := words(tt.line)
+		if tt.argv != nil {
+			argv = tt.argv
+		}
+
+		Run(tree, argv, Env{
 			Stdout: &stdout,
 			Stderr: &stderr,
 			Environ: []string{

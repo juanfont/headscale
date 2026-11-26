@@ -834,7 +834,9 @@ func TestSetNodeTags(t *testing.T) {
 			p.Details["rule"],
 			"a tag the token lacks, before the lookup",
 		)
+		require.Nil(t, p.Object, "a rule names no node")
 		decodeProblem(t, putPath(`{"tags": []}`, bearer), CodeTagsRequired)
+		decodeProblem(t, putPath(`{"tags": null}`, bearer), CodeInvalidField)
 		decodeProblem(t, putPath(`{"tags": ["tag:nope"]}`, auth), CodeTagsNotPermitted)
 		decodeProblem(t, putPath(`{"tags": ["tag:ci"]}`, bearer), CodeNotFound)
 	})
@@ -1124,6 +1126,20 @@ func TestNodeWriteFailureTellsPeers(t *testing.T) {
 			},
 			func(n types.NodeView, row types.Node) (bool, bool) {
 				return n.Expiry().Valid(), row.Expiry != nil
+			},
+		},
+		{
+			"tags",
+			func(api humatest.TestAPI, auth, path string) *httptest.ResponseRecorder {
+				return api.Put(
+					path+"/tags",
+					auth,
+					"Content-Type: application/json",
+					strings.NewReader(`{"tags":["tag:ci"]}`),
+				)
+			},
+			func(n types.NodeView, row types.Node) (bool, bool) {
+				return n.IsTagged(), len(row.Tags) > 0
 			},
 		},
 		{

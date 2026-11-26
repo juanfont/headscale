@@ -44,7 +44,7 @@ node:
       probe_interval: 20s
       probe_timeout: 7s
 
-preauth_keys:
+credentials:
   revoked_retention: 72h
 
 database:

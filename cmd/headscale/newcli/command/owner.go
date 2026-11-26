@@ -79,6 +79,15 @@ func findOwner(ctx context.Context, word string) (Owner, error) {
 		case w == "":
 			return Owner{}, &lib.LookupError{Text: "the owner list has an empty item."}
 		case strings.HasPrefix(w, "tag:"):
+			// A tag is sent as it is typed, so it is held to the rule on
+			// the way in; a user is only looked up.
+			cr := credentials()
+
+			err := cr.Check("<owner>", w)
+			if err != nil {
+				return Owner{}, err
+			}
+
 			tags = append(tags, w)
 		default:
 			users = append(users, table.Visible(w, ""))
@@ -88,7 +97,7 @@ func findOwner(ctx context.Context, word string) (Owner, error) {
 	switch {
 	case len(users) > 0 && len(tags) > 0:
 		return Owner{}, &lib.LookupError{
-			Text: "a key is owned by one user or by tags, not both.",
+			Text: "a key needs one owner: one user, or tags, not both.",
 		}
 	case len(users) > 1:
 		return Owner{}, &lib.LookupError{
