@@ -45,6 +45,8 @@ jobs:
               - 'nix/options.generated.nix'
               - 'docs/ref/api/headscale-v0.yaml'
               - 'docs/ref/api/problems.md'
+              - 'docs/ref/cli.md'
+              - 'docs/ref/headscale.1'
       - uses: NixOS/nix-installer-action@v1.0.0
         if: steps.changed-files.outputs.files == 'true'
       - uses: Mic92/hestia@v3.1.0
@@ -56,7 +58,17 @@ jobs:
 
       - name: Check the generated pages are mdformat-stable
         if: steps.changed-files.outputs.files == 'true'
-        run: mdformat --check docs/ref/configuration-options.md docs/ref/api/problems.md
+        run: mdformat --check docs/ref/configuration-options.md docs/ref/api/problems.md docs/ref/cli.md
+
+      # The page has no date, which would change on every run.
+      - name: Lint the man page
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          lint=$(mandoc -T lint docs/ref/headscale.1 2>&1 | grep -v 'WARNING: missing date' || true)
+          if [ -n "$lint" ]; then
+            echo "$lint"
+            exit 1
+          fi
 
       - name: Check for uncommitted changes
         if: steps.changed-files.outputs.files == 'true'

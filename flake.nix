@@ -166,6 +166,9 @@
             python3Packages.mdformat-mkdocs
             prek
 
+            # lints the generated man page, docs/ref/headscale.1
+            mandoc
+
             # 'dot' is needed for pprof graphs
             # go tool pprof -http=: <source>
             graphviz
@@ -219,6 +222,9 @@
             # The API v0 document and page of codes, compared with the code.
             ./docs/ref/api/headscale-v0.yaml
             ./docs/ref/api/problems.md
+            # The reference page and the man page, compared with the tree.
+            ./docs/ref/cli.md
+            ./docs/ref/headscale.1
           ];
         };
         # TestKitScripts checks the completion script of each shell it finds
