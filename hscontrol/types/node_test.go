@@ -1534,3 +1534,64 @@ func TestNodeRevision(t *testing.T) {
 
 	assert.Empty(t, NodeView{}.Revision())
 }
+
+func TestNodeClaimableBy(t *testing.T) {
+	const alice, bob = UserID(1), UserID(2)
+
+	uid := func(id UserID) *uint { u := uint(id); return &u }
+
+	tests := []struct {
+		name   string
+		node   Node
+		claims []UserID
+	}{
+		{
+			name:   "legacy key names its owner",
+			node:   Node{Tags: []string{"tag:a"}, RegisterMethod: util.RegisterMethodAuthKey, AuthKey: &Credential{UserID: uid(alice)}},
+			claims: []UserID{alice},
+		},
+		{
+			name:   "v0 key for tags records its maker",
+			node:   Node{Tags: []string{"tag:a"}, RegisterMethod: util.RegisterMethodAuthKey, AuthKey: &Credential{Tags: []string{"tag:a"}, CreatedByUserID: uid(alice)}},
+			claims: []UserID{alice},
+		},
+		{
+			name:   "user's key another user made, node tagged later: the owner only",
+			node:   Node{Tags: []string{"tag:a"}, RegisterMethod: util.RegisterMethodAuthKey, AuthKey: &Credential{UserID: uid(alice), CreatedByUserID: uid(bob)}},
+			claims: []UserID{alice},
+		},
+		{
+			name:   "legacy tagged key that names a user: that user, not the maker",
+			node:   Node{Tags: []string{"tag:a"}, RegisterMethod: util.RegisterMethodAuthKey, AuthKey: &Credential{UserID: uid(alice), Tags: []string{"tag:a"}, CreatedByUserID: uid(bob)}},
+			claims: []UserID{alice},
+		},
+		{
+			name: "user's key whose owner was deleted, made by another user",
+			node: Node{Tags: []string{"tag:a"}, RegisterMethod: util.RegisterMethodAuthKey, AuthKey: &Credential{CreatedByUserID: uid(bob)}},
+		},
+		{
+			name: "key for tags over the socket or by a token: no maker",
+			node: Node{Tags: []string{"tag:a"}, RegisterMethod: util.RegisterMethodAuthKey, AuthKey: &Credential{Tags: []string{"tag:a"}}},
+		},
+		{
+			name: "key with no user",
+			node: Node{Tags: []string{"tag:a"}, RegisterMethod: util.RegisterMethodAuthKey, AuthKey: &Credential{}},
+		},
+		{
+			name: "joined by login",
+			node: Node{Tags: []string{"tag:a"}, RegisterMethod: util.RegisterMethodOIDC, AuthKey: &Credential{CreatedByUserID: uid(alice)}},
+		},
+		{
+			name: "not tagged",
+			node: Node{UserID: uid(alice), RegisterMethod: util.RegisterMethodAuthKey, AuthKey: &Credential{CreatedByUserID: uid(alice)}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, u := range []UserID{alice, bob} {
+				assert.Equal(t, slices.Contains(tt.claims, u), tt.node.View().ClaimableBy(u), "user %d", u)
+			}
+		})
+	}
+}

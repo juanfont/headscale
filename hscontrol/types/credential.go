@@ -1,6 +1,7 @@
 package types
 
 import (
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,114 @@ const (
 	CredentialOAuthClient CredentialKind = "oauth_client" //nolint:gosec // discriminator value, not a credential
 	CredentialOAuthToken  CredentialKind = "oauth_token"  //nolint:gosec // discriminator value, not a credential
 )
+
+// credentialPrefix is a spelling that authentication accepts for a kind.
+type credentialPrefix struct {
+	kind   CredentialKind
+	prefix string
+}
+
+// credentialPrefixes are the spellings authentication accepts, for each kind
+// the one Headscale makes first. [CutCredentialPrefix] is how authentication
+// reads a spelling, so this is every one the server takes, and whoever hides
+// a secret reads it here.
+func credentialPrefixes() []credentialPrefix {
+	return []credentialPrefix{
+		{CredentialAPIKey, "hskey-api-"},
+		{CredentialPreAuthKey, "hskey-auth-"},
+		{CredentialOAuthClient, OAuthClientPrefix},
+		{CredentialOAuthClient, TailscaleOAuthClientPrefix},
+		{CredentialOAuthToken, AccessTokenPrefix},
+	}
+}
+
+// CutCredentialPrefix is s without the spelling of kind it starts with, and
+// whether it starts with one.
+func CutCredentialPrefix(s string, kind CredentialKind) (string, bool) {
+	for _, p := range credentialPrefixes() {
+		rest, ok := strings.CutPrefix(s, p.prefix)
+		if ok && p.kind == kind {
+			return rest, true
+		}
+	}
+
+	return s, false
+}
+
+// CredentialPrefixes are every spelling of every kind of credential that
+// authentication accepts. A key from before 0.28 has none.
+func CredentialPrefixes() []string {
+	out := make([]string, 0, len(credentialPrefixes()))
+	for _, p := range credentialPrefixes() {
+		out = append(out, p.prefix)
+	}
+
+	return out
+}
+
+// secretFront starts every secret Headscale makes, credentials and auth IDs.
+const secretFront = "hskey-"
+
+// SecretFronts are the starts of a word that may be a secret of this server:
+// hskey-, and each spelling of [CredentialPrefixes] that does not start with
+// it. Whoever hides a secret looks for these, in any case.
+func SecretFronts() []string {
+	out := []string{secretFront}
+	for _, p := range CredentialPrefixes() {
+		if !strings.HasPrefix(p, secretFront) {
+			out = append(out, p)
+		}
+	}
+
+	return out
+}
+
+// HideSecrets is path with each segment that holds a Headscale secret
+// (hskey-<kind>-…, or another of [SecretFronts], in any case) cut to
+// its kind: a client may send a key, or an ID that is a secret, as a path
+// segment. It keeps the secret out of the request log only; what a handler
+// logs is its own.
+func HideSecrets(path string) string {
+	if at, _ := secretAt(path); at < 0 {
+		return path
+	}
+
+	segs := strings.Split(path, "/")
+	for i, seg := range segs {
+		at, front := secretAt(seg)
+		if at < 0 {
+			continue
+		}
+
+		// Behind hskey- the kind is the next word; any other front names it.
+		kind := ""
+		if front == secretFront {
+			kind, _, _ = strings.Cut(seg[at+len(front):], "-")
+			kind += "-"
+		}
+
+		segs[i] = seg[:at] + front + kind + "***"
+	}
+
+	return strings.Join(segs, "/")
+}
+
+// secretAt is the first index in s of one of [SecretFronts], in any
+// case, and that front; -1 when s holds none.
+func secretAt(s string) (int, string) {
+	for i := range len(s) {
+		for _, front := range secretFronts {
+			if i+len(front) <= len(s) && strings.EqualFold(s[i:i+len(front)], front) {
+				return i, front
+			}
+		}
+	}
+
+	return -1, ""
+}
+
+// secretFronts is [SecretFronts], read once: every request is logged.
+var secretFronts = SecretFronts()
 
 // Credential is the unified storage model for every authenticatable secret:
 // API keys, pre-auth keys, OAuth clients, and OAuth access tokens. Each row is
@@ -61,6 +170,10 @@ type Credential struct {
 	// older than the column, or that user was deleted.
 	CreatedByUserID *uint `gorm:"column:created_by_user_id"`
 
+	// FirstUsed is when a node first joined with a pre-auth key. Nil for a
+	// key no node has joined with since the column was added.
+	FirstUsed *time.Time
+
 	CreatedAt  *time.Time
 	Expiration *time.Time
 	Revoked    *time.Time
@@ -81,20 +194,22 @@ func (pak *PreAuthKey) AsCredential() *Credential {
 	}
 
 	return &Credential{
-		ID:             pak.ID,
-		Kind:           CredentialPreAuthKey,
-		Identifier:     pak.Prefix,
-		Hash:           pak.Hash,
-		UserID:         pak.UserID,
-		User:           pak.User,
-		Description:    pak.Description,
-		Reusable:       pak.Reusable,
-		Ephemeral:      pak.Ephemeral,
-		Used:           pak.Used,
-		Tags:           pak.Tags,
-		CreatedByToken: pak.CreatedByToken,
-		CreatedAt:      pak.CreatedAt,
-		Expiration:     pak.Expiration,
-		Revoked:        pak.Revoked,
+		ID:              pak.ID,
+		Kind:            CredentialPreAuthKey,
+		Identifier:      pak.Prefix,
+		Hash:            pak.Hash,
+		UserID:          pak.UserID,
+		User:            pak.User,
+		Description:     pak.Description,
+		Reusable:        pak.Reusable,
+		Ephemeral:       pak.Ephemeral,
+		Used:            pak.Used,
+		Tags:            pak.Tags,
+		CreatedByToken:  pak.CreatedByToken,
+		CreatedByUserID: pak.CreatedByUserID,
+		FirstUsed:       pak.FirstUsed,
+		CreatedAt:       pak.CreatedAt,
+		Expiration:      pak.Expiration,
+		Revoked:         pak.Revoked,
 	}
 }

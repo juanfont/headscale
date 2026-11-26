@@ -1142,16 +1142,30 @@ func (nv NodeView) IsTagged() bool {
 
 // ClaimableBy reports whether a login by userID takes this tagged node back
 // as that user's device, rather than adding a device beside it: userID owns
-// or created the key it joined with. Tagging clears a node's user, so a node
-// that joined by login records no former owner and nobody claims it.
+// the key it joined with, or made it when tags owned the key from the start.
+// Tagging clears a node's user, so a node that joined by login records no
+// former owner and nobody claims it.
 func (nv NodeView) ClaimableBy(userID UserID) bool {
 	if !nv.IsTagged() || nv.RegisterMethod() != util.RegisterMethodAuthKey {
 		return false
 	}
 
 	k := nv.AuthKey()
+	if !k.Valid() {
+		return false
+	}
 
-	return k.Valid() && k.UserID().Valid() && UserID(k.UserID().Get()) == userID
+	// A key with an owner speaks for its owner only, whoever made it: the
+	// legacy APIs name the maker of a tagged key here, and a user's key made
+	// by another user's API key must not let that user take the owner's node.
+	if k.UserID().Valid() {
+		return UserID(k.UserID().Get()) == userID
+	}
+
+	// A key that tags owned from the start, as /api/headscale/v0 makes it,
+	// records its maker apart. A user's key whose owner was deleted has no
+	// tags, and nobody claims its node.
+	return k.Tags().Len() > 0 && k.CreatedByUserID().Valid() && UserID(k.CreatedByUserID().Get()) == userID
 }
 
 // IsExpired returns whether the node registration has expired.
