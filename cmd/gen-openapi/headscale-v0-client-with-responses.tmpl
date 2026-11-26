@@ -587,7 +587,7 @@ func collect[Row any](pages iter.Seq2[[]Row, error]) ([]Row, error) {
 			rows = append(rows, got...)
 		}
 		var re *ResponseError
-		if try == 0 && errors.As(err, &re) && re.Problem != nil && string(re.Problem.Code) == "invalid_page_token" {
+		if try == 0 && errors.As(err, &re) && re.Problem != nil && re.Problem.Code == ProblemCodeInvalidPageToken {
 			continue
 		}
 		if err != nil {
