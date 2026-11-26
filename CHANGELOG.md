@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 0.29.8 (202x-xx-xx)
+## 0.29.8 (2026-11-26)
 
 **Minimum supported Tailscale client version: v1.80.0**
 
