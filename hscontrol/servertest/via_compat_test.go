@@ -171,15 +171,13 @@ var aclMapCompatTests = []string{
 	"acl-mr20", "acl-mu02", "acl-mu07", "acl-o04", "acl-pf03",
 	"acl-r02", "acl-r08", "acl-rs01", "acl-rs02", "acl-rs03",
 	"acl-rs07", "acl-t10", "acl-u11", "acl-w02",
-	"acl-self-routed-by-other-user",
+	"acl-self-routed-by-other-user", "acl-self-routed-by-third-user", "acl-self-routed-wide-route",
 }
 
 // viaCompatSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>/<node>/<check>, or by check alone where every capture differs the
 // same way. A listed check that matches fails, so a fix must delete its entry.
-var viaCompatSkipReasons = map[string]string{
-	"acl-self-routed-by-other-user/ivysaur/peers": "SaaS lists the node whose address a same-user router routes, one way only and under no rule; the cause is not known",
-}
+var viaCompatSkipReasons = map[string]string{}
 
 // TestRoutesMapCompat replays routesMapCompatTests through
 // [runViaMapCompat].

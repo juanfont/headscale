@@ -87,11 +87,11 @@ func buildPeerMapPairScan(pm *PolicyManager, nodes views.Slice[types.NodeView]) 
 				continue
 			}
 
-			if listsOnlyReference(pm, nodeI, nodeJ) {
+			if listsOnlyReference(pm, nodes, nodeI, nodeJ) {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
 			}
 
-			if listsOnlyReference(pm, nodeJ, nodeI) {
+			if listsOnlyReference(pm, nodes, nodeJ, nodeI) {
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
 			}
 		}
@@ -104,9 +104,11 @@ func buildPeerMapPairScan(pm *PolicyManager, nodes views.Slice[types.NodeView]) 
 // back, in a policy with autogroup:self or via grants.
 func listsOnlyReference(
 	pm *PolicyManager,
+	nodes views.Slice[types.NodeView],
 	viewer, peer types.NodeView,
 ) bool {
-	return loneExitSource(viaSources(pm.compiledGrants, viewer), loneExitRanges(peer))
+	return selfSourceOfSibling(siblingSelfSources(pm.compiledGrants, nodes, pm.userNodeIdx), viewer, peer) ||
+		loneExitSource(viaSources(pm.compiledGrants, viewer), loneExitRanges(peer))
 }
 
 var (

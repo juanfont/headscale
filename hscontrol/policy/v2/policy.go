@@ -955,6 +955,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	capSrc := make(map[types.NodeID]bool, nodes.Len())
 
 	viaSrcs := make(map[types.NodeID][]matcher.Match)
+	siblingSrcs := siblingSelfSources(pm.compiledGrants, nodes, pm.userNodeIdx)
 
 	for _, node := range nodes.All() {
 		ms := pm.nodeMatchersLocked(node, noViaRules)
@@ -1011,11 +1012,13 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			}
 
 			if (capSrc[nodeJ.ID()] && riI.isExit) ||
+				selfSourceOfSibling(siblingSrcs, nodeI, nodeJ) ||
 				loneExitSource(viaSrcs[nodeI.ID()], riJ.loneExit) {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
 			}
 
 			if (capSrc[nodeI.ID()] && riJ.isExit) ||
+				selfSourceOfSibling(siblingSrcs, nodeJ, nodeI) ||
 				loneExitSource(viaSrcs[nodeJ.ID()], riI.loneExit) {
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
 			}
@@ -1025,10 +1028,10 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	return ret
 }
 
-// Two things make a node list another that does not list it back, as on
+// Three things make a node list another that does not list it back, as on
 // SaaS. An exit node lists the source of a capability to the internet: the
 // capability carries no traffic, so the source gets no exit route.
-// [loneExitSource] is the other.
+// [loneExitSource] and [selfSourceOfSibling] are the other two.
 
 // loneExitRanges returns node's exit route when it is approved for one
 // address family only. SaaS offers it to no one as an exit route, see
@@ -1056,6 +1059,13 @@ func loneExitSource(via []matcher.Match, lone []netipx.IPRange) bool {
 	return slices.ContainsFunc(via, func(m matcher.Match) bool {
 		return m.SrcsOverlapsRanges(lone)
 	})
+}
+
+// selfSourceOfSibling reports whether peer is another user's device that a
+// subnet route of a device of viewer's user covers and that is a source of
+// its user's autogroup:self rules, see [siblingSelfSources].
+func selfSourceOfSibling(srcs map[uint]map[types.NodeID]bool, viewer, peer types.NodeView) bool {
+	return nodeHasUserIdentity(viewer) && srcs[viewer.User().ID()][peer.ID()]
 }
 
 // isViaSource reports whether node, or a subnet it routes, is a source of one
