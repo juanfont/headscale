@@ -393,6 +393,18 @@ func (node *Node) ExitRoutes() []netip.Prefix {
 	return node.approvedRoutes(true)
 }
 
+// OfferedExitRoutes returns the exit routes peers are given: both or none.
+// Tailscale offers a node approved for one address family as an exit node to
+// no one, though it still serves the rules its route covers.
+func (node *Node) OfferedExitRoutes() []netip.Prefix {
+	routes := node.ExitRoutes()
+	if len(routes) != len(tsaddr.ExitRoutes()) {
+		return nil
+	}
+
+	return routes
+}
+
 // IsExitNode reports whether the node has any approved exit routes.
 // Approval is required: an advertised-but-unapproved exit route does
 // not make the node an exit node.
@@ -1222,6 +1234,14 @@ func (nv NodeView) ExitRoutes() []netip.Prefix {
 	}
 
 	return nv.ж.ExitRoutes()
+}
+
+func (nv NodeView) OfferedExitRoutes() []netip.Prefix {
+	if !nv.Valid() {
+		return nil
+	}
+
+	return nv.ж.OfferedExitRoutes()
 }
 
 func (nv NodeView) IsExitNode() bool {

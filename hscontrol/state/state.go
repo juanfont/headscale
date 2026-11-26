@@ -2094,7 +2094,7 @@ func (s *State) RoutesForPeer(
 ) []netip.Prefix {
 	viaResult := s.polMan.ViaRoutesForPeer(viewer, peer)
 	globalPrimaries := s.nodeStore.PrimaryRoutesForNode(peer.ID())
-	exitRoutes := peer.ExitRoutes()
+	exitRoutes := peer.OfferedExitRoutes()
 
 	var reduced []netip.Prefix
 

@@ -43,7 +43,7 @@ func PeerCapMap(peer types.NodeView, peerSelfCaps tailcfg.NodeCapMap) tailcfg.No
 	// clients hide the exit-node list without a suggestion. A policy
 	// value, if any, wins. Approval gating prevents the suggestion from
 	// following an advertised-but-not-yet-trusted node.
-	if !peer.IsExitNode() {
+	if len(peer.OfferedExitRoutes()) == 0 {
 		return nil
 	}
 

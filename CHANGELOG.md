@@ -277,6 +277,7 @@ maps each one to its replacement.
 - Exit routes need access to an internet address. Private-only rules no longer offer exit routes. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - A router approved for the address of another user's device gets that user's `autogroup:self` rule for it, and the two are peers, as on Tailscale SaaS. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - An `app` grant to `*` gives its sources the approved subnet routes, as on Tailscale SaaS. [#3757](https://github.com/juanfont/headscale/pull/3757)
+- A node approved for only one of `0.0.0.0/0` and `::/0` is not offered as an exit node, as on Tailscale SaaS. Approve both. [#3757](https://github.com/juanfont/headscale/pull/3757)
 - `app` grants never offer exit routes. Exit nodes list the sources of an `app` grant to an internet address, as on Tailscale SaaS. [#3656](https://github.com/juanfont/headscale/pull/3656)
 - HA and `via` groups choose the healthy, online router with the oldest control session. Reconnecting routers become standby. Routers that keep their session can regain routes. [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Startup adds suffixes to duplicate names. The lowest node ID keeps its name. These changes stay in memory. Check MagicDNS names. Registrations and renames avoid extra DNS record names. Collision names fit 63 bytes. [#3619](https://github.com/juanfont/headscale/pull/3619)
