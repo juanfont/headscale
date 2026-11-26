@@ -536,6 +536,30 @@ components:
         - apiKey
         - oauthToken
       type: string
+    DeletedUser:
+      properties:
+        apiKeyCount:
+          description: The API keys the user owns, revoked and expired ones too.
+          format: int64
+          type: integer
+        authKeyCount:
+          description: The auth keys the user owns, revoked and expired ones too; tagged keys it made stay.
+          format: int64
+          type: integer
+        expect:
+          description: Stands for the user and every node and key it owns. Send it as expect to remove only what this showed.
+          type: string
+        nodes:
+          description: The nodes of the user, in ID order.
+          items:
+            $ref: "#/components/schemas/NodeReference"
+          type: array
+      required:
+        - nodes
+        - authKeyCount
+        - apiKeyCount
+        - expect
+      type: object
     FieldError:
       properties:
         location:
@@ -997,6 +1021,8 @@ components:
         - unhealthy
         - unsupported_media_type
         - update_refused
+        - user_changed
+        - user_has_nodes
         - user_managed_by_oidc
       type: string
     ProblemObject:
@@ -5297,6 +5323,186 @@ paths:
         - unhealthy
         - unsupported_media_type
   /api/headscale/v0/users/{id}:
+    delete:
+      description: "Removes the user with the auth keys and API keys it owns, and with withNodes=true its nodes, in one step that cannot be undone: all of it or none of it. Tagged nodes and keys the user made stay. The answer is what was removed; with dryRun=true it is what would be, and nothing is removed. Send the expect of a dry run to remove only what it showed. withNodes=true needs the scope devices:core as well as users (x-parameter-scopes); a token without it is forbidden before the request is read. A step after the delete committed that fails, such as a refresh of the policy, is logged, and the answer is still what was removed."
+      operationId: deleteUser
+      parameters:
+        - description: The ID of the user.
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The ID of the user.
+            type: string
+        - description: Delete the nodes the user owns too. Needs the scope devices:core as well as users.
+          explode: false
+          in: query
+          name: withNodes
+          schema:
+            description: Delete the nodes the user owns too. Needs the scope devices:core as well as users.
+            type: boolean
+        - description: Answer what the delete would remove, and remove nothing.
+          explode: false
+          in: query
+          name: dryRun
+          schema:
+            description: Answer what the delete would remove, and remove nothing.
+            type: boolean
+        - description: "The expect of a dry run: refuse with user_changed and remove nothing when a node or a key of the user came or went since."
+          explode: false
+          in: query
+          name: expect
+          schema:
+            description: "The expect of a dry run: refuse with user_changed and remove nothing when a node or a key of the user came or went since."
+            pattern: ^[0-9a-f]{16}$
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedUser"
+          description: OK
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unauthorized: unauthorized"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Forbidden: forbidden"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Not Found: not_found"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Conflict: user_changed, user_has_nodes"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Unprocessable Entity: invalid_field"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Internal Server Error: internal"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Service Unavailable: unhealthy"
+          headers:
+            Headscale-Commit:
+              description: The short commit of the server, when the build knows it.
+              schema:
+                type: string
+            Headscale-Version:
+              description: The version of the server.
+              required: true
+              schema:
+                type: string
+      security:
+        - bearer:
+            - users
+      summary: Delete a user
+      tags:
+        - Users
+      x-parameter-scopes:
+        withNodes:
+          - devices:core
+      x-problem-codes:
+        - forbidden
+        - internal
+        - invalid_field
+        - not_found
+        - unauthorized
+        - unhealthy
+        - user_changed
+        - user_has_nodes
     get:
       operationId: getUser
       parameters:
