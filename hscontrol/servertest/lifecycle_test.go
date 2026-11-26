@@ -706,6 +706,56 @@ func TestReloginWithoutExpiryClearsPeerExpiry(t *testing.T) {
 	}, 10*time.Second, 50*time.Millisecond, "observer drops the expiry")
 }
 
+// TestClearedDiscoKeyReachesPeers has a node report no disco key while a peer
+// holds its old one: the peer must drop it, as a fresh session holds none. The
+// node's own client is gone first, or it would report its key again.
+func TestClearedDiscoKeyReachesPeers(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "disco")
+	quiet := servertest.NewClient(t, srv, "quiet", servertest.WithUser(user))
+	viewer := servertest.NewClient(t, srv, "viewer", servertest.WithUser(user))
+	id := findNodeID(t, srv, "quiet")
+
+	viewer.WaitForPeers(t, 1, 10*time.Second)
+	quiet.Disconnect(t)
+
+	report := func(disco key.DiscoPublic) {
+		t.Helper()
+
+		node, ok := srv.State().GetNodeByID(id)
+		require.True(t, ok)
+
+		c, err := srv.State().UpdateNodeFromMapRequest(id, tailcfg.MapRequest{NodeKey: node.NodeKey(), DiscoKey: disco})
+		require.NoError(t, err)
+		srv.App.Change(c)
+	}
+	holds := func(observer *servertest.TestClient, want key.DiscoPublic, msg string) {
+		t.Helper()
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			p, ok := observer.PeerByName("quiet")
+			if assert.True(c, ok) {
+				assert.Equal(c, want, p.DiscoKey())
+			}
+		}, 10*time.Second, 50*time.Millisecond, msg)
+	}
+
+	old := key.NewDisco().Public()
+	report(old)
+	holds(viewer, old, "viewer holds the reported disco key")
+
+	report(key.DiscoPublic{})
+
+	node, ok := srv.State().GetNodeByID(id)
+	require.True(t, ok)
+	require.True(t, node.DiscoKey().IsZero(), "the server stores the cleared key")
+
+	holds(viewer, key.DiscoPublic{}, "viewer drops the old disco key")
+	holds(servertest.NewClient(t, srv, "fresh", servertest.WithUser(user)), key.DiscoPublic{}, "a fresh session holds no disco key")
+}
+
 // TestReloginFollowsNewHostname: a node's name follows a new hostname at a login
 // as at a map request, and later hostname changes still rename it. An admin-set
 // name stays.
