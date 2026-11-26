@@ -658,12 +658,6 @@ type Authorization struct {
 // AuthorizationResources The resources the scopes apply to. own is reserved; a client that does not know a value must act as limited.
 type AuthorizationResources string
 
-// ClientReference defines model for ClientReference.
-type ClientReference struct {
-	Description string `json:"description"`
-	Id          string `json:"id"`
-}
-
 // CreateAPIKeyBody defines model for CreateAPIKeyBody.
 type CreateAPIKeyBody struct {
 	// Expiry When the key stops working, in the future. Required; there is no upper limit.
@@ -835,8 +829,8 @@ type CreatedOAuthClient struct {
 // Credential defines model for Credential.
 type Credential struct {
 	// Client For a token, the OAuth client it was issued to.
-	Client nullable.Nullable[ClientReference] `json:"client"`
-	Expiry nullable.Nullable[time.Time]       `json:"expiry"`
+	Client nullable.Nullable[OAuthClientReference] `json:"client"`
+	Expiry nullable.Nullable[time.Time]            `json:"expiry"`
 
 	// Id The ID of the stored credential; for an API key, the ID in /api-keys/{id}.
 	Id   string         `json:"id"`
@@ -1079,6 +1073,12 @@ type OAuthClientList struct {
 	OauthClients  []OAuthClient `json:"oauthClients"`
 }
 
+// OAuthClientReference defines model for OAuthClientReference.
+type OAuthClientReference struct {
+	Description string `json:"description"`
+	Id          string `json:"id"`
+}
+
 // OAuthClientState A client must accept a value it does not know.
 type OAuthClientState string
 
@@ -1171,7 +1171,7 @@ type Problem struct {
 	// Details Data for this code, as its documentation describes.
 	Details map[string]interface{} `json:"details"`
 
-	// Errors For invalid_field: one entry per field.
+	// Errors For invalid_field: one entry per field. The list may be cut; when it is, its last entry has location "" and says how many more.
 	Errors []FieldError `json:"errors"`
 
 	// Object The resource the problem is about, or null.
@@ -1431,7 +1431,7 @@ var responseOptions = jsonv2.JoinOptions(
 		nullableResponse[Owner](),
 		nullableResponse[UserReference](),
 		nullableResponse[UserReference](),
-		nullableResponse[ClientReference](),
+		nullableResponse[OAuthClientReference](),
 		nullableResponse[Owner](),
 		nullableResponse[Credential](),
 		nullableResponse[UserReference](),
@@ -1460,7 +1460,7 @@ var pageOptions = jsonv2.JoinOptions(
 		nullableResponse[Owner](),
 		nullableResponse[UserReference](),
 		nullableResponse[UserReference](),
-		nullableResponse[ClientReference](),
+		nullableResponse[OAuthClientReference](),
 		nullableResponse[Owner](),
 		nullableResponse[Credential](),
 		nullableResponse[UserReference](),
