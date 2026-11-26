@@ -939,7 +939,8 @@ func (a *AndroidInContainer) Back() error {
 func (a *AndroidInContainer) Shell(args ...string) (string, error) {
 	stdout, stderr, err := a.Execute(append([]string{"adb", "shell"}, args...))
 	if err != nil {
-		return stdout, fmt.Errorf("adb shell %v: %w: %s", args, err, stderr)
+		// The args may carry an auth key (LoginHook, a managed config).
+		return stdout, dockertestutil.Redactf(err, "adb shell %v: %v: %s", args, err, stderr)
 	}
 
 	return stdout, nil

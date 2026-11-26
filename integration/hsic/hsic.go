@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	clientv2 "github.com/juanfont/headscale/gen/client/v2"
 	"github.com/juanfont/headscale/hscontrol"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
@@ -983,23 +983,31 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 func (t *HeadscaleInContainer) Execute(
 	command []string,
 ) (string, error) {
-	stdout, stderr, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
+	return t.executeEnv(command, nil)
+}
+
+// executeEnv is Execute with env added to the command's environment, which
+// no log line or error names.
+func (t *HeadscaleInContainer) executeEnv(command, env []string) (string, error) {
+	stdout, stderr, err := dockertestutil.ExecuteCommand(t.container, command, env)
 	if err != nil {
-		log.Printf("command: %v", command)
-		log.Printf("command stderr: %s\n", stderr)
-
-		if stdout != "" {
-			log.Printf("command stdout: %s\n", stdout)
-		}
-
-		return stdout, fmt.Errorf("executing command in docker: %w, stderr: %s", err, stderr)
+		return stdout, execFailure(command, stdout, stderr, err)
 	}
 
 	return stdout, nil
+}
+
+// execFailure logs a failed command and returns its error, with no secret
+// in either.
+func execFailure(command []string, stdout, stderr string, err error) error {
+	log.Printf("command: %v", dockertestutil.Redact(fmt.Sprint(command)))
+	log.Printf("command stderr: %s\n", dockertestutil.Redact(stderr))
+
+	if stdout != "" {
+		log.Printf("command stdout: %s\n", dockertestutil.Redact(stdout))
+	}
+
+	return dockertestutil.Redactf(err, "executing command in docker: %v, stderr: %s", err, stderr)
 }
 
 // GetPort returns the docker container port as a string.
@@ -1025,7 +1033,10 @@ func (t *HeadscaleInContainer) GetEndpoint() string {
 	return t.getEndpoint(false)
 }
 
-var errOAuthSecretMissing = errors.New(`OAuth client response missing secret in "key" field`)
+var (
+	errOAuthSecretMissing = errors.New(`OAuth client response missing secret in "key" field`)
+	errOAuthStatus        = errors.New("the server did not create the OAuth client")
+)
 
 // CreateOAuthClient mints an admin API key and uses it to create an OAuth client
 // via the v2 keys HTTP API (POST /api/v2/tailnet/-/keys, keyType=client),
@@ -1036,16 +1047,21 @@ func (t *HeadscaleInContainer) CreateOAuthClient(
 	ctx context.Context,
 	scopes, tags []string,
 ) (string, string, error) {
-	apiKey, err := t.Execute([]string{"headscale", "apikeys", "create", "--expiration", "24h"})
+	apiKey, err := t.Execute([]string{binHeadscale, "api", "keys", "create", "--expiry", "24h"})
 	if err != nil {
 		return "", "", fmt.Errorf("creating admin api key: %w", err)
 	}
 
-	apiKey = strings.TrimSpace(apiKey)
+	return createOAuthClient(ctx, t.GetEndpoint(), t.httpClient(), strings.TrimSpace(apiKey), scopes, tags)
+}
 
+// createOAuthClient creates an OAuth client at endpoint with apiKey. A
+// failure names no secret: the generated client's errors quote what it
+// could not parse, and an answer of another status may hold a key.
+func createOAuthClient(ctx context.Context, endpoint string, hc *http.Client, apiKey string, scopes, tags []string) (string, string, error) {
 	client, err := clientv2.NewClientWithResponses(
-		t.GetEndpoint(),
-		clientv2.WithHTTPClient(t.httpClient()),
+		endpoint,
+		clientv2.WithHTTPClient(hc),
 		clientv2.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer "+apiKey)
 
@@ -1053,7 +1069,7 @@ func (t *HeadscaleInContainer) CreateOAuthClient(
 		}),
 	)
 	if err != nil {
-		return "", "", fmt.Errorf("building v2 API client: %w", err)
+		return "", "", dockertestutil.Redactf(err, "building v2 API client: %v", err)
 	}
 
 	keyType := "client"
@@ -1064,11 +1080,11 @@ func (t *HeadscaleInContainer) CreateOAuthClient(
 		Tags:    &tags,
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("creating OAuth client: %w", err)
+		return "", "", dockertestutil.Redactf(err, "creating OAuth client: %v", err)
 	}
 
 	if resp.JSON200 == nil {
-		return "", "", fmt.Errorf( //nolint:err113
+		return "", "", dockertestutil.Redactf(errOAuthStatus,
 			"creating OAuth client: status %s: %s", resp.Status(), strings.TrimSpace(string(resp.Body)))
 	}
 
@@ -1178,73 +1194,80 @@ func (t *HeadscaleInContainer) WaitForRunning() error {
 	})
 }
 
+// cliJSON runs a command of the CLI in the container and decodes what it
+// prints with --output json.
+func cliJSON[T any](t *HeadscaleInContainer, command []string) (T, error) {
+	return cliJSONEnv[T](t, command, nil)
+}
+
+// cliJSONEnv is cliJSON with env added to the command's environment.
+func cliJSONEnv[T any](t *HeadscaleInContainer, command, env []string) (T, error) {
+	var res T
+
+	out, err := t.executeEnv(command, env)
+	if err != nil {
+		return res, err
+	}
+
+	err = json.Unmarshal([]byte(out), &res)
+	if err != nil {
+		return res, decodeFailure(command, out, err)
+	}
+
+	return res, nil
+}
+
+// decodeFailure is the error of output that is not the JSON a command
+// should print, with no secret in it.
+func decodeFailure(command []string, out string, err error) error {
+	return dockertestutil.Redactf(err, "decoding the output of %v: %v: %q", command, err, out)
+}
+
 // CreateUser adds a new user to the Headscale instance.
 func (t *HeadscaleInContainer) CreateUser(
 	user string,
-) (*clientv1.User, error) {
-	command := []string{
-		binHeadscale,
-		"users",
-		"create",
-		user,
+) (*clientv0.User, error) {
+	return cliJSON[*clientv0.User](t, []string{
+		binHeadscale, "users", "create", user,
 		fmt.Sprintf("--email=%s@test.no", user),
-		flagOutput,
-		"json",
-	}
-
-	result, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var u clientv1.User
-
-	err = json.Unmarshal([]byte(result), &u)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling user: %w", err)
-	}
-
-	return &u, nil
+		flagOutput, "json",
+	})
 }
 
 // AuthKeyOptions defines options for creating an auth key.
 type AuthKeyOptions struct {
-	// User is the user ID that owns the auth key. If nil and Tags are specified,
-	// the auth key is owned by the tags only (tags-as-identity model).
+	// User is the ID of the user that owns the auth key; with Tags, the
+	// user that made it, who may later claim a node that joined with it.
 	User *uint64
 	// Reusable indicates if the key can be used multiple times
 	Reusable bool
 	// Ephemeral indicates if nodes registered with this key should be ephemeral
 	Ephemeral bool
-	// Tags are the tags to assign to the auth key
+	// Tags own the key, and the nodes that join with it (tags-as-identity).
 	Tags []string
 }
 
-// CreateAuthKeyWithOptions creates a new "authorisation key" with the specified options.
-// This supports both user-owned and tags-only auth keys.
-func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*clientv1.PreAuthKey, error) {
+var errAuthKeyOwner = errors.New("an auth key needs an owner: a user or tags")
+
+// CreateAuthKeyWithOptions creates a new "authorisation key" owned by a user
+// or by tags.
+func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*clientv0.CreatedAuthKey, error) {
+	var owner string
+
+	switch {
+	case len(opts.Tags) > 0:
+		owner = strings.Join(opts.Tags, ",")
+	case opts.User != nil:
+		owner = strconv.FormatUint(*opts.User, 10)
+	default:
+		return nil, errAuthKeyOwner
+	}
+
 	command := []string{
-		binHeadscale,
+		binHeadscale, "auth", "keys", "create", owner,
+		"--expiry", "24h",
+		flagOutput, "json",
 	}
-
-	// Only add --user flag if User is specified
-	if opts.User != nil {
-		command = append(command, "--user", strconv.FormatUint(*opts.User, 10))
-	}
-
-	command = append(
-		command,
-		"preauthkeys",
-		"create",
-		"--expiration",
-		"24h",
-		flagOutput,
-		"json",
-	)
 
 	if opts.Reusable {
 		command = append(command, "--reusable")
@@ -1254,27 +1277,35 @@ func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*c
 		command = append(command, "--ephemeral")
 	}
 
-	if len(opts.Tags) > 0 {
-		command = append(command, "--tags", strings.Join(opts.Tags, ","))
+	if len(opts.Tags) > 0 && opts.User != nil {
+		// Over the socket the server records no maker of a key; through an
+		// API key of the user it records the user.
+		env, err := t.cliEnvAs(*opts.User)
+		if err != nil {
+			return nil, err
+		}
+
+		return cliJSONEnv[*clientv0.CreatedAuthKey](t, command, env)
 	}
 
-	result, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
+	return cliJSON[*clientv0.CreatedAuthKey](t, command)
+}
+
+// cliEnvAs is the environment that points the CLI in the container at the
+// server's API, with a new API key of the user.
+func (t *HeadscaleInContainer) cliEnvAs(user uint64) ([]string, error) {
+	key, err := t.Execute([]string{
+		binHeadscale, "api", "keys", "create", "--user", strconv.FormatUint(user, 10), "--expiry", "1h",
+	})
 	if err != nil {
-		return nil, fmt.Errorf("executing create auth key command: %w", err)
+		return nil, fmt.Errorf("creating an API key of user %d: %w", user, err)
 	}
 
-	var preAuthKey clientv1.PreAuthKey
-
-	err = json.Unmarshal([]byte(result), &preAuthKey)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling auth key: %w", err)
-	}
-
-	return &preAuthKey, nil
+	return []string{
+		"HEADSCALE_CLI_ADDRESS=" + t.GetEndpoint(),
+		"HEADSCALE_CLI_API_KEY=" + strings.TrimSpace(key),
+		"HEADSCALE_CLI_INSECURE=true",
+	}, nil
 }
 
 // CreateAuthKey creates a new "authorisation key" for a User that can be used
@@ -1283,7 +1314,7 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	user uint64,
 	reusable bool,
 	ephemeral bool,
-) (*clientv1.PreAuthKey, error) {
+) (*clientv0.CreatedAuthKey, error) {
 	return t.CreateAuthKeyWithOptions(AuthKeyOptions{
 		User:      &user,
 		Reusable:  reusable,
@@ -1291,14 +1322,14 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	})
 }
 
-// CreateAuthKeyWithTags creates a new "authorisation key" for a User with the specified tags.
-// This is used to create tagged PreAuthKeys for testing the tags-as-identity model.
+// CreateAuthKeyWithTags creates a new "authorisation key" owned by tags and
+// made by user, for testing the tags-as-identity model.
 func (t *HeadscaleInContainer) CreateAuthKeyWithTags(
 	user uint64,
 	reusable bool,
 	ephemeral bool,
 	tags []string,
-) (*clientv1.PreAuthKey, error) {
+) (*clientv0.CreatedAuthKey, error) {
 	return t.CreateAuthKeyWithOptions(AuthKeyOptions{
 		User:      &user,
 		Reusable:  reusable,
@@ -1307,25 +1338,13 @@ func (t *HeadscaleInContainer) CreateAuthKeyWithTags(
 	})
 }
 
-// DeleteAuthKey deletes an "authorisation key" by ID.
+// DeleteAuthKey revokes an "authorisation key" by ID.
 func (t *HeadscaleInContainer) DeleteAuthKey(
 	id uint64,
 ) error {
-	command := []string{
-		binHeadscale,
-		"preauthkeys",
-		"delete",
-		"--id",
-		strconv.FormatUint(id, 10),
-		flagOutput,
-		"json",
-	}
-
-	_, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
+	_, err := t.Execute([]string{
+		binHeadscale, "auth", "keys", "delete", strconv.FormatUint(id, 10), "--force",
+	})
 	if err != nil {
 		return fmt.Errorf("executing delete auth key command: %w", err)
 	}
@@ -1338,48 +1357,28 @@ func (t *HeadscaleInContainer) DeleteAuthKey(
 // specific users.
 func (t *HeadscaleInContainer) ListNodes(
 	users ...string,
-) ([]*clientv1.Node, error) {
-	var ret []*clientv1.Node
+) ([]*clientv0.Node, error) {
+	var ret []*clientv0.Node
 
-	execUnmarshal := func(command []string) error {
-		result, _, err := dockertestutil.ExecuteCommand(
-			t.container,
-			command,
-			[]string{},
-		)
+	if len(users) == 0 {
+		nodes, err := cliJSON[[]*clientv0.Node](t, []string{binHeadscale, "nodes", "list", flagOutput, "json"})
 		if err != nil {
-			return fmt.Errorf("executing list node command: %w", err)
+			return nil, fmt.Errorf("listing nodes: %w", err)
 		}
 
-		var nodes []*clientv1.Node
+		ret = nodes
+	}
 
-		err = json.Unmarshal([]byte(result), &nodes)
+	for _, user := range users {
+		nodes, err := cliJSON[[]*clientv0.Node](t, []string{binHeadscale, "nodes", "list", "--filter", "owner=" + user, flagOutput, "json"})
 		if err != nil {
-			return fmt.Errorf("unmarshalling nodes: %w", err)
+			return nil, fmt.Errorf("listing nodes of %s: %w", user, err)
 		}
 
 		ret = append(ret, nodes...)
-
-		return nil
 	}
 
-	if len(users) == 0 {
-		err := execUnmarshal([]string{binHeadscale, "nodes", "list", flagOutput, "json"})
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		for _, user := range users {
-			command := []string{binHeadscale, "--user", user, "nodes", "list", flagOutput, "json"}
-
-			err := execUnmarshal(command)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	slices.SortFunc(ret, func(a, b *clientv1.Node) int {
+	slices.SortFunc(ret, func(a, b *clientv0.Node) int {
 		ai, _ := strconv.ParseUint(a.Id, 10, 64)
 		bi, _ := strconv.ParseUint(b.Id, 10, 64)
 
@@ -1390,22 +1389,9 @@ func (t *HeadscaleInContainer) ListNodes(
 }
 
 func (t *HeadscaleInContainer) DeleteNode(nodeID uint64) error {
-	command := []string{
-		binHeadscale,
-		"nodes",
-		"delete",
-		"--identifier",
-		strconv.FormatUint(nodeID, 10),
-		flagOutput,
-		"json",
-		"--force",
-	}
-
-	_, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
+	_, err := t.Execute([]string{
+		binHeadscale, "nodes", "delete", strconv.FormatUint(nodeID, 10), "--force",
+	})
 	if err != nil {
 		return fmt.Errorf("executing delete node command: %w", err)
 	}
@@ -1413,68 +1399,52 @@ func (t *HeadscaleInContainer) DeleteNode(nodeID uint64) error {
 	return nil
 }
 
-func (t *HeadscaleInContainer) NodesByUser() (map[string][]*clientv1.Node, error) {
+// NodesByUser groups the nodes by the name of the user that owns them;
+// tagged nodes are under "".
+func (t *HeadscaleInContainer) NodesByUser() (map[string][]*clientv0.Node, error) {
 	nodes, err := t.ListNodes()
 	if err != nil {
 		return nil, err
 	}
 
-	userMap := make(map[string][]*clientv1.Node)
+	userMap := make(map[string][]*clientv0.Node)
 
 	for _, node := range nodes {
-		name := node.User.Name
+		name := integrationutil.OwnerUser(node.Owner).Name
 		userMap[name] = append(userMap[name], node)
 	}
 
 	return userMap, nil
 }
 
-func (t *HeadscaleInContainer) NodesByName() (map[string]*clientv1.Node, error) {
+func (t *HeadscaleInContainer) NodesByName() (map[string]*clientv0.Node, error) {
 	nodes, err := t.ListNodes()
 	if err != nil {
 		return nil, err
 	}
 
-	var nameMap map[string]*clientv1.Node
+	var nameMap map[string]*clientv0.Node
 	for _, node := range nodes {
-		mak.Set(&nameMap, node.Name, node)
+		mak.Set(&nameMap, node.Hostname, node)
 	}
 
 	return nameMap, nil
 }
 
 // ListUsers returns a list of users from Headscale.
-func (t *HeadscaleInContainer) ListUsers() ([]*clientv1.User, error) {
-	command := []string{binHeadscale, "users", "list", flagOutput, "json"}
-
-	result, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("executing list node command: %w", err)
-	}
-
-	var users []*clientv1.User
-
-	err = json.Unmarshal([]byte(result), &users)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling nodes: %w", err)
-	}
-
-	return users, nil
+func (t *HeadscaleInContainer) ListUsers() ([]*clientv0.User, error) {
+	return cliJSON[[]*clientv0.User](t, []string{binHeadscale, "users", "list", flagOutput, "json"})
 }
 
 // MapUsers returns a map of users from Headscale. It is keyed by the
 // user name.
-func (t *HeadscaleInContainer) MapUsers() (map[string]*clientv1.User, error) {
+func (t *HeadscaleInContainer) MapUsers() (map[string]*clientv0.User, error) {
 	users, err := t.ListUsers()
 	if err != nil {
 		return nil, err
 	}
 
-	var userMap map[string]*clientv1.User
+	var userMap map[string]*clientv0.User
 	for _, user := range users {
 		mak.Set(&userMap, user.Name, user)
 	}
@@ -1484,22 +1454,9 @@ func (t *HeadscaleInContainer) MapUsers() (map[string]*clientv1.User, error) {
 
 // DeleteUser deletes a user from the Headscale instance.
 func (t *HeadscaleInContainer) DeleteUser(userID uint64) error {
-	command := []string{
-		binHeadscale,
-		"users",
-		"delete",
-		"--identifier",
-		strconv.FormatUint(userID, 10),
-		"--force",
-		flagOutput,
-		"json",
-	}
-
-	_, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
+	_, err := t.Execute([]string{
+		binHeadscale, "users", "delete", strconv.FormatUint(userID, 10), "--force",
+	})
 	if err != nil {
 		return fmt.Errorf("executing delete user command: %w", err)
 	}
@@ -1520,7 +1477,7 @@ func (h *HeadscaleInContainer) SetPolicy(pol *policyv2.Policy) error {
 			return fmt.Errorf("reloading database policy: %w", err)
 		}
 	case types.PolicyModeFile:
-		err := h.Reload()
+		_, err := h.Execute([]string{binHeadscale, "policy", "reload"})
 		if err != nil {
 			return fmt.Errorf("reloading policy file: %w", err)
 		}
@@ -1532,15 +1489,7 @@ func (h *HeadscaleInContainer) SetPolicy(pol *policyv2.Policy) error {
 }
 
 func (h *HeadscaleInContainer) reloadDatabasePolicy() error {
-	_, err := h.Execute(
-		[]string{
-			binHeadscale,
-			"policy",
-			"set",
-			"-f",
-			aclPolicyPath,
-		},
-	)
+	_, err := h.Execute([]string{binHeadscale, "policy", "set", aclPolicyPath})
 	if err != nil {
 		return fmt.Errorf("setting policy with db command: %w", err)
 	}
@@ -1634,62 +1583,32 @@ func (h *HeadscaleInContainer) Restart() error {
 	return h.WaitForRunning()
 }
 
-// ApproveRoutes approves routes for a node.
-func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (*clientv1.Node, error) {
-	command := []string{
-		binHeadscale, "nodes", "approve-routes",
-		flagOutput, "json",
-		"--identifier", strconv.FormatUint(id, 10),
-		"--routes=" + strings.Join(util.PrefixesToString(routes), ","),
+// ApproveRoutes sets the approved routes of a node; none clears them.
+func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (*clientv0.Node, error) {
+	command := []string{binHeadscale, "nodes", "routes", "clear", strconv.FormatUint(id, 10), flagOutput, "json"}
+	if len(routes) > 0 {
+		command = []string{
+			binHeadscale, "nodes", "routes", "set", strconv.FormatUint(id, 10),
+			strings.Join(util.PrefixesToString(routes), ","),
+			flagOutput, "json",
+		}
 	}
 
-	result, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
+	node, err := cliJSON[*clientv0.Node](t, command)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"executing approve routes command (node %d, routes %v): %w",
-			id,
-			routes,
-			err,
-		)
-	}
-
-	var node *clientv1.Node
-
-	err = json.Unmarshal([]byte(result), &node)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling node response: %q, error: %w", result, err)
+		return nil, fmt.Errorf("approving routes (node %d, routes %v): %w", id, routes, err)
 	}
 
 	return node, nil
 }
 
-// SetNodeTags sets tags on a node via the headscale CLI.
-// This simulates what the Tailscale admin console UI does - it calls the headscale
-// SetTags API which is exposed via the CLI command: headscale nodes tag -i <id> -t <tags>.
+// SetNodeTags sets tags on a node via the headscale CLI, as the Tailscale
+// admin console does through the API. --force answers the question that
+// tagging a user-owned node asks.
 func (t *HeadscaleInContainer) SetNodeTags(nodeID uint64, tags []string) error {
-	command := []string{
-		binHeadscale, "nodes", "tag",
-		"--identifier", strconv.FormatUint(nodeID, 10),
-		flagOutput, "json",
-	}
-
-	// Add tags - the CLI expects -t flag for each tag or comma-separated
-	if len(tags) > 0 {
-		command = append(command, "--tags", strings.Join(tags, ","))
-	} else {
-		// Empty tags to clear all tags
-		command = append(command, "--tags", "")
-	}
-
-	_, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
+	_, err := t.Execute([]string{
+		binHeadscale, "nodes", "tags", "set", strconv.FormatUint(nodeID, 10), strings.Join(tags, ","), "--force",
+	})
 	if err != nil {
 		return fmt.Errorf("executing set tags command (node %d, tags %v): %w", nodeID, tags, err)
 	}

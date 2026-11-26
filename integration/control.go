@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/netip"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -28,19 +28,19 @@ type ControlServer interface {
 	CreateOAuthClient(ctx context.Context, scopes, tags []string) (string, string, error)
 	WaitForRunning() error
 	Restart() error
-	CreateUser(user string) (*clientv1.User, error)
-	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*clientv1.PreAuthKey, error)
-	CreateAuthKeyWithTags(user uint64, reusable bool, ephemeral bool, tags []string) (*clientv1.PreAuthKey, error)
-	CreateAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*clientv1.PreAuthKey, error)
+	CreateUser(user string) (*clientv0.User, error)
+	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*clientv0.CreatedAuthKey, error)
+	CreateAuthKeyWithTags(user uint64, reusable bool, ephemeral bool, tags []string) (*clientv0.CreatedAuthKey, error)
+	CreateAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*clientv0.CreatedAuthKey, error)
 	DeleteAuthKey(id uint64) error
-	ListNodes(users ...string) ([]*clientv1.Node, error)
+	ListNodes(users ...string) ([]*clientv0.Node, error)
 	DeleteNode(nodeID uint64) error
-	NodesByUser() (map[string][]*clientv1.Node, error)
-	NodesByName() (map[string]*clientv1.Node, error)
-	ListUsers() ([]*clientv1.User, error)
-	MapUsers() (map[string]*clientv1.User, error)
+	NodesByUser() (map[string][]*clientv0.Node, error)
+	NodesByName() (map[string]*clientv0.Node, error)
+	ListUsers() ([]*clientv0.User, error)
+	MapUsers() (map[string]*clientv0.User, error)
 	DeleteUser(userID uint64) error
-	ApproveRoutes(nodeID uint64, routes []netip.Prefix) (*clientv1.Node, error)
+	ApproveRoutes(nodeID uint64, routes []netip.Prefix) (*clientv0.Node, error)
 	SetNodeTags(nodeID uint64, tags []string) error
 	GetCert() []byte
 	GetHostname() string

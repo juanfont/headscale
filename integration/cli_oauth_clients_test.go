@@ -1,10 +1,10 @@
 package integration
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -13,21 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// cliOAuthClient is the JSON the `oauth-clients` commands emit (the v2 Key shape,
-// only the fields the test asserts on).
-type cliOAuthClient struct {
-	ID          string   `json:"id"`
-	Key         string   `json:"key"`
-	KeyType     string   `json:"keyType"`
-	Scopes      []string `json:"scopes"`
-	Tags        []string `json:"tags"`
-	Description string   `json:"description"`
-}
-
-// TestOAuthClientCommand exercises the `headscale oauth-clients` CLI end to end:
-// create (with scopes and tags) -> list (secret hidden) -> delete. The CLI talks
-// to the v2 keys handler over the local unix socket, so this also proves the v2
-// API is reachable over the socket with local trust.
+// TestOAuthClientCommand exercises the `headscale api oauth-clients` CLI end to
+// end: create (with scopes and tags) -> list (secret hidden) -> get -> delete,
+// which revokes the client.
 func TestOAuthClientCommand(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -50,55 +38,59 @@ func TestOAuthClientCommand(t *testing.T) {
 
 	// Create an OAuth client with scopes and a tag. devices:core/auth_keys
 	// require a tag, which is supplied.
-	createOut, err := headscale.Execute([]string{
-		"headscale", "oauth-clients", "create",
-		"--scope", "auth_keys",
-		"--scope", "devices:core",
-		"--tag", "tag:k8s-operator",
+	created := assertJSONRoundtrip[*clientv0.CreatedOAuthClient](t, headscale, []string{
+		"headscale", "api", "oauth-clients", "create", "auth_keys,devices:core",
+		"--tags", "tag:k8s-operator",
 		"--description", "operator",
 		"--output", "json",
 	})
-	require.NoError(t, err)
-
-	var created cliOAuthClient
-	require.NoError(t, json.Unmarshal([]byte(createOut), &created))
-	assert.Equal(t, "client", created.KeyType)
-	assert.NotEmpty(t, created.ID, "client id returned")
+	assert.NotEmpty(t, created.Id, "client id returned")
 	assert.NotEmpty(t, created.Key, "secret returned once on create")
 	assert.ElementsMatch(t, []string{"auth_keys", "devices:core"}, created.Scopes)
 	assert.Equal(t, []string{"tag:k8s-operator"}, created.Tags)
 
 	// List shows the client without its secret.
-	var listed []cliOAuthClient
+	var listed []clientv0.OAuthClient
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
-			[]string{"headscale", "oauth-clients", "list", "--output", "json"}, &listed)
+			[]string{"headscale", "api", "oauth-clients", "list", "--output", "json"}, &listed)
 		assert.NoError(c, err)
 		assert.Len(c, listed, 1)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "waiting for oauth client list")
 
-	assert.Equal(t, created.ID, listed[0].ID)
-	assert.Empty(t, listed[0].Key, "secret is never exposed on list")
+	// The object of a list has no field for the secret.
+	assert.Equal(t, created.Id, listed[0].Id)
 	assert.ElementsMatch(t, []string{"auth_keys", "devices:core"}, listed[0].Scopes)
 	assert.Equal(t, "operator", listed[0].Description)
 
-	// Delete it.
-	_, err = headscale.Execute([]string{"headscale", "oauth-clients", "delete", "--id", created.ID})
+	var got clientv0.OAuthClient
+	require.NoError(t, executeAndUnmarshal(headscale,
+		[]string{"headscale", "api", "oauth-clients", "get", created.Id, "--output", "json"}, &got))
+	assert.Equal(t, []string{"tag:k8s-operator"}, got.Tags)
+
+	// Delete it: it is revoked, and only the list with --all shows it.
+	_, err = headscale.Execute([]string{"headscale", "api", "oauth-clients", "delete", created.Id, "--force"})
 	require.NoError(t, err)
 
-	var afterDelete []cliOAuthClient
+	var afterDelete []clientv0.OAuthClient
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
-			[]string{"headscale", "oauth-clients", "list", "--output", "json"}, &afterDelete)
+			[]string{"headscale", "api", "oauth-clients", "list", "--output", "json"}, &afterDelete)
 		assert.NoError(c, err)
 		assert.Empty(c, afterDelete)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "waiting for oauth client list after delete")
+
+	var all []clientv0.OAuthClient
+	require.NoError(t, executeAndUnmarshal(headscale,
+		[]string{"headscale", "api", "oauth-clients", "list", "--all", "--output", "json"}, &all))
+	require.Len(t, all, 1)
+	assert.Equal(t, clientv0.OAuthClientStateRevoked, all[0].State)
 }
 
-// TestOAuthClientCommandValidation covers the CLI's input validation and the
-// server's 404 on deleting an unknown client.
+// TestOAuthClientCommandValidation covers the CLI's input validation and
+// deleting an unknown client.
 func TestOAuthClientCommandValidation(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -118,10 +110,10 @@ func TestOAuthClientCommandValidation(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
-		{name: "no scope", args: []string{"oauth-clients", "create"}, wantErr: "at least one --scope is required"},
-		{name: "devices:core needs tag", args: []string{"oauth-clients", "create", "--scope", "devices:core"}, wantErr: "tags are required"},
-		{name: "delete no id", args: []string{"oauth-clients", "delete"}, wantErr: "--id is required"},
-		{name: "delete nonexistent id", args: []string{"oauth-clients", "delete", "--id", "doesnotexist"}, wantErr: "404"},
+		{name: "no scope", args: []string{"api", "oauth-clients", "create"}, wantErr: "`api oauth-clients create` needs 1 argument, got 0."},
+		{name: "devices:core needs tag", args: []string{"api", "oauth-clients", "create", "devices:core"}, wantErr: "scope devices:core needs at least one tag (--tags)."},
+		{name: "delete no id", args: []string{"api", "oauth-clients", "delete", "--force"}, wantErr: "`api oauth-clients delete` needs 1 argument, got 0."},
+		{name: "delete nonexistent id", args: []string{"api", "oauth-clients", "delete", "doesnotexist", "--force"}, wantErr: `no OAuth client matches "doesnotexist"`},
 	}
 
 	for _, tt := range tests {

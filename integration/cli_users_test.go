@@ -8,7 +8,7 @@ import (
 
 	tcmp "github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -35,7 +35,7 @@ func TestUserCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	var (
-		listUsers []*clientv1.User
+		listUsers []*clientv0.User
 		result    []string
 	)
 
@@ -67,15 +67,15 @@ func TestUserCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"users",
-			"rename",
+			"set",
+			listUsers[1].Id,
+			"--name=newname",
 			"--output=json",
-			"--identifier=" + listUsers[1].Id,
-			"--new-name=newname",
 		},
 	)
 	require.NoError(t, err)
 
-	var listAfterRenameUsers []*clientv1.User
+	var listAfterRenameUsers []*clientv0.User
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
@@ -101,7 +101,7 @@ func TestUserCommand(t *testing.T) {
 		)
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
-	var listByUsername []*clientv1.User
+	var listByUsername []*clientv0.User
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -111,7 +111,7 @@ func TestUserCommand(t *testing.T) {
 				"list",
 				"--output",
 				"json",
-				"--name=user1",
+				"--filter=name=user1",
 			},
 			&listByUsername,
 		)
@@ -120,46 +120,38 @@ func TestUserCommand(t *testing.T) {
 
 	slices.SortFunc(listByUsername, sortWithID)
 
-	want := []*clientv1.User{
+	want := []*clientv0.User{
 		{
-			Id:    "1",
-			Name:  "user1",
-			Email: "user1@test.no",
+			Id:        "1",
+			Name:      "user1",
+			Email:     "user1@test.no",
+			LoginName: "user1@test.no",
+			Provider:  "local",
 		},
 	}
 
-	if diff := tcmp.Diff(want, listByUsername, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+	if diff := tcmp.Diff(want, listByUsername, userCmpOpts...); diff != "" {
 		t.Errorf("unexpected users (-want +got):\n%s", diff)
 	}
 
-	var listByID []*clientv1.User
+	var byID *clientv0.User
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
 			[]string{
 				"headscale",
 				"users",
-				"list",
+				"get",
+				"1",
 				"--output",
 				"json",
-				"--identifier=1",
 			},
-			&listByID,
+			&byID,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user list by ID")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user get by ID")
 
-	slices.SortFunc(listByID, sortWithID)
-
-	want = []*clientv1.User{
-		{
-			Id:    "1",
-			Name:  "user1",
-			Email: "user1@test.no",
-		},
-	}
-
-	if diff := tcmp.Diff(want, listByID, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+	if diff := tcmp.Diff(want[0], byID, userCmpOpts...); diff != "" {
 		t.Errorf("unexpected users (-want +got):\n%s", diff)
 	}
 
@@ -167,16 +159,16 @@ func TestUserCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"users",
-			"destroy",
-			"--force",
+			"delete",
 			// Delete "user1"
-			"--identifier=1",
+			"1",
+			"--force",
 		},
 	)
 	require.NoError(t, err)
-	assert.Contains(t, deleteResult, "User destroyed")
+	assert.Contains(t, deleteResult, "User 1 (user1@test.no) deleted")
 
-	var listAfterIDDelete []*clientv1.User
+	var listAfterIDDelete []*clientv0.User
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
@@ -193,15 +185,17 @@ func TestUserCommand(t *testing.T) {
 
 		slices.SortFunc(listAfterIDDelete, sortWithID)
 
-		want := []*clientv1.User{
+		want := []*clientv0.User{
 			{
-				Id:    "2",
-				Name:  "newname",
-				Email: "user2@test.no",
+				Id:        "2",
+				Name:      "newname",
+				Email:     "user2@test.no",
+				LoginName: "user2@test.no",
+				Provider:  "local",
 			},
 		}
 
-		if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := tcmp.Diff(want, listAfterIDDelete, userCmpOpts...); diff != "" {
 			assert.Fail(ct, "unexpected users", "diff (-want +got):\n%s", diff)
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
@@ -210,15 +204,15 @@ func TestUserCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"users",
-			"destroy",
+			"delete",
+			"newname",
 			"--force",
-			"--name=newname",
 		},
 	)
 	require.NoError(t, err)
-	assert.Contains(t, deleteResult, "User destroyed")
+	assert.Contains(t, deleteResult, "User 2 (user2@test.no) deleted")
 
-	var listAfterNameDelete []clientv1.User
+	var listAfterNameDelete []clientv0.User
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -237,8 +231,8 @@ func TestUserCommand(t *testing.T) {
 }
 
 // TestUserCreateCommand exercises `headscale users create` with all of its
-// optional flags (--display-name, --email, --picture-url), the --email list
-// filter, and the validation error paths (duplicate name, missing flags).
+// optional flags (--display-name, --email, --picture-url) and the email
+// filter of the list.
 func TestUserCreateCommand(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -249,7 +243,7 @@ func TestUserCreateCommand(t *testing.T) {
 
 	// Create a user populated with every optional field. The created user is
 	// returned on stdout and round-tripped through the User type.
-	created := assertJSONRoundtrip[*clientv1.User](t, headscale, []string{
+	created := assertJSONRoundtrip[*clientv0.User](t, headscale, []string{
 		"headscale",
 		"users",
 		"create",
@@ -267,7 +261,7 @@ func TestUserCreateCommand(t *testing.T) {
 
 	// The created fields must survive a list query (read-after-write) and be
 	// filterable by email.
-	var byEmail []*clientv1.User
+	var byEmail []*clientv0.User
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
@@ -275,7 +269,7 @@ func TestUserCreateCommand(t *testing.T) {
 				"headscale",
 				"users",
 				"list",
-				"--email", "cli-created@example.com",
+				"--filter", "email=cli-created@example.com",
 				"--output", "json",
 			},
 			&byEmail,
@@ -290,9 +284,9 @@ func TestUserCreateCommand(t *testing.T) {
 }
 
 // TestUserCommandValidation exercises the validation and error permutations of
-// the user subcommands and their flags: a missing name, a duplicate name, the
-// required --new-name on rename, and the "--name or --identifier" requirement
-// on rename/destroy. user1 already exists so the duplicate path has a conflict.
+// the user subcommands: a missing name, a duplicate name, set with nothing to
+// change, and a missing or unknown user on set and delete. user1 already
+// exists so the duplicate path has a conflict.
 func TestUserCommandValidation(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -300,39 +294,45 @@ func TestUserCommandValidation(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	// wantEmptyList means the command must succeed and return no users;
-	// otherwise the command must fail, matching wantErr when it is non-empty.
+	// otherwise the command must fail with wantErr.
 	tests := []struct {
 		name          string
 		args          []string
 		wantErr       string
 		wantEmptyList bool
 	}{
-		{name: "create missing name", args: []string{"users", "create"}, wantErr: "missing parameters"},
-		{name: "create duplicate", args: []string{"users", "create", "user1"}},
-		{name: "rename missing new-name", args: []string{"users", "rename", "--identifier", "1"}, wantErr: "new-name"},
-		{name: "rename missing selector", args: []string{"users", "rename", "--new-name", "x"}, wantErr: "--name or --identifier"},
-		{name: "destroy missing selector", args: []string{"users", "destroy", "--force"}, wantErr: "--name or --identifier"},
-		{name: "destroy nonexistent", args: []string{"users", "destroy", "--force", "--identifier", "99999"}},
-		{name: "list nonexistent name is empty", args: []string{"users", "list", "--name", "ghost", "--output", "json"}, wantEmptyList: true},
+		{name: "create missing name", args: []string{"users", "create"}, wantErr: "`users create` needs 1 argument, got 0."},
+		{name: "create duplicate", args: []string{"users", "create", "user1"}, wantErr: `the name "user1" belongs to User 1`},
+		{name: "set nothing to change", args: []string{"users", "set", "1"}, wantErr: "nothing to change"},
+		{name: "set missing user", args: []string{"users", "set", "--name", "x"}, wantErr: "`users set` needs 1 argument, got 0."},
+		{name: "delete missing user", args: []string{"users", "delete", "--force"}, wantErr: "`users delete` needs 1 argument, got 0."},
+		{name: "delete nonexistent", args: []string{"users", "delete", "99999", "--force"}, wantErr: `no user matches "99999"`},
+		{name: "list nonexistent name is empty", args: []string{"users", "list", "--filter", "name=ghost", "--output", "json"}, wantEmptyList: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out, err := headscale.Execute(append([]string{"headscale"}, tt.args...))
 
-			switch {
-			case tt.wantEmptyList:
+			if tt.wantEmptyList {
 				require.NoError(t, err)
 
-				var users []clientv1.User
+				var users []clientv0.User
 
 				require.NoError(t, json.Unmarshal([]byte(out), &users))
 				require.Empty(t, users)
-			case tt.wantErr != "":
-				require.ErrorContains(t, err, tt.wantErr)
-			default:
-				require.Error(t, err)
+
+				return
 			}
+
+			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
+}
+
+// userCmpOpts compare users on what a test sets: the time of creation is
+// the server's, and an empty list of nodes is the same as none.
+var userCmpOpts = []tcmp.Option{
+	cmpopts.IgnoreFields(clientv0.User{}, "Created"),
+	cmpopts.EquateEmpty(),
 }

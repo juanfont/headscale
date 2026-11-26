@@ -248,7 +248,7 @@ do not retry hoping the flake goes away.
 ### Route advertisement timing
 
 Test asserts route state before the client has finished propagating its
-Hostinfo update. Symptom: `nodes[0].GetAvailableRoutes()` empty when
+Hostinfo update. Symptom: `nodes[0].AdvertisedRoutes` empty when
 the test expects a route.
 
 - **Wrong fix**: `time.Sleep(5 * time.Second)` — fragile and slow.

@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
+	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -99,7 +100,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	// Validate initial connection state
 	validateInitialConnection(t, headscale, expectedNodes)
 
-	var listNodes []*clientv1.Node
+	var listNodes []*clientv0.Node
 
 	t.Logf("Validating initial node count after web auth at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -264,7 +265,7 @@ func TestAuthWebFlowReloginExpiredNode(t *testing.T) {
 			targetIP := target.MustIPv4().String()
 
 			_, err := headscale.Execute([]string{
-				"headscale", "nodes", "expire", "--identifier", selfID,
+				"headscale", "nodes", "expire", selfID,
 			})
 			require.NoError(t, err)
 
@@ -432,7 +433,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	// Validate initial connection state
 	validateInitialConnection(t, headscale, expectedNodes)
 
-	var listNodes []*clientv1.Node
+	var listNodes []*clientv0.Node
 
 	t.Logf("Validating initial node count after web auth at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -492,7 +493,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 
 	t.Logf("all clients logged back in as user1")
 
-	var user1Nodes []*clientv1.Node
+	var user1Nodes []*clientv0.Node
 
 	t.Logf("Validating user1 node count after relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -514,7 +515,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 
 	// Validate that user2's old nodes still exist in database (but are expired/offline)
 	// When CLI registration creates new nodes for user1, user2's old nodes remain
-	var user2Nodes []*clientv1.Node
+	var user2Nodes []*clientv0.Node
 
 	t.Logf("Validating user2 old nodes remain in database after CLI registration to user1 at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -544,4 +545,62 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	})
 
 	assertPingAll(t, allClients, allAddrs)
+}
+
+// runPageCommand runs, word for word, the command that a login or SSH-check
+// page tells the admin to run, with user for the page's placeholder. While
+// the pages print the old CLI's --auth-id, which the CLI in the image
+// refuses, the test skips: it wakes when the server prints the new form.
+func runPageCommand(t *testing.T, headscale ControlServer, body, user string) {
+	t.Helper()
+
+	words, err := pageCommand(body, user)
+	require.NoError(t, err)
+	t.Logf("the page says to run: %q", words)
+
+	if slices.Contains(words, "--auth-id") {
+		t.Skip("the page prints the old CLI's command")
+	}
+
+	_, err = headscale.Execute(words)
+	require.NoError(t, err, "the command the page prints must work")
+}
+
+// TestAuthWebFlowPageCommand registers a waiting node with the command its
+// login page prints, as an admin who copies it does.
+func TestAuthWebFlowPageCommand(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario, err := NewScenario(ScenarioSpec{Users: []string{"user1"}})
+	require.NoError(t, err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(nil, hsic.WithTestName("webauthpage"))
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	loginURL, err := client.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	body, err := doLoginURL(client.Hostname(), loginURL)
+	require.NoError(t, err)
+
+	runPageCommand(t, headscale, body, "user1")
+
+	require.NoError(t, client.WaitForRunning(integrationutil.PeerSyncTimeout()))
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes("user1")
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "the node the page named belongs to user1")
+	}, integrationutil.ScaledTimeout(20*time.Second), integrationutil.FastPoll, "waiting for the registered node")
 }

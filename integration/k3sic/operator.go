@@ -3,6 +3,8 @@ package k3sic
 import (
 	"fmt"
 	"strings"
+
+	"github.com/juanfont/headscale/integration/dockertestutil"
 )
 
 // This file holds the reusable building blocks for driving the Tailscale
@@ -62,7 +64,7 @@ func (k *K3sInContainer) InstallOperator(loginServer, clientID, clientSecret str
 		"--from-literal=client_secret=" + clientSecret,
 	})
 	if err != nil {
-		return fmt.Errorf("creating operator-oauth secret (stderr: %s): %w", stderr, err)
+		return dockertestutil.Redactf(err, "creating operator-oauth secret (stderr: %s): %v", stderr, err)
 	}
 
 	opRepo, opTag, _ := strings.Cut(OperatorImage(), ":")
@@ -86,7 +88,7 @@ func (k *K3sInContainer) InstallOperator(loginServer, clientID, clientSecret str
 	_, stderr, err = k.Execute(install)
 	if err != nil {
 		k.DumpDiagnostics()
-		return fmt.Errorf("helm install operator (stderr: %s): %w", stderr, err)
+		return dockertestutil.Redactf(err, "helm install operator (stderr: %s): %v", stderr, err)
 	}
 
 	// hsic serves the embedded DERP without TLS, but a proxy dials DERP over HTTPS

@@ -1,9 +1,11 @@
 package tsic
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"testing"
 	"time"
 
@@ -168,4 +170,31 @@ func TestLoginURLDeadlineDoesNotStopCLI(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("CLI did not finish after URL deadline")
 	}
+}
+
+// TestLoginFailureHidesAuthKey: the login command carries the auth key, and
+// a failing tailscale up may echo it; neither the log nor the error shows it.
+func TestLoginFailureHidesAuthKey(t *testing.T) {
+	const authKey = "hskey-auth-ba9876543210-sentinelloginsecret1" //nolint:gosec // a sentinel
+
+	var logs bytes.Buffer
+
+	orig := log.Writer()
+
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(orig) })
+
+	login := startLogin([]string{"tailscale", "up", "--authkey=" + authKey}, func(_ []string, opts dockertest.ExecOptions) (int, error) {
+		_, _ = io.WriteString(opts.StdErr, "invalid key: "+authKey)
+
+		return 1, nil
+	})
+
+	_, err := login.waitForURL(time.Second)
+	require.ErrorIs(t, err, dockertestutil.ErrDockertestCommandFailed)
+	<-login.done
+
+	assert.NotContains(t, err.Error(), "sentinel")
+	assert.NotContains(t, logs.String(), "sentinel")
+	assert.Contains(t, logs.String(), "--authkey=hskey-auth-ba9876543210-***")
 }
