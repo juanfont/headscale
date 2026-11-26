@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/netmap"
@@ -139,6 +140,10 @@ var routesMapCompatTests = []struct {
 	{"routes-exit-offer-no-rules", "a policy without rules offers exit routes"},
 	{"routes-exit-offer-empty-acls", "an empty acls list offers no exit node"},
 	{"routes-exit-offer-empty-grants", "an empty grants list offers no exit node"},
+	{"routes-tailnet-range-route", "routes inside the tailnet range"},
+	{"routes-internet-public-subnet", "autogroup:internet with a public subnet router"},
+	{"routes-destination-wider-than-route", "destination wider than the approved route"},
+	{"routes-exit-node-public-destination-a", "a routed prefix to one public address"},
 }
 
 // aclMapCompatTests lists ACL captures replayed through the mapper, with only
@@ -448,7 +453,21 @@ func startCaptureClients(
 	clients := map[string]*servertest.TestClient{}
 	order := captureNodeOrder(t, c)
 
-	for _, name := range order {
+	// A route inside the Tailscale range covers the nodes it did on SaaS
+	// only when they hold the addresses they held there. Addresses are
+	// handed out in order, so those nodes register in address order.
+	pinAddrs := routesNameTailnetAddrs(c)
+	lastAddr := tsaddr.CGNATRange().Addr()
+	registerOrder := order
+
+	if pinAddrs {
+		registerOrder = slices.SortedFunc(slices.Values(order), func(a, b string) int {
+			return netip.MustParseAddr(c.Topology.Nodes[a].IPv4).
+				Compare(netip.MustParseAddr(c.Topology.Nodes[b].IPv4))
+		})
+	}
+
+	for _, name := range registerOrder {
 		topoNode, exists := c.Topology.Nodes[name]
 		if !exists {
 			continue
@@ -456,6 +475,18 @@ func startCaptureClients(
 
 		if _, inCaptures := c.Captures[name]; !inCaptures {
 			continue
+		}
+
+		if pinAddrs {
+			want := netip.MustParseAddr(topoNode.IPv4)
+			require.Truef(t, lastAddr.Less(want),
+				"node %s: address %s is not after %s, the one before it", name, want, lastAddr)
+
+			for a := lastAddr.Next(); a != want; a = a.Next() {
+				require.NoError(t, srv.State().SkipAddressForTest())
+			}
+
+			lastAddr = want
 		}
 
 		owner := tagUser
@@ -555,6 +586,20 @@ func startCaptureClients(
 	}
 
 	return srv, clients
+}
+
+// routesNameTailnetAddrs reports whether a node of the capture advertises a
+// route inside the Tailscale range.
+func routesNameTailnetAddrs(c *testcapture.Capture) bool {
+	for _, node := range c.Topology.Nodes {
+		for _, r := range node.RoutableIPs {
+			if tsaddr.IsTailscaleIP(netip.MustParsePrefix(r).Addr()) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // compareViaMapCompat compares every viewer's netmap and own routes with
