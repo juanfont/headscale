@@ -18,8 +18,8 @@ const keyPrefixLen = 12
 // Redact hides every secret in s. The suite's logs and errors end up in CI
 // artefacts, and a command that makes or takes a credential prints it, or
 // echoes it in an error. A rest that has a key prefix and its "-" keeps the
-// prefix; any other rest is hidden whole. An auth ID (hskey-authreq-) is a
-// request, not a credential, and stays. A key of the legacy form, which has
+// prefix; any other rest is hidden whole, an auth ID (hskey-authreq-) too:
+// it answers a waiting registration or SSH check. A key of the legacy form, which has
 // no hskey- prefix, is not seen: the suite mints none.
 func Redact(s string) string {
 	return secretPattern.ReplaceAllStringFunc(s, func(m string) string {
@@ -28,7 +28,7 @@ func Redact(s string) string {
 
 		switch {
 		case kind == "authreq":
-			return m
+			return head + "***"
 		// Only the prefix and its "-": masked before, "***" follows.
 		case len(rest) == keyPrefixLen+1 && rest[keyPrefixLen] == '-':
 			return m

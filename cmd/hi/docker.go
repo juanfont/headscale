@@ -847,13 +847,15 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 		return fmt.Errorf("demultiplexing container logs: %w", err)
 	}
 
+	// CI uploads these: a container's own log carries what its program
+	// prints, such as tailscaled's AuthURL with an auth ID.
 	// Write stdout logs
-	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0o644); err != nil { //nolint:gosec,noinlineerr // log files should be readable
+	if err := os.WriteFile(stdoutPath, []byte(dockertestutil.Redact(stdoutBuf.String())), 0o644); err != nil { //nolint:gosec,noinlineerr // log files should be readable
 		return fmt.Errorf("writing stdout log: %w", err)
 	}
 
 	// Write stderr logs
-	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0o644); err != nil { //nolint:gosec,noinlineerr // log files should be readable
+	if err := os.WriteFile(stderrPath, []byte(dockertestutil.Redact(stderrBuf.String())), 0o644); err != nil { //nolint:gosec,noinlineerr // log files should be readable
 		return fmt.Errorf("writing stderr log: %w", err)
 	}
 

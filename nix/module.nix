@@ -36,13 +36,13 @@ let
   );
 
   policyCheck = pkgs.runCommand "headscale-policy-check" { } ''
-    ${lib.getExe cfg.package} check policy -f ${lib.escapeShellArg policyFile}
+    ${lib.getExe cfg.package} check policy ${lib.escapeShellArg policyFile}
     touch $out
   '';
 
   # check config, not check all: the files the config names are not in the sandbox.
   configCheck = pkgs.runCommand "headscale-config-check" { } ''
-    env -i ${lib.escapeShellArgs unitEnv} ${lib.getExe cfg.package} check config -f ${cfg.configFile} || {
+    env -i ${lib.escapeShellArgs unitEnv} ${lib.getExe cfg.package} check config ${cfg.configFile} || {
       echo "headscale: this check sees the unit's environment, not its EnvironmentFile or %-specifiers expanded; services.headscale.check.config = false skips it" >&2
       exit 1
     }
@@ -118,11 +118,11 @@ let
 
         ${lib.optionalString cfg.check.config ''
           echo "headscale: checking the new configuration"
-          hs check all -f ${cfg.configFile}
+          hs check all ${cfg.configFile}
         ''}
         ${lib.optionalString preSwitchPolicy ''
           echo "headscale: checking the new policy"
-          hs check policy -f ${lib.escapeShellArg policyFile}
+          hs check policy ${lib.escapeShellArg policyFile}
         ''}
       '';
     };
@@ -174,7 +174,7 @@ in
         default = true;
         description = ''
           While building the system (native builds only), run
-          `headscale check config -f` on
+          `headscale check config` on
           {option}`services.headscale.configFile`, so a configuration headscale
           rejects fails `nixos-rebuild build`.
 
@@ -197,7 +197,7 @@ in
         type = lib.types.bool;
         default = true;
         description = ''
-          In file policy mode, run `headscale check policy -f` on the new
+          In file policy mode, run `headscale check policy` on the new
           policy: it checks the policy and runs its `tests` and `sshTests`
           against one node for each user and tag the policy names. A policy in
           the Nix store is checked while building the system (native builds

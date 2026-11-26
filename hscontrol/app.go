@@ -610,6 +610,9 @@ func (h *Headscale) createRouter(legacyAPI, tailscaleAPI, headscaleAPI http.Hand
 	r.Use(middleware.RequestLogger(&zerologRequestLogger{}))
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeaders)
+	// Outermost for /api/v1, so the router's own 404 of the bare path is
+	// marked as well.
+	r.Use(apiv1.DeprecationHeaders)
 
 	// TS2021 accepts both the native client's HTTP POST upgrade and the
 	// browser/WASM client's WebSocket GET upgrade; NoiseUpgradeHandler
@@ -1525,7 +1528,9 @@ func socketHandler(legacyAPI, tailscaleAPI, headscaleAPI http.Handler) http.Hand
 	mux.Handle(apiv0.Prefix+"/", local)
 	mux.Handle("/", apiv1.WithLocalTrust(legacyAPI))
 
-	return mux
+	// Around the mux, so its redirects carry it; it marks /api/v1 paths only,
+	// though the catch-all hands every other path to the legacy API.
+	return apiv1.DeprecationHeaders(mux)
 }
 
 // NoisePublicKey returns the server's Noise protocol public key.

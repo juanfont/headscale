@@ -234,18 +234,6 @@ components:
         - all
         - own
       type: string
-    ClientReference:
-      properties:
-        description:
-          type: string
-        id:
-          type: string
-      required:
-        - id
-        - description
-      type:
-        - object
-        - "null"
     CreateAPIKeyBody:
       additionalProperties: false
       properties:
@@ -556,7 +544,7 @@ components:
     Credential:
       properties:
         client:
-          $ref: "#/components/schemas/ClientReference"
+          $ref: "#/components/schemas/OAuthClientReference"
           description: For a token, the OAuth client it was issued to.
         expiry:
           format: date-time
@@ -1000,6 +988,18 @@ components:
       required:
         - oauthClients
       type: object
+    OAuthClientReference:
+      properties:
+        description:
+          type: string
+        id:
+          type: string
+      required:
+        - id
+        - description
+      type:
+        - object
+        - "null"
     OAuthClientState:
       description: A client must accept a value it does not know.
       enum:
@@ -1172,7 +1172,7 @@ components:
           description: Data for this code, as its documentation describes.
           type: object
         errors:
-          description: "For invalid_field: one entry per field."
+          description: "For invalid_field: one entry per field. The list may be cut; when it is, its last entry has location \"\" and says how many more."
           items:
             $ref: "#/components/schemas/FieldError"
           type: array

@@ -1,553 +1,655 @@
 package cli
 
 import (
-	"context"
-	"fmt"
-	"net/http"
+	"errors"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	clientv1 "github.com/juanfont/headscale/gen/client/v1"
-	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/pterm/pterm"
-	"github.com/samber/lo"
-	"github.com/spf13/cobra"
-	"tailscale.com/types/key"
+	"github.com/juanfont/headscale/cmd/headscale/cli/command"
+	"github.com/juanfont/headscale/cmdline/table"
+	clientv0 "github.com/juanfont/headscale/gen/client/headscale/v0"
+	"github.com/oapi-codegen/nullable"
 )
 
-func init() {
-	rootCmd.AddCommand(nodeCmd)
-	listNodesCmd.Flags().StringP("user", "u", "", "Filter by user")
-	nodeCmd.AddCommand(listNodesCmd)
-
-	listNodeRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	nodeCmd.AddCommand(listNodeRoutesCmd)
-
-	registerNodeCmd.Flags().StringP("user", "u", "", "User")
-	registerNodeCmd.Flags().StringP("key", "k", "", "Key")
-	mustMarkRequired(registerNodeCmd, "user", "key")
-	nodeCmd.AddCommand(registerNodeCmd)
-
-	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	expireNodeCmd.Flags().StringP("expiry", "e", "", "Set expire to (RFC3339 format, e.g. 2025-08-27T10:00:00Z), or leave empty to expire immediately.")
-	expireNodeCmd.Flags().BoolP("disable", "d", false, "Disable key expiry (node will never expire)")
-	mustMarkRequired(expireNodeCmd, "identifier")
-	nodeCmd.AddCommand(expireNodeCmd)
-
-	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	mustMarkRequired(renameNodeCmd, "identifier")
-	nodeCmd.AddCommand(renameNodeCmd)
-
-	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	mustMarkRequired(deleteNodeCmd, "identifier")
-	nodeCmd.AddCommand(deleteNodeCmd)
-
-	tagCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	mustMarkRequired(tagCmd, "identifier")
-	tagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
-	nodeCmd.AddCommand(tagCmd)
-
-	approveRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	mustMarkRequired(approveRoutesCmd, "identifier")
-	approveRoutesCmd.Flags().StringSliceP("routes", "r", []string{}, `List of routes that will be approved (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24" or empty string to remove all approved routes)`)
-	nodeCmd.AddCommand(approveRoutesCmd)
-
-	nodeCmd.AddCommand(backfillNodeIPsCmd)
-
-	updateClientCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	mustMarkRequired(updateClientCmd, "identifier")
-	nodeCmd.AddCommand(updateClientCmd)
-}
-
-var nodeCmd = &cobra.Command{
-	Use:     "nodes",
-	Short:   "Manage the nodes of Headscale",
-	Aliases: []string{"node"},
-}
-
-var registerNodeCmd = &cobra.Command{
-	Use:        "register",
-	Short:      "Registers a node to your network",
-	Deprecated: "use 'headscale auth register --auth-id <id> --user <user>' instead",
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		user, _ := cmd.Flags().GetString("user")
-		registrationID, _ := cmd.Flags().GetString("key")
-
-		params := &clientv1.RegisterNodeParams{
-			User: &user,
-			Key:  &registrationID,
-		}
-
-		resp, err := client.RegisterNodeWithResponse(ctx, params)
-		if err != nil {
-			return fmt.Errorf("registering node: %w", err)
-		}
-
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.JSONDefault)
-		}
-
-		node := resp.JSON200.Node
-
-		return printOutput(
-			cmd,
-			node,
-			fmt.Sprintf("Node %s registered", node.GivenName),
-		)
-	}),
-}
-
-var listNodesCmd = &cobra.Command{
-	Use:     cmdList,
-	Short:   "List nodes",
-	Aliases: []string{"ls", cmdShow},
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		user, _ := cmd.Flags().GetString("user")
-
-		params := &clientv1.ListNodesParams{}
-		if user != "" {
-			params.User = &user
-		}
-
-		resp, err := client.ListNodesWithResponse(ctx, params)
-		if err != nil {
-			return fmt.Errorf("listing nodes: %w", err)
-		}
-
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.JSONDefault)
-		}
-
-		nodes := resp.JSON200.Nodes
-
-		return printListOutput(cmd, nodes, func() error {
-			tableData, err := nodesToPtables(nodes)
-			if err != nil {
-				return fmt.Errorf("converting to table: %w", err)
-			}
-
-			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		})
-	}),
-}
-
-var listNodeRoutesCmd = &cobra.Command{
-	Use:     "list-routes",
-	Short:   "List routes available on nodes",
-	Aliases: []string{"lsr", "routes"},
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		identifier, _ := cmd.Flags().GetUint64("identifier")
-
-		resp, err := client.ListNodesWithResponse(ctx, &clientv1.ListNodesParams{})
-		if err != nil {
-			return fmt.Errorf("listing nodes: %w", err)
-		}
-
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.JSONDefault)
-		}
-
-		nodes := resp.JSON200.Nodes
-
-		if identifier != 0 {
-			idStr := strconv.FormatUint(identifier, util.Base10)
-			for _, node := range nodes {
-				if node.Id == idStr {
-					nodes = []clientv1.Node{node}
-
-					break
-				}
-			}
-		}
-
-		nodes = lo.Filter(nodes, func(n clientv1.Node, _ int) bool {
-			return len(n.SubnetRoutes) > 0 || len(n.ApprovedRoutes) > 0 || len(n.AvailableRoutes) > 0
-		})
-
-		return printListOutput(cmd, nodes, func() error {
-			return pterm.DefaultTable.WithHasHeader().WithData(nodeRoutesToPtables(nodes)).Render()
-		})
-	}),
-}
-
-var expireNodeCmd = &cobra.Command{
-	Use:   cmdExpire,
-	Short: "Expire (log out) a node in your network",
-	Long: `Expiring a node will keep the node in the database and force it to reauthenticate.
-
-Use --disable to disable key expiry (node will never expire).`,
-	Aliases: []string{"logout", aliasExp, "e"},
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		identifier, _ := cmd.Flags().GetUint64("identifier")
-		disableExpiry, _ := cmd.Flags().GetBool("disable")
-		nodeID := strconv.FormatUint(identifier, util.Base10)
-
-		// Handle disable expiry - node will never expire.
-		if disableExpiry {
-			disable := true
-
-			resp, err := client.ExpireNodeWithResponse(ctx, nodeID, nil, clientv1.ExpireNodeJSONRequestBody{
-				DisableExpiry: &disable,
-			})
-			if err != nil {
-				return fmt.Errorf("disabling node expiry: %w", err)
-			}
-
-			if resp.StatusCode() != http.StatusOK {
-				return apiError(resp.StatusCode(), resp.JSONDefault)
-			}
-
-			return printOutput(cmd, resp.JSON200.Node, "Node expiry disabled")
-		}
-
-		expiry, _ := cmd.Flags().GetString("expiry")
-
-		now := time.Now()
-
-		expiryTime := now
-
-		if expiry != "" {
-			var err error
-
-			expiryTime, err = time.Parse(time.RFC3339, expiry)
-			if err != nil {
-				return fmt.Errorf("parsing expiry time: %w", err)
-			}
-		}
-
-		resp, err := client.ExpireNodeWithResponse(ctx, nodeID, nil, clientv1.ExpireNodeJSONRequestBody{
-			Expiry: &expiryTime,
-		})
-		if err != nil {
-			return fmt.Errorf("expiring node: %w", err)
-		}
-
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.JSONDefault)
-		}
-
-		node := resp.JSON200.Node
-
-		if now.Equal(expiryTime) || now.After(expiryTime) {
-			return printOutput(cmd, node, "Node expired")
-		}
-
-		return printOutput(cmd, node, "Node expiration updated")
-	}),
-}
-
-var renameNodeCmd = &cobra.Command{
-	Use:   "rename NEW_NAME",
-	Short: "Renames a node in your network",
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		identifier, _ := cmd.Flags().GetUint64("identifier")
-
-		newName := ""
-		if len(args) > 0 {
-			newName = args[0]
-		}
-
-		resp, err := client.RenameNodeWithResponse(ctx, strconv.FormatUint(identifier, util.Base10), newName)
-		if err != nil {
-			return fmt.Errorf("renaming node: %w", err)
-		}
-
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.JSONDefault)
-		}
-
-		return printOutput(cmd, resp.JSON200.Node, "Node renamed")
-	}),
-}
-
-// updateClientTimeout outlasts the server's wait for the node's answer,
-// which the default cli.timeout does not.
-const updateClientTimeout = 15 * time.Second
-
-var updateClientCmd = &cobra.Command{
-	Use:   "update-client",
-	Short: "Update the Tailscale client of a connected node",
-	Long: `Ask a connected node to update its Tailscale client to the newest
-release on its track.
-
-The node must allow remote updates ("tailscale set --auto-update") on a
-platform that can update itself. As on Tailscale, a node that does not,
-is not connected, or refuses is answered "not found".
-The command returns once the update has started, not when it has finished.`,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		identifier, _ := cmd.Flags().GetUint64("identifier")
-
-		_, client, cancel, err := newV2Client()
-		if err != nil {
-			return err
-		}
-		defer cancel()
-
-		ctx, cancelWait := context.WithTimeout(context.Background(), updateClientTimeout)
-		defer cancelWait()
-
-		resp, err := client.UpdateDeviceClientWithResponse(ctx, strconv.FormatUint(identifier, util.Base10))
-		if err != nil {
-			return fmt.Errorf("updating node client: %w", err)
-		}
-
-		err = v2Error(resp.HTTPResponse.StatusCode, resp.Body)
-		if err != nil {
-			return err
-		}
-
-		return printOutput(cmd, struct{}{}, "Client update started")
+var nodesGroup = command.Group{
+	Name:     "nodes",
+	Short:    "Manage nodes",
+	OldNames: []string{"node"},
+	Commands: []command.Node{
+		nodesList,
+		nodesGet,
+		nodesSet,
+		nodesExpire,
+		nodesDelete,
+		nodesUpdateClient,
+		command.Group{
+			Name:     "routes",
+			Short:    "Manage the routes of a node",
+			Commands: []command.Node{routesList, routesSet, routesClear},
+		},
+		command.Group{
+			Name:     "tags",
+			Short:    "Manage the tags of a node",
+			Commands: []command.Node{tagsList, tagsSet},
+		},
 	},
 }
 
-var deleteNodeCmd = &cobra.Command{
-	Use:     cmdDelete,
-	Short:   "Delete a node",
-	Aliases: []string{aliasDel},
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		identifier, _ := cmd.Flags().GetUint64("identifier")
-		nodeID := strconv.FormatUint(identifier, util.Base10)
-
-		getResponse, err := client.GetNodeWithResponse(ctx, nodeID)
-		if err != nil {
-			return fmt.Errorf("getting node: %w", err)
-		}
-
-		if getResponse.StatusCode() != http.StatusOK {
-			return apiError(getResponse.StatusCode(), getResponse.JSONDefault)
-		}
-
-		if !confirmAction(cmd, fmt.Sprintf(
-			"Do you want to remove the node %s?",
-			getResponse.JSON200.Node.Name,
-		)) {
-			return printOutput(cmd, map[string]string{colResult: "Node not deleted"}, "Node not deleted")
-		}
-
-		deleteResponse, err := client.DeleteNodeWithResponse(ctx, nodeID)
-		if err != nil {
-			return fmt.Errorf("deleting node: %w", err)
-		}
-
-		if deleteResponse.StatusCode() != http.StatusOK {
-			return apiError(deleteResponse.StatusCode(), deleteResponse.JSONDefault)
-		}
-
-		return printOutput(
-			cmd,
-			map[string]string{colResult: "Node deleted"},
-			"Node deleted",
-		)
-	}),
-}
-
-var backfillNodeIPsCmd = &cobra.Command{
-	Use:   "backfillips",
-	Short: "Backfill IPs missing from nodes",
-	Long: `
-Backfill IPs can be used to add/remove IPs from nodes
-based on the current configuration of Headscale.
-
-If there are nodes that does not have IPv4 or IPv6
-even if prefixes for both are configured in the config,
-this command can be used to assign IPs of the sort to
-all nodes that are missing.
-
-If you remove IPv4 or IPv6 prefixes from the config,
-it can be run to remove the IPs that should no longer
-be assigned to nodes.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if !confirmAction(cmd, "Are you sure that you want to assign/remove IPs to/from nodes?") {
-			return nil
-		}
-
-		return withClient(func(ctx context.Context, client *clientv1.ClientWithResponses) error {
-			confirmed := true
-
-			resp, err := client.BackfillNodeIPsWithResponse(ctx, &clientv1.BackfillNodeIPsParams{
-				Confirmed: &confirmed,
-			})
-			if err != nil {
-				return fmt.Errorf("backfilling IPs: %w", err)
-			}
-
-			if resp.StatusCode() != http.StatusOK {
-				return apiError(resp.StatusCode(), resp.JSONDefault)
-			}
-
-			return printOutput(cmd, resp.JSON200, "Node IPs backfilled successfully")
-		})
+var nodeColumns = table.Columns[clientv0.Node]{
+	{Name: "id", Field: "id", Default: true, Help: "Node ID"},
+	{
+		Name:    "name",
+		Field:   "name",
+		Default: true,
+		Help:    "Name in headscale (MagicDNS uses it)",
+	},
+	{Name: "owner", Field: "owner", Default: true, Help: "Owning user, or the tags"},
+	{Name: "ip", Field: "addresses", Default: true, Help: "Tailnet IP addresses"},
+	{
+		Name:    "version",
+		Field:   "clientVersion",
+		Default: true,
+		Kind:    table.Version,
+		Help:    "Tailscale client version",
+	},
+	{
+		Name:    "online",
+		Field:   "connectedToControl",
+		Default: true,
+		Help:    "Whether the node is connected",
+	},
+	{Name: "last-seen", Field: "lastSeen", Default: true, Help: "Time of last contact"},
+	//nolint:goconst // a column is named as its field
+	{
+		Name:    "expiry",
+		Field:   "expiry",
+		Default: true,
+		Ahead:   true,
+		Invalid: expiryInvalid,
+		Help:    "When the node key expires",
+	},
+	{Name: "hostname", Field: "hostname", Help: "Hostname the node reports"},
+	{Name: "os", Field: "os", Help: "Operating system"},
+	{
+		Name:   "enabled-routes",
+		Field:  "enabledRoutes",
+		Header: "enabled",
+		List:   table.Stacked,
+		Fold:   table.Exit(),
+		Help:   "Routes the admin approved",
+	},
+	{
+		Name:   "advertised-routes",
+		Field:  "advertisedRoutes",
+		Header: "advertised",
+		List:   table.Stacked,
+		Fold:   table.Exit(),
+		Help:   "Routes the node announces",
+	},
+	{
+		Name:   "serving-routes",
+		Field:  "servingRoutes",
+		Header: "serving",
+		List:   table.Stacked,
+		Fold:   table.Exit(),
+		Help:   "Routes in use",
+	},
+	{
+		Name:  "public-ip",
+		Field: `attributes["ip:publicAddress"]`,
+		Help:  "Last seen public address",
+	},
+	{Name: "ephemeral", Field: "ephemeral", Help: "Whether the node is ephemeral"},
+	{
+		Name:  "update-available",
+		Field: "updateAvailable",
+		Help:  "Whether a newer Tailscale client exists",
+	},
+	{
+		Name:  "register-method",
+		Field: "registerMethod",
+		Help:  "How the node joined: authKey, cli or oidc",
+	},
+	{
+		Name:  "auth-key",
+		Field: "authKeyId",
+		Kind:  table.ID,
+		Help:  "ID of the auth key the node joined with",
+	},
+	{Name: "machine-key", Field: "machineKey", Help: "Machine key"},
+	{Name: "node-key", Field: "nodeKey", Help: "Node key"},
+	{Name: "disco-key", Field: "discoKey", Help: "Disco key"},
+	//nolint:goconst // a column is named as its field
+	{Name: "created", Field: "created", Help: "When the node registered"},
+	{
+		Name:  "problems",
+		Field: "problems",
+		Help:  "Health checks the node fails, by code, as debug health counts them",
 	},
 }
 
-func nodesToPtables(nodes []clientv1.Node) (pterm.TableData, error) {
-	tableHeader := []string{
-		"ID",
-		"Hostname",
-		"Name",
-		"MachineKey",
-		"NodeKey",
-		"User",
-		"Tags",
-		"IP addresses",
-		"Ephemeral",
-		"Last seen",
-		colExpiration,
-		"Connected",
-		"Expired",
+// routeColumns are the columns of nodes list, with the routes by default.
+var routeColumns = func() table.Columns[clientv0.Node] {
+	cols := slices.Clone(nodeColumns)
+	for i := range cols {
+		cols[i].Default = slices.Contains(
+			[]string{
+				"id",
+				"name",
+				"enabled-routes",
+				"advertised-routes",
+				"serving-routes",
+			},
+			cols[i].Name,
+		)
 	}
-	tableData := make(pterm.TableData, 1, 1+len(nodes))
-	tableData[0] = tableHeader
 
-	for _, node := range nodes {
-		var lastSeenTime string
-		if node.LastSeen != nil {
-			lastSeenTime = node.LastSeen.Format(HeadscaleDateTimeFormat)
+	return cols
+}()
+
+var nodeBlocks = table.Blocks[clientv0.Node]{{Title: "Attributes", Field: "attributes"}}
+
+// expiryInvalid is a node whose stored expiry the API cannot send: its
+// expiry is null, and its problems name it.
+func expiryInvalid(
+	n clientv0.Node,
+) bool {
+	return slices.Contains(n.Problems, "node_expiry_invalid")
+}
+
+// node names a node in a message, as tables show it.
+func node(n clientv0.Node) string { return table.Entity("node", n.Id, n.Name) }
+
+func visibleList(list []string) string {
+	out := make([]string, 0, len(list))
+	for _, s := range list {
+		out = append(out, table.Visible(s, ""))
+	}
+
+	return strings.Join(out, ", ")
+}
+
+var nodesList = command.NewList(command.ListSpec[command.NoInput, clientv0.Node]{
+	Name:  "list",
+	Short: "List the nodes",
+	Long: `List every node, with its owner, addresses, client and times.
+
+OWNER is the user that owns the node, or its tags: a node is owned by one
+or the other. --filter owner=alice finds the nodes of a user, named as
+users get names one; --filter owner=tag:ci the nodes with that tag.
+PROBLEMS names the health checks a node fails, which debug health counts.
+
+With -o json the command prints an array of the nodes as the API gives
+them; --filter and --sort apply to it as to the table.`,
+	Example: []string{
+		"headscale nodes list",
+		"headscale nodes list --columns +os,+hostname --sort -last-seen",
+		"headscale nodes list --filter owner=alice -o json",
+		"headscale nodes ls --filter 'last-seen>30d'",
+		"headscale nodes list --filter 'version<1.80'",
+		"headscale nodes list --filter problems=node_expiry_invalid",
+	},
+	Aliases: []string{"ls"},
+	Columns: nodeColumns,
+	NoRows:  "No nodes.",
+	Run: func(c command.Ctx, _ command.NoInput) ([]clientv0.Node, error) {
+		return c.API.ListNodesAll(
+			c,
+			&clientv0.ListNodesParams{PageSize: c.API.PageSize},
+		)
+	},
+})
+
+type nodeIn struct {
+	Node clientv0.Node `arg:"node" help:"<node> is an ID, a tailnet IP, a name or a hostname."`
+}
+
+var nodesGet = command.New(command.Spec[nodeIn, clientv0.Node]{
+	Name:  "get",
+	Short: "Show one node",
+	Long: `Show one node, with every column of nodes list and its attributes.
+
+An ID wins, then a tailnet IP; the name and the hostname are searched
+together, and a word that matches more than one node is an error that lists
+them. Attributes are the node attributes of the server, under their
+Tailscale names.
+
+With -o json the command prints the node as the API gives it.`,
+	Example: []string{
+		"headscale nodes get mynode",
+		"headscale nodes get 12 -o json",
+		"headscale nodes get 100.64.0.12",
+	},
+	Columns: nodeColumns,
+	Blocks:  nodeBlocks,
+	Run:     func(_ command.Ctx, in nodeIn) (clientv0.Node, error) { return in.Node, nil },
+})
+
+// expiryOf is an expiry as the API takes it: the word now, a time, or
+// null for never.
+func expiryOf(
+	e command.Expiry[command.NowNever],
+	now time.Time,
+) nullable.Nullable[string] {
+	switch e.Word() {
+	case "never":
+		return nullable.NewNullNullable[string]()
+	case "now":
+		return nullable.NewNullableWithValue("now")
+	}
+
+	return nullable.NewNullableWithValue(e.At(now).UTC().Format(time.RFC3339))
+}
+
+type nodesSetIn struct {
+	Node   clientv0.Node                                 `arg:"node"    help:"<node> is an ID, a tailnet IP, a name or a hostname."`
+	Name   command.Opt[string]                           `flag:"name"   help:"New name of the node"`
+	Expiry command.Opt[command.Expiry[command.NowNever]] `flag:"expiry" help:"New expiry of the node key"                           short:"e"`
+}
+
+var nodesSet = command.New(command.Spec[nodesSetIn, clientv0.Node]{
+	Name:  "set",
+	Short: "Change the name or expiry of a node",
+	Long: `Change the name of a node, the expiry of its key, or both.
+
+A flag you do not pass leaves the field alone, and at least one is needed.
+--name "" gives the node the name made from its hostname again. --expiry
+takes a time (2999-08-27T10:00:00Z), a date (midnight UTC), a duration from
+now (90d), now, which expires the node like nodes expire, or never. A time
+in the past is an error. Both fields change in one call, or neither does.
+
+With -o json the command prints the node after the change.`,
+	Example: []string{
+		"headscale nodes set mynode --name web-1",
+		"headscale nodes set mynode --expiry 2999-08-27T10:00:00Z",
+		"headscale nodes set mynode --expiry 2999-08-27",
+		"headscale nodes set mynode --expiry 90d",
+		"headscale nodes set mynode --expiry now",
+		"headscale nodes set mynode --expiry never",
+		"headscale nodes set mynode --name web-1 --expiry never",
+		"headscale nodes set 12 --name web-1 -o json | jq -r .name",
+	},
+	NeedsChange: true,
+	Run: func(c command.Ctx, in nodesSetIn) (clientv0.Node, error) {
+		body := clientv0.UpdateNodeBody{Name: set(in.Name)}
+
+		if e, ok := in.Expiry.Get(); ok {
+			body.Expiry = expiryOf(e, c.Now())
 		}
 
-		expiryTime := "N/A"
-		if node.Expiry != nil {
-			expiryTime = node.Expiry.Format(HeadscaleDateTimeFormat)
+		return clientv0.Got(
+			c.API.UpdateNodeWithApplicationMergePatchPlusJSONBodyWithResponse(
+				c,
+				in.Node.Id,
+				&clientv0.UpdateNodeParams{IfMatch: c.IfMatch(in.Node.Id)},
+				body,
+			),
+		)
+	},
+	Done: func(in nodesSetIn, out clientv0.Node, now time.Time) string {
+		var b strings.Builder
+
+		subject := node(out)
+
+		if name, ok := in.Name.Get(); ok {
+			b.WriteString(node(out) + " was " + table.Visible(in.Node.Name, "") + ".")
+
+			if name == "" {
+				b.WriteString(" The name is made from its hostname again.")
+			}
+
+			subject = "It"
 		}
 
-		var machineKey key.MachinePublic
-
-		err := machineKey.UnmarshalText([]byte(node.MachineKey))
-		if err != nil {
-			machineKey = key.MachinePublic{}
+		e, ok := in.Expiry.Get()
+		if !ok {
+			return b.String()
 		}
 
-		var nodeKey key.NodePublic
-
-		err = nodeKey.UnmarshalText([]byte(node.NodeKey))
-		if err != nil {
-			return nil, err
+		if b.Len() > 0 {
+			b.WriteString(" ")
 		}
 
-		online := pterm.LightRed("offline")
-		if node.Online {
-			online = pterm.LightGreen("online")
+		t, err := out.Expiry.Get()
+
+		switch {
+		case e.Word() == "now":
+			b.WriteString(subject + " is now expired. It must log in again.")
+		case err != nil:
+			b.WriteString(subject + " does not expire.")
+		default:
+			b.WriteString(subject + " expires " + table.When(t, now) + ".")
 		}
 
-		expired := pterm.LightGreen("no")
-		if node.Expiry != nil && node.Expiry.Before(time.Now()) {
-			expired = pterm.LightRed("yes")
+		return b.String()
+	},
+})
+
+var nodesExpire = command.New(command.Spec[nodeIn, clientv0.Node]{
+	Name:  "expire",
+	Short: "Log a node out",
+	Long: `Expire the key of a node now: the node is logged out and must log in
+again. It keeps its record, so this can be undone by a new login. It does
+the same as nodes set --expiry now, at the server's clock.
+
+With -o json the command prints the node after the change.`,
+	Example: []string{"headscale nodes expire mynode"},
+	Run: func(c command.Ctx, in nodeIn) (clientv0.Node, error) {
+		return clientv0.Got(c.API.ExpireNodeWithResponse(
+			c,
+			in.Node.Id,
+			&clientv0.ExpireNodeParams{IfMatch: c.IfMatch(in.Node.Id)},
+		))
+	},
+	Done: func(_ nodeIn, out clientv0.Node, _ time.Time) string {
+		return node(out) + " is now expired. It must log in again."
+	},
+})
+
+var nodesDelete = command.New(command.Spec[nodeIn, command.NoOutput]{
+	Name:  "delete",
+	Short: "Delete a node",
+	Long: `Delete a node and its record. It cannot be undone: the node must be
+registered again. The command asks first; --force does not ask.
+
+With -o json the command prints nothing; the exit code says it worked.`,
+	Example: []string{
+		"headscale nodes delete mynode",
+		"headscale nodes delete 12 --force",
+	},
+	Aliases: []string{"rm"},
+	Confirm: func(_ command.Ctx, in nodeIn) (command.Prompt, error) {
+		return command.Prompt{
+			Question: "Delete " + node(
+				in.Node,
+			) + ", " + command.Owned(
+				in.Node.Owner,
+			) + "?",
+			Action: "delete " + node(in.Node),
+		}, nil
+	},
+	Run: func(c command.Ctx, in nodeIn) (command.NoOutput, error) {
+		return command.NoOutput{}, clientv0.Done(c.API.DeleteNodeWithResponse(
+			c,
+			in.Node.Id,
+			&clientv0.DeleteNodeParams{IfMatch: c.IfMatch(in.Node.Id)},
+		))
+	},
+	Done: func(in nodeIn, _ command.NoOutput, _ time.Time) string { return node(in.Node) + " deleted." },
+})
+
+var nodesUpdateClient = command.New(command.Spec[nodeIn, clientv0.Node]{
+	Name:  "update-client",
+	Short: "Ask a node to update its Tailscale client",
+	Long: `Ask a connected node to update its Tailscale client. The command ends
+when the node started the update, not when it is done.
+
+A node can refuse: when it is not connected, when it does not allow remote
+updates (tailscale set --auto-update allows them), when its client refuses,
+with the client's text, or when it does not answer in time.
+
+With -o json the command prints the node.`,
+	Example: []string{"headscale nodes update-client mynode"},
+	Run: func(c command.Ctx, in nodeIn) (clientv0.Node, error) {
+		return clientv0.Got(c.API.UpdateNodeClientWithResponse(c, in.Node.Id))
+	},
+	Done: func(_ nodeIn, out clientv0.Node, _ time.Time) string {
+		return "Client update started on " + node(out) + "."
+	},
+})
+
+type nodeViewIn struct {
+	Node command.Opt[clientv0.Node] `arg:"node" help:"<node> narrows the list to one node: an ID, a tailnet IP, a name or a hostname."`
+}
+
+var routesList = command.NewList(command.ListSpec[nodeViewIn, clientv0.Node]{
+	Name:  "list",
+	Short: "List routes",
+	Long: `List the nodes that have routes, with three route columns. ENABLED is
+what the admin approved, ADVERTISED what the node announces, SERVING what is
+in use. exit stands for the two exit routes, 0.0.0.0/0 and ::/0.
+
+A node that has no enabled, advertised or serving route is left out. A
+node argument shows that node alone. The view has every column of
+nodes list.
+
+With -o json the command prints an array of the nodes as the API gives
+them.`,
+	Example: []string{
+		"headscale nodes routes list",
+		"headscale nodes routes list mynode",
+		"headscale nodes routes ls --filter enabled-routes=exit",
+	},
+	Aliases: []string{"ls"},
+	Columns: routeColumns,
+	NoRows:  "No nodes have routes.",
+	Run: func(c command.Ctx, in nodeViewIn) ([]clientv0.Node, error) {
+		if n, ok := in.Node.Get(); ok {
+			return []clientv0.Node{n}, nil
 		}
 
-		tags := strings.Join(node.Tags, "\n")
+		nodes, err := c.API.ListNodesAll(
+			c,
+			&clientv0.ListNodesParams{PageSize: c.API.PageSize},
+		)
 
-		var ipBuilder strings.Builder
+		return slices.DeleteFunc(nodes, func(n clientv0.Node) bool {
+			return len(
+				n.EnabledRoutes,
+			)+len(
+				n.AdvertisedRoutes,
+			)+len(
+				n.ServingRoutes,
+			) == 0
+		}), err
+	},
+})
 
-		for _, addr := range node.IpAddresses {
-			ip, err := netip.ParseAddr(addr)
-			if err == nil {
-				if ipBuilder.Len() > 0 {
-					ipBuilder.WriteString("\n")
-				}
+type routesSetIn struct {
+	Node   clientv0.Node `arg:"node"   help:"<node> is an ID, a tailnet IP, a name or a hostname."`
+	Routes []string      `arg:"routes" help:"<routes> are IP prefixes, comma separated; exit is 0.0.0.0/0 and ::/0."`
+}
 
-				ipBuilder.WriteString(ip.String())
+// clearHint names routes clear for the node of the line.
+func clearHint(args []string) string {
+	if len(args) == 0 || len(args) > 2 || args[0] == "" {
+		return ""
+	}
+
+	return "To remove all routes: headscale nodes routes clear " + args[0]
+}
+
+var routesSet = command.New(command.Spec[routesSetIn, clientv0.Node]{
+	Name:  "set",
+	Short: "Replace the enabled routes of a node",
+	Long: `Replace the enabled routes of a node with the given list. It does not
+add: a route left out is no longer enabled. routes clear removes them all.
+
+exit is the pair 0.0.0.0/0 and ::/0, an exit node, and mixes with subnet
+routes. The server enables both when given one of them.
+
+With -o json the command prints the node after the change.`,
+	Example: []string{
+		"headscale nodes routes set 12 10.0.0.0/8,192.168.0.0/24",
+		"headscale nodes routes approve 12 10.0.0.0/8,192.168.0.0/24",
+		"headscale nodes routes set 14 exit",
+		"headscale nodes routes set 14 10.0.0.0/8,exit",
+		"headscale nodes routes set 14 0.0.0.0/0",
+	},
+	Aliases: []string{"approve"},
+	Hint:    clearHint,
+	// Checked after the parser, so any word is still an argument of the
+	// line, and before the lookup, so a bad route costs no call.
+	Valid: func(in routesSetIn) error {
+		for _, r := range in.Routes {
+			p, err := netip.ParsePrefix(r)
+			if r != "exit" && (err != nil || p.Masked() != p) {
+				//nolint:err113,staticcheck // a sentence of the CLI
+				return errors.New(
+					strconv.Quote(
+						r,
+					) + " is not a route: a route is an IP prefix with no host bits, such as 10.0.0.0/8, or exit.",
+				)
 			}
 		}
 
-		ipAddresses := ipBuilder.String()
+		return nil
+	},
+	Run: func(c command.Ctx, in routesSetIn) (clientv0.Node, error) {
+		var routes []string
 
-		nodeData := []string{
-			node.Id,
-			node.Name,
-			node.GivenName,
-			machineKey.ShortString(),
-			nodeKey.ShortString(),
-			node.User.Name,
-			tags,
-			ipAddresses,
-			strconv.FormatBool(node.Ephemeral),
-			lastSeenTime,
-			expiryTime,
-			online,
-			expired,
+		for _, r := range in.Routes {
+			if r == "exit" {
+				routes = append(routes, table.Exit()["exit"]...)
+			} else {
+				routes = append(routes, r)
+			}
 		}
-		tableData = append(
-			tableData,
-			nodeData,
+
+		return clientv0.Got(c.API.SetNodeRoutesWithResponse(
+			c,
+			in.Node.Id,
+			&clientv0.SetNodeRoutesParams{IfMatch: c.IfMatch(in.Node.Id)},
+			clientv0.SetNodeRoutesBody{Routes: routes},
+		))
+	},
+	Done: func(_ routesSetIn, out clientv0.Node, _ time.Time) string {
+		return node(
+			out,
+		) + " enabled routes: " + visibleList(
+			table.Folded(out.EnabledRoutes, table.Exit()),
+		) + "."
+	},
+})
+
+var routesClear = command.New(command.Spec[nodeIn, clientv0.Node]{
+	Name:  "clear",
+	Short: "Remove all enabled routes of a node",
+	Long: `Remove every enabled route of a node, the exit routes included. The
+node keeps advertising its routes, so they can be enabled again.
+
+With -o json the command prints the node after the change.`,
+	Example: []string{"headscale nodes routes clear 12"},
+	Run: func(c command.Ctx, in nodeIn) (clientv0.Node, error) {
+		return clientv0.Got(c.API.SetNodeRoutesWithResponse(
+			c,
+			in.Node.Id,
+			&clientv0.SetNodeRoutesParams{IfMatch: c.IfMatch(in.Node.Id)},
+			clientv0.SetNodeRoutesBody{Routes: []string{}},
+		))
+	},
+	Done: func(_ nodeIn, out clientv0.Node, _ time.Time) string {
+		return node(out) + " has no enabled routes now."
+	},
+})
+
+var tagColumns = table.Columns[clientv0.Tag]{
+	{Name: "tag", Field: "tag", Default: true, Help: "Tag"},
+	{Name: "count", Field: "nodeCount", Default: true, Help: "Nodes that have the tag"},
+	{
+		Name:    "in-policy",
+		Field:   "inPolicy",
+		Default: true,
+		Help:    "Whether tagOwners of the policy names the tag",
+	},
+	{
+		Name:    "nodes",
+		Field:   "nodes",
+		Default: true,
+		List:    table.Cut,
+		Help:    "Names of the nodes that have the tag",
+	},
+}
+
+var tagsList = command.NewList(command.ListSpec[nodeViewIn, clientv0.Tag]{
+	Name:  "list",
+	Short: "List tags and their nodes",
+	Long: `List every tag that the policy names or that a node has, one row per
+tag: a tag no node has counts 0, and a tag that is gone from the policy
+but still on a node is not in the policy.
+
+A node argument keeps the rows of the tags that node has; COUNT and NODES
+still cover every node.
+
+NODES is truncated to fit your terminal. For all nodes of a tag:
+
+  headscale nodes list --filter owner=tag:ci -o json | jq -r '.[].name'
+
+With -o json the command prints an array of the tags as the API gives
+them.`,
+	Example: []string{
+		"headscale nodes tags list",
+		"headscale nodes tags list builder",
+		"headscale nodes tags list builder -o json",
+		"headscale nodes tags ls --filter in-policy=no",
+	},
+	Aliases: []string{"ls"},
+	Columns: tagColumns,
+	NoRows:  "No tags.",
+	Run: func(c command.Ctx, in nodeViewIn) ([]clientv0.Tag, error) {
+		// No node lists every tag.
+		var node *string
+		if n, ok := in.Node.Get(); ok {
+			node = &n.Id
+		}
+
+		return c.API.ListTagsAll(
+			c,
+			&clientv0.ListTagsParams{PageSize: c.API.PageSize, Node: node},
 		)
-	}
+	},
+})
 
-	return tableData, nil
+type tagsSetIn struct {
+	Node clientv0.Node `arg:"node" help:"<node> is an ID, a tailnet IP, a name or a hostname."`
+	Tags []string      `arg:"tags" help:"<tags> are the tags, comma separated, each named in tagOwners of the policy."`
 }
 
-func nodeRoutesToPtables(
-	nodes []clientv1.Node,
-) pterm.TableData {
-	tableHeader := []string{
-		"ID",
-		"Hostname",
-		"Approved",
-		"Available",
-		"Serving (Primary)",
-	}
-	tableData := make(pterm.TableData, 1, 1+len(nodes))
-	tableData[0] = tableHeader
+var tagsSet = command.New(command.Spec[tagsSetIn, clientv0.Node]{
+	Name:  "set",
+	Short: "Replace the tags of a node",
+	Long: `Replace the tags of a node with the given list. A tag that tagOwners of
+the policy does not name is refused.
 
-	for _, node := range nodes {
-		nodeData := []string{
-			node.Id,
-			node.GivenName,
-			strings.Join(node.ApprovedRoutes, "\n"),
-			strings.Join(node.AvailableRoutes, "\n"),
-			strings.Join(node.SubnetRoutes, "\n"),
-		}
-		tableData = append(
-			tableData,
-			nodeData,
-		)
-	}
+A node is owned by a user or by its tags. Tagging a node that a user owns
+ends that ownership for good, so the command asks first; --force does not
+ask. A tagged node needs at least one tag.
 
-	return tableData
-}
-
-var tagCmd = &cobra.Command{
-	Use:     "tag",
-	Short:   "Manage the tags of a node",
-	Aliases: []string{"tags", "t"},
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		identifier, _ := cmd.Flags().GetUint64("identifier")
-		tagsToSet, _ := cmd.Flags().GetStringSlice("tags")
-
-		resp, err := client.SetTagsWithResponse(ctx, strconv.FormatUint(identifier, util.Base10), clientv1.SetTagsJSONRequestBody{
-			Tags: &tagsToSet,
-		})
-		if err != nil {
-			return fmt.Errorf("setting tags: %w", err)
+With -o json the command prints the node after the change.`,
+	Example: []string{
+		"headscale nodes tags set 13 tag:ci,tag:build,tag:test",
+		"headscale nodes tags set mynode tag:server --force",
+	},
+	EmptyList: "A tagged node needs at least one tag.",
+	Confirm: func(_ command.Ctx, in tagsSetIn) (command.Prompt, error) {
+		o, _ := in.Node.Owner.Get()
+		if !o.User.IsSpecified() || o.User.IsNull() {
+			return command.Prompt{}, nil
 		}
 
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.JSONDefault)
-		}
+		return command.Prompt{
+			Question: node(
+				in.Node,
+			) + " is " + command.Owned(
+				in.Node.Owner,
+			) + ".\nTagging removes that ownership and cannot be undone.\nContinue?",
+			Action: "tag " + node(in.Node),
+		}, nil
+	},
+	Run: func(c command.Ctx, in tagsSetIn) (clientv0.Node, error) {
+		return clientv0.Got(c.API.SetNodeTagsWithResponse(
+			c,
+			in.Node.Id,
+			&clientv0.SetNodeTagsParams{IfMatch: c.IfMatch(in.Node.Id)},
+			clientv0.SetNodeTagsBody{Tags: in.Tags},
+		))
+	},
+	Done: func(_ tagsSetIn, out clientv0.Node, _ time.Time) string {
+		o, _ := out.Owner.Get()
 
-		return printOutput(cmd, resp.JSON200.Node, "Node updated")
-	}),
-}
-
-var approveRoutesCmd = &cobra.Command{
-	Use:   "approve-routes",
-	Short: "Manage the approved routes of a node",
-	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		identifier, _ := cmd.Flags().GetUint64("identifier")
-		routes, _ := cmd.Flags().GetStringSlice("routes")
-
-		resp, err := client.SetApprovedRoutesWithResponse(ctx, strconv.FormatUint(identifier, util.Base10), clientv1.SetApprovedRoutesJSONRequestBody{
-			Routes: &routes,
-		})
-		if err != nil {
-			return fmt.Errorf("setting approved routes: %w", err)
-		}
-
-		if resp.StatusCode() != http.StatusOK {
-			return apiError(resp.StatusCode(), resp.JSONDefault)
-		}
-
-		return printOutput(cmd, resp.JSON200.Node, "Node updated")
-	}),
-}
+		return node(out) + " tags: " + visibleList(o.Tags) + "."
+	},
+})

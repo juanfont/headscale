@@ -88,6 +88,36 @@ func Paths(t *Tree) []string {
 	return out
 }
 
+// Selector is a word of a line in the position of a stored credential,
+// with the kind of that credential: "auth key", "API key" or "OAuth client".
+type Selector struct{ Kind, Word string }
+
+// CredentialSelectors are the words of argv in the argument positions that
+// name a stored credential, as the tree reads the line; none for a line it
+// refuses.
+func CredentialSelectors(t *Tree, argv []string) []Selector {
+	line, _, err := t.check(argv)
+	if err != nil {
+		return nil
+	}
+
+	kinds := map[reflect.Type]string{
+		reflect.TypeFor[clientv0.AuthKey]():     "auth key",
+		reflect.TypeFor[clientv0.APIKey]():      "API key",
+		reflect.TypeFor[clientv0.OAuthClient](): "OAuth client",
+	}
+
+	var out []Selector
+
+	for i, a := range line.Command.Args {
+		if kind, ok := kinds[a.Type]; ok && i < len(line.Args) {
+			out = append(out, Selector{kind, line.Args[i]})
+		}
+	}
+
+	return out
+}
+
 // Texts is every text a person wrote for the help and the reference page:
 // the root's line, the help of each group and command, its long text and
 // examples, and the help of each flag, argument and column.

@@ -1079,3 +1079,44 @@ func (t *Tree) Reached(argv []string) string {
 
 	return strings.Join(line.Command.Path, " ")
 }
+
+// Unknown is the first word of argv that is no command or flag of the tree
+// where it stands, or a flag given twice that may be given once, with the
+// path of the command reached before it; "" when there is none. A value is
+// not read: a placeholder such as <node> is no mistake here, so a line of
+// the documentation can be held to the tree.
+func (t *Tree) Unknown(argv []string) (string, string) {
+	argv = slices.Clone(argv)
+
+	for {
+		_, err := t.parser.Parse(argv)
+
+		ue, ok := errors.AsType[*cmdline.UsageError](err)
+		if !ok {
+			return "", ""
+		}
+
+		path := strings.Join(ue.Path, " ")
+
+		//nolint:exhaustive // a count or a missing value is about values
+		switch ue.Kind {
+		case cmdline.UnknownCommand, cmdline.UnknownFlag, cmdline.Repeated:
+			return path, ue.Word
+		case cmdline.BadValue, cmdline.Unresolved:
+			if ue.At >= len(argv) {
+				return "", ""
+			}
+
+			// Drop the value, and the flag that it belongs to.
+			n := 1
+			if ue.Flag != "" && !strings.Contains(argv[ue.At], "=") &&
+				ue.At+1 < len(argv) {
+				n = 2
+			}
+
+			argv = slices.Delete(argv, ue.At, ue.At+n)
+		default:
+			return "", ""
+		}
+	}
+}

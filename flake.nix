@@ -218,7 +218,7 @@
             # The corpus of parser edge cases and the fuzz seeds; the lines
             # of the real-shell Tab job.
             ./cmdline/command/testdata
-            ./cmd/headscale/newcli/testdata
+            ./cmd/headscale/cli/testdata
             # The API v0 document and page of codes, compared with the code.
             ./docs/ref/api/headscale-v0.yaml
             ./docs/ref/api/problems.md
@@ -268,7 +268,7 @@
               testEnv = "export CGO_ENABLED=1\n" + kitShellsNote;
               testFlags = [ "-p=2" ];
               goSkip = [ "TestPostgres" ];
-              testPackages = "./hscontrol/... ./cmdline/... ./client/... ./cmd/headscale/newcli/...";
+              testPackages = "./hscontrol/... ./cmdline/... ./client/... ./cmd/headscale/cli/...";
               testExclude = [ "/hscontrol/servertest" ];
             }
           );
@@ -461,7 +461,7 @@
           '';
         };
 
-        # `nix develop .#shells -c cmd/headscale/newcli/testdata/shells/run.sh`:
+        # `nix develop .#shells -c cmd/headscale/cli/testdata/shells/run.sh`:
         # the real-shell Tab job, in a shell of its own so that the default
         # one does not carry PowerShell, fish and zsh.
         devShells.shells = pkgs.mkShell {

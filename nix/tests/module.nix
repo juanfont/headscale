@@ -294,7 +294,7 @@ pkgs.runCommand "headscale-nixos-module"
     rejects() {
       local file=$1 out
       shift
-      if out=$(headscale check config -f "$file" 2>&1); then
+      if out=$(headscale check config "$file" 2>&1); then
         echo "$file: check config passed"
         exit 1
       fi
@@ -314,7 +314,7 @@ pkgs.runCommand "headscale-nixos-module"
       and .derp.server.private_key_path == "/var/lib/headscale/derp_server_private.key"
       and .database.sqlite.path == "/var/lib/headscale/db.sqlite"
       and .unix_socket == "/run/headscale/headscale.sock" and .disable_check_updates == true'
-    headscale check config -f $ok
+    headscale check config $ok
 
     bad=${configFile bad}
     want $bad '(.dns | has("magic_dsn")) and (.oidc | has("client_secret_path"))'
@@ -339,7 +339,7 @@ pkgs.runCommand "headscale-nixos-module"
     built $badEnvBuild 'missing a scheme'
 
     switch=${switchScript envMutable}
-    grep -qF -- ${lib.escapeShellArg "check policy -f ${lib.escapeShellArg mutablePolicy}"} $switch ||
+    grep -qF -- ${lib.escapeShellArg "check policy ${lib.escapeShellArg mutablePolicy}"} $switch ||
       { echo "envMutable: switch check does not check ${mutablePolicy}:"; cat $switch; exit 1; }
     grep -qF 'id -Gn' ${switchScript ok} || { echo "ok: switch check drops current groups"; exit 1; }
     immutable=${switchScript immutableUsers}

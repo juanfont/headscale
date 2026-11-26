@@ -3249,7 +3249,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 // Scenario:
 // 1. Node registers with user1 via pre-auth key
 // 2. Node logs out (expires)
-// 3. Admin runs: headscale auth register --auth-id <id> --user user2
+// 3. Admin runs: headscale auth register <id> user2
 //
 // Expected behavior:
 // - User1's original node should STILL EXIST (expired)
@@ -3328,7 +3328,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 	require.NotEmpty(t, regID, "Should have valid registration ID")
 
 	// Step 4: Admin completes authentication via CLI
-	// This simulates: headscale auth register --auth-id <id> --user user2
+	// This simulates: headscale auth register <id> user2
 	node, _, err := app.state.HandleNodeFromAuthPath(
 		regID,
 		types.UserID(user2.ID), // Register to user2, not user1!
@@ -4390,7 +4390,7 @@ func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
 	require.NotNil(t, alice, "Alice user should be created")
 
 	// Step 4: Re-register the node to alice via [state.State.HandleNodeFromAuthPath]
-	// This is what happens when running: headscale auth register --auth-id <id> --user alice
+	// This is what happens when running: headscale auth register <id> alice
 	nodeKey2 := key.NewNode()
 	registrationID := types.MustAuthID()
 	regEntry := types.NewRegisterAuthRequest(&types.RegistrationData{

@@ -53,12 +53,15 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
       --volume "$(pwd)/lib:/var/lib/headscale" \
       --publish 127.0.0.1:8080:8080 \
       --publish 127.0.0.1:9090:9090 \
-      --health-cmd "CMD headscale health" \
       docker.io/headscale/headscale:<VERSION> \
       serve
     ```
 
     Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
+
+    The image has no shell, and `docker run --health-cmd` always runs its check in one, so it cannot check the
+    container. Use the healthcheck of the `docker-compose` example below, which runs `headscale debug health` directly,
+    or probe `http://127.0.0.1:8080/health` from outside.
 
     This command mounts the local directories inside the container, forwards port 8080 and 9090 out of the container so
     the headscale instance becomes available and then detaches so headscale runs in the background.
@@ -84,7 +87,7 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
           - <HEADSCALE_PATH>/lib:/var/lib/headscale
         command: serve
         healthcheck:
-            test: ["CMD", "headscale", "health"]
+            test: ["CMD", "headscale", "debug", "health"]
     ```
 
 1. Verify headscale is running:

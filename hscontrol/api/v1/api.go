@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -30,6 +31,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -49,7 +52,8 @@ type Backend struct {
 // bypass it via WithLocalTrust.
 func NewAPI(router chi.Router, backend Backend) huma.API {
 	config := huma.DefaultConfig("Headscale API", "v1")
-	config.Info.Description = "Headscale control server API."
+	config.Info.Description = "Headscale's legacy API. It is deprecated and frozen, and Headscale 0.33 removes it: " +
+		"use /api/headscale/v0, which the migration guide maps each call to: " + MigrationGuide
 
 	// Version the OpenAPI/docs routes under /api/v1 so a future v2 owns its own.
 	// These register as plain mux routes, not operations, so they never appear
@@ -63,6 +67,19 @@ func NewAPI(router chi.Router, backend Backend) huma.API {
 	// Drop the default schema-link create hook: it injects a "$schema" property
 	// and Link header into every response, which the v1 contract omits.
 	config.CreateHooks = nil
+
+	// Frozen, and removed in 0.33: the docs page and a generated client show
+	// the mark on each operation, and oapi-codegen puts the reason in its
+	// Deprecated comment.
+	config.OnAddOperation = append(config.OnAddOperation, func(_ *huma.OpenAPI, op *huma.Operation) {
+		op.Deprecated = true
+
+		if op.Extensions == nil {
+			op.Extensions = map[string]any{}
+		}
+
+		op.Extensions["x-deprecated-reason"] = "Headscale 0.33 removes /api/v1; use /api/headscale/v0, see " + MigrationGuide
+	})
 
 	config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"bearer": {
@@ -91,7 +108,7 @@ func NewAPI(router chi.Router, backend Backend) huma.API {
 
 	// Must run before register: Huma snapshots the middleware chain at operation
 	// registration, so a middleware added afterwards would silently never run.
-	api.UseMiddleware(authMiddleware(backend))
+	api.UseMiddleware(warnOnce(), authMiddleware(backend))
 	api.UseMiddleware(queryMiddleware(api))
 	api.UseMiddleware(bodyMiddleware(api))
 
@@ -103,6 +120,56 @@ func NewAPI(router chi.Router, backend Backend) huma.API {
 	delete(schemas, "ErrorDetail")
 
 	return api
+}
+
+// MigrationGuide is the page that takes each call of the legacy API to its
+// form in /api/headscale/v0.
+const MigrationGuide = "https://headscale.net/stable/ref/api/#migrate-from-apiv1"
+
+// deprecatedSince is when the freeze was decided; a date in the past
+// says the API is deprecated now (RFC 9745).
+var deprecatedSince = time.Date(2026, time.November, 25, 0, 0, 0, 0, time.UTC)
+
+// Prefix is the path of the legacy API: it and everything below it.
+const Prefix = "/api/v1"
+
+// DeprecationHeaders marks every answer whose path is Prefix or below it,
+// found or not, as deprecated, and no other. No Sunset (RFC 8594) until 0.33,
+// which removes the API, has a date. It goes outside
+// every mux that can answer such a path (the router, the socket), so a 404
+// or a redirect of the mux carries it too.
+func DeprecationHeaders(next http.Handler) http.Handler {
+	deprecation := "@" + strconv.FormatInt(deprecatedSince.Unix(), 10)
+	link := "<" + MigrationGuide + `>; rel="deprecation"; type="text/html"`
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == Prefix || strings.HasPrefix(r.URL.Path, Prefix+"/") {
+			h := w.Header()
+			h.Set("Deprecation", deprecation)
+			h.Set("Link", link)
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// warnOnce logs the first call of an operation after the server starts: a
+// web UI polls every few seconds, and a line per call would bury the log.
+// The route is the template, so no text of the client reaches the log.
+func warnOnce() func(huma.Context, func(huma.Context)) {
+	var once sync.Once
+
+	return func(ctx huma.Context, next func(huma.Context)) {
+		once.Do(func() {
+			log.Warn().
+				Str(zf.Method, ctx.Operation().Method).
+				Str(zf.Path, ctx.Operation().Path).
+				Str(zf.ClientAddress, ctx.RemoteAddr()).
+				Msg("a client uses /api/v1, which is deprecated and removed in Headscale 0.33; move it to /api/headscale/v0: " + MigrationGuide)
+		})
+
+		next(ctx)
+	}
 }
 
 // bearerAuth is the security requirement applied to every operation: all

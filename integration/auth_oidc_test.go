@@ -945,7 +945,8 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 		newUrl, err = url.Parse(st.AuthURL)
 		assert.NoError(c, err)
 
-		assert.NotEqual(c, u.String(), st.AuthURL, "AuthURL should change")
+		// NotEqual would print the URLs, which hold the auth ID.
+		assert.True(c, u.String() != st.AuthURL, "AuthURL should change") //nolint:testifylint // see above
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for registration cache to expire and status to reflect NeedsLogin")
 
 	_, err = doLoginURL(ts.Hostname(), newUrl)
@@ -1043,7 +1044,8 @@ func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure login URLs are different
-	require.NotEqual(t, u1.String(), u2.String())
+	// NotEqual would print the URLs, which hold the auth ID.
+	require.True(t, u1.String() != u2.String(), "login URLs should differ") //nolint:testifylint // see above
 
 	loginClient, err := newLoginHTTPClient(ts.Hostname())
 	require.NoError(t, err)
@@ -1056,7 +1058,8 @@ func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
 	require.NoError(t, err)
 
 	// two valid redirects with different state/nonce params
-	require.NotEqual(t, redirect1.String(), redirect2.String())
+	// NotEqual would print the URLs, which carry the auth request.
+	require.True(t, redirect1.String() != redirect2.String(), "redirects should differ") //nolint:testifylint // see above
 
 	// complete auth with the first opened "browser tab"
 	_, _, err = doLoginURLWithClient(ts.Hostname(), redirect1, loginClient, true)

@@ -80,8 +80,9 @@ jobs:
         with:
           name: headscale-linux
           path: result/bin/headscale
-  # The new CLI, selected by the build tag until it replaces the old one.
-  build-newcli:
+  # The tests of the CLI with the whole tree checked out: some read the
+  # docs, the nix files and the workflows, which the nix checks filter out.
+  test-cli:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -90,21 +91,16 @@ jobs:
       - uses: NixOS/nix-installer-action@v1.0.0
       - uses: Mic92/hestia@v3.1.0
 
-      - name: Build with the newcli tag
+      - name: Test the CLI
         env:
           CGO_ENABLED: 0
-        run: go build -tags newcli -o headscale ./cmd/headscale
-
-      - name: Test with the newcli tag
-        env:
-          CGO_ENABLED: 0
-        run: go test -tags newcli ./cmd/headscale ./cmd/headscale/newcli/... ./cmdline/... ./client/...
+        run: go test ./cmd/headscale/... ./cmdline/... ./client/...
 
   # Tab in real shells against the built binary: the only test that sees
   # cobra's scripts and the completion protocol together. It records what
   # bash, zsh, fish and PowerShell do, their known faults included, so a
   # cobra bump or a change of the CLI shows as a diff.
-  newcli-shells:
+  cli-shells:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -122,7 +118,7 @@ jobs:
               - 'flake.lock'
               - 'cmdline/**'
               - 'cmd/headscale/*.go'
-              - 'cmd/headscale/newcli/**'
+              - 'cmd/headscale/cli/**'
               - '.github/workflows/build.yml'
       - uses: NixOS/nix-installer-action@v1.0.0
         if: steps.changed-files.outputs.files == 'true'
@@ -133,7 +129,7 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         # The shells live in a dev shell of their own.
         shell: nix develop .#shells --fallback --command bash -e {0}
-        run: cmd/headscale/newcli/testdata/shells/run.sh
+        run: cmd/headscale/cli/testdata/shells/run.sh
 
   build-cross:
     runs-on: ubuntu-latest

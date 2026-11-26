@@ -20,6 +20,17 @@ import (
 // helper of its own would give one.
 var secretFields = []string{"Key", "Secret", "ClientSecret", "AccessToken", "Token", "APIKey", "ApiKey"}
 
+// authIDSources return an auth ID, or a URL or command line that holds one:
+// it answers a waiting registration or SSH check, so it is a secret too.
+// What net/http hands code it calls back is not seen: a request or an
+// answer inside an http.RoundTripper, a cookie in a jar. Nor is a
+// container's own output; the saved logs are masked whole.
+var authIDSources = []string{"LoginWithURL", "findSSHCheckAuthID", "findNewSSHCheckAuthID", "pageCommand"}
+
+// carrierFields are the members of a request or an answer that carry what
+// it was made from: an auth ID in a login URL is in the page it returns.
+var carrierFields = []string{"Body", "URL", "Request"}
+
 // maskers hide every secret in what they return.
 var maskers = []string{"Redact", "Redactf", "RedactError"}
 
@@ -50,6 +61,11 @@ var passOn = []string{
 	"Join", "Split", "SplitN", "Fields", "Cut", "CutPrefix", "CutSuffix",
 	"Replace", "ReplaceAll", "ToLower", "ToUpper", "Repeat",
 	"Unmarshal", "Decode", "Marshal", "MarshalIndent", "Quote",
+	// A pattern's match, the request built for a URL, its answer and its
+	// body hold what they were given: an auth ID in a login URL is in the
+	// page that URL returns, and in the error of a failed request.
+	"FindString", "FindStringSubmatch", "FindAllString", "ReplaceAllString",
+	"NewRequest", "NewRequestWithContext", "Do", "Get", "ReadAll",
 }
 
 // sinkMethods log or fail a test with their arguments, whatever the receiver
@@ -70,6 +86,7 @@ var secretExempt = map[string]string{
 	"dockertestutil/redact_test.go:TestRedact":        "feeds sentinel secrets to the masker it tests",
 	"hsic/hsic_test.go:TestNoSecretInFailures":        "feeds sentinel secrets to the helpers' failure paths it tests",
 	"tsic/login_test.go:TestLoginFailureHidesAuthKey": "feeds a sentinel auth key to the login runner it tests",
+	"scenario_test.go:TestLoginDiagnosticsHideAuthID": "feeds a sentinel auth ID to the login helpers it tests",
 }
 
 // flow is the taint of the source of the suite: which parameters and
@@ -157,8 +174,9 @@ func (s *scope) expr(e ast.Expr, idx int) bool {
 	case *ast.BasicLit, *ast.FuncLit:
 		return false
 	case *ast.SelectorExpr:
-		// Another member of a value that holds a secret is not the secret.
-		return slices.Contains(secretFields, e.Sel.Name)
+		// Another member of a value that holds a secret is not the secret,
+		// but for the body and the URL of a request or an answer.
+		return slices.Contains(secretFields, e.Sel.Name) || slices.Contains(carrierFields, e.Sel.Name) && s.expr(e.X, 0)
 	case *ast.StarExpr:
 		return s.expr(e.X, 0)
 	case *ast.UnaryExpr:
@@ -225,10 +243,15 @@ func (s *scope) call(c *ast.CallExpr, idx int) bool {
 		}))
 	case slices.Contains(decoders, name):
 		return name != "executeAndUnmarshal" && idx == 0 && (argTainted || createsCredential(c))
-	case createsCredential(c):
+	case createsCredential(c), slices.Contains(authIDSources, name):
 		return idx == 0
 	case s.f.sigs[name] != nil:
-		return s.f.results[name][idx]
+		// Functions are matched by name, so a suite method String does not
+		// make url.URL's String clean: a method of a tainted value is
+		// tainted whatever its name.
+		sel, ok := c.Fun.(*ast.SelectorExpr)
+
+		return s.f.results[name][idx] || ok && s.expr(sel.X, 0)
 	case slices.Contains(passOn, name):
 		return argTainted
 	default:
@@ -577,6 +600,32 @@ func TestX(t *testing.T) {
 	log.Printf("api %s", api)
 	log.Printf("api %s", Redact(api))
 	t.Logf("length %d", len(key))
+	u, _ := client.LoginWithURL(endpoint)
+	log.Printf("url %s", u.String())
+	log.Printf("url %s", Redact(u.String()))
+	id := findSSHCheckAuthID(t, client)
+	t.Logf("id %s", id)
+	body, _ := fetch(u, hc)
+	register(body)
+}
+
+// A suite method of the same name must not make url.URL's String clean.
+func (n node) String() string { return n.name }
+
+func fetch(u *url.URL, hc *http.Client) (string, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("sending: %w", err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	log.Printf("body: %s", string(b))
+	return string(b), nil
+}
+
+func register(body string) {
+	id := authIDPattern.FindString(body)
+	log.Printf("registering %s", id)
 }
 `
 
@@ -588,7 +637,12 @@ func TestX(t *testing.T) {
 		"x.go:20: Logf in TestX",
 		"x.go:21: NoError in TestX",
 		"x.go:25: Printf in TestX",
+		"x.go:29: Printf in TestX",
+		"x.go:32: Logf in TestX",
+		"x.go:44: Errorf in fetch",
+		"x.go:47: Printf in fetch",
 		"x.go:4: Errorf in helper",
+		"x.go:53: Printf in register",
 	}, secretSinks(fset, map[string]*ast.File{"x.go": file}))
 }
 

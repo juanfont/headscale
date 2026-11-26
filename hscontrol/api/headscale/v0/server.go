@@ -46,13 +46,13 @@ type UserReference struct {
 
 // Credential is how a request was authenticated; null for the unix socket.
 type Credential struct {
-	_      struct{}         `nullable:"true"`
-	Kind   CredentialKind   `enum:"apiKey,oauthToken"                                                              json:"kind"`
-	ID     string           `doc:"The ID of the stored credential; for an API key, the ID in /api-keys/{id}."      json:"id"`
-	Prefix string           `doc:"The part of the secret that is not secret."                                      json:"prefix"`
-	Expiry *time.Time       `json:"expiry"`
-	Owner  *Owner           `doc:"For an API key, the user recorded on it. It does not say who makes the request." json:"owner"`
-	Client *ClientReference `doc:"For a token, the OAuth client it was issued to."                                 json:"client"`
+	_      struct{}              `nullable:"true"`
+	Kind   CredentialKind        `enum:"apiKey,oauthToken"                                                              json:"kind"`
+	ID     string                `doc:"The ID of the stored credential; for an API key, the ID in /api-keys/{id}."      json:"id"`
+	Prefix string                `doc:"The part of the secret that is not secret."                                      json:"prefix"`
+	Expiry *time.Time            `json:"expiry"`
+	Owner  *Owner                `doc:"For an API key, the user recorded on it. It does not say who makes the request." json:"owner"`
+	Client *OAuthClientReference `doc:"For a token, the OAuth client it was issued to."                                 json:"client"`
 }
 
 // Owner is who a resource belongs to: one user, or tags, never both.
@@ -71,7 +71,7 @@ type OwnerUser struct {
 	Email       string   `json:"email"`
 }
 
-type ClientReference struct {
+type OAuthClientReference struct {
 	_           struct{} `nullable:"true"`
 	ID          string   `json:"id"`
 	Description string   `json:"description"`
@@ -253,7 +253,7 @@ func whoAmI(ctx context.Context, b Backend, c *caller) (Me, error) {
 			return Me{}, fmt.Errorf("reading the client of token %d: %w", cred.id, err)
 		}
 
-		me.Credential.Client = &ClientReference{
+		me.Credential.Client = &OAuthClientReference{
 			ID:          client.Identifier,
 			Description: client.Description,
 		}

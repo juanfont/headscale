@@ -322,7 +322,7 @@ func recordAPIKeyUse(db *gorm.DB, cred *types.Credential, now time.Time) error {
 }
 
 // SetAPIKeyUser sets the owning user of an API key. Used when an admin mints a
-// key on behalf of a user (headscale apikeys create --user).
+// key on behalf of a user (headscale api keys create --user).
 func (hsdb *HSDatabase) SetAPIKeyUser(keyID uint64, userID types.UserID) error {
 	res := hsdb.DB.Model(&types.Credential{}).
 		Where("kind = ? AND id = ?", types.CredentialAPIKey, keyID).

@@ -15,7 +15,7 @@
 - To load the configuration from a different path, use:
     - the command line flag `-c`, `--config`
     - the environment variable `HEADSCALE_CONFIG`
-- The configuration can be checked with: `headscale check config`. Use `-f <path>` to load from path.
+- The configuration can be checked with: `headscale check config`. Give a path to check another file: `headscale check config <path>`.
 - Additional configuration can be checked with: `headscale check all`:
     - [Policy](configuration-options.md#policy.path)
     - [DERP Maps](configuration-options.md#derp.paths)

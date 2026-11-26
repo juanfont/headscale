@@ -1,5 +1,5 @@
 // Package mockoidc runs a mock OpenID Connect server for the integration
-// tests: `headscale mockoidc` and `headscale debug mockoidc` both run it.
+// tests: `headscale debug mockoidc` runs it.
 package mockoidc
 
 import (

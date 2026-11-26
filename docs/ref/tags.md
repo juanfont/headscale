@@ -19,22 +19,25 @@ Administrators can manage tags with:
 
 Run `headscale nodes list` to list the tags for a node.
 
-Use the `headscale nodes tag` command to modify the tags for a node. At least one tag is required and multiple tags can
-be provided as comma separated list. The following command sets the tags `tag:server` and `tag:prod` on node with ID 1:
+Use the `headscale nodes tags set` command to replace the tags of a node. At least one tag is required and multiple
+tags can be provided as comma separated list. The following command sets the tags `tag:server` and `tag:prod` on node
+with ID 1:
 
 ```console
-headscale nodes tag -i 1 -t tag:server,tag:prod
+headscale nodes tags set 1 tag:server,tag:prod
 ```
 
 ### Convert from personal to tagged node
 
-Use the `headscale nodes tag` command to convert a personal (user-owned) node to a tagged node:
+Use the `headscale nodes tags set` command to convert a personal (user-owned) node to a tagged node. It asks for
+confirmation, because the user loses the node; `--force` skips the question:
 
 ```console
-headscale nodes tag -i <NODE_ID> -t <TAG>
+headscale nodes tags set <NODE_ID> <TAG>
 ```
 
-The node is now owned by the special user `tagged-devices` and has the specified tags assigned to it.
+The node is now owned by its tags: `headscale nodes list` shows them as its owner, and Tailscale clients see the node under
+the special user `tagged-devices`.
 
 ### Convert from tagged to personal node
 
@@ -48,7 +51,7 @@ Usually, a browser window with further instructions is opened. This page explain
 your Headscale server and it also prints the Auth ID required to approve the node:
 
 ```console
-headscale auth register --user <USER> --auth-id <AUTH_ID>
+headscale auth register <AUTH_ID> <USER>
 ```
 
 All previously assigned tags get removed and the node is now owned by the user specified in the above command.

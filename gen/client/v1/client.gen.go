@@ -26,6 +26,8 @@ const (
 )
 
 // Valid indicates whether the value is a known member of the NodeRegisterMethod enum.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (e NodeRegisterMethod) Valid() bool {
 	switch e {
 	case REGISTERMETHODAUTHKEY:
@@ -42,6 +44,8 @@ func (e NodeRegisterMethod) Valid() bool {
 }
 
 // ApiKey defines model for ApiKey.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ApiKey struct {
 	CreatedAt  *time.Time `json:"createdAt"`
 	Expiration *time.Time `json:"expiration"`
@@ -51,20 +55,28 @@ type ApiKey struct {
 }
 
 // AuthApproveOutputBody defines model for AuthApproveOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthApproveOutputBody = map[string]interface{}
 
 // AuthApproveRequestBody defines model for AuthApproveRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthApproveRequestBody struct {
 	AuthId               *string                `json:"authId,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // AuthRegisterOutputBody defines model for AuthRegisterOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthRegisterOutputBody struct {
 	Node Node `json:"node"`
 }
 
 // AuthRegisterRequestBody defines model for AuthRegisterRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthRegisterRequestBody struct {
 	AuthId               *string                `json:"authId,omitempty"`
 	User                 *string                `json:"user,omitempty"`
@@ -72,34 +84,48 @@ type AuthRegisterRequestBody struct {
 }
 
 // AuthRejectOutputBody defines model for AuthRejectOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthRejectOutputBody = map[string]interface{}
 
 // AuthRejectRequestBody defines model for AuthRejectRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthRejectRequestBody struct {
 	AuthId               *string                `json:"authId,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // BackfillNodeIPsOutputBody defines model for BackfillNodeIPsOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type BackfillNodeIPsOutputBody struct {
 	Changes []string `json:"changes"`
 }
 
 // CheckPolicyOutputBody defines model for CheckPolicyOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CheckPolicyOutputBody = map[string]interface{}
 
 // CreateApiKeyOutputBody defines model for CreateApiKeyOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreateApiKeyOutputBody struct {
 	ApiKey string `json:"apiKey"`
 }
 
 // CreateApiKeyRequestBody defines model for CreateApiKeyRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreateApiKeyRequestBody struct {
 	Expiration           *time.Time             `json:"expiration,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // CreatePreAuthKeyRequestBody defines model for CreatePreAuthKeyRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreatePreAuthKeyRequestBody struct {
 	AclTags              *[]string              `json:"aclTags,omitempty"`
 	Ephemeral            *bool                  `json:"ephemeral,omitempty"`
@@ -110,6 +136,8 @@ type CreatePreAuthKeyRequestBody struct {
 }
 
 // CreateUserRequestBody defines model for CreateUserRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreateUserRequestBody struct {
 	DisplayName          *string                `json:"displayName,omitempty"`
 	Email                *string                `json:"email,omitempty"`
@@ -119,6 +147,8 @@ type CreateUserRequestBody struct {
 }
 
 // DebugCreateNodeRequestBody defines model for DebugCreateNodeRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DebugCreateNodeRequestBody struct {
 	Key                  *string                `json:"key,omitempty"`
 	Name                 *string                `json:"name,omitempty"`
@@ -128,21 +158,33 @@ type DebugCreateNodeRequestBody struct {
 }
 
 // DeleteApiKeyOutputBody defines model for DeleteApiKeyOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeleteApiKeyOutputBody = map[string]interface{}
 
 // DeleteNodeOutputBody defines model for DeleteNodeOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeleteNodeOutputBody = map[string]interface{}
 
 // DeletePreAuthKeyOutputBody defines model for DeletePreAuthKeyOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeletePreAuthKeyOutputBody = map[string]interface{}
 
 // DeleteUserOutputBody defines model for DeleteUserOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeleteUserOutputBody = map[string]interface{}
 
 // ExpireApiKeyOutputBody defines model for ExpireApiKeyOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpireApiKeyOutputBody = map[string]interface{}
 
 // ExpireApiKeyRequestBody defines model for ExpireApiKeyRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpireApiKeyRequestBody struct {
 	Id                   *string                `json:"id,omitempty"`
 	Prefix               *string                `json:"prefix,omitempty"`
@@ -150,6 +192,8 @@ type ExpireApiKeyRequestBody struct {
 }
 
 // ExpireNodeRequestBody defines model for ExpireNodeRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpireNodeRequestBody struct {
 	DisableExpiry        *bool                  `json:"disableExpiry,omitempty"`
 	Expiry               *time.Time             `json:"expiry,omitempty"`
@@ -157,40 +201,56 @@ type ExpireNodeRequestBody struct {
 }
 
 // ExpirePreAuthKeyOutputBody defines model for ExpirePreAuthKeyOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpirePreAuthKeyOutputBody = map[string]interface{}
 
 // ExpirePreAuthKeyRequestBody defines model for ExpirePreAuthKeyRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpirePreAuthKeyRequestBody struct {
 	Id                   *string                `json:"id,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // HealthResponseBody defines model for HealthResponseBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type HealthResponseBody struct {
 	DatabaseConnectivity bool `json:"databaseConnectivity"`
 }
 
 // ListApiKeysOutputBody defines model for ListApiKeysOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListApiKeysOutputBody struct {
 	ApiKeys []ApiKey `json:"apiKeys"`
 }
 
 // ListNodesOutputBody defines model for ListNodesOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListNodesOutputBody struct {
 	Nodes []Node `json:"nodes"`
 }
 
 // ListPreAuthKeysOutputBody defines model for ListPreAuthKeysOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListPreAuthKeysOutputBody struct {
 	PreAuthKeys []PreAuthKey `json:"preAuthKeys"`
 }
 
 // ListUsersOutputBody defines model for ListUsersOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListUsersOutputBody struct {
 	Users []User `json:"users"`
 }
 
 // Node defines model for Node.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type Node struct {
 	ApprovedRoutes  []string           `json:"approvedRoutes"`
 	AvailableRoutes []string           `json:"availableRoutes"`
@@ -214,14 +274,20 @@ type Node struct {
 }
 
 // NodeRegisterMethod defines model for Node.RegisterMethod.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type NodeRegisterMethod string
 
 // NodeOutputBody defines model for NodeOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type NodeOutputBody struct {
 	Node Node `json:"node"`
 }
 
 // NodePreAuthKey defines model for NodePreAuthKey.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type NodePreAuthKey struct {
 	AclTags    []string   `json:"aclTags"`
 	CreatedAt  *time.Time `json:"createdAt"`
@@ -235,18 +301,24 @@ type NodePreAuthKey struct {
 }
 
 // PolicyRequestBody defines model for PolicyRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type PolicyRequestBody struct {
 	Policy               *string                `json:"policy,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // PolicyResponseBody defines model for PolicyResponseBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type PolicyResponseBody struct {
 	Policy    string     `json:"policy"`
 	UpdatedAt *time.Time `json:"updatedAt"`
 }
 
 // PreAuthKey defines model for PreAuthKey.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type PreAuthKey struct {
 	AclTags    []string   `json:"aclTags"`
 	CreatedAt  time.Time  `json:"createdAt"`
@@ -260,23 +332,31 @@ type PreAuthKey struct {
 }
 
 // PreAuthKeyOutputBody defines model for PreAuthKeyOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type PreAuthKeyOutputBody struct {
 	PreAuthKey PreAuthKey `json:"preAuthKey"`
 }
 
 // SetApprovedRoutesRequestBody defines model for SetApprovedRoutesRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type SetApprovedRoutesRequestBody struct {
 	Routes               *[]string              `json:"routes,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // SetTagsRequestBody defines model for SetTagsRequestBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type SetTagsRequestBody struct {
 	Tags                 *[]string              `json:"tags,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // Status defines model for Status.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type Status struct {
 	// Code gRPC status code
 	Code int32 `json:"code"`
@@ -287,6 +367,8 @@ type Status struct {
 }
 
 // User defines model for User.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type User struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	DisplayName   string    `json:"displayName"`
@@ -299,32 +381,44 @@ type User struct {
 }
 
 // UserOutputBody defines model for UserOutputBody.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type UserOutputBody struct {
 	User User `json:"user"`
 }
 
 // DeleteApiKeyParams defines parameters for DeleteApiKey.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeleteApiKeyParams struct {
 	Id *string `form:"id,omitempty" json:"id,omitempty"`
 }
 
 // ListNodesParams defines parameters for ListNodes.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListNodesParams struct {
 	User *string `form:"user,omitempty" json:"user,omitempty"`
 }
 
 // BackfillNodeIPsParams defines parameters for BackfillNodeIPs.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type BackfillNodeIPsParams struct {
 	Confirmed *bool `form:"confirmed,omitempty" json:"confirmed,omitempty"`
 }
 
 // RegisterNodeParams defines parameters for RegisterNode.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type RegisterNodeParams struct {
 	User *string `form:"user,omitempty" json:"user,omitempty"`
 	Key  *string `form:"key,omitempty" json:"key,omitempty"`
 }
 
 // ExpireNodeParams defines parameters for ExpireNode.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpireNodeParams struct {
 	Expiry *time.Time `form:"expiry,omitempty" json:"expiry,omitempty"`
 
@@ -333,11 +427,15 @@ type ExpireNodeParams struct {
 }
 
 // DeletePreAuthKeyParams defines parameters for DeletePreAuthKey.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeletePreAuthKeyParams struct {
 	Id *string `form:"id,omitempty" json:"id,omitempty"`
 }
 
 // ListUsersParams defines parameters for ListUsers.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListUsersParams struct {
 	Id    *string `form:"id,omitempty" json:"id,omitempty"`
 	Name  *string `form:"name,omitempty" json:"name,omitempty"`
@@ -345,49 +443,79 @@ type ListUsersParams struct {
 }
 
 // CreateApiKeyJSONRequestBody defines body for CreateApiKey for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreateApiKeyJSONRequestBody = CreateApiKeyRequestBody
 
 // ExpireApiKeyJSONRequestBody defines body for ExpireApiKey for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpireApiKeyJSONRequestBody = ExpireApiKeyRequestBody
 
 // AuthApproveJSONRequestBody defines body for AuthApprove for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthApproveJSONRequestBody = AuthApproveRequestBody
 
 // AuthRegisterJSONRequestBody defines body for AuthRegister for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthRegisterJSONRequestBody = AuthRegisterRequestBody
 
 // AuthRejectJSONRequestBody defines body for AuthReject for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthRejectJSONRequestBody = AuthRejectRequestBody
 
 // DebugCreateNodeJSONRequestBody defines body for DebugCreateNode for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DebugCreateNodeJSONRequestBody = DebugCreateNodeRequestBody
 
 // SetApprovedRoutesJSONRequestBody defines body for SetApprovedRoutes for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type SetApprovedRoutesJSONRequestBody = SetApprovedRoutesRequestBody
 
 // ExpireNodeJSONRequestBody defines body for ExpireNode for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpireNodeJSONRequestBody = ExpireNodeRequestBody
 
 // SetTagsJSONRequestBody defines body for SetTags for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type SetTagsJSONRequestBody = SetTagsRequestBody
 
 // SetPolicyJSONRequestBody defines body for SetPolicy for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type SetPolicyJSONRequestBody = PolicyRequestBody
 
 // CheckPolicyJSONRequestBody defines body for CheckPolicy for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CheckPolicyJSONRequestBody = PolicyRequestBody
 
 // CreatePreAuthKeyJSONRequestBody defines body for CreatePreAuthKey for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreatePreAuthKeyJSONRequestBody = CreatePreAuthKeyRequestBody
 
 // ExpirePreAuthKeyJSONRequestBody defines body for ExpirePreAuthKey for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpirePreAuthKeyJSONRequestBody = ExpirePreAuthKeyRequestBody
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreateUserJSONRequestBody = CreateUserRequestBody
 
 // Getter for additional properties for AuthApproveRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a AuthApproveRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -396,6 +524,8 @@ func (a AuthApproveRequestBody) Get(fieldName string) (value interface{}, found 
 }
 
 // Setter for additional properties for AuthApproveRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *AuthApproveRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -404,6 +534,8 @@ func (a *AuthApproveRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for AuthApproveRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *AuthApproveRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -434,6 +566,8 @@ func (a *AuthApproveRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for AuthApproveRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a AuthApproveRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -456,6 +590,8 @@ func (a AuthApproveRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for AuthRegisterRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a AuthRegisterRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -464,6 +600,8 @@ func (a AuthRegisterRequestBody) Get(fieldName string) (value interface{}, found
 }
 
 // Setter for additional properties for AuthRegisterRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *AuthRegisterRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -472,6 +610,8 @@ func (a *AuthRegisterRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for AuthRegisterRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *AuthRegisterRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -510,6 +650,8 @@ func (a *AuthRegisterRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for AuthRegisterRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a AuthRegisterRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -539,6 +681,8 @@ func (a AuthRegisterRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for AuthRejectRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a AuthRejectRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -547,6 +691,8 @@ func (a AuthRejectRequestBody) Get(fieldName string) (value interface{}, found b
 }
 
 // Setter for additional properties for AuthRejectRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *AuthRejectRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -555,6 +701,8 @@ func (a *AuthRejectRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for AuthRejectRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *AuthRejectRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -585,6 +733,8 @@ func (a *AuthRejectRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for AuthRejectRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a AuthRejectRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -607,6 +757,8 @@ func (a AuthRejectRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for CreateApiKeyRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a CreateApiKeyRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -615,6 +767,8 @@ func (a CreateApiKeyRequestBody) Get(fieldName string) (value interface{}, found
 }
 
 // Setter for additional properties for CreateApiKeyRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *CreateApiKeyRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -623,6 +777,8 @@ func (a *CreateApiKeyRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for CreateApiKeyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *CreateApiKeyRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -653,6 +809,8 @@ func (a *CreateApiKeyRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for CreateApiKeyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a CreateApiKeyRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -675,6 +833,8 @@ func (a CreateApiKeyRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for CreatePreAuthKeyRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a CreatePreAuthKeyRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -683,6 +843,8 @@ func (a CreatePreAuthKeyRequestBody) Get(fieldName string) (value interface{}, f
 }
 
 // Setter for additional properties for CreatePreAuthKeyRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *CreatePreAuthKeyRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -691,6 +853,8 @@ func (a *CreatePreAuthKeyRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for CreatePreAuthKeyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *CreatePreAuthKeyRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -753,6 +917,8 @@ func (a *CreatePreAuthKeyRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for CreatePreAuthKeyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a CreatePreAuthKeyRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -803,6 +969,8 @@ func (a CreatePreAuthKeyRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for CreateUserRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a CreateUserRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -811,6 +979,8 @@ func (a CreateUserRequestBody) Get(fieldName string) (value interface{}, found b
 }
 
 // Setter for additional properties for CreateUserRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *CreateUserRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -819,6 +989,8 @@ func (a *CreateUserRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for CreateUserRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *CreateUserRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -873,6 +1045,8 @@ func (a *CreateUserRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for CreateUserRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a CreateUserRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -916,6 +1090,8 @@ func (a CreateUserRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for DebugCreateNodeRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a DebugCreateNodeRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -924,6 +1100,8 @@ func (a DebugCreateNodeRequestBody) Get(fieldName string) (value interface{}, fo
 }
 
 // Setter for additional properties for DebugCreateNodeRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *DebugCreateNodeRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -932,6 +1110,8 @@ func (a *DebugCreateNodeRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for DebugCreateNodeRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *DebugCreateNodeRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -986,6 +1166,8 @@ func (a *DebugCreateNodeRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for DebugCreateNodeRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a DebugCreateNodeRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -1029,6 +1211,8 @@ func (a DebugCreateNodeRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for ExpireApiKeyRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a ExpireApiKeyRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -1037,6 +1221,8 @@ func (a ExpireApiKeyRequestBody) Get(fieldName string) (value interface{}, found
 }
 
 // Setter for additional properties for ExpireApiKeyRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *ExpireApiKeyRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -1045,6 +1231,8 @@ func (a *ExpireApiKeyRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for ExpireApiKeyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *ExpireApiKeyRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -1083,6 +1271,8 @@ func (a *ExpireApiKeyRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for ExpireApiKeyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a ExpireApiKeyRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -1112,6 +1302,8 @@ func (a ExpireApiKeyRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for ExpireNodeRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a ExpireNodeRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -1120,6 +1312,8 @@ func (a ExpireNodeRequestBody) Get(fieldName string) (value interface{}, found b
 }
 
 // Setter for additional properties for ExpireNodeRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *ExpireNodeRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -1128,6 +1322,8 @@ func (a *ExpireNodeRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for ExpireNodeRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *ExpireNodeRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -1166,6 +1362,8 @@ func (a *ExpireNodeRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for ExpireNodeRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a ExpireNodeRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -1195,6 +1393,8 @@ func (a ExpireNodeRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for ExpirePreAuthKeyRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a ExpirePreAuthKeyRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -1203,6 +1403,8 @@ func (a ExpirePreAuthKeyRequestBody) Get(fieldName string) (value interface{}, f
 }
 
 // Setter for additional properties for ExpirePreAuthKeyRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *ExpirePreAuthKeyRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -1211,6 +1413,8 @@ func (a *ExpirePreAuthKeyRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for ExpirePreAuthKeyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *ExpirePreAuthKeyRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -1241,6 +1445,8 @@ func (a *ExpirePreAuthKeyRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for ExpirePreAuthKeyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a ExpirePreAuthKeyRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -1263,6 +1469,8 @@ func (a ExpirePreAuthKeyRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for PolicyRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a PolicyRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -1271,6 +1479,8 @@ func (a PolicyRequestBody) Get(fieldName string) (value interface{}, found bool)
 }
 
 // Setter for additional properties for PolicyRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *PolicyRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -1279,6 +1489,8 @@ func (a *PolicyRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for PolicyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *PolicyRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -1309,6 +1521,8 @@ func (a *PolicyRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for PolicyRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a PolicyRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -1331,6 +1545,8 @@ func (a PolicyRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for SetApprovedRoutesRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a SetApprovedRoutesRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -1339,6 +1555,8 @@ func (a SetApprovedRoutesRequestBody) Get(fieldName string) (value interface{}, 
 }
 
 // Setter for additional properties for SetApprovedRoutesRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *SetApprovedRoutesRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -1347,6 +1565,8 @@ func (a *SetApprovedRoutesRequestBody) Set(fieldName string, value interface{}) 
 }
 
 // Override default JSON handling for SetApprovedRoutesRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *SetApprovedRoutesRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -1377,6 +1597,8 @@ func (a *SetApprovedRoutesRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for SetApprovedRoutesRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a SetApprovedRoutesRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -1399,6 +1621,8 @@ func (a SetApprovedRoutesRequestBody) MarshalJSON() ([]byte, error) {
 
 // Getter for additional properties for SetTagsRequestBody. Returns the specified
 // element and whether it was found
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a SetTagsRequestBody) Get(fieldName string) (value interface{}, found bool) {
 	if a.AdditionalProperties != nil {
 		value, found = a.AdditionalProperties[fieldName]
@@ -1407,6 +1631,8 @@ func (a SetTagsRequestBody) Get(fieldName string) (value interface{}, found bool
 }
 
 // Setter for additional properties for SetTagsRequestBody
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *SetTagsRequestBody) Set(fieldName string, value interface{}) {
 	if a.AdditionalProperties == nil {
 		a.AdditionalProperties = make(map[string]interface{})
@@ -1415,6 +1641,8 @@ func (a *SetTagsRequestBody) Set(fieldName string, value interface{}) {
 }
 
 // Override default JSON handling for SetTagsRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a *SetTagsRequestBody) UnmarshalJSON(b []byte) error {
 	object := make(map[string]json.RawMessage)
 	err := json.Unmarshal(b, &object)
@@ -1445,6 +1673,8 @@ func (a *SetTagsRequestBody) UnmarshalJSON(b []byte) error {
 }
 
 // Override default JSON handling for SetTagsRequestBody to handle AdditionalProperties
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (a SetTagsRequestBody) MarshalJSON() ([]byte, error) {
 	var err error
 	object := make(map[string]json.RawMessage)
@@ -1466,16 +1696,22 @@ func (a SetTagsRequestBody) MarshalJSON() ([]byte, error) {
 }
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
 
 // Doer performs HTTP requests.
 //
 // The standard http.Client implements this interface.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type HttpRequestDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
 // Client which conforms to the OpenAPI3 specification for this service.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type Client struct {
 	// The endpoint of the server conforming to this interface, with scheme,
 	// https://api.deepmap.com for example. This can contain a path relative
@@ -1493,9 +1729,13 @@ type Client struct {
 }
 
 // ClientOption allows setting custom parameters during construction
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ClientOption func(*Client) error
 
 // Creates a new Client, with reasonable defaults
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewClient(server string, opts ...ClientOption) (*Client, error) {
 	// create a client with sane default values
 	client := Client{
@@ -1520,6 +1760,8 @@ func NewClient(server string, opts ...ClientOption) (*Client, error) {
 
 // WithHTTPClient allows overriding the default Doer, which is
 // automatically created using http.Client. This is useful for tests.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func WithHTTPClient(doer HttpRequestDoer) ClientOption {
 	return func(c *Client) error {
 		c.Client = doer
@@ -1529,6 +1771,8 @@ func WithHTTPClient(doer HttpRequestDoer) ClientOption {
 
 // WithRequestEditorFn allows setting up a callback function, which will be
 // called right before sending the request. This can be used to mutate the request.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 	return func(c *Client) error {
 		c.RequestEditors = append(c.RequestEditors, fn)
@@ -1537,11 +1781,15 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 }
 
 // The interface specification for the client above.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ClientInterface interface {
 
 	// ListApiKeys List API keys
 	//
 	// Corresponds with GET /api/v1/apikey (the `ListApiKeys` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ListApiKeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateApiKeyWithBody Create API key
@@ -1549,6 +1797,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/apikey (the `CreateApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreateApiKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateApiKey Create API key
@@ -1556,6 +1806,8 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/apikey (the `CreateApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreateApiKey(ctx context.Context, body CreateApiKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExpireApiKeyWithBody Expire API key
@@ -1563,6 +1815,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/apikey/expire (the `ExpireApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpireApiKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExpireApiKey Expire API key
@@ -1570,11 +1824,15 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/apikey/expire (the `ExpireApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpireApiKey(ctx context.Context, body ExpireApiKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteApiKey Delete API key
 	//
 	// Corresponds with DELETE /api/v1/apikey/{prefix} (the `DeleteApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DeleteApiKey(ctx context.Context, prefix string, params *DeleteApiKeyParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AuthApproveWithBody Approve a pending auth session
@@ -1582,6 +1840,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/auth/approve (the `AuthApprove` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthApproveWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AuthApprove Approve a pending auth session
@@ -1589,6 +1849,8 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/auth/approve (the `AuthApprove` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthApprove(ctx context.Context, body AuthApproveJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AuthRegisterWithBody Register node via auth flow
@@ -1596,6 +1858,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/auth/register (the `AuthRegister` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthRegisterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AuthRegister Register node via auth flow
@@ -1603,6 +1867,8 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/auth/register (the `AuthRegister` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthRegister(ctx context.Context, body AuthRegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AuthRejectWithBody Reject a pending auth session
@@ -1610,6 +1876,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthRejectWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AuthReject Reject a pending auth session
@@ -1617,6 +1885,8 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthReject(ctx context.Context, body AuthRejectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DebugCreateNodeWithBody Debug create node
@@ -1624,6 +1894,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/debug/node (the `DebugCreateNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DebugCreateNodeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DebugCreateNode Debug create node
@@ -1631,6 +1903,8 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/debug/node (the `DebugCreateNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DebugCreateNode(ctx context.Context, body DebugCreateNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// Health Health check
@@ -1638,31 +1912,43 @@ type ClientInterface interface {
 	// Reports server health, including database connectivity.
 	//
 	// Corresponds with GET /api/v1/health (the `Health` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListNodes List nodes
 	//
 	// Corresponds with GET /api/v1/node (the `ListNodes` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ListNodes(ctx context.Context, params *ListNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// BackfillNodeIPs Backfill node IPs
 	//
 	// Corresponds with POST /api/v1/node/backfillips (the `BackfillNodeIPs` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	BackfillNodeIPs(ctx context.Context, params *BackfillNodeIPsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RegisterNode Register node
 	//
 	// Corresponds with POST /api/v1/node/register (the `RegisterNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	RegisterNode(ctx context.Context, params *RegisterNodeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteNode Delete node
 	//
 	// Corresponds with DELETE /api/v1/node/{nodeId} (the `DeleteNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DeleteNode(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetNode Get node
 	//
 	// Corresponds with GET /api/v1/node/{nodeId} (the `GetNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	GetNode(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetApprovedRoutesWithBody Set approved routes
@@ -1670,6 +1956,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/approve_routes (the `SetApprovedRoutes` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetApprovedRoutesWithBody(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetApprovedRoutes Set approved routes
@@ -1677,6 +1965,8 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/approve_routes (the `SetApprovedRoutes` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetApprovedRoutes(ctx context.Context, nodeId string, body SetApprovedRoutesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExpireNodeWithBody Expire node
@@ -1684,6 +1974,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpireNodeWithBody(ctx context.Context, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExpireNode Expire node
@@ -1691,11 +1983,15 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpireNode(ctx context.Context, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RenameNode Rename node
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/rename/{newName} (the `RenameNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	RenameNode(ctx context.Context, nodeId string, newName string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetTagsWithBody Set tags
@@ -1703,6 +1999,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/tags (the `SetTags` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetTagsWithBody(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetTags Set tags
@@ -1710,11 +2008,15 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/tags (the `SetTags` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetTags(ctx context.Context, nodeId string, body SetTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetPolicy Get policy
 	//
 	// Corresponds with GET /api/v1/policy (the `GetPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	GetPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetPolicyWithBody Set policy
@@ -1722,6 +2024,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PUT /api/v1/policy (the `SetPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetPolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetPolicy Set policy
@@ -1729,6 +2033,8 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with PUT /api/v1/policy (the `SetPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetPolicy(ctx context.Context, body SetPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CheckPolicyWithBody Check policy
@@ -1738,6 +2044,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/policy/check (the `CheckPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CheckPolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CheckPolicy Check policy
@@ -1747,16 +2055,22 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/policy/check (the `CheckPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CheckPolicy(ctx context.Context, body CheckPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeletePreAuthKey Delete pre-auth key
 	//
 	// Corresponds with DELETE /api/v1/preauthkey (the `DeletePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DeletePreAuthKey(ctx context.Context, params *DeletePreAuthKeyParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListPreAuthKeys List pre-auth keys
 	//
 	// Corresponds with GET /api/v1/preauthkey (the `ListPreAuthKeys` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ListPreAuthKeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreatePreAuthKeyWithBody Create pre-auth key
@@ -1764,6 +2078,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/preauthkey (the `CreatePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreatePreAuthKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreatePreAuthKey Create pre-auth key
@@ -1771,6 +2087,8 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/preauthkey (the `CreatePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreatePreAuthKey(ctx context.Context, body CreatePreAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExpirePreAuthKeyWithBody Expire pre-auth key
@@ -1778,6 +2096,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/preauthkey/expire (the `ExpirePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpirePreAuthKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExpirePreAuthKey Expire pre-auth key
@@ -1785,11 +2105,15 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/preauthkey/expire (the `ExpirePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpirePreAuthKey(ctx context.Context, body ExpirePreAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListUsers List users
 	//
 	// Corresponds with GET /api/v1/user (the `ListUsers` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ListUsers(ctx context.Context, params *ListUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateUserWithBody Create user
@@ -1797,6 +2121,8 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/user (the `CreateUser` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreateUserWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateUser Create user
@@ -1804,22 +2130,30 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/user (the `CreateUser` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreateUser(ctx context.Context, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteUser Delete user
 	//
 	// Corresponds with DELETE /api/v1/user/{id} (the `DeleteUser` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DeleteUser(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RenameUser Rename user
 	//
 	// Corresponds with POST /api/v1/user/{oldId}/rename/{newName} (the `RenameUser` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	RenameUser(ctx context.Context, oldId string, newName string, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // ListApiKeys List API keys
 //
 // Corresponds with GET /api/v1/apikey (the `ListApiKeys` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ListApiKeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListApiKeysRequest(c.Server)
 	if err != nil {
@@ -1837,6 +2171,8 @@ func (c *Client) ListApiKeys(ctx context.Context, reqEditors ...RequestEditorFn)
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/apikey (the `CreateApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) CreateApiKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateApiKeyRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -1854,6 +2190,8 @@ func (c *Client) CreateApiKeyWithBody(ctx context.Context, contentType string, b
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/apikey (the `CreateApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) CreateApiKey(ctx context.Context, body CreateApiKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateApiKeyRequest(c.Server, body)
 	if err != nil {
@@ -1871,6 +2209,8 @@ func (c *Client) CreateApiKey(ctx context.Context, body CreateApiKeyJSONRequestB
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/apikey/expire (the `ExpireApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ExpireApiKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExpireApiKeyRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -1888,6 +2228,8 @@ func (c *Client) ExpireApiKeyWithBody(ctx context.Context, contentType string, b
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/apikey/expire (the `ExpireApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ExpireApiKey(ctx context.Context, body ExpireApiKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExpireApiKeyRequest(c.Server, body)
 	if err != nil {
@@ -1903,6 +2245,8 @@ func (c *Client) ExpireApiKey(ctx context.Context, body ExpireApiKeyJSONRequestB
 // DeleteApiKey Delete API key
 //
 // Corresponds with DELETE /api/v1/apikey/{prefix} (the `DeleteApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) DeleteApiKey(ctx context.Context, prefix string, params *DeleteApiKeyParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteApiKeyRequest(c.Server, prefix, params)
 	if err != nil {
@@ -1920,6 +2264,8 @@ func (c *Client) DeleteApiKey(ctx context.Context, prefix string, params *Delete
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/auth/approve (the `AuthApprove` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) AuthApproveWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAuthApproveRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -1937,6 +2283,8 @@ func (c *Client) AuthApproveWithBody(ctx context.Context, contentType string, bo
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/auth/approve (the `AuthApprove` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) AuthApprove(ctx context.Context, body AuthApproveJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAuthApproveRequest(c.Server, body)
 	if err != nil {
@@ -1954,6 +2302,8 @@ func (c *Client) AuthApprove(ctx context.Context, body AuthApproveJSONRequestBod
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/auth/register (the `AuthRegister` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) AuthRegisterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAuthRegisterRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -1971,6 +2321,8 @@ func (c *Client) AuthRegisterWithBody(ctx context.Context, contentType string, b
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/auth/register (the `AuthRegister` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) AuthRegister(ctx context.Context, body AuthRegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAuthRegisterRequest(c.Server, body)
 	if err != nil {
@@ -1988,6 +2340,8 @@ func (c *Client) AuthRegister(ctx context.Context, body AuthRegisterJSONRequestB
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) AuthRejectWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAuthRejectRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -2005,6 +2359,8 @@ func (c *Client) AuthRejectWithBody(ctx context.Context, contentType string, bod
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) AuthReject(ctx context.Context, body AuthRejectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAuthRejectRequest(c.Server, body)
 	if err != nil {
@@ -2022,6 +2378,8 @@ func (c *Client) AuthReject(ctx context.Context, body AuthRejectJSONRequestBody,
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/debug/node (the `DebugCreateNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) DebugCreateNodeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDebugCreateNodeRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -2039,6 +2397,8 @@ func (c *Client) DebugCreateNodeWithBody(ctx context.Context, contentType string
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/debug/node (the `DebugCreateNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) DebugCreateNode(ctx context.Context, body DebugCreateNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDebugCreateNodeRequest(c.Server, body)
 	if err != nil {
@@ -2056,6 +2416,8 @@ func (c *Client) DebugCreateNode(ctx context.Context, body DebugCreateNodeJSONRe
 // Reports server health, including database connectivity.
 //
 // Corresponds with GET /api/v1/health (the `Health` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHealthRequest(c.Server)
 	if err != nil {
@@ -2071,6 +2433,8 @@ func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 // ListNodes List nodes
 //
 // Corresponds with GET /api/v1/node (the `ListNodes` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ListNodes(ctx context.Context, params *ListNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListNodesRequest(c.Server, params)
 	if err != nil {
@@ -2086,6 +2450,8 @@ func (c *Client) ListNodes(ctx context.Context, params *ListNodesParams, reqEdit
 // BackfillNodeIPs Backfill node IPs
 //
 // Corresponds with POST /api/v1/node/backfillips (the `BackfillNodeIPs` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) BackfillNodeIPs(ctx context.Context, params *BackfillNodeIPsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewBackfillNodeIPsRequest(c.Server, params)
 	if err != nil {
@@ -2101,6 +2467,8 @@ func (c *Client) BackfillNodeIPs(ctx context.Context, params *BackfillNodeIPsPar
 // RegisterNode Register node
 //
 // Corresponds with POST /api/v1/node/register (the `RegisterNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) RegisterNode(ctx context.Context, params *RegisterNodeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRegisterNodeRequest(c.Server, params)
 	if err != nil {
@@ -2116,6 +2484,8 @@ func (c *Client) RegisterNode(ctx context.Context, params *RegisterNodeParams, r
 // DeleteNode Delete node
 //
 // Corresponds with DELETE /api/v1/node/{nodeId} (the `DeleteNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) DeleteNode(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteNodeRequest(c.Server, nodeId)
 	if err != nil {
@@ -2131,6 +2501,8 @@ func (c *Client) DeleteNode(ctx context.Context, nodeId string, reqEditors ...Re
 // GetNode Get node
 //
 // Corresponds with GET /api/v1/node/{nodeId} (the `GetNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) GetNode(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetNodeRequest(c.Server, nodeId)
 	if err != nil {
@@ -2148,6 +2520,8 @@ func (c *Client) GetNode(ctx context.Context, nodeId string, reqEditors ...Reque
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/node/{nodeId}/approve_routes (the `SetApprovedRoutes` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) SetApprovedRoutesWithBody(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetApprovedRoutesRequestWithBody(c.Server, nodeId, contentType, body)
 	if err != nil {
@@ -2165,6 +2539,8 @@ func (c *Client) SetApprovedRoutesWithBody(ctx context.Context, nodeId string, c
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/node/{nodeId}/approve_routes (the `SetApprovedRoutes` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) SetApprovedRoutes(ctx context.Context, nodeId string, body SetApprovedRoutesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetApprovedRoutesRequest(c.Server, nodeId, body)
 	if err != nil {
@@ -2182,6 +2558,8 @@ func (c *Client) SetApprovedRoutes(ctx context.Context, nodeId string, body SetA
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ExpireNodeWithBody(ctx context.Context, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExpireNodeRequestWithBody(c.Server, nodeId, params, contentType, body)
 	if err != nil {
@@ -2199,6 +2577,8 @@ func (c *Client) ExpireNodeWithBody(ctx context.Context, nodeId string, params *
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ExpireNode(ctx context.Context, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExpireNodeRequest(c.Server, nodeId, params, body)
 	if err != nil {
@@ -2214,6 +2594,8 @@ func (c *Client) ExpireNode(ctx context.Context, nodeId string, params *ExpireNo
 // RenameNode Rename node
 //
 // Corresponds with POST /api/v1/node/{nodeId}/rename/{newName} (the `RenameNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) RenameNode(ctx context.Context, nodeId string, newName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRenameNodeRequest(c.Server, nodeId, newName)
 	if err != nil {
@@ -2231,6 +2613,8 @@ func (c *Client) RenameNode(ctx context.Context, nodeId string, newName string, 
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/node/{nodeId}/tags (the `SetTags` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) SetTagsWithBody(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetTagsRequestWithBody(c.Server, nodeId, contentType, body)
 	if err != nil {
@@ -2248,6 +2632,8 @@ func (c *Client) SetTagsWithBody(ctx context.Context, nodeId string, contentType
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/node/{nodeId}/tags (the `SetTags` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) SetTags(ctx context.Context, nodeId string, body SetTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetTagsRequest(c.Server, nodeId, body)
 	if err != nil {
@@ -2263,6 +2649,8 @@ func (c *Client) SetTags(ctx context.Context, nodeId string, body SetTagsJSONReq
 // GetPolicy Get policy
 //
 // Corresponds with GET /api/v1/policy (the `GetPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) GetPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetPolicyRequest(c.Server)
 	if err != nil {
@@ -2280,6 +2668,8 @@ func (c *Client) GetPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PUT /api/v1/policy (the `SetPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) SetPolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetPolicyRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -2297,6 +2687,8 @@ func (c *Client) SetPolicyWithBody(ctx context.Context, contentType string, body
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with PUT /api/v1/policy (the `SetPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) SetPolicy(ctx context.Context, body SetPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetPolicyRequest(c.Server, body)
 	if err != nil {
@@ -2316,6 +2708,8 @@ func (c *Client) SetPolicy(ctx context.Context, body SetPolicyJSONRequestBody, r
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/policy/check (the `CheckPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) CheckPolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCheckPolicyRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -2335,6 +2729,8 @@ func (c *Client) CheckPolicyWithBody(ctx context.Context, contentType string, bo
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/policy/check (the `CheckPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) CheckPolicy(ctx context.Context, body CheckPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCheckPolicyRequest(c.Server, body)
 	if err != nil {
@@ -2350,6 +2746,8 @@ func (c *Client) CheckPolicy(ctx context.Context, body CheckPolicyJSONRequestBod
 // DeletePreAuthKey Delete pre-auth key
 //
 // Corresponds with DELETE /api/v1/preauthkey (the `DeletePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) DeletePreAuthKey(ctx context.Context, params *DeletePreAuthKeyParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeletePreAuthKeyRequest(c.Server, params)
 	if err != nil {
@@ -2365,6 +2763,8 @@ func (c *Client) DeletePreAuthKey(ctx context.Context, params *DeletePreAuthKeyP
 // ListPreAuthKeys List pre-auth keys
 //
 // Corresponds with GET /api/v1/preauthkey (the `ListPreAuthKeys` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ListPreAuthKeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListPreAuthKeysRequest(c.Server)
 	if err != nil {
@@ -2382,6 +2782,8 @@ func (c *Client) ListPreAuthKeys(ctx context.Context, reqEditors ...RequestEdito
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/preauthkey (the `CreatePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) CreatePreAuthKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreatePreAuthKeyRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -2399,6 +2801,8 @@ func (c *Client) CreatePreAuthKeyWithBody(ctx context.Context, contentType strin
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/preauthkey (the `CreatePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) CreatePreAuthKey(ctx context.Context, body CreatePreAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreatePreAuthKeyRequest(c.Server, body)
 	if err != nil {
@@ -2416,6 +2820,8 @@ func (c *Client) CreatePreAuthKey(ctx context.Context, body CreatePreAuthKeyJSON
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/preauthkey/expire (the `ExpirePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ExpirePreAuthKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExpirePreAuthKeyRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -2433,6 +2839,8 @@ func (c *Client) ExpirePreAuthKeyWithBody(ctx context.Context, contentType strin
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/preauthkey/expire (the `ExpirePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ExpirePreAuthKey(ctx context.Context, body ExpirePreAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExpirePreAuthKeyRequest(c.Server, body)
 	if err != nil {
@@ -2448,6 +2856,8 @@ func (c *Client) ExpirePreAuthKey(ctx context.Context, body ExpirePreAuthKeyJSON
 // ListUsers List users
 //
 // Corresponds with GET /api/v1/user (the `ListUsers` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) ListUsers(ctx context.Context, params *ListUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListUsersRequest(c.Server, params)
 	if err != nil {
@@ -2465,6 +2875,8 @@ func (c *Client) ListUsers(ctx context.Context, params *ListUsersParams, reqEdit
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/user (the `CreateUser` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) CreateUserWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateUserRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -2482,6 +2894,8 @@ func (c *Client) CreateUserWithBody(ctx context.Context, contentType string, bod
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/user (the `CreateUser` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) CreateUser(ctx context.Context, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateUserRequest(c.Server, body)
 	if err != nil {
@@ -2497,6 +2911,8 @@ func (c *Client) CreateUser(ctx context.Context, body CreateUserJSONRequestBody,
 // DeleteUser Delete user
 //
 // Corresponds with DELETE /api/v1/user/{id} (the `DeleteUser` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) DeleteUser(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteUserRequest(c.Server, id)
 	if err != nil {
@@ -2512,6 +2928,8 @@ func (c *Client) DeleteUser(ctx context.Context, id string, reqEditors ...Reques
 // RenameUser Rename user
 //
 // Corresponds with POST /api/v1/user/{oldId}/rename/{newName} (the `RenameUser` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *Client) RenameUser(ctx context.Context, oldId string, newName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRenameUserRequest(c.Server, oldId, newName)
 	if err != nil {
@@ -2525,6 +2943,8 @@ func (c *Client) RenameUser(ctx context.Context, oldId string, newName string, r
 }
 
 // NewListApiKeysRequest constructs an http.Request for the ListApiKeys method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewListApiKeysRequest(server string) (*http.Request, error) {
 	var err error
 
@@ -2552,6 +2972,8 @@ func NewListApiKeysRequest(server string) (*http.Request, error) {
 }
 
 // NewCreateApiKeyRequest calls the generic CreateApiKey builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewCreateApiKeyRequest(server string, body CreateApiKeyJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -2563,6 +2985,8 @@ func NewCreateApiKeyRequest(server string, body CreateApiKeyJSONRequestBody) (*h
 }
 
 // NewCreateApiKeyRequestWithBody constructs an http.Request for the CreateApiKey method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewCreateApiKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -2592,6 +3016,8 @@ func NewCreateApiKeyRequestWithBody(server string, contentType string, body io.R
 }
 
 // NewExpireApiKeyRequest calls the generic ExpireApiKey builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewExpireApiKeyRequest(server string, body ExpireApiKeyJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -2603,6 +3029,8 @@ func NewExpireApiKeyRequest(server string, body ExpireApiKeyJSONRequestBody) (*h
 }
 
 // NewExpireApiKeyRequestWithBody constructs an http.Request for the ExpireApiKey method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewExpireApiKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -2632,6 +3060,8 @@ func NewExpireApiKeyRequestWithBody(server string, contentType string, body io.R
 }
 
 // NewDeleteApiKeyRequest constructs an http.Request for the DeleteApiKey method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewDeleteApiKeyRequest(server string, prefix string, params *DeleteApiKeyParams) (*http.Request, error) {
 	var err error
 
@@ -2693,6 +3123,8 @@ func NewDeleteApiKeyRequest(server string, prefix string, params *DeleteApiKeyPa
 }
 
 // NewAuthApproveRequest calls the generic AuthApprove builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewAuthApproveRequest(server string, body AuthApproveJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -2704,6 +3136,8 @@ func NewAuthApproveRequest(server string, body AuthApproveJSONRequestBody) (*htt
 }
 
 // NewAuthApproveRequestWithBody constructs an http.Request for the AuthApprove method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewAuthApproveRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -2733,6 +3167,8 @@ func NewAuthApproveRequestWithBody(server string, contentType string, body io.Re
 }
 
 // NewAuthRegisterRequest calls the generic AuthRegister builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewAuthRegisterRequest(server string, body AuthRegisterJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -2744,6 +3180,8 @@ func NewAuthRegisterRequest(server string, body AuthRegisterJSONRequestBody) (*h
 }
 
 // NewAuthRegisterRequestWithBody constructs an http.Request for the AuthRegister method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewAuthRegisterRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -2773,6 +3211,8 @@ func NewAuthRegisterRequestWithBody(server string, contentType string, body io.R
 }
 
 // NewAuthRejectRequest calls the generic AuthReject builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewAuthRejectRequest(server string, body AuthRejectJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -2784,6 +3224,8 @@ func NewAuthRejectRequest(server string, body AuthRejectJSONRequestBody) (*http.
 }
 
 // NewAuthRejectRequestWithBody constructs an http.Request for the AuthReject method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewAuthRejectRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -2813,6 +3255,8 @@ func NewAuthRejectRequestWithBody(server string, contentType string, body io.Rea
 }
 
 // NewDebugCreateNodeRequest calls the generic DebugCreateNode builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewDebugCreateNodeRequest(server string, body DebugCreateNodeJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -2824,6 +3268,8 @@ func NewDebugCreateNodeRequest(server string, body DebugCreateNodeJSONRequestBod
 }
 
 // NewDebugCreateNodeRequestWithBody constructs an http.Request for the DebugCreateNode method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewDebugCreateNodeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -2853,6 +3299,8 @@ func NewDebugCreateNodeRequestWithBody(server string, contentType string, body i
 }
 
 // NewHealthRequest constructs an http.Request for the Health method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewHealthRequest(server string) (*http.Request, error) {
 	var err error
 
@@ -2880,6 +3328,8 @@ func NewHealthRequest(server string) (*http.Request, error) {
 }
 
 // NewListNodesRequest constructs an http.Request for the ListNodes method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewListNodesRequest(server string, params *ListNodesParams) (*http.Request, error) {
 	var err error
 
@@ -2934,6 +3384,8 @@ func NewListNodesRequest(server string, params *ListNodesParams) (*http.Request,
 }
 
 // NewBackfillNodeIPsRequest constructs an http.Request for the BackfillNodeIPs method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewBackfillNodeIPsRequest(server string, params *BackfillNodeIPsParams) (*http.Request, error) {
 	var err error
 
@@ -2988,6 +3440,8 @@ func NewBackfillNodeIPsRequest(server string, params *BackfillNodeIPsParams) (*h
 }
 
 // NewRegisterNodeRequest constructs an http.Request for the RegisterNode method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewRegisterNodeRequest(server string, params *RegisterNodeParams) (*http.Request, error) {
 	var err error
 
@@ -3054,6 +3508,8 @@ func NewRegisterNodeRequest(server string, params *RegisterNodeParams) (*http.Re
 }
 
 // NewDeleteNodeRequest constructs an http.Request for the DeleteNode method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewDeleteNodeRequest(server string, nodeId string) (*http.Request, error) {
 	var err error
 
@@ -3088,6 +3544,8 @@ func NewDeleteNodeRequest(server string, nodeId string) (*http.Request, error) {
 }
 
 // NewGetNodeRequest constructs an http.Request for the GetNode method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewGetNodeRequest(server string, nodeId string) (*http.Request, error) {
 	var err error
 
@@ -3122,6 +3580,8 @@ func NewGetNodeRequest(server string, nodeId string) (*http.Request, error) {
 }
 
 // NewSetApprovedRoutesRequest calls the generic SetApprovedRoutes builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewSetApprovedRoutesRequest(server string, nodeId string, body SetApprovedRoutesJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -3133,6 +3593,8 @@ func NewSetApprovedRoutesRequest(server string, nodeId string, body SetApprovedR
 }
 
 // NewSetApprovedRoutesRequestWithBody constructs an http.Request for the SetApprovedRoutes method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewSetApprovedRoutesRequestWithBody(server string, nodeId string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -3169,6 +3631,8 @@ func NewSetApprovedRoutesRequestWithBody(server string, nodeId string, contentTy
 }
 
 // NewExpireNodeRequest calls the generic ExpireNode builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewExpireNodeRequest(server string, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -3180,6 +3644,8 @@ func NewExpireNodeRequest(server string, nodeId string, params *ExpireNodeParams
 }
 
 // NewExpireNodeRequestWithBody constructs an http.Request for the ExpireNode method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewExpireNodeRequestWithBody(server string, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -3255,6 +3721,8 @@ func NewExpireNodeRequestWithBody(server string, nodeId string, params *ExpireNo
 }
 
 // NewRenameNodeRequest constructs an http.Request for the RenameNode method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewRenameNodeRequest(server string, nodeId string, newName string) (*http.Request, error) {
 	var err error
 
@@ -3296,6 +3764,8 @@ func NewRenameNodeRequest(server string, nodeId string, newName string) (*http.R
 }
 
 // NewSetTagsRequest calls the generic SetTags builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewSetTagsRequest(server string, nodeId string, body SetTagsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -3307,6 +3777,8 @@ func NewSetTagsRequest(server string, nodeId string, body SetTagsJSONRequestBody
 }
 
 // NewSetTagsRequestWithBody constructs an http.Request for the SetTags method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewSetTagsRequestWithBody(server string, nodeId string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -3343,6 +3815,8 @@ func NewSetTagsRequestWithBody(server string, nodeId string, contentType string,
 }
 
 // NewGetPolicyRequest constructs an http.Request for the GetPolicy method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewGetPolicyRequest(server string) (*http.Request, error) {
 	var err error
 
@@ -3370,6 +3844,8 @@ func NewGetPolicyRequest(server string) (*http.Request, error) {
 }
 
 // NewSetPolicyRequest calls the generic SetPolicy builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewSetPolicyRequest(server string, body SetPolicyJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -3381,6 +3857,8 @@ func NewSetPolicyRequest(server string, body SetPolicyJSONRequestBody) (*http.Re
 }
 
 // NewSetPolicyRequestWithBody constructs an http.Request for the SetPolicy method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewSetPolicyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -3410,6 +3888,8 @@ func NewSetPolicyRequestWithBody(server string, contentType string, body io.Read
 }
 
 // NewCheckPolicyRequest calls the generic CheckPolicy builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewCheckPolicyRequest(server string, body CheckPolicyJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -3421,6 +3901,8 @@ func NewCheckPolicyRequest(server string, body CheckPolicyJSONRequestBody) (*htt
 }
 
 // NewCheckPolicyRequestWithBody constructs an http.Request for the CheckPolicy method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewCheckPolicyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -3450,6 +3932,8 @@ func NewCheckPolicyRequestWithBody(server string, contentType string, body io.Re
 }
 
 // NewDeletePreAuthKeyRequest constructs an http.Request for the DeletePreAuthKey method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewDeletePreAuthKeyRequest(server string, params *DeletePreAuthKeyParams) (*http.Request, error) {
 	var err error
 
@@ -3504,6 +3988,8 @@ func NewDeletePreAuthKeyRequest(server string, params *DeletePreAuthKeyParams) (
 }
 
 // NewListPreAuthKeysRequest constructs an http.Request for the ListPreAuthKeys method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewListPreAuthKeysRequest(server string) (*http.Request, error) {
 	var err error
 
@@ -3531,6 +4017,8 @@ func NewListPreAuthKeysRequest(server string) (*http.Request, error) {
 }
 
 // NewCreatePreAuthKeyRequest calls the generic CreatePreAuthKey builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewCreatePreAuthKeyRequest(server string, body CreatePreAuthKeyJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -3542,6 +4030,8 @@ func NewCreatePreAuthKeyRequest(server string, body CreatePreAuthKeyJSONRequestB
 }
 
 // NewCreatePreAuthKeyRequestWithBody constructs an http.Request for the CreatePreAuthKey method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewCreatePreAuthKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -3571,6 +4061,8 @@ func NewCreatePreAuthKeyRequestWithBody(server string, contentType string, body 
 }
 
 // NewExpirePreAuthKeyRequest calls the generic ExpirePreAuthKey builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewExpirePreAuthKeyRequest(server string, body ExpirePreAuthKeyJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -3582,6 +4074,8 @@ func NewExpirePreAuthKeyRequest(server string, body ExpirePreAuthKeyJSONRequestB
 }
 
 // NewExpirePreAuthKeyRequestWithBody constructs an http.Request for the ExpirePreAuthKey method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewExpirePreAuthKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -3611,6 +4105,8 @@ func NewExpirePreAuthKeyRequestWithBody(server string, contentType string, body 
 }
 
 // NewListUsersRequest constructs an http.Request for the ListUsers method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewListUsersRequest(server string, params *ListUsersParams) (*http.Request, error) {
 	var err error
 
@@ -3689,6 +4185,8 @@ func NewListUsersRequest(server string, params *ListUsersParams) (*http.Request,
 }
 
 // NewCreateUserRequest calls the generic CreateUser builder with application/json body
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewCreateUserRequest(server string, body CreateUserJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
@@ -3700,6 +4198,8 @@ func NewCreateUserRequest(server string, body CreateUserJSONRequestBody) (*http.
 }
 
 // NewCreateUserRequestWithBody constructs an http.Request for the CreateUser method, with any body, and a specified content type
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewCreateUserRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
@@ -3729,6 +4229,8 @@ func NewCreateUserRequestWithBody(server string, contentType string, body io.Rea
 }
 
 // NewDeleteUserRequest constructs an http.Request for the DeleteUser method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewDeleteUserRequest(server string, id string) (*http.Request, error) {
 	var err error
 
@@ -3763,6 +4265,8 @@ func NewDeleteUserRequest(server string, id string) (*http.Request, error) {
 }
 
 // NewRenameUserRequest constructs an http.Request for the RenameUser method
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewRenameUserRequest(server string, oldId string, newName string) (*http.Request, error) {
 	var err error
 
@@ -3818,12 +4322,16 @@ func (c *Client) applyEditors(ctx context.Context, req *http.Request, additional
 }
 
 // ClientWithResponses builds on ClientInterface to offer response payloads
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ClientWithResponses struct {
 	ClientInterface
 }
 
 // NewClientWithResponses creates a new ClientWithResponses, which wraps
 // Client with return type handling
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func NewClientWithResponses(server string, opts ...ClientOption) (*ClientWithResponses, error) {
 	client, err := NewClient(server, opts...)
 	if err != nil {
@@ -3833,6 +4341,8 @@ func NewClientWithResponses(server string, opts ...ClientOption) (*ClientWithRes
 }
 
 // WithBaseURL overrides the baseURL.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func WithBaseURL(baseURL string) ClientOption {
 	return func(c *Client) error {
 		newBaseURL, err := url.Parse(baseURL)
@@ -3845,6 +4355,8 @@ func WithBaseURL(baseURL string) ClientOption {
 }
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ClientWithResponsesInterface interface {
 
 	// ListApiKeysWithResponse List API keys
@@ -3852,6 +4364,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/apikey (the `ListApiKeys` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ListApiKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListApiKeysResponse, error)
 
 	// CreateApiKeyWithBodyWithResponse Create API key
@@ -3859,6 +4373,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/apikey (the `CreateApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreateApiKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateApiKeyResponse, error)
 
 	// CreateApiKeyWithResponse Create API key
@@ -3866,6 +4382,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/apikey (the `CreateApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreateApiKeyWithResponse(ctx context.Context, body CreateApiKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateApiKeyResponse, error)
 
 	// ExpireApiKeyWithBodyWithResponse Expire API key
@@ -3873,6 +4391,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/apikey/expire (the `ExpireApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpireApiKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpireApiKeyResponse, error)
 
 	// ExpireApiKeyWithResponse Expire API key
@@ -3880,6 +4400,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/apikey/expire (the `ExpireApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpireApiKeyWithResponse(ctx context.Context, body ExpireApiKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpireApiKeyResponse, error)
 
 	// DeleteApiKeyWithResponse Delete API key
@@ -3887,6 +4409,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/v1/apikey/{prefix} (the `DeleteApiKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DeleteApiKeyWithResponse(ctx context.Context, prefix string, params *DeleteApiKeyParams, reqEditors ...RequestEditorFn) (*DeleteApiKeyResponse, error)
 
 	// AuthApproveWithBodyWithResponse Approve a pending auth session
@@ -3894,6 +4418,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/approve (the `AuthApprove` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthApproveWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthApproveResponse, error)
 
 	// AuthApproveWithResponse Approve a pending auth session
@@ -3901,6 +4427,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/approve (the `AuthApprove` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthApproveWithResponse(ctx context.Context, body AuthApproveJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthApproveResponse, error)
 
 	// AuthRegisterWithBodyWithResponse Register node via auth flow
@@ -3908,6 +4436,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/register (the `AuthRegister` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthRegisterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthRegisterResponse, error)
 
 	// AuthRegisterWithResponse Register node via auth flow
@@ -3915,6 +4445,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/register (the `AuthRegister` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthRegisterWithResponse(ctx context.Context, body AuthRegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthRegisterResponse, error)
 
 	// AuthRejectWithBodyWithResponse Reject a pending auth session
@@ -3922,6 +4454,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthRejectWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthRejectResponse, error)
 
 	// AuthRejectWithResponse Reject a pending auth session
@@ -3929,6 +4463,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	AuthRejectWithResponse(ctx context.Context, body AuthRejectJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthRejectResponse, error)
 
 	// DebugCreateNodeWithBodyWithResponse Debug create node
@@ -3936,6 +4472,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/debug/node (the `DebugCreateNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DebugCreateNodeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DebugCreateNodeResponse, error)
 
 	// DebugCreateNodeWithResponse Debug create node
@@ -3943,6 +4481,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/debug/node (the `DebugCreateNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DebugCreateNodeWithResponse(ctx context.Context, body DebugCreateNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*DebugCreateNodeResponse, error)
 
 	// HealthWithResponse Health check
@@ -3952,6 +4492,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/health (the `Health` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	HealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthResponse, error)
 
 	// ListNodesWithResponse List nodes
@@ -3959,6 +4501,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/node (the `ListNodes` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ListNodesWithResponse(ctx context.Context, params *ListNodesParams, reqEditors ...RequestEditorFn) (*ListNodesResponse, error)
 
 	// BackfillNodeIPsWithResponse Backfill node IPs
@@ -3966,6 +4510,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/backfillips (the `BackfillNodeIPs` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	BackfillNodeIPsWithResponse(ctx context.Context, params *BackfillNodeIPsParams, reqEditors ...RequestEditorFn) (*BackfillNodeIPsResponse, error)
 
 	// RegisterNodeWithResponse Register node
@@ -3973,6 +4519,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/register (the `RegisterNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	RegisterNodeWithResponse(ctx context.Context, params *RegisterNodeParams, reqEditors ...RequestEditorFn) (*RegisterNodeResponse, error)
 
 	// DeleteNodeWithResponse Delete node
@@ -3980,6 +4528,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/v1/node/{nodeId} (the `DeleteNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DeleteNodeWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*DeleteNodeResponse, error)
 
 	// GetNodeWithResponse Get node
@@ -3987,6 +4537,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/node/{nodeId} (the `GetNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	GetNodeWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*GetNodeResponse, error)
 
 	// SetApprovedRoutesWithBodyWithResponse Set approved routes
@@ -3994,6 +4546,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/approve_routes (the `SetApprovedRoutes` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetApprovedRoutesWithBodyWithResponse(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetApprovedRoutesResponse, error)
 
 	// SetApprovedRoutesWithResponse Set approved routes
@@ -4001,6 +4555,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/approve_routes (the `SetApprovedRoutes` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetApprovedRoutesWithResponse(ctx context.Context, nodeId string, body SetApprovedRoutesJSONRequestBody, reqEditors ...RequestEditorFn) (*SetApprovedRoutesResponse, error)
 
 	// ExpireNodeWithBodyWithResponse Expire node
@@ -4008,6 +4564,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpireNodeWithBodyWithResponse(ctx context.Context, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error)
 
 	// ExpireNodeWithResponse Expire node
@@ -4015,6 +4573,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpireNodeWithResponse(ctx context.Context, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error)
 
 	// RenameNodeWithResponse Rename node
@@ -4022,6 +4582,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/rename/{newName} (the `RenameNode` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	RenameNodeWithResponse(ctx context.Context, nodeId string, newName string, reqEditors ...RequestEditorFn) (*RenameNodeResponse, error)
 
 	// SetTagsWithBodyWithResponse Set tags
@@ -4029,6 +4591,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/tags (the `SetTags` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetTagsWithBodyWithResponse(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetTagsResponse, error)
 
 	// SetTagsWithResponse Set tags
@@ -4036,6 +4600,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/node/{nodeId}/tags (the `SetTags` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetTagsWithResponse(ctx context.Context, nodeId string, body SetTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetTagsResponse, error)
 
 	// GetPolicyWithResponse Get policy
@@ -4043,6 +4609,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/policy (the `GetPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	GetPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPolicyResponse, error)
 
 	// SetPolicyWithBodyWithResponse Set policy
@@ -4050,6 +4618,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /api/v1/policy (the `SetPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetPolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPolicyResponse, error)
 
 	// SetPolicyWithResponse Set policy
@@ -4057,6 +4627,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /api/v1/policy (the `SetPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	SetPolicyWithResponse(ctx context.Context, body SetPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPolicyResponse, error)
 
 	// CheckPolicyWithBodyWithResponse Check policy
@@ -4066,6 +4638,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/policy/check (the `CheckPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CheckPolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckPolicyResponse, error)
 
 	// CheckPolicyWithResponse Check policy
@@ -4075,6 +4649,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/policy/check (the `CheckPolicy` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CheckPolicyWithResponse(ctx context.Context, body CheckPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckPolicyResponse, error)
 
 	// DeletePreAuthKeyWithResponse Delete pre-auth key
@@ -4082,6 +4658,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/v1/preauthkey (the `DeletePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DeletePreAuthKeyWithResponse(ctx context.Context, params *DeletePreAuthKeyParams, reqEditors ...RequestEditorFn) (*DeletePreAuthKeyResponse, error)
 
 	// ListPreAuthKeysWithResponse List pre-auth keys
@@ -4089,6 +4667,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/preauthkey (the `ListPreAuthKeys` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ListPreAuthKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPreAuthKeysResponse, error)
 
 	// CreatePreAuthKeyWithBodyWithResponse Create pre-auth key
@@ -4096,6 +4676,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/preauthkey (the `CreatePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreatePreAuthKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePreAuthKeyResponse, error)
 
 	// CreatePreAuthKeyWithResponse Create pre-auth key
@@ -4103,6 +4685,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/preauthkey (the `CreatePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreatePreAuthKeyWithResponse(ctx context.Context, body CreatePreAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePreAuthKeyResponse, error)
 
 	// ExpirePreAuthKeyWithBodyWithResponse Expire pre-auth key
@@ -4110,6 +4694,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/preauthkey/expire (the `ExpirePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpirePreAuthKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpirePreAuthKeyResponse, error)
 
 	// ExpirePreAuthKeyWithResponse Expire pre-auth key
@@ -4117,6 +4703,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/preauthkey/expire (the `ExpirePreAuthKey` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ExpirePreAuthKeyWithResponse(ctx context.Context, body ExpirePreAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpirePreAuthKeyResponse, error)
 
 	// ListUsersWithResponse List users
@@ -4124,6 +4712,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/user (the `ListUsers` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	ListUsersWithResponse(ctx context.Context, params *ListUsersParams, reqEditors ...RequestEditorFn) (*ListUsersResponse, error)
 
 	// CreateUserWithBodyWithResponse Create user
@@ -4131,6 +4721,8 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/user (the `CreateUser` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreateUserWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResponse, error)
 
 	// CreateUserWithResponse Create user
@@ -4138,6 +4730,8 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/user (the `CreateUser` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	CreateUserWithResponse(ctx context.Context, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResponse, error)
 
 	// DeleteUserWithResponse Delete user
@@ -4145,6 +4739,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/v1/user/{id} (the `DeleteUser` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	DeleteUserWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error)
 
 	// RenameUserWithResponse Rename user
@@ -4152,9 +4748,12 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/user/{oldId}/rename/{newName} (the `RenameUser` operationId).
+	//
+	// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 	RenameUserWithResponse(ctx context.Context, oldId string, newName string, reqEditors ...RequestEditorFn) (*RenameUserResponse, error)
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListApiKeysResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4165,21 +4764,29 @@ type ListApiKeysResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListApiKeysResponse) GetJSON200() *ListApiKeysOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListApiKeysResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListApiKeysResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListApiKeysResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4188,6 +4795,8 @@ func (r ListApiKeysResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListApiKeysResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4196,6 +4805,8 @@ func (r ListApiKeysResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListApiKeysResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4203,6 +4814,7 @@ func (r ListApiKeysResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreateApiKeyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4213,21 +4825,29 @@ type CreateApiKeyResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateApiKeyResponse) GetJSON200() *CreateApiKeyOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateApiKeyResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateApiKeyResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateApiKeyResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4236,6 +4856,8 @@ func (r CreateApiKeyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateApiKeyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4244,6 +4866,8 @@ func (r CreateApiKeyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateApiKeyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4251,6 +4875,7 @@ func (r CreateApiKeyResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpireApiKeyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4261,21 +4886,29 @@ type ExpireApiKeyResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireApiKeyResponse) GetJSON200() *ExpireApiKeyOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireApiKeyResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireApiKeyResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireApiKeyResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4284,6 +4917,8 @@ func (r ExpireApiKeyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireApiKeyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4292,6 +4927,8 @@ func (r ExpireApiKeyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireApiKeyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4299,6 +4936,7 @@ func (r ExpireApiKeyResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeleteApiKeyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4309,21 +4947,29 @@ type DeleteApiKeyResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteApiKeyResponse) GetJSON200() *DeleteApiKeyOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteApiKeyResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteApiKeyResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteApiKeyResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4332,6 +4978,8 @@ func (r DeleteApiKeyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteApiKeyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4340,6 +4988,8 @@ func (r DeleteApiKeyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteApiKeyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4347,6 +4997,7 @@ func (r DeleteApiKeyResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthApproveResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4357,21 +5008,29 @@ type AuthApproveResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthApproveResponse) GetJSON200() *AuthApproveOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthApproveResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthApproveResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthApproveResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4380,6 +5039,8 @@ func (r AuthApproveResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthApproveResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4388,6 +5049,8 @@ func (r AuthApproveResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthApproveResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4395,6 +5058,7 @@ func (r AuthApproveResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthRegisterResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4405,21 +5069,29 @@ type AuthRegisterResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRegisterResponse) GetJSON200() *AuthRegisterOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRegisterResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRegisterResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRegisterResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4428,6 +5100,8 @@ func (r AuthRegisterResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRegisterResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4436,6 +5110,8 @@ func (r AuthRegisterResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRegisterResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4443,6 +5119,7 @@ func (r AuthRegisterResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type AuthRejectResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4453,21 +5130,29 @@ type AuthRejectResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRejectResponse) GetJSON200() *AuthRejectOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRejectResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRejectResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRejectResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4476,6 +5161,8 @@ func (r AuthRejectResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRejectResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4484,6 +5171,8 @@ func (r AuthRejectResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r AuthRejectResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4491,6 +5180,7 @@ func (r AuthRejectResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DebugCreateNodeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4501,21 +5191,29 @@ type DebugCreateNodeResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DebugCreateNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DebugCreateNodeResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DebugCreateNodeResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DebugCreateNodeResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4524,6 +5222,8 @@ func (r DebugCreateNodeResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DebugCreateNodeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4532,6 +5232,8 @@ func (r DebugCreateNodeResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DebugCreateNodeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4539,6 +5241,7 @@ func (r DebugCreateNodeResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type HealthResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4549,21 +5252,29 @@ type HealthResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r HealthResponse) GetJSON200() *HealthResponseBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r HealthResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r HealthResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r HealthResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4572,6 +5283,8 @@ func (r HealthResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r HealthResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4580,6 +5293,8 @@ func (r HealthResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r HealthResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4587,6 +5302,7 @@ func (r HealthResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListNodesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4597,21 +5313,29 @@ type ListNodesResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListNodesResponse) GetJSON200() *ListNodesOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListNodesResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListNodesResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListNodesResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4620,6 +5344,8 @@ func (r ListNodesResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListNodesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4628,6 +5354,8 @@ func (r ListNodesResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListNodesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4635,6 +5363,7 @@ func (r ListNodesResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type BackfillNodeIPsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4645,21 +5374,29 @@ type BackfillNodeIPsResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r BackfillNodeIPsResponse) GetJSON200() *BackfillNodeIPsOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r BackfillNodeIPsResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r BackfillNodeIPsResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r BackfillNodeIPsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4668,6 +5405,8 @@ func (r BackfillNodeIPsResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r BackfillNodeIPsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4676,6 +5415,8 @@ func (r BackfillNodeIPsResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r BackfillNodeIPsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4683,6 +5424,7 @@ func (r BackfillNodeIPsResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type RegisterNodeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4693,21 +5435,29 @@ type RegisterNodeResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RegisterNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RegisterNodeResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RegisterNodeResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RegisterNodeResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4716,6 +5466,8 @@ func (r RegisterNodeResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RegisterNodeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4724,6 +5476,8 @@ func (r RegisterNodeResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RegisterNodeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4731,6 +5485,7 @@ func (r RegisterNodeResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeleteNodeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4741,21 +5496,29 @@ type DeleteNodeResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteNodeResponse) GetJSON200() *DeleteNodeOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteNodeResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteNodeResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteNodeResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4764,6 +5527,8 @@ func (r DeleteNodeResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteNodeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4772,6 +5537,8 @@ func (r DeleteNodeResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteNodeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4779,6 +5546,7 @@ func (r DeleteNodeResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type GetNodeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4789,21 +5557,29 @@ type GetNodeResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetNodeResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetNodeResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetNodeResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4812,6 +5588,8 @@ func (r GetNodeResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetNodeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4820,6 +5598,8 @@ func (r GetNodeResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetNodeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4827,6 +5607,7 @@ func (r GetNodeResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type SetApprovedRoutesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4837,21 +5618,29 @@ type SetApprovedRoutesResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetApprovedRoutesResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetApprovedRoutesResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetApprovedRoutesResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetApprovedRoutesResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4860,6 +5649,8 @@ func (r SetApprovedRoutesResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetApprovedRoutesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4868,6 +5659,8 @@ func (r SetApprovedRoutesResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetApprovedRoutesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4875,6 +5668,7 @@ func (r SetApprovedRoutesResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpireNodeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4885,21 +5679,29 @@ type ExpireNodeResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireNodeResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireNodeResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireNodeResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4908,6 +5710,8 @@ func (r ExpireNodeResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireNodeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4916,6 +5720,8 @@ func (r ExpireNodeResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpireNodeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4923,6 +5729,7 @@ func (r ExpireNodeResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type RenameNodeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4933,21 +5740,29 @@ type RenameNodeResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameNodeResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameNodeResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameNodeResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameNodeResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -4956,6 +5771,8 @@ func (r RenameNodeResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameNodeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -4964,6 +5781,8 @@ func (r RenameNodeResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameNodeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -4971,6 +5790,7 @@ func (r RenameNodeResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type SetTagsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4981,21 +5801,29 @@ type SetTagsResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetTagsResponse) GetJSON200() *NodeOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetTagsResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetTagsResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetTagsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5004,6 +5832,8 @@ func (r SetTagsResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetTagsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5012,6 +5842,8 @@ func (r SetTagsResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetTagsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5019,6 +5851,7 @@ func (r SetTagsResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type GetPolicyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5029,21 +5862,29 @@ type GetPolicyResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetPolicyResponse) GetJSON200() *PolicyResponseBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetPolicyResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetPolicyResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetPolicyResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5052,6 +5893,8 @@ func (r GetPolicyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetPolicyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5060,6 +5903,8 @@ func (r GetPolicyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r GetPolicyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5067,6 +5912,7 @@ func (r GetPolicyResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type SetPolicyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5077,21 +5923,29 @@ type SetPolicyResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetPolicyResponse) GetJSON200() *PolicyResponseBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetPolicyResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetPolicyResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetPolicyResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5100,6 +5954,8 @@ func (r SetPolicyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetPolicyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5108,6 +5964,8 @@ func (r SetPolicyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r SetPolicyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5115,6 +5973,7 @@ func (r SetPolicyResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CheckPolicyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5125,21 +5984,29 @@ type CheckPolicyResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CheckPolicyResponse) GetJSON200() *CheckPolicyOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CheckPolicyResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CheckPolicyResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CheckPolicyResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5148,6 +6015,8 @@ func (r CheckPolicyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CheckPolicyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5156,6 +6025,8 @@ func (r CheckPolicyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CheckPolicyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5163,6 +6034,7 @@ func (r CheckPolicyResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeletePreAuthKeyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5173,21 +6045,29 @@ type DeletePreAuthKeyResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeletePreAuthKeyResponse) GetJSON200() *DeletePreAuthKeyOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeletePreAuthKeyResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeletePreAuthKeyResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeletePreAuthKeyResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5196,6 +6076,8 @@ func (r DeletePreAuthKeyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeletePreAuthKeyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5204,6 +6086,8 @@ func (r DeletePreAuthKeyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeletePreAuthKeyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5211,6 +6095,7 @@ func (r DeletePreAuthKeyResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListPreAuthKeysResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5221,21 +6106,29 @@ type ListPreAuthKeysResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListPreAuthKeysResponse) GetJSON200() *ListPreAuthKeysOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListPreAuthKeysResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListPreAuthKeysResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListPreAuthKeysResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5244,6 +6137,8 @@ func (r ListPreAuthKeysResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListPreAuthKeysResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5252,6 +6147,8 @@ func (r ListPreAuthKeysResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListPreAuthKeysResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5259,6 +6156,7 @@ func (r ListPreAuthKeysResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreatePreAuthKeyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5269,21 +6167,29 @@ type CreatePreAuthKeyResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreatePreAuthKeyResponse) GetJSON200() *PreAuthKeyOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreatePreAuthKeyResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreatePreAuthKeyResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreatePreAuthKeyResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5292,6 +6198,8 @@ func (r CreatePreAuthKeyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreatePreAuthKeyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5300,6 +6208,8 @@ func (r CreatePreAuthKeyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreatePreAuthKeyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5307,6 +6217,7 @@ func (r CreatePreAuthKeyResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ExpirePreAuthKeyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5317,21 +6228,29 @@ type ExpirePreAuthKeyResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpirePreAuthKeyResponse) GetJSON200() *ExpirePreAuthKeyOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpirePreAuthKeyResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpirePreAuthKeyResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpirePreAuthKeyResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5340,6 +6259,8 @@ func (r ExpirePreAuthKeyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpirePreAuthKeyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5348,6 +6269,8 @@ func (r ExpirePreAuthKeyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ExpirePreAuthKeyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5355,6 +6278,7 @@ func (r ExpirePreAuthKeyResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type ListUsersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5365,21 +6289,29 @@ type ListUsersResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListUsersResponse) GetJSON200() *ListUsersOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListUsersResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListUsersResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListUsersResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5388,6 +6320,8 @@ func (r ListUsersResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListUsersResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5396,6 +6330,8 @@ func (r ListUsersResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r ListUsersResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5403,6 +6339,7 @@ func (r ListUsersResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type CreateUserResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5415,26 +6352,36 @@ type CreateUserResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateUserResponse) GetJSON200() *UserOutputBody {
 	return r.JSON200
 }
 
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateUserResponse) GetJSON409() *Status {
 	return r.JSON409
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateUserResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateUserResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateUserResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5443,6 +6390,8 @@ func (r CreateUserResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateUserResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5451,6 +6400,8 @@ func (r CreateUserResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r CreateUserResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5458,6 +6409,7 @@ func (r CreateUserResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type DeleteUserResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5468,21 +6420,29 @@ type DeleteUserResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteUserResponse) GetJSON200() *DeleteUserOutputBody {
 	return r.JSON200
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteUserResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteUserResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteUserResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5491,6 +6451,8 @@ func (r DeleteUserResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteUserResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5499,6 +6461,8 @@ func (r DeleteUserResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r DeleteUserResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5506,6 +6470,7 @@ func (r DeleteUserResponse) ContentType() string {
 	return ""
 }
 
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 type RenameUserResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5518,26 +6483,36 @@ type RenameUserResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameUserResponse) GetJSON200() *UserOutputBody {
 	return r.JSON200
 }
 
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameUserResponse) GetJSON409() *Status {
 	return r.JSON409
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameUserResponse) GetJSONDefault() *Status {
 	return r.JSONDefault
 }
 
 // GetBody returns the raw response body bytes
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameUserResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameUserResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
@@ -5546,6 +6521,8 @@ func (r RenameUserResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameUserResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
@@ -5554,6 +6531,8 @@ func (r RenameUserResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (r RenameUserResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
@@ -5566,6 +6545,8 @@ func (r RenameUserResponse) ContentType() string {
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/apikey (the `ListApiKeys` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ListApiKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListApiKeysResponse, error) {
 	rsp, err := c.ListApiKeys(ctx, reqEditors...)
 	if err != nil {
@@ -5579,6 +6560,8 @@ func (c *ClientWithResponses) ListApiKeysWithResponse(ctx context.Context, reqEd
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/apikey (the `CreateApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) CreateApiKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateApiKeyResponse, error) {
 	rsp, err := c.CreateApiKeyWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -5592,6 +6575,8 @@ func (c *ClientWithResponses) CreateApiKeyWithBodyWithResponse(ctx context.Conte
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/apikey (the `CreateApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) CreateApiKeyWithResponse(ctx context.Context, body CreateApiKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateApiKeyResponse, error) {
 	rsp, err := c.CreateApiKey(ctx, body, reqEditors...)
 	if err != nil {
@@ -5605,6 +6590,8 @@ func (c *ClientWithResponses) CreateApiKeyWithResponse(ctx context.Context, body
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/apikey/expire (the `ExpireApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ExpireApiKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpireApiKeyResponse, error) {
 	rsp, err := c.ExpireApiKeyWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -5618,6 +6605,8 @@ func (c *ClientWithResponses) ExpireApiKeyWithBodyWithResponse(ctx context.Conte
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/apikey/expire (the `ExpireApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ExpireApiKeyWithResponse(ctx context.Context, body ExpireApiKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpireApiKeyResponse, error) {
 	rsp, err := c.ExpireApiKey(ctx, body, reqEditors...)
 	if err != nil {
@@ -5631,6 +6620,8 @@ func (c *ClientWithResponses) ExpireApiKeyWithResponse(ctx context.Context, body
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /api/v1/apikey/{prefix} (the `DeleteApiKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) DeleteApiKeyWithResponse(ctx context.Context, prefix string, params *DeleteApiKeyParams, reqEditors ...RequestEditorFn) (*DeleteApiKeyResponse, error) {
 	rsp, err := c.DeleteApiKey(ctx, prefix, params, reqEditors...)
 	if err != nil {
@@ -5644,6 +6635,8 @@ func (c *ClientWithResponses) DeleteApiKeyWithResponse(ctx context.Context, pref
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/approve (the `AuthApprove` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) AuthApproveWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthApproveResponse, error) {
 	rsp, err := c.AuthApproveWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -5657,6 +6650,8 @@ func (c *ClientWithResponses) AuthApproveWithBodyWithResponse(ctx context.Contex
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/approve (the `AuthApprove` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) AuthApproveWithResponse(ctx context.Context, body AuthApproveJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthApproveResponse, error) {
 	rsp, err := c.AuthApprove(ctx, body, reqEditors...)
 	if err != nil {
@@ -5670,6 +6665,8 @@ func (c *ClientWithResponses) AuthApproveWithResponse(ctx context.Context, body 
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/register (the `AuthRegister` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) AuthRegisterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthRegisterResponse, error) {
 	rsp, err := c.AuthRegisterWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -5683,6 +6680,8 @@ func (c *ClientWithResponses) AuthRegisterWithBodyWithResponse(ctx context.Conte
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/register (the `AuthRegister` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) AuthRegisterWithResponse(ctx context.Context, body AuthRegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthRegisterResponse, error) {
 	rsp, err := c.AuthRegister(ctx, body, reqEditors...)
 	if err != nil {
@@ -5696,6 +6695,8 @@ func (c *ClientWithResponses) AuthRegisterWithResponse(ctx context.Context, body
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) AuthRejectWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthRejectResponse, error) {
 	rsp, err := c.AuthRejectWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -5709,6 +6710,8 @@ func (c *ClientWithResponses) AuthRejectWithBodyWithResponse(ctx context.Context
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/reject (the `AuthReject` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) AuthRejectWithResponse(ctx context.Context, body AuthRejectJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthRejectResponse, error) {
 	rsp, err := c.AuthReject(ctx, body, reqEditors...)
 	if err != nil {
@@ -5722,6 +6725,8 @@ func (c *ClientWithResponses) AuthRejectWithResponse(ctx context.Context, body A
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/debug/node (the `DebugCreateNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) DebugCreateNodeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DebugCreateNodeResponse, error) {
 	rsp, err := c.DebugCreateNodeWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -5735,6 +6740,8 @@ func (c *ClientWithResponses) DebugCreateNodeWithBodyWithResponse(ctx context.Co
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/debug/node (the `DebugCreateNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) DebugCreateNodeWithResponse(ctx context.Context, body DebugCreateNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*DebugCreateNodeResponse, error) {
 	rsp, err := c.DebugCreateNode(ctx, body, reqEditors...)
 	if err != nil {
@@ -5750,6 +6757,8 @@ func (c *ClientWithResponses) DebugCreateNodeWithResponse(ctx context.Context, b
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/health (the `Health` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) HealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthResponse, error) {
 	rsp, err := c.Health(ctx, reqEditors...)
 	if err != nil {
@@ -5763,6 +6772,8 @@ func (c *ClientWithResponses) HealthWithResponse(ctx context.Context, reqEditors
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/node (the `ListNodes` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ListNodesWithResponse(ctx context.Context, params *ListNodesParams, reqEditors ...RequestEditorFn) (*ListNodesResponse, error) {
 	rsp, err := c.ListNodes(ctx, params, reqEditors...)
 	if err != nil {
@@ -5776,6 +6787,8 @@ func (c *ClientWithResponses) ListNodesWithResponse(ctx context.Context, params 
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/backfillips (the `BackfillNodeIPs` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) BackfillNodeIPsWithResponse(ctx context.Context, params *BackfillNodeIPsParams, reqEditors ...RequestEditorFn) (*BackfillNodeIPsResponse, error) {
 	rsp, err := c.BackfillNodeIPs(ctx, params, reqEditors...)
 	if err != nil {
@@ -5789,6 +6802,8 @@ func (c *ClientWithResponses) BackfillNodeIPsWithResponse(ctx context.Context, p
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/register (the `RegisterNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) RegisterNodeWithResponse(ctx context.Context, params *RegisterNodeParams, reqEditors ...RequestEditorFn) (*RegisterNodeResponse, error) {
 	rsp, err := c.RegisterNode(ctx, params, reqEditors...)
 	if err != nil {
@@ -5802,6 +6817,8 @@ func (c *ClientWithResponses) RegisterNodeWithResponse(ctx context.Context, para
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /api/v1/node/{nodeId} (the `DeleteNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) DeleteNodeWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*DeleteNodeResponse, error) {
 	rsp, err := c.DeleteNode(ctx, nodeId, reqEditors...)
 	if err != nil {
@@ -5815,6 +6832,8 @@ func (c *ClientWithResponses) DeleteNodeWithResponse(ctx context.Context, nodeId
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/node/{nodeId} (the `GetNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) GetNodeWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*GetNodeResponse, error) {
 	rsp, err := c.GetNode(ctx, nodeId, reqEditors...)
 	if err != nil {
@@ -5828,6 +6847,8 @@ func (c *ClientWithResponses) GetNodeWithResponse(ctx context.Context, nodeId st
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/{nodeId}/approve_routes (the `SetApprovedRoutes` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) SetApprovedRoutesWithBodyWithResponse(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetApprovedRoutesResponse, error) {
 	rsp, err := c.SetApprovedRoutesWithBody(ctx, nodeId, contentType, body, reqEditors...)
 	if err != nil {
@@ -5841,6 +6862,8 @@ func (c *ClientWithResponses) SetApprovedRoutesWithBodyWithResponse(ctx context.
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/{nodeId}/approve_routes (the `SetApprovedRoutes` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) SetApprovedRoutesWithResponse(ctx context.Context, nodeId string, body SetApprovedRoutesJSONRequestBody, reqEditors ...RequestEditorFn) (*SetApprovedRoutesResponse, error) {
 	rsp, err := c.SetApprovedRoutes(ctx, nodeId, body, reqEditors...)
 	if err != nil {
@@ -5854,6 +6877,8 @@ func (c *ClientWithResponses) SetApprovedRoutesWithResponse(ctx context.Context,
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ExpireNodeWithBodyWithResponse(ctx context.Context, nodeId string, params *ExpireNodeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error) {
 	rsp, err := c.ExpireNodeWithBody(ctx, nodeId, params, contentType, body, reqEditors...)
 	if err != nil {
@@ -5867,6 +6892,8 @@ func (c *ClientWithResponses) ExpireNodeWithBodyWithResponse(ctx context.Context
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/{nodeId}/expire (the `ExpireNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ExpireNodeWithResponse(ctx context.Context, nodeId string, params *ExpireNodeParams, body ExpireNodeJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpireNodeResponse, error) {
 	rsp, err := c.ExpireNode(ctx, nodeId, params, body, reqEditors...)
 	if err != nil {
@@ -5880,6 +6907,8 @@ func (c *ClientWithResponses) ExpireNodeWithResponse(ctx context.Context, nodeId
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/{nodeId}/rename/{newName} (the `RenameNode` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) RenameNodeWithResponse(ctx context.Context, nodeId string, newName string, reqEditors ...RequestEditorFn) (*RenameNodeResponse, error) {
 	rsp, err := c.RenameNode(ctx, nodeId, newName, reqEditors...)
 	if err != nil {
@@ -5893,6 +6922,8 @@ func (c *ClientWithResponses) RenameNodeWithResponse(ctx context.Context, nodeId
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/{nodeId}/tags (the `SetTags` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) SetTagsWithBodyWithResponse(ctx context.Context, nodeId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetTagsResponse, error) {
 	rsp, err := c.SetTagsWithBody(ctx, nodeId, contentType, body, reqEditors...)
 	if err != nil {
@@ -5906,6 +6937,8 @@ func (c *ClientWithResponses) SetTagsWithBodyWithResponse(ctx context.Context, n
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/node/{nodeId}/tags (the `SetTags` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) SetTagsWithResponse(ctx context.Context, nodeId string, body SetTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetTagsResponse, error) {
 	rsp, err := c.SetTags(ctx, nodeId, body, reqEditors...)
 	if err != nil {
@@ -5919,6 +6952,8 @@ func (c *ClientWithResponses) SetTagsWithResponse(ctx context.Context, nodeId st
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/policy (the `GetPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) GetPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPolicyResponse, error) {
 	rsp, err := c.GetPolicy(ctx, reqEditors...)
 	if err != nil {
@@ -5932,6 +6967,8 @@ func (c *ClientWithResponses) GetPolicyWithResponse(ctx context.Context, reqEdit
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PUT /api/v1/policy (the `SetPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) SetPolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPolicyResponse, error) {
 	rsp, err := c.SetPolicyWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -5945,6 +6982,8 @@ func (c *ClientWithResponses) SetPolicyWithBodyWithResponse(ctx context.Context,
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PUT /api/v1/policy (the `SetPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) SetPolicyWithResponse(ctx context.Context, body SetPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPolicyResponse, error) {
 	rsp, err := c.SetPolicy(ctx, body, reqEditors...)
 	if err != nil {
@@ -5960,6 +6999,8 @@ func (c *ClientWithResponses) SetPolicyWithResponse(ctx context.Context, body Se
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/policy/check (the `CheckPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) CheckPolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckPolicyResponse, error) {
 	rsp, err := c.CheckPolicyWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -5975,6 +7016,8 @@ func (c *ClientWithResponses) CheckPolicyWithBodyWithResponse(ctx context.Contex
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/policy/check (the `CheckPolicy` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) CheckPolicyWithResponse(ctx context.Context, body CheckPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckPolicyResponse, error) {
 	rsp, err := c.CheckPolicy(ctx, body, reqEditors...)
 	if err != nil {
@@ -5988,6 +7031,8 @@ func (c *ClientWithResponses) CheckPolicyWithResponse(ctx context.Context, body 
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /api/v1/preauthkey (the `DeletePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) DeletePreAuthKeyWithResponse(ctx context.Context, params *DeletePreAuthKeyParams, reqEditors ...RequestEditorFn) (*DeletePreAuthKeyResponse, error) {
 	rsp, err := c.DeletePreAuthKey(ctx, params, reqEditors...)
 	if err != nil {
@@ -6001,6 +7046,8 @@ func (c *ClientWithResponses) DeletePreAuthKeyWithResponse(ctx context.Context, 
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/preauthkey (the `ListPreAuthKeys` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ListPreAuthKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPreAuthKeysResponse, error) {
 	rsp, err := c.ListPreAuthKeys(ctx, reqEditors...)
 	if err != nil {
@@ -6014,6 +7061,8 @@ func (c *ClientWithResponses) ListPreAuthKeysWithResponse(ctx context.Context, r
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/preauthkey (the `CreatePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) CreatePreAuthKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePreAuthKeyResponse, error) {
 	rsp, err := c.CreatePreAuthKeyWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -6027,6 +7076,8 @@ func (c *ClientWithResponses) CreatePreAuthKeyWithBodyWithResponse(ctx context.C
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/preauthkey (the `CreatePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) CreatePreAuthKeyWithResponse(ctx context.Context, body CreatePreAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePreAuthKeyResponse, error) {
 	rsp, err := c.CreatePreAuthKey(ctx, body, reqEditors...)
 	if err != nil {
@@ -6040,6 +7091,8 @@ func (c *ClientWithResponses) CreatePreAuthKeyWithResponse(ctx context.Context, 
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/preauthkey/expire (the `ExpirePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ExpirePreAuthKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExpirePreAuthKeyResponse, error) {
 	rsp, err := c.ExpirePreAuthKeyWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -6053,6 +7106,8 @@ func (c *ClientWithResponses) ExpirePreAuthKeyWithBodyWithResponse(ctx context.C
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/preauthkey/expire (the `ExpirePreAuthKey` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ExpirePreAuthKeyWithResponse(ctx context.Context, body ExpirePreAuthKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*ExpirePreAuthKeyResponse, error) {
 	rsp, err := c.ExpirePreAuthKey(ctx, body, reqEditors...)
 	if err != nil {
@@ -6066,6 +7121,8 @@ func (c *ClientWithResponses) ExpirePreAuthKeyWithResponse(ctx context.Context, 
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/user (the `ListUsers` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, params *ListUsersParams, reqEditors ...RequestEditorFn) (*ListUsersResponse, error) {
 	rsp, err := c.ListUsers(ctx, params, reqEditors...)
 	if err != nil {
@@ -6079,6 +7136,8 @@ func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, params 
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/user (the `CreateUser` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) CreateUserWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResponse, error) {
 	rsp, err := c.CreateUserWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -6092,6 +7151,8 @@ func (c *ClientWithResponses) CreateUserWithBodyWithResponse(ctx context.Context
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/user (the `CreateUser` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) CreateUserWithResponse(ctx context.Context, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResponse, error) {
 	rsp, err := c.CreateUser(ctx, body, reqEditors...)
 	if err != nil {
@@ -6105,6 +7166,8 @@ func (c *ClientWithResponses) CreateUserWithResponse(ctx context.Context, body C
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /api/v1/user/{id} (the `DeleteUser` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) DeleteUserWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error) {
 	rsp, err := c.DeleteUser(ctx, id, reqEditors...)
 	if err != nil {
@@ -6118,6 +7181,8 @@ func (c *ClientWithResponses) DeleteUserWithResponse(ctx context.Context, id str
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/user/{oldId}/rename/{newName} (the `RenameUser` operationId).
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func (c *ClientWithResponses) RenameUserWithResponse(ctx context.Context, oldId string, newName string, reqEditors ...RequestEditorFn) (*RenameUserResponse, error) {
 	rsp, err := c.RenameUser(ctx, oldId, newName, reqEditors...)
 	if err != nil {
@@ -6127,6 +7192,8 @@ func (c *ClientWithResponses) RenameUserWithResponse(ctx context.Context, oldId 
 }
 
 // ParseListApiKeysResponse parses an HTTP response from a ListApiKeysWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseListApiKeysResponse(rsp *http.Response) (*ListApiKeysResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6160,6 +7227,8 @@ func ParseListApiKeysResponse(rsp *http.Response) (*ListApiKeysResponse, error) 
 }
 
 // ParseCreateApiKeyResponse parses an HTTP response from a CreateApiKeyWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseCreateApiKeyResponse(rsp *http.Response) (*CreateApiKeyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6193,6 +7262,8 @@ func ParseCreateApiKeyResponse(rsp *http.Response) (*CreateApiKeyResponse, error
 }
 
 // ParseExpireApiKeyResponse parses an HTTP response from a ExpireApiKeyWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseExpireApiKeyResponse(rsp *http.Response) (*ExpireApiKeyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6226,6 +7297,8 @@ func ParseExpireApiKeyResponse(rsp *http.Response) (*ExpireApiKeyResponse, error
 }
 
 // ParseDeleteApiKeyResponse parses an HTTP response from a DeleteApiKeyWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseDeleteApiKeyResponse(rsp *http.Response) (*DeleteApiKeyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6259,6 +7332,8 @@ func ParseDeleteApiKeyResponse(rsp *http.Response) (*DeleteApiKeyResponse, error
 }
 
 // ParseAuthApproveResponse parses an HTTP response from a AuthApproveWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseAuthApproveResponse(rsp *http.Response) (*AuthApproveResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6292,6 +7367,8 @@ func ParseAuthApproveResponse(rsp *http.Response) (*AuthApproveResponse, error) 
 }
 
 // ParseAuthRegisterResponse parses an HTTP response from a AuthRegisterWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseAuthRegisterResponse(rsp *http.Response) (*AuthRegisterResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6325,6 +7402,8 @@ func ParseAuthRegisterResponse(rsp *http.Response) (*AuthRegisterResponse, error
 }
 
 // ParseAuthRejectResponse parses an HTTP response from a AuthRejectWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseAuthRejectResponse(rsp *http.Response) (*AuthRejectResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6358,6 +7437,8 @@ func ParseAuthRejectResponse(rsp *http.Response) (*AuthRejectResponse, error) {
 }
 
 // ParseDebugCreateNodeResponse parses an HTTP response from a DebugCreateNodeWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseDebugCreateNodeResponse(rsp *http.Response) (*DebugCreateNodeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6391,6 +7472,8 @@ func ParseDebugCreateNodeResponse(rsp *http.Response) (*DebugCreateNodeResponse,
 }
 
 // ParseHealthResponse parses an HTTP response from a HealthWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseHealthResponse(rsp *http.Response) (*HealthResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6424,6 +7507,8 @@ func ParseHealthResponse(rsp *http.Response) (*HealthResponse, error) {
 }
 
 // ParseListNodesResponse parses an HTTP response from a ListNodesWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseListNodesResponse(rsp *http.Response) (*ListNodesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6457,6 +7542,8 @@ func ParseListNodesResponse(rsp *http.Response) (*ListNodesResponse, error) {
 }
 
 // ParseBackfillNodeIPsResponse parses an HTTP response from a BackfillNodeIPsWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseBackfillNodeIPsResponse(rsp *http.Response) (*BackfillNodeIPsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6490,6 +7577,8 @@ func ParseBackfillNodeIPsResponse(rsp *http.Response) (*BackfillNodeIPsResponse,
 }
 
 // ParseRegisterNodeResponse parses an HTTP response from a RegisterNodeWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseRegisterNodeResponse(rsp *http.Response) (*RegisterNodeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6523,6 +7612,8 @@ func ParseRegisterNodeResponse(rsp *http.Response) (*RegisterNodeResponse, error
 }
 
 // ParseDeleteNodeResponse parses an HTTP response from a DeleteNodeWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseDeleteNodeResponse(rsp *http.Response) (*DeleteNodeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6556,6 +7647,8 @@ func ParseDeleteNodeResponse(rsp *http.Response) (*DeleteNodeResponse, error) {
 }
 
 // ParseGetNodeResponse parses an HTTP response from a GetNodeWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseGetNodeResponse(rsp *http.Response) (*GetNodeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6589,6 +7682,8 @@ func ParseGetNodeResponse(rsp *http.Response) (*GetNodeResponse, error) {
 }
 
 // ParseSetApprovedRoutesResponse parses an HTTP response from a SetApprovedRoutesWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseSetApprovedRoutesResponse(rsp *http.Response) (*SetApprovedRoutesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6622,6 +7717,8 @@ func ParseSetApprovedRoutesResponse(rsp *http.Response) (*SetApprovedRoutesRespo
 }
 
 // ParseExpireNodeResponse parses an HTTP response from a ExpireNodeWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseExpireNodeResponse(rsp *http.Response) (*ExpireNodeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6655,6 +7752,8 @@ func ParseExpireNodeResponse(rsp *http.Response) (*ExpireNodeResponse, error) {
 }
 
 // ParseRenameNodeResponse parses an HTTP response from a RenameNodeWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseRenameNodeResponse(rsp *http.Response) (*RenameNodeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6688,6 +7787,8 @@ func ParseRenameNodeResponse(rsp *http.Response) (*RenameNodeResponse, error) {
 }
 
 // ParseSetTagsResponse parses an HTTP response from a SetTagsWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseSetTagsResponse(rsp *http.Response) (*SetTagsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6721,6 +7822,8 @@ func ParseSetTagsResponse(rsp *http.Response) (*SetTagsResponse, error) {
 }
 
 // ParseGetPolicyResponse parses an HTTP response from a GetPolicyWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseGetPolicyResponse(rsp *http.Response) (*GetPolicyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6754,6 +7857,8 @@ func ParseGetPolicyResponse(rsp *http.Response) (*GetPolicyResponse, error) {
 }
 
 // ParseSetPolicyResponse parses an HTTP response from a SetPolicyWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseSetPolicyResponse(rsp *http.Response) (*SetPolicyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6787,6 +7892,8 @@ func ParseSetPolicyResponse(rsp *http.Response) (*SetPolicyResponse, error) {
 }
 
 // ParseCheckPolicyResponse parses an HTTP response from a CheckPolicyWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseCheckPolicyResponse(rsp *http.Response) (*CheckPolicyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6820,6 +7927,8 @@ func ParseCheckPolicyResponse(rsp *http.Response) (*CheckPolicyResponse, error) 
 }
 
 // ParseDeletePreAuthKeyResponse parses an HTTP response from a DeletePreAuthKeyWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseDeletePreAuthKeyResponse(rsp *http.Response) (*DeletePreAuthKeyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6853,6 +7962,8 @@ func ParseDeletePreAuthKeyResponse(rsp *http.Response) (*DeletePreAuthKeyRespons
 }
 
 // ParseListPreAuthKeysResponse parses an HTTP response from a ListPreAuthKeysWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseListPreAuthKeysResponse(rsp *http.Response) (*ListPreAuthKeysResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6886,6 +7997,8 @@ func ParseListPreAuthKeysResponse(rsp *http.Response) (*ListPreAuthKeysResponse,
 }
 
 // ParseCreatePreAuthKeyResponse parses an HTTP response from a CreatePreAuthKeyWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseCreatePreAuthKeyResponse(rsp *http.Response) (*CreatePreAuthKeyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6919,6 +8032,8 @@ func ParseCreatePreAuthKeyResponse(rsp *http.Response) (*CreatePreAuthKeyRespons
 }
 
 // ParseExpirePreAuthKeyResponse parses an HTTP response from a ExpirePreAuthKeyWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseExpirePreAuthKeyResponse(rsp *http.Response) (*ExpirePreAuthKeyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6952,6 +8067,8 @@ func ParseExpirePreAuthKeyResponse(rsp *http.Response) (*ExpirePreAuthKeyRespons
 }
 
 // ParseListUsersResponse parses an HTTP response from a ListUsersWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -6985,6 +8102,8 @@ func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 }
 
 // ParseCreateUserResponse parses an HTTP response from a CreateUserWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseCreateUserResponse(rsp *http.Response) (*CreateUserResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -7025,6 +8144,8 @@ func ParseCreateUserResponse(rsp *http.Response) (*CreateUserResponse, error) {
 }
 
 // ParseDeleteUserResponse parses an HTTP response from a DeleteUserWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseDeleteUserResponse(rsp *http.Response) (*DeleteUserResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
@@ -7058,6 +8179,8 @@ func ParseDeleteUserResponse(rsp *http.Response) (*DeleteUserResponse, error) {
 }
 
 // ParseRenameUserResponse parses an HTTP response from a RenameUserWithResponse call
+//
+// Deprecated: Headscale 0.33 removes /api/v1; use /api/headscale/v0, see https://headscale.net/stable/ref/api/#migrate-from-apiv1
 func ParseRenameUserResponse(rsp *http.Response) (*RenameUserResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()

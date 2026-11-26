@@ -62,7 +62,7 @@ zizmor, `golangci-lint --new-from-rev=HEAD~1`, vendor hash). Never skip them
   `grep AsStruct hscontrol/api` must come back empty.
 
 - **Line length 88 in the new packages only.** `golines` wraps
-  `cmd/headscale/newcli/`, `cmdline/`, `client/`, `hscontrol/api/headscale/v0/`
+  `cmd/headscale/cli/`, `cmdline/`, `client/`, `hscontrol/api/headscale/v0/`
   and `hscontrol/offline/` (the `path-except` rule in `.golangci.yaml`); the
   rest of the tree has no limit. `make fmt` and the hook keep that scope;
   `golangci-lint fmt` ignores it and rewraps old files. A `//nolint` goes on
@@ -71,9 +71,9 @@ zizmor, `golangci-lint --new-from-rev=HEAD~1`, vendor hash). Never skip them
 
 - **CLI layers.** `cmdline` (the parser) ← `cmdline/command` and
   `cmdline/table` (generic: no Headscale import but `cmdline/...`, held by
-  `TestImportsNoProgram`) ← `cmd/headscale/newcli/command` (Headscale's binding:
+  `TestImportsNoProgram`) ← `cmd/headscale/cli/command` (Headscale's binding:
   the session, problem sentences, lookups, the `Program`) ←
-  `cmd/headscale/newcli` (the commands). Commands call the generated v0 client
+  `cmd/headscale/cli` (the commands). Commands call the generated v0 client
   directly; what anyone needs on top of it is generated into
   `gen/client/headscale/v0` from the templates in `cmd/gen-openapi/` (paging,
   `Result`/`Err`, decoding held to `client/shape`), and `client.New` builds

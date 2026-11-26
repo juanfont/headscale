@@ -130,7 +130,7 @@ func TestTaggedReauthWithReusedUserPAK(t *testing.T) {
 	_, err = s.SetPolicy([]byte(policy))
 	require.NoError(t, err)
 
-	// One-shot, user-owned PAK: `headscale preauthkeys create -u 1`.
+	// One-shot, user-owned PAK: `headscale auth keys create <user>`.
 	pak, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
@@ -150,7 +150,7 @@ func TestTaggedReauthWithReusedUserPAK(t *testing.T) {
 	require.True(t, first.Valid())
 	nodeID := first.ID()
 
-	// `headscale nodes tag -t tag:foo`: convert to a tagged node. This clears
+	// `headscale nodes tags set <node> tag:foo`: convert to a tagged node. This clears
 	// both UserID and User (state.SetNodeTags), diverging the node's ownership
 	// from the still-user-owned PAK.
 	tagged, _, err := s.SetNodeTags(nodeID, []string{"tag:foo"})
@@ -1255,7 +1255,7 @@ func TestTaggedPAKReauthRetagsExistingTaggedNode(t *testing.T) {
 // TestTaggedPAKReauthSameKeyPreservesTags is the counterpart constraint to
 // #3370: re-authenticating with the *same* tagged key must NOT clobber the
 // node's current tags, even after an admin retagged it via
-// `headscale nodes tag`. This is the unit-level guard for the integration
+// `headscale nodes tags set`. This is the unit-level guard for the integration
 // test TestTagsAuthKeyWithTagAdminOverrideReauthPreserves (admin decisions are
 // authoritative), and it is why the retag discriminator must key on the
 // pre-auth key's *identity* (a different key) rather than on "validation ran"
@@ -1518,7 +1518,7 @@ func TestTaggedPAKReauthSameSingleUseKeySameNodeKeyPreservesTags(t *testing.T) {
 }
 
 // TestTaggedPAKReauthUserScopedKeyRetags: a user-scoped tagged key
-// (User != nil, the `headscale preauthkeys create -u <user> --tags` shape)
+// (User != nil, the shape 0.29's preauthkeys create made from a user and tags)
 // exercises the pak.User != nil branch of findExistingNodeForPAK, a different
 // lookup path from tags-only keys. It must still retag.
 func TestTaggedPAKReauthUserScopedKeyRetags(t *testing.T) {

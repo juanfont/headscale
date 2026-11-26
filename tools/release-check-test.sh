@@ -7,7 +7,7 @@ trap 'rm -rf "$tmp"' EXIT
 export GOWORK=off CGO_ENABLED=0 LC_ALL=C
 unset GOFLAGS GOOS GOARCH
 
-mkdir -p "$tmp/headscale/cmd/headscale" "$tmp/headscale/tools"
+mkdir -p "$tmp/headscale/cmd/headscale" "$tmp/headscale/tools" "$tmp/headscale/docs/ref"
 cp "$root/.goreleaser.yml" "$tmp/headscale/"
 cp "$root/tools/release-check.sh" "$root/tools/release-generate.sh" "$tmp/headscale/tools/"
 cd "$tmp/headscale"
@@ -23,6 +23,7 @@ MOD
 # Prints a line for any arguments, so each generate command writes a file.
 printf 'package main\nimport "fmt"\nfunc main() { fmt.Println("generated") }\n' > cmd/headscale/main.go
 printf 'dist/\nvendor/\nrelease-assets/\n' > .gitignore
+printf '.TH HEADSCALE 1\n.SH NAME\nheadscale\n' > docs/ref/headscale.1
 git init -q
 git config user.name 'Release check test'
 git config user.email 'release-check@example.invalid'
@@ -54,13 +55,17 @@ fi
 binaries=(dist/headscale_*/headscale)
 bash "$check" "${binaries[@]}"
 printf 'PASS: clean release builds, including cross-compiled binaries\n'
-for asset in config-example.yaml headscale-nixos-options.nix; do
+for asset in config-example.yaml headscale-nixos-options.nix headscale.1.gz; do
     if [[ ! -s release-assets/$asset ]]; then
         printf 'FAIL: release-assets/%s not generated\n' "$asset" >&2
         exit 1
     fi
 done
-printf 'PASS: release assets generated\n'
+if ! gzip -dc release-assets/headscale.1.gz | cmp -s - docs/ref/headscale.1; then
+    printf 'FAIL: release-assets/headscale.1.gz is not the committed man page\n' >&2
+    exit 1
+fi
+printf 'PASS: release assets generated, the man page is the committed one\n'
 
 git config status.showUntrackedFiles no
 printf '// dirty\n' >> cmd/headscale/main.go

@@ -1,6 +1,14 @@
 package integration
 
 import (
+	"bytes"
+	"io"
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -154,4 +162,66 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 			t.Fatalf("got the wrong amount of tailscale ips, %d != %d", len(ips), count*2)
 		}
 	})
+}
+
+// TestLoginDiagnosticsHideAuthID: what the login helpers log and the errors
+// they return hide the auth ID, on success and on each failure (a 5xx, a
+// refused connection, a 5xx from the confirmation form), while the page
+// they return keeps it: the caller needs it to answer the request.
+func TestLoginDiagnosticsHideAuthID(t *testing.T) {
+	IntegrationSkip(t)
+
+	const id = "hskey-authreq-0123456789abcdef01234567"
+
+	page := "<html>" + id + "</html>"
+	form := `<form action="/confirm/` + id + `"><input name="` + registerConfirmCSRFField + `" value="x"></form>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/fail/"), strings.HasPrefix(r.URL.Path, "/confirm/"):
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case strings.HasPrefix(r.URL.Path, "/form/"):
+			_, _ = io.WriteString(w, form)
+
+			return
+		}
+
+		_, _ = io.WriteString(w, page)
+	}))
+	defer srv.Close()
+
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+
+	var logged bytes.Buffer
+
+	log.SetOutput(&logged)
+	defer log.SetOutput(os.Stderr)
+
+	for _, tt := range []struct {
+		name, url string
+		fails     bool
+	}{
+		{"an answered page", srv.URL + "/register/" + id, false},
+		{"a 503", srv.URL + "/fail/" + id, true},
+		{"a refused connection", closed.URL + "/register/" + id, true},
+		{"a 503 from the confirmation form", srv.URL + "/form/" + id, true},
+	} {
+		logged.Reset()
+
+		u, err := url.Parse(tt.url)
+		require.NoError(t, err)
+
+		body, _, err := doLoginURLWithClient("host", u, &http.Client{}, true)
+		require.Equal(t, tt.fails, err != nil, tt.name)
+		require.NotContains(t, logged.String(), id, tt.name)
+
+		if err != nil {
+			require.NotContains(t, err.Error(), id, tt.name)
+		}
+
+		if tt.name == "an answered page" {
+			require.Contains(t, body, id, "the page keeps the ID")
+		}
+	}
 }

@@ -52,11 +52,11 @@ headscale users create <USER>
     on your Headscale server and it also prints the Auth ID required to approve the node:
 
     ```console
-    headscale auth register --user <USER> --auth-id <AUTH_ID>
+    headscale auth register <AUTH_ID> <USER>
     ```
 
     Congrations, the registration of your personal node is complete and it should be listed as "online" in the output of
-    `headscale nodes list`. The "User" column displays `<USER>` as the owner of the node.
+    `headscale nodes list`. The `OWNER` column displays `<USER>` as the owner of the node.
 
 === "Tagged devices"
 
@@ -83,13 +83,13 @@ headscale users create <USER>
     on your Headscale server and it also prints the Auth ID required to approve the node:
 
     ```console
-    headscale auth register --user <USER> --auth-id <AUTH_ID>
+    headscale auth register <AUTH_ID> <USER>
     ```
 
     Headscale checks that `<USER>` is allowed to register a node with the specified tag(s) and then transfers ownership
     of the new node to the special user `tagged-devices`. The registration of a tagged node is complete and it should be
-    listed as "online" in the output of `headscale nodes list`. The "User" column displays `tagged-devices` as the owner
-    of the node. See the "Tags" column for the list of assigned tags.
+    listed as "online" in the output of `headscale nodes list`. The `OWNER` column displays the tags that own the
+    node.
 
 ### Pending authentication limits
 
@@ -133,10 +133,10 @@ Its best suited for automation.
     headscale users create <USER>
     ```
 
-    Create a new pre authenticated key for your user, by name or by the `<USER_ID>` that `headscale user list` shows:
+    Create a new pre authenticated key for your user, by name or by the `<USER_ID>` that `headscale users list` shows:
 
     ```console
-    headscale preauthkeys create --user <USER>
+    headscale auth keys create <USER>
     ```
 
     The above prints a pre authenticated key with the default settings (can be used once and is valid for one hour). Use
@@ -147,14 +147,14 @@ Its best suited for automation.
     ```
 
     Congrations, the registration of your personal node is complete and it should be listed as "online" in the output of
-    `headscale nodes list`. The "User" column displays `<USER>` as the owner of the node.
+    `headscale nodes list`. The `OWNER` column displays `<USER>` as the owner of the node.
 
 === "Tagged devices"
 
-    Create a new pre authenticated key and provide at least one tag:
+    Create a new pre authenticated key owned by at least one tag, as a comma separated list:
 
     ```console
-    headscale preauthkeys create --tags tag:<TAG>
+    headscale auth keys create tag:<TAG>
     ```
 
     The above prints a pre authenticated key with the default settings (can be used once and is valid for one hour). Use
@@ -167,7 +167,6 @@ Its best suited for automation.
     ```
 
     The registration of a tagged node is complete and it should be listed as "online" in the output of
-    `headscale nodes list`. The "User" column displays `tagged-devices` as the owner of the node. See the "Tags" column for the list of
-    assigned tags.
+    `headscale nodes list`. The `OWNER` column displays the tags that own the node.
 
 [^1]: [Ensure that the Headscale username does not end with `@`.](oidc.md#reference-a-user-in-the-policy)

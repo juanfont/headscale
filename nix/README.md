@@ -148,7 +148,7 @@ pkgs.testers.runNixOSTest {
 
 It works with `nixosTest`, `runNixOSTest` and `runTest`. The headscale package
 must come from the same release or newer: the kit relies on its
-`preauthkeys create --user NAME` and `HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR`.
+`auth keys create OWNER` and `HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR`.
 
 ### Contract
 
@@ -161,13 +161,26 @@ CHANGELOG.
 - The same router is also served on TLS :443 with a throwaway self-signed
   certificate. DERP is region 999 (`headscale`) on :443, marked
   `InsecureForTests`, with STUN on UDP 3478.
-- `hs-authkey USER [headscale preauthkeys create flags]`, on the control node:
+- `hs-authkey OWNER [headscale auth keys create flags]`, on the control node:
   - waits for headscale for up to `HEADSCALE_CLI_TIMEOUT` (default `60s`);
-  - creates `USER` if missing;
+  - takes a user name or a list of tags (`tag:ci` or `tag:a,tag:b`) as `OWNER`,
+    and creates the user if missing, when the environment chooses the server;
   - prints one reusable 24h key.
 
-  Extra flags pass through, e.g. `--ephemeral` or `--tags tag:ci`. In a policy,
-  refer to these users as `USER@`, because they have no email.
+  Extra flags pass through, e.g. `--ephemeral`. A `--reusable` or `--expiry`
+  (`-e`) flag of the caller, in any form, replaces the kit's own. The CLI
+  decides which word is a flag (the kit asks its completion, which runs
+  nothing), so `--description --reusable` keeps it, and after `--` the kit
+  adds nothing. The CLI also decides whether `OWNER` is a user, and names the
+  user it finds missing; the kit makes that user with no word of the caller's
+  line. A `-c FILE` (`--config`) in the flags chooses the server for that line
+  alone: the kit still adds its defaults, but neither waits nor makes a user.
+  After `--` the kit cannot tell whether a server was chosen: it neither waits,
+  nor makes a user, nor adds its defaults. In both cases, create the user on
+  the same server first, then run the line again. A key for tags
+  needs the tags in the policy, and the kit starts with none: set one with
+  `headscale policy set FILE` first. In a policy, refer to these users as
+  `USER@`, because they have no email.
 
 - `hs-join KEY [tailscale up flags]`, on a `testkit-peer` node, waits for
   tailscaled, then joins the control node named `headscale` with a 60s
@@ -175,7 +188,7 @@ CHANGELOG.
   hanging it. A trailing `--login-server` overrides the URL.
 - Defaults you can override:
   - `policy.mode = "database"`: nothing stored allows all, and
-    `headscale policy set -f FILE` applies live. For a fixed policy, set
+    `headscale policy set FILE` applies live. For a fixed policy, set
     `settings.policy = { mode = "file"; path = pkgs.writeText "policy.json" (builtins.toJSON { … }); }`.
     A policy may name users before `hs-authkey` creates them.
   - MagicDNS with `dns.base_domain = "tailnet"`.
@@ -229,7 +242,7 @@ test, can use the same shape:
 
   ```sh
   headscale -c CONFIG users create NAME
-  headscale -c CONFIG preauthkeys create --user NAME --reusable --expiration 24h
+  headscale -c CONFIG auth keys create NAME --reusable --expiry 24h
   ```
 
 A minimal config:
@@ -263,7 +276,7 @@ derp:
     private_key_path: /tmp/hs/derp.key
 ```
 
-- Wait for `HEADSCALE_CLI_TIMEOUT=60s headscale -c CONFIG health`.
+- Wait for `HEADSCALE_CLI_TIMEOUT=60s headscale -c CONFIG debug health`.
 - If `server_url` is a hostname rather than an IP, Go clients redial noise only
   on :443 after a recent dial. Put the TLS listener on :443 then.
 - If clients reach headscale at different addresses, e.g. an emulator behind
@@ -278,7 +291,7 @@ Delete these and import the kit:
 - the embedded DERP block (`region_id = 999`, `urls = [ ]`) and its firewall
   ports;
 - `/etc/hosts` pins for the control node;
-- jq lookups of the user ID before `preauthkeys create`.
+- jq lookups of the user ID before `auth keys create`: it takes the user name.
 
 ### Cost
 

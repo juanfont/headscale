@@ -119,7 +119,7 @@ var codes = map[Code]codeInfo{
 	CodeInvalidField: {
 		http.StatusUnprocessableEntity,
 		"A field or parameter is not valid",
-		"A field or parameter is unknown, or has a value that is not allowed. `errors` names each one.",
+		"A field or parameter is unknown, or has a value that is not allowed. `errors` names each one; a long list may be cut, and then its last entry has `location` `\"\"` and says how many more.",
 		nil,
 	},
 	CodeInvalidPageToken: {
@@ -312,15 +312,15 @@ const (
 // Problem is the body of every v0 error, an RFC 9457 problem with the
 // extension members code, requestId, object, errors and details.
 type Problem struct { //nolint:errname // the name of RFC 9457, and of the schema
-	Type      string         `doc:"A URL naming the problem, one per code; it leads to its documentation." json:"type"`
-	Title     string         `doc:"A short text, the same for every problem with this code."               json:"title"`
-	Status    int            `doc:"The HTTP status."                                                       json:"status"`
-	Code      Code           `doc:"The stable code of the problem. Clients branch on this."                json:"code"`
-	Detail    string         `doc:"A sentence for a person. It may change; programs must not read it."     json:"detail"`
-	RequestID string         `doc:"The ID of this request in the server log."                              json:"requestId"`
-	Object    *ProblemObject `doc:"The resource the problem is about, or null."                            json:"object"`
-	Errors    []FieldError   `doc:"For invalid_field: one entry per field."                                json:"errors"    nullable:"false"`
-	Details   map[string]any `doc:"Data for this code, as its documentation describes."                    json:"details"`
+	Type      string         `doc:"A URL naming the problem, one per code; it leads to its documentation."                                                            json:"type"`
+	Title     string         `doc:"A short text, the same for every problem with this code."                                                                          json:"title"`
+	Status    int            `doc:"The HTTP status."                                                                                                                  json:"status"`
+	Code      Code           `doc:"The stable code of the problem. Clients branch on this."                                                                           json:"code"`
+	Detail    string         `doc:"A sentence for a person. It may change; programs must not read it."                                                                json:"detail"`
+	RequestID string         `doc:"The ID of this request in the server log."                                                                                         json:"requestId"`
+	Object    *ProblemObject `doc:"The resource the problem is about, or null."                                                                                       json:"object"`
+	Errors    []FieldError   `doc:"For invalid_field: one entry per field. The list may be cut; when it is, its last entry has location \"\" and says how many more." json:"errors"    nullable:"false"`
+	Details   map[string]any `doc:"Data for this code, as its documentation describes."                                                                               json:"details"`
 }
 
 // ProblemObject names the resource a [Problem] is about.

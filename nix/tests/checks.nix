@@ -174,17 +174,17 @@ in
 
       with subtest("a bad store-path policy fails the build"):
           for path, why in [
-              ("${buildFailures.undefinedGroup}", 'group not found: "group:missing"'),
-              ("${buildFailures.testsFail}", "test(s) failed"),
+              ("${buildFailures.undefinedGroup}", 'unknown group "group:missing"'),
+              ("${buildFailures.testsFail}", "expected deny, got accept"),
           ]:
               build_log = open(f"{path}/testBuildFailure.log").read()
               assert why in build_log, build_log
 
       headscale.wait_for_unit("headscale.service")
-      headscale.wait_until_succeeds("headscale health", timeout=timedelta(seconds=60))
+      headscale.wait_until_succeeds("headscale debug health", timeout=timedelta(seconds=60))
       headscale.fail("test -e /etc/headscale/config.yaml")
       # sudo resets the environment; PAM sets HEADSCALE_UNIX_SOCKET again.
-      headscale.succeed("env -u HEADSCALE_UNIX_SOCKET sudo -u headscale headscale health")
+      headscale.succeed("env -u HEADSCALE_UNIX_SOCKET sudo -u headscale headscale debug health")
 
       with subtest("rejected switches leave the running headscale alone"):
           pid = main_pid()
@@ -196,14 +196,14 @@ in
           assert_rejected("mutable", 'group not found: "group:missing"')
           put_policy("${testsFail}")
           assert_rejected("mutable", "test(s) failed")
-          out = assert_rejected("policyOnly", "test(s) failed")
+          out = assert_rejected("policyOnly", "expected deny, got accept")
           assert "checking the new configuration" not in out, out
           # Checked as the headscale user, who cannot read this file.
           put_policy("${valid}", "600")
           assert_rejected("mutable", "permission denied")
           assert main_pid() == pid, "headscale was restarted"
           assert served_policy() == before, "old policy no longer served"
-          headscale.succeed("headscale health")
+          headscale.succeed("headscale debug health")
 
       with subtest("a passing switch check"):
           put_policy("${valid}")
@@ -236,7 +236,7 @@ in
       with subtest("a valid switch goes through and applies the policy"):
           pid = main_pid()
           headscale.succeed(stc("testsPass", "test"))
-          headscale.wait_until_succeeds("headscale health", timeout=timedelta(seconds=60))
+          headscale.wait_until_succeeds("headscale debug health", timeout=timedelta(seconds=60))
           assert main_pid() != pid, "headscale was not restarted"
           want = headscale.succeed("${jq} -S . ${testsPass}")
           assert served_policy() == want, "new policy not served"

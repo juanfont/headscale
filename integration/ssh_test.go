@@ -1268,10 +1268,8 @@ func TestSSHCheckModeCheckPeriodCLI(t *testing.T) {
 	sshResult2 := doSSHCheck(t, client, peer)
 	secondAuthID := findNewSSHCheckAuthID(t, client, firstAuthID)
 
-	require.NotEqual(
-		t,
-		firstAuthID,
-		secondAuthID,
+	// NotEqual would print the auth ID, which answers the check.
+	require.True(t, firstAuthID != secondAuthID, //nolint:testifylint // see above
 		"second SSH should trigger a new auth flow after checkPeriod expiry",
 	)
 
@@ -1401,7 +1399,8 @@ func TestSSHCheckModeSessionLossReDelegates(t *testing.T) {
 	// the client cannot recover from. A new auth_id only appears if the
 	// re-delegation happened.
 	secondAuthID := findNewSSHCheckAuthID(t, client, firstAuthID)
-	require.NotEqual(t, firstAuthID, secondAuthID,
+	// NotEqual would print the auth ID, which answers the check.
+	require.True(t, firstAuthID != secondAuthID, //nolint:testifylint // see above
 		"a lost session under an active check must re-delegate with a new auth_id")
 
 	// Approve the re-delegated session; the SSH connection must now

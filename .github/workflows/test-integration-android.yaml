@@ -44,7 +44,7 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         run: |
           go build -o hi ./cmd/hi
-          CGO_ENABLED=0 GOOS=linux go build -tags newcli -o headscale ./cmd/headscale
+          CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale
       - name: Resolve Android versions
         id: versions
         if: steps.changed-files.outputs.files == 'true'

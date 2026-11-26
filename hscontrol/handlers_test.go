@@ -559,8 +559,8 @@ func TestWebAuthPagesCarryTheID(t *testing.T) {
 	require.Equal(t, "https://headscale.example/auth/"+id.Raw(), provider.AuthURL(id))
 
 	for path, handler := range map[string]http.HandlerFunc{
-		"headscale auth register --auth-id " + id.Raw() + " --user USERNAME": provider.RegisterHandler,
-		"headscale auth approve --auth-id " + id.Raw():                       provider.AuthHandler,
+		"headscale auth register " + id.Raw() + " USERNAME": provider.RegisterHandler,
+		"headscale auth approve " + id.Raw():                provider.AuthHandler,
 	} {
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 		rctx := chi.NewRouteContext()

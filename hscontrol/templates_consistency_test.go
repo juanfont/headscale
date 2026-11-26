@@ -37,7 +37,7 @@ func TestTemplateHTMLConsistency(t *testing.T) {
 			html: templates.AuthWeb(
 				"Machine registration",
 				"Run the command below in the headscale server to add this machine to your network:",
-				"headscale auth register --auth-id test-key-123 --user USERNAME",
+				"headscale auth register test-key-123 USERNAME",
 			).Render(),
 		},
 		{
@@ -45,7 +45,7 @@ func TestTemplateHTMLConsistency(t *testing.T) {
 			html: templates.AuthWeb(
 				"Authentication check",
 				"Run the command below in the headscale server to approve this authentication request:",
-				"headscale auth approve --auth-id test-key-123",
+				"headscale auth approve test-key-123",
 			).Render(),
 		},
 		{
@@ -119,7 +119,7 @@ func TestTemplateModernHTMLFeatures(t *testing.T) {
 			html: templates.AuthWeb(
 				"Machine registration",
 				"Run the command below in the headscale server to add this machine to your network:",
-				"headscale auth register --auth-id test-key-123 --user USERNAME",
+				"headscale auth register test-key-123 USERNAME",
 			).Render(),
 		},
 		{
@@ -127,7 +127,7 @@ func TestTemplateModernHTMLFeatures(t *testing.T) {
 			html: templates.AuthWeb(
 				"Authentication check",
 				"Run the command below in the headscale server to approve this authentication request:",
-				"headscale auth approve --auth-id test-key-123",
+				"headscale auth approve test-key-123",
 			).Render(),
 		},
 		{
@@ -194,7 +194,7 @@ func TestTemplateExternalLinkSecurity(t *testing.T) {
 			html: templates.AuthWeb(
 				"Machine registration",
 				"Run the command below in the headscale server to add this machine to your network:",
-				"headscale auth register --auth-id test-key-123 --user USERNAME",
+				"headscale auth register test-key-123 USERNAME",
 			).Render(),
 			externalURLs: []string{}, // No external links
 		},
@@ -203,7 +203,7 @@ func TestTemplateExternalLinkSecurity(t *testing.T) {
 			html: templates.AuthWeb(
 				"Authentication check",
 				"Run the command below in the headscale server to approve this authentication request:",
-				"headscale auth approve --auth-id test-key-123",
+				"headscale auth approve test-key-123",
 			).Render(),
 			externalURLs: []string{}, // No external links
 		},
@@ -286,7 +286,7 @@ func TestTemplateAccessibilityAttributes(t *testing.T) {
 			html: templates.AuthWeb(
 				"Machine registration",
 				"Run the command below in the headscale server to add this machine to your network:",
-				"headscale auth register --auth-id test-key-123 --user USERNAME",
+				"headscale auth register test-key-123 USERNAME",
 			).Render(),
 		},
 		{
@@ -294,7 +294,7 @@ func TestTemplateAccessibilityAttributes(t *testing.T) {
 			html: templates.AuthWeb(
 				"Authentication check",
 				"Run the command below in the headscale server to approve this authentication request:",
-				"headscale auth approve --auth-id test-key-123",
+				"headscale auth approve test-key-123",
 			).Render(),
 		},
 		{

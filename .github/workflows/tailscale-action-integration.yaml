@@ -22,7 +22,15 @@ on:
       - "hscontrol/state/**"
       - "hscontrol/auth*.go"
       - "hscontrol/noise.go"
-      - "cmd/headscale/cli/oauth_client.go"
+      - "cmd/headscale/cli/api.go"
+      - "cmd/headscale/cli/authkeys.go"
+      - "cmd/headscale/cli/users.go"
+      - "cmd/headscale/cli/nodes.go"
+      - "cmd/headscale/cli/command/**"
+      - "cmdline/**"
+      - "client/**"
+      - "gen/client/headscale/v0/**"
+      - "hscontrol/api/headscale/v0/**"
       - "flake.*"
       - "go.mod"
 
@@ -60,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ matrix.auth }}" = "oauth" ]; then
-            FULL=$(./result/bin/headscale oauth-clients create -s auth_keys -t tag:ci -o json | jq -r .key)
+            FULL=$(./result/bin/headscale api oauth-clients create auth_keys --tags tag:ci -o json | jq -r .key)
             # The upstream client only runs its OAuth exchange for tskey-client-
             # secrets, and reads the control URL from a baseURL= attribute on the
             # secret itself (--login-server governs registration, not the exchange).
@@ -86,7 +94,7 @@ jobs:
           ./result/bin/headscale nodes list -o json > nodes.json
           test "$(jq length nodes.json)" -ge 2
           if [ "${{ matrix.auth }}" = "oauth" ]; then
-            jq -e '[.[] | select((.tags // []) | index("tag:ci"))] | length >= 1' nodes.json
+            jq -e '[.[] | select((.owner.tags // []) | index("tag:ci"))] | length >= 1' nodes.json
           fi
 
       - name: Dump logs on failure
@@ -110,7 +118,7 @@ jobs:
         include:
           - input: hostname
             hostname: feature-host
-            assert: ./result/bin/headscale nodes list -o json | jq -e '[.[]|select(.givenName=="feature-host")]|length>=1'
+            assert: ./result/bin/headscale nodes list -o json | jq -e '[.[]|select(.name=="feature-host")]|length>=1'
           - input: version
             version: "1.98.4"
             # The running daemon, not just the CLI binary, must be the pinned one.

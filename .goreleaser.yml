@@ -89,6 +89,10 @@ nfpms:
         dst: /usr/share/doc/headscale/examples/config-example.yaml
       - src: LICENSE
         dst: /usr/share/doc/headscale/copyright
+      - src: ./release-assets/headscale.1.gz
+        dst: /usr/share/man/man1/headscale.1.gz
+        file_info:
+          mode: 0644
     scripts:
       postinstall: ./packaging/deb/postinst
       postremove: ./packaging/deb/postrm
@@ -96,7 +100,6 @@ nfpms:
     deb:
       lintian_overrides:
         - no-changelog # Our CHANGELOG.md uses a different formatting
-        - no-manual-page
         - statically-linked-binary
 
 kos:

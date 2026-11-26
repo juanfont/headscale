@@ -23,7 +23,7 @@ options, run:
 
     ```shell
     # Show help
-    headscale help
+    headscale --help
 
     # Show help for a specific command
     headscale <COMMAND> --help
@@ -34,7 +34,7 @@ options, run:
     ```shell
     # Show help
     docker exec -it headscale \
-      headscale help
+      headscale --help
 
     # Show help for a specific command
     docker exec -it headscale \
@@ -115,32 +115,32 @@ your headscale server and it also prints the Auth ID required to approve the nod
 === "Native"
 
     ```shell
-    headscale auth register --user <USER> --auth-id <AUTH_ID>
+    headscale auth register <AUTH_ID> <USER>
     ```
 
 === "Container"
 
     ```shell
     docker exec -it headscale \
-      headscale auth register --user <USER> --auth-id <AUTH_ID>
+      headscale auth register <AUTH_ID> <USER>
     ```
 
 ### [Pre authenticated key](../ref/registration.md#pre-authenticated-key)
 
 It is also possible to generate a preauthkey and register a node non-interactively. First, generate a preauthkey on the
-headscale instance. By default, the key is valid for one hour and can only be used once (see `headscale preauthkeys --help` for other options):
+headscale instance. By default, the key is valid for one hour and can only be used once (see `headscale auth keys create --help` for other options):
 
 === "Native"
 
     ```shell
-    headscale preauthkeys create --user <USER>
+    headscale auth keys create <USER>
     ```
 
 === "Container"
 
     ```shell
     docker exec -it headscale \
-      headscale preauthkeys create --user <USER>
+      headscale auth keys create <USER>
     ```
 
 The command returns the preauthkey on success which is used to connect a node to the headscale instance via the
