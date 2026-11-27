@@ -1349,3 +1349,29 @@ func TestIssue3688DeletedNodeDoesNotSpinMapRequests(t *testing.T) {
 		assert.True(c, registered)
 	}, 15*time.Second, 50*time.Millisecond, "a deleted node must re-register promptly")
 }
+
+// TestAuthKeyPaddedWithWhitespace registers with a key as it is pasted. The
+// Android app sends its auth key field untrimmed and shows no error when the
+// key is refused (tailscale/tailscale#15660).
+func TestAuthKeyPaddedWithWhitespace(t *testing.T) {
+	t.Parallel()
+
+	for name, format := range map[string]string{
+		"trailing-space":   "%s ",
+		"trailing-newline": "%s\n",
+		"leading-space":    " %s",
+		"both":             "\t%s\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := servertest.NewServer(t)
+			user := srv.CreateUser(t, "owner")
+			key := fmt.Sprintf(format, srv.CreatePreAuthKey(t, types.UserID(user.ID)))
+
+			client, err := servertest.TryNewClient(t, srv, "phone", servertest.WithAuthKey(key))
+			require.NoError(t, err)
+			assert.Len(t, srv.State().GetNodesByMachineKeyAllUsers(client.MachineKey()), 1)
+		})
+	}
+}
