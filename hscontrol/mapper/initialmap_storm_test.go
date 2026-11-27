@@ -77,7 +77,7 @@ func setupStormBatcher(tb testing.TB, nodeCount, workers int, policy string) (*T
 	st, err := state.NewState(cfg)
 	require.NoError(tb, err)
 
-	derpMap, err := derp.GetDERPMap(cfg.DERP, cfg.DNSConfig.BaseDomain)
+	derpMap, err := derp.GetDERPMap(tb.Context(), cfg.DERP, cfg.DNSConfig.BaseDomain)
 	require.NoError(tb, err)
 	st.SetDERPMap(derpMap)
 
