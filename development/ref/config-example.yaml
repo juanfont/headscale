@@ -232,9 +232,8 @@ database:
     # The user to connect as.
     user: ""
     # The password, or `file:<path>` to read it from a file, read only when
-    # `database.type` is `postgres`. `headscale generate config --running` and
-    # `/debug/config` show a literal password as `<redacted>` and a `file:`
-    # reference as written.
+    # `database.type` is `postgres`. `/debug/config` shows a literal password as
+    # `<redacted>` and a `file:` reference as written.
     pass: ""
     # The TLS mode: `true` keeps the driver's default `sslmode`, `false`
     # disables TLS, any other value is passed as `sslmode` (`require`,
@@ -316,9 +315,9 @@ dns:
     # other keys are its settings. Keys are lowercased on load, at every depth;
     # two that differ only in case are an error. Any setting may be
     # `file:<path>` to read it from a file; a non-string one, such as acme-dns
-    # `config`, is the JSON in it. `headscale generate config --running` and
-    # `/debug/config` show `name` and `file:` references; every other setting is
-    # `<redacted>`, as any may be a credential. See [DNS-01 challenge
+    # `config`, is the JSON in it. `/debug/config` shows `name` and `file:`
+    # references; every other setting is `<redacted>`, as any may be a
+    # credential. See [DNS-01 challenge
     # provider](https://headscale.net/stable/ref/dns/#dns-01-challenge-provider)
     # to set a provider up, acme-dns included, and to set it from environment
     # variables.
@@ -366,9 +365,8 @@ oidc:
   # The client ID from the provider; required when `oidc.issuer` is set.
   client_id: ""
   # The client secret from the provider, or `file:<path>` to read it from a
-  # file; required when `oidc.issuer` is set. `headscale generate config
-  # --running` and `/debug/config` show a literal secret as `<redacted>` and a
-  # `file:` reference as written.
+  # file; required when `oidc.issuer` is set. `/debug/config` shows a literal
+  # secret as `<redacted>` and a `file:` reference as written.
   client_secret: ""
   # The scopes requested; include `openid`.
   scope:
