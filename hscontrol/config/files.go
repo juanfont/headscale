@@ -4,6 +4,7 @@
 package config
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -135,7 +136,7 @@ func CheckPolicyFile(path string) error {
 
 // CheckDERPMapFile parses a DERP map file as startup loads derp.paths.
 func CheckDERPMapFile(path string) error {
-	_, err := derp.GetDERPMap(types.DERPConfig{Paths: []string{path}}, "")
+	_, err := derp.GetDERPMap(context.Background(), types.DERPConfig{Paths: []string{path}}, "")
 
 	return err
 }

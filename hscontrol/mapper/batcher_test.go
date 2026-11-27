@@ -251,7 +251,7 @@ func setupBatcherWithTestData(
 
 	tb.Cleanup(func() { _ = state.Close() })
 
-	derpMap, err := derp.GetDERPMap(cfg.DERP, cfg.DNSConfig.BaseDomain)
+	derpMap, err := derp.GetDERPMap(tb.Context(), cfg.DERP, cfg.DNSConfig.BaseDomain)
 	require.NoError(tb, err)
 	require.NotNil(tb, derpMap)
 

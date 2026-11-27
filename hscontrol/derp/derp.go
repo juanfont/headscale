@@ -131,8 +131,8 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 	return &derpMap, nil
 }
 
-func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), types.HTTPTimeout)
+func loadDERPMapFromURL(ctx context.Context, addr url.URL) (*tailcfg.DERPMap, error) {
+	ctx, cancel := context.WithTimeout(ctx, types.HTTPTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, addr.String(), nil)
@@ -258,9 +258,10 @@ func ApplyPolicy(base, pol *tailcfg.DERPMap) *tailcfg.DERPMap {
 // GetDERPMap merges every configured DERP map source. A source that fails to
 // load is skipped rather than failing the rest, as a derp.urls server is often
 // a third party's: the map always holds what did load, and the error joins
-// every failure for the caller to judge. shuffleSeed orders DERP nodes the
-// same on every server of a tailnet.
-func GetDERPMap(cfg types.DERPConfig, shuffleSeed string) (*tailcfg.DERPMap, error) {
+// every failure for the caller to judge. Once ctx ends, the sources not read
+// yet are skipped and its cause joins the error. shuffleSeed orders DERP
+// nodes the same on every server of a tailnet.
+func GetDERPMap(ctx context.Context, cfg types.DERPConfig, shuffleSeed string) (*tailcfg.DERPMap, error) {
 	var (
 		derpMaps []*tailcfg.DERPMap
 		errs     []error
@@ -270,7 +271,15 @@ func GetDERPMap(cfg types.DERPConfig, shuffleSeed string) (*tailcfg.DERPMap, err
 		derpMaps = append(derpMaps, cfg.DERPMap)
 	}
 
+	read := 0
+
 	for i, u := range cfg.URLs {
+		if ctx.Err() != nil {
+			break
+		}
+
+		read++
+
 		addr, err := url.Parse(string(u))
 		if err != nil {
 			// The parser's error quotes the URL or parts of it, credentials
@@ -280,7 +289,7 @@ func GetDERPMap(cfg types.DERPConfig, shuffleSeed string) (*tailcfg.DERPMap, err
 			continue
 		}
 
-		derpMap, err := loadDERPMapFromURL(*addr)
+		derpMap, err := loadDERPMapFromURL(ctx, *addr)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -290,6 +299,12 @@ func GetDERPMap(cfg types.DERPConfig, shuffleSeed string) (*tailcfg.DERPMap, err
 	}
 
 	for _, path := range cfg.Paths {
+		if ctx.Err() != nil {
+			break
+		}
+
+		read++
+
 		derpMap, err := loadDERPMapFromPath(path)
 		if err != nil {
 			errs = append(errs, err)
@@ -297,6 +312,10 @@ func GetDERPMap(cfg types.DERPConfig, shuffleSeed string) (*tailcfg.DERPMap, err
 		}
 
 		derpMaps = append(derpMaps, derpMap)
+	}
+
+	if read < len(cfg.URLs)+len(cfg.Paths) {
+		errs = append(errs, context.Cause(ctx))
 	}
 
 	derpMap := mergeDERPMaps(derpMaps)

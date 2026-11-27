@@ -447,14 +447,14 @@ func (h *Headscale) refreshDERPMap(ctx context.Context) {
 
 		log.Info().Msg("fetching DERPMap updates")
 
-		derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) { //nolint:contextcheck
-			derpMap, err := derp.GetDERPMap(h.cfg.DERP, h.cfg.DERPShuffleSeed())
+		derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) {
+			derpMap, err := derp.GetDERPMap(ctx, h.cfg.DERP, h.cfg.DERPShuffleSeed())
 			if err != nil {
 				return nil, err
 			}
 
 			if h.cfg.DERP.Server.Enabled && h.cfg.DERP.Server.AutomaticallyAddEmbeddedDerpRegion {
-				region, err := h.DERPServer.GenerateRegion()
+				region, err := h.DERPServer.GenerateRegion() //nolint:contextcheck // only a debug DNS lookup uses a context
 				if err != nil {
 					return nil, fmt.Errorf("generating embedded DERP region: %w", err)
 				}
@@ -646,7 +646,7 @@ func (h *Headscale) Serve(ctx context.Context) error {
 
 	// Start on the sources that loaded; only a map with no region at all,
 	// after the embedded region and the policy's derpMap, is fatal.
-	derpMap, derpErr := derp.GetDERPMap(h.cfg.DERP, h.cfg.DERPShuffleSeed()) //nolint:contextcheck // startup fetch, bounded by its HTTP client
+	derpMap, derpErr := derp.GetDERPMap(ctx, h.cfg.DERP, h.cfg.DERPShuffleSeed())
 	if derpErr != nil {
 		log.Warn().Err(derpErr).Msg("skipping DERP map sources that failed to load")
 	}
