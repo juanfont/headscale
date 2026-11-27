@@ -17,6 +17,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -26,6 +27,7 @@ import (
 
 var (
 	errEmptyDERPMapFile = errors.New("DERP map file has no regions or homeparams")
+	errDERPMapNotFile   = errors.New("DERP map is not a regular file")
 	errDERPMapStatus    = errors.New("unexpected HTTP status")
 	errDERPURLSyntax    = errors.New("invalid URL syntax")
 
@@ -87,9 +89,27 @@ func validateRegions(dm *tailcfg.DERPMap) error {
 // rejects one in a policy derpMap, so a misspelt key cannot silently do
 // nothing. A map with neither regions nor HomeParams is an error too;
 // HomeParams alone is valid, to score regions from other sources. Regions
-// must pass [ValidateRegion].
+// must pass [ValidateRegion]. The path must name a regular file, or a link to
+// one: a pipe or device can block the read past any cancel.
 func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
-	data, err := os.ReadFile(path)
+	// Non-blocking, so a pipe's open returns at once; the opened file is
+	// checked and read, so the path cannot be swapped in between.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, fmt.Errorf("reading DERP map: %w", err)
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("reading DERP map: %w", err)
+	}
+
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: %s", errDERPMapNotFile, path)
+	}
+
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("reading DERP map: %w", err)
 	}

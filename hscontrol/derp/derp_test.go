@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -473,6 +475,52 @@ homeparams:
 
 	_, err = loadDERPMapFromPath(path)
 	require.NoError(t, err)
+}
+
+// TestLoadDERPMapFromPathNeedsARegularFile: a pipe or a directory is refused
+// before it is read, as a pipe's read would hold a refresh, and shutdown with
+// it, past any cancel. A link to a regular file still loads: operators link
+// their config files.
+func TestLoadDERPMapFromPathNeedsARegularFile(t *testing.T) {
+	dir := t.TempDir()
+
+	file := filepath.Join(dir, "derp.json")
+	require.NoError(t, os.WriteFile(file, []byte(`{"Regions": {"1": {"RegionID": 1, "Nodes": [{"Name": "1a", "RegionID": 1}]}}}`), 0o600))
+
+	link := filepath.Join(dir, "link.json")
+	require.NoError(t, os.Symlink(file, link))
+
+	fifo := filepath.Join(dir, "fifo.json")
+	require.NoError(t, syscall.Mkfifo(fifo, 0o600))
+
+	sub := filepath.Join(dir, "dir.json")
+	require.NoError(t, os.Mkdir(sub, 0o700))
+
+	// Opening a pipe with no writer must not wait for one.
+	opened := make(chan error, 1)
+
+	go func() {
+		_, err := loadDERPMapFromPath(fifo)
+		opened <- err
+	}()
+
+	select {
+	case err := <-opened:
+		require.ErrorIs(t, err, errDERPMapNotFile)
+	case <-time.After(10 * time.Second):
+		t.Fatal("opening a pipe with no writer blocked")
+	}
+
+	for _, path := range []string{file, link} {
+		_, err := GetDERPMap(types.DERPConfig{Paths: []string{path}}, "")
+		require.NoError(t, err, path)
+	}
+
+	for _, path := range []string{fifo, sub} {
+		_, err := GetDERPMap(types.DERPConfig{Paths: []string{path}}, "")
+		require.ErrorIs(t, err, errDERPMapNotFile, path)
+		require.ErrorContains(t, err, path)
+	}
 }
 
 // TestLoadDERPMapFromURLValidates pins that a fetched map meets the region

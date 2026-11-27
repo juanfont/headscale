@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -339,6 +340,11 @@ func TestCheckDERPMapFile(t *testing.T) {
 `)))
 	require.ErrorContains(t, CheckDERPMapFile(write(t, filepath.Join(dir, "bad.yaml"), "regions: [")), "reading DERP map")
 	require.ErrorIs(t, CheckDERPMapFile(filepath.Join(dir, "missing.yaml")), os.ErrNotExist)
+
+	// The server refuses a pipe at startup and on refresh; so does the check.
+	fifo := filepath.Join(dir, "fifo.yaml")
+	require.NoError(t, syscall.Mkfifo(fifo, 0o600))
+	require.ErrorContains(t, CheckDERPMapFile(fifo), "DERP map is not a regular file: "+fifo)
 }
 
 func TestCheckExtraRecordsFile(t *testing.T) {
