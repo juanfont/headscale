@@ -320,10 +320,13 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 	lastExpiryCheck := time.Unix(0, 0)
 
+	var refreshes sync.WaitGroup
+	defer refreshes.Wait()
+
 	if h.cfg.DERP.AutoUpdate && h.cfg.DERP.UpdateFrequency != 0 {
 		// A refresh retries for minutes when a source is unreachable; the
 		// tasks below must not wait for it.
-		go h.refreshDERPMap(ctx)
+		refreshes.Go(func() { h.refreshDERPMap(ctx) })
 	}
 
 	var extraRecordsUpdate <-chan []tailcfg.DNSRecord
@@ -443,6 +446,12 @@ func (h *Headscale) refreshDERPMap(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+
+		// select picks either when both are ready; Serve waits for this
+		// goroutine, so a cancelled refresh must not start another fetch.
+		if ctx.Err() != nil {
+			return
 		}
 
 		log.Info().Msg("fetching DERPMap updates")
@@ -630,6 +639,15 @@ func (h *Headscale) Serve(ctx context.Context) error {
 	h.mapBatcher.Start()
 	defer h.mapBatcher.Close()
 
+	// The scheduled tasks log, feed the batcher and touch the state: they end
+	// before the batcher closes and before Serve returns, on every path.
+	var tasks sync.WaitGroup
+
+	defer func() {
+		cancel()
+		tasks.Wait()
+	}()
+
 	if h.cfg.DERP.Server.Enabled {
 		// When embedded DERP is enabled we always need a STUN server
 		if h.cfg.DERP.Server.STUNAddr == "" {
@@ -685,7 +703,11 @@ func (h *Headscale) Serve(ctx context.Context) error {
 
 		h.cfg.SetExtraRecords(h.extraRecordMan.Records())
 
-		go h.extraRecordMan.Run() //nolint:contextcheck // stopped by Close
+		// Deferred before Close, so it waits for Run to see Close.
+		var watcher sync.WaitGroup
+		defer watcher.Wait()
+
+		watcher.Go(h.extraRecordMan.Run) //nolint:contextcheck // stopped by Close
 		defer h.extraRecordMan.Close()
 	}
 
@@ -694,7 +716,7 @@ func (h *Headscale) Serve(ctx context.Context) error {
 
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
 	// records updates
-	go h.scheduledTasks(ctx)
+	tasks.Go(func() { h.scheduledTasks(ctx) })
 
 	//
 	//
@@ -971,6 +993,11 @@ func (h *Headscale) Serve(ctx context.Context) error {
 					Msg("shutting down gracefully")
 
 				h.ephemeralGC.Close()
+
+				// Before the shutdown clock starts: the servers' grace period
+				// is theirs alone.
+				info("waiting for scheduled tasks")
+				tasks.Wait()
 
 				// Gracefully shut down servers
 				shutdownCtx, cancel := context.WithTimeout(
