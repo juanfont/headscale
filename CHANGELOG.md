@@ -330,6 +330,7 @@ maps each one to its replacement.
 - The configuration file must end in `.yaml`, `.yml`, `.json` or `.hujson`. [#3674](https://github.com/juanfont/headscale/pull/3674)
 - `derp.paths` and `dns.extra_records_path` files must end in `.yaml`, `.yml`, `.json` or `.hujson`. The extension picks the format.
 - A `derp.paths` file fails to load when it has neither regions nor `homeparams`, or a key that `tailcfg.DERPMap` does not have, e.g. a misspelt `regionscore`. [#2932](https://github.com/juanfont/headscale/pull/2932)
+- A `derp.paths` entry must be a regular file or a link to one. A pipe, a device or a directory fails to load, at startup, on every refresh and in `headscale check`.
 - A DERP map from `derp.paths` or `derp.urls` must meet the region rules Tailscale SaaS applies to a policy `derpMap`: each region's `regionid` matches its key, each node's `regionid` matches its region, and a region has at least one node. [#2932](https://github.com/juanfont/headscale/pull/2932)
 - `database.sqlite.path` names the file literally. Before, SQLite cut the path at `?` or `#` and decoded `%XX`, so headscale opened another file. A path with `%`, `?` or `#` now opens a different file than before: move the database to the configured path before upgrading, or headscale starts with an empty one
 
