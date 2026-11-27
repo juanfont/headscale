@@ -2,12 +2,17 @@ package hscontrol
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -18,6 +23,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/libdns/cloudflare"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -453,7 +459,6 @@ func TestDERPRefreshDoesNotBlockScheduledTasks(t *testing.T) {
 		}
 	}))
 	t.Cleanup(stuck.Close)
-	t.Cleanup(func() { close(release) })
 
 	app := createTestApp(t, func(c *types.Config) {
 		c.DERP.URLs = []types.HTTPURL{types.HTTPURL(stuck.URL)}
@@ -469,14 +474,21 @@ func TestDERPRefreshDoesNotBlockScheduledTasks(t *testing.T) {
 	app.extraRecordMan, err = dns.NewExtraRecordsManager(records)
 	require.NoError(t, err)
 
-	go app.extraRecordMan.Run()
-
-	t.Cleanup(app.extraRecordMan.Close)
-
 	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 
-	go app.scheduledTasks(ctx)
+	// Both log and touch app, so they end before the next test or the
+	// state's own cleanup.
+	var tasks sync.WaitGroup
+
+	tasks.Go(app.extraRecordMan.Run)
+	tasks.Go(func() { app.scheduledTasks(ctx) })
+
+	t.Cleanup(func() {
+		cancel()
+		close(release)
+		app.extraRecordMan.Close()
+		tasks.Wait()
+	})
 
 	select {
 	case <-requested:
@@ -574,4 +586,239 @@ func TestServeStopsOnContextCancel(t *testing.T) {
 	}
 
 	assert.NoFileExists(t, cfg.UnixSocket)
+}
+
+// TestServeWaitsForScheduledTasks: shutdown lets a scheduled task in flight
+// end before it closes the batcher or the state, and Serve returns after it.
+// A log hook holds the task, in its own goroutine, as it stops.
+func TestServeWaitsForScheduledTasks(t *testing.T) {
+	held, release := make(chan struct{}), make(chan struct{})
+	heldOnce, releaseOnce := sync.OnceFunc(func() { close(held) }), sync.OnceFunc(func() { close(release) })
+
+	old, oldLevel := log.Logger, zerolog.GlobalLevel()
+	log.Logger = zerolog.New(io.Discard).Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, msg string) {
+		if msg == "scheduled task worker is shutting down." {
+			heldOnce()
+			<-release
+		}
+	}))
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	t.Cleanup(func() {
+		releaseOnce()
+
+		log.Logger = old
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	cfg := serveTestConfig(t, "127.0.0.1:0")
+
+	app, err := NewHeadscale(cfg)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	served := make(chan error, 1)
+
+	go func() { served <- app.Serve(ctx) }()
+
+	client := &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return new(net.Dialer).DialContext(ctx, "unix", cfg.UnixSocket)
+		},
+	}}
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/api/v1/health", nil)
+		require.NoError(c, err)
+
+		res, err := client.Do(req)
+		require.NoError(c, err)
+
+		defer res.Body.Close()
+
+		assert.Equal(c, http.StatusOK, res.StatusCode)
+	}, 10*time.Second, 50*time.Millisecond)
+
+	cancel()
+
+	select {
+	case <-held:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the scheduled tasks never saw the cancel")
+	}
+
+	batcher := app.MapBatcher()
+
+	// Judge only once shutdown is parked waiting for the task, or has closed
+	// the batcher without waiting.
+	require.Eventually(t, func() bool {
+		select {
+		case <-batcher.Done():
+			return true
+		default:
+			return serveParkedInWait()
+		}
+	}, 10*time.Second, time.Millisecond, "shutdown neither waited for its scheduled tasks nor closed the batcher")
+
+	select {
+	case <-batcher.Done():
+		t.Fatal("the batcher closed while a scheduled task was running")
+	default:
+	}
+
+	require.NoError(t, app.state.PingDB(t.Context()), "the database closed while a scheduled task was running")
+
+	releaseOnce()
+
+	select {
+	case err := <-served:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Serve did not return after its scheduled tasks ended")
+	}
+}
+
+// serveParkedInWait reports whether a goroutine of [Headscale.Serve] is
+// blocked in a [sync.WaitGroup.Wait] it calls itself.
+func serveParkedInWait() bool {
+	buf := make([]byte, 1<<22)
+	buf = buf[:runtime.Stack(buf, true)]
+
+	for g := range strings.SplitSeq(string(buf), "\n\n") {
+		_, after, ok := strings.Cut(g, "\nsync.(*WaitGroup).Wait(")
+		if !ok {
+			continue
+		}
+
+		// Skip the rest of the Wait line and its file line.
+		frames := strings.SplitN(after, "\n", 3)
+		if len(frames) == 3 && strings.HasPrefix(frames[2], "github.com/juanfont/headscale/hscontrol.(*Headscale).Serve.func") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// TestServeStopsAHeldDERPRefresh: cancelling Serve ends a DERP refresh
+// waiting on a source that does not answer, and the sources after it are not
+// read: shutdown waits for the refresh, so it must not wait out each
+// source's timeout.
+func TestServeStopsAHeldDERPRefresh(t *testing.T) {
+	held := make(chan struct{})
+	heldOnce := sync.OnceFunc(func() { close(held) })
+
+	var firstRequests, secondRequests atomic.Int32
+
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The first request is Serve's startup fetch.
+		if firstRequests.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+
+			return
+		}
+
+		heldOnce()
+		<-r.Context().Done()
+	}))
+	t.Cleanup(first.Close)
+
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		secondRequests.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(second.Close)
+
+	cfg := serveTestConfig(t, "127.0.0.1:0")
+	cfg.DERP.URLs = []types.HTTPURL{types.HTTPURL(first.URL), types.HTTPURL(second.URL)}
+	cfg.DERP.AutoUpdate = true
+	cfg.DERP.UpdateFrequency = time.Millisecond
+
+	app, err := NewHeadscale(cfg)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	served := make(chan error, 1)
+
+	go func() { served <- app.Serve(ctx) }()
+
+	select {
+	case <-held:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no DERP refresh started")
+	}
+
+	cancel()
+
+	select {
+	case err := <-served:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Serve did not return promptly while a DERP source held its refresh")
+	}
+
+	assert.Equal(t, int32(1), secondRequests.Load(), "the refresh read the source after the held one")
+}
+
+// TestServeRefusesADERPPipe: a pipe in derp.paths is refused at every read,
+// so neither startup nor a refresh blocks on it, and Serve stops at once.
+func TestServeRefusesADERPPipe(t *testing.T) {
+	fifo := filepath.Join(t.TempDir(), "derp.json")
+	require.NoError(t, syscall.Mkfifo(fifo, 0o600))
+
+	fetching := make(chan struct{})
+	fetchingOnce := sync.OnceFunc(func() { close(fetching) })
+
+	old, oldLevel := log.Logger, zerolog.GlobalLevel()
+	log.Logger = zerolog.New(io.Discard).Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, msg string) {
+		if msg == "fetching DERPMap updates" {
+			fetchingOnce()
+		}
+	}))
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	t.Cleanup(func() {
+		log.Logger = old
+
+		zerolog.SetGlobalLevel(oldLevel)
+	})
+
+	cfg := serveTestConfig(t, "127.0.0.1:0")
+	cfg.DERP.Paths = []string{fifo}
+	cfg.DERP.AutoUpdate = true
+	cfg.DERP.UpdateFrequency = time.Millisecond
+
+	app, err := NewHeadscale(cfg)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	served := make(chan error, 1)
+
+	go func() { served <- app.Serve(ctx) }()
+
+	select {
+	case <-fetching:
+	case err := <-served:
+		t.Fatalf("Serve returned (err=%v) before a DERP refresh", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("no DERP refresh started: startup blocked on the pipe")
+	}
+
+	cancel()
+
+	select {
+	case err := <-served:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Serve did not return promptly with a pipe in derp.paths")
+	}
 }
