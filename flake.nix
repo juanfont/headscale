@@ -3,9 +3,12 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    # shortcut: Go 1.27.4 reached the release branch before staging-next
-    # landed it in unstable; drop this input once unstable's go_latest has it.
-    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
+    # Go releases reach nixpkgs late, so headscale pins go.dev's source and
+    # builds it with nixpkgs' recipe. Keep in step with go.mod's go directive.
+    go = {
+      url = "https://go.dev/dl/go1.27.4.src.tar.gz";
+      flake = false;
+    };
     flake-utils.url = "github:numtide/flake-utils";
     # Reusable Go flake checks (build/test/lint/format); CI runs them via
     # `nix build .#checks.<system>.<name>` instead of bespoke per-tool steps.
@@ -17,14 +20,44 @@
     {
       self,
       nixpkgs,
-      nixpkgs-stable,
       flake-utils,
       flake-checks,
       ...
-    }:
+    }@inputs:
     let
       headscaleVersion = self.shortRev or self.dirtyShortRev;
       commitHash = self.rev or self.dirtyRev;
+
+      # Go from the pinned source, built with the given nixpkgs' recipe for
+      # that major (falling back to go_latest), so consumers' channels work.
+      toolchain =
+        pkgs:
+        let
+          inherit (pkgs) lib;
+          version = lib.removePrefix "go" (
+            lib.head (lib.splitString "\n" (builtins.readFile "${inputs.go}/VERSION"))
+          );
+          major = lib.replaceStrings [ "." ] [ "_" ] (lib.versions.majorMinor version);
+        in
+        rec {
+          go = (pkgs."go_${major}" or pkgs.go_latest).overrideAttrs {
+            inherit version;
+            src = inputs.go;
+          };
+          # Not buildGoModule.override: nixpkgs aliases it and it recurses.
+          buildGoModule = pkgs.callPackage "${pkgs.path}/pkgs/build-support/go/module.nix" { inherit go; };
+          # Dev tools parse and lint Go with the Go they were built with, so an
+          # older one rejects new syntax. Builders pinned to another major stay.
+          withGo =
+            pkg:
+            pkg.override (
+              lib.intersectAttrs (lib.functionArgs pkg.override) {
+                inherit go buildGoModule;
+                buildGoLatestModule = buildGoModule;
+                "buildGo${lib.replaceStrings [ "_" ] [ "" ] major}Module" = buildGoModule;
+              }
+            );
+        };
     in
     {
       # NixOS module
@@ -49,23 +82,18 @@
         testkit-peer = ./nix/testkit-peer.nix;
       };
 
+      # Builds with the consumer's nixpkgs; only Go comes from this flake.
       overlays.default =
-        _: prev:
+        final: _:
         let
-          pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
-          go = nixpkgs-stable.legacyPackages.${prev.stdenv.hostPlatform.system}.go_1_27;
-          # Tracks the newest Go in nixpkgs so a Go release bump is a
-          # flake.lock update, not a flake.nix edit.
-          buildGo = pkgs.buildGoLatestModule.override { inherit go; };
+          inherit (toolchain final) buildGoModule;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
         {
-          go_latest = go;
-
-          headscale = buildGo {
+          headscale = buildGoModule {
             pname = "headscale";
             version = headscaleVersion;
-            src = pkgs.lib.cleanSource self;
+            src = final.lib.cleanSource self;
 
             # Only run unit tests when testing a build
             checkFlags = [ "-short" ];
@@ -81,39 +109,15 @@
             };
           };
 
-          hi = buildGo {
+          hi = buildGoModule {
             pname = "hi";
             version = headscaleVersion;
-            src = pkgs.lib.cleanSource self;
+            src = final.lib.cleanSource self;
 
             checkFlags = [ "-short" ];
             inherit vendorHash;
 
             subPackages = [ "cmd/hi" ];
-          };
-
-          gotestsum = prev.gotestsum.override {
-            buildGoModule = buildGo;
-          };
-
-          gotests = prev.gotests.override {
-            buildGoModule = buildGo;
-          };
-
-          gofumpt = prev.gofumpt.override {
-            buildGoModule = buildGo;
-          };
-
-          # goimports and friends: they parse Go with the parser of the Go
-          # they were built with, so an older one rejects new syntax.
-          gotools = prev.gotools.override {
-            buildGoModule = buildGo;
-            # goimports is wrapped with this go on PATH for module lookups.
-            inherit go;
-          };
-
-          golangci-lint-langserver = prev.golangci-lint-langserver.override {
-            buildGoModule = buildGo;
           };
         };
     }
@@ -126,26 +130,29 @@
           overlays = [ self.overlays.default ];
           inherit system;
         };
+        inherit (toolchain pkgs) go withGo;
         buildDeps = with pkgs; [
           git
-          go_latest
+          go
           gnumake
         ];
         devDeps =
           with pkgs;
           buildDeps
-          ++ [
+          ++ map withGo [
             golangci-lint
             golangci-lint-langserver
-            prettier
-            nixfmt
-            goreleaser
-            nfpm
             gotestsum
             gotests
             gofumpt
             gopls
             gotools
+          ]
+          ++ [
+            prettier
+            nixfmt
+            goreleaser
+            nfpm
 
             gh
             gh-actions-lock
@@ -201,7 +208,7 @@
           pname = "headscale";
           version = headscaleVersion;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
-          goPkg = pkgs.go_latest;
+          goPkg = go;
           # //go:embed targets and test-read files outside the default whitelist.
           embedDirs = [
             ./hscontrol/assets
@@ -251,9 +258,9 @@
             }
           );
 
-          # Full-tree golangci-lint (gofumpt, gci, etc.); uses the overlay's
-          # golangci-lint built against the pinned Go.
-          golangci-lint = fc.goLint common;
+          # Full-tree golangci-lint (gofumpt, gci, etc.), built with the
+          # pinned Go.
+          golangci-lint = fc.goLint (common // { golangciLint = withGo pkgs.golangci-lint; });
 
           # nixfmt + prettier, excluding generated output. goFmt = "off":
           # Go formatting (gofumpt, gci) is enforced by the golangci-lint

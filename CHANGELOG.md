@@ -353,6 +353,7 @@ maps each one to its replacement.
 - `headscale serve` exits with status 78 when it rejects the configuration file it loaded. The deb package and the NixOS module leave it stopped instead of restarting it. The deb package starts or restarts Headscale only when `headscale check config` passes. [#3683](https://github.com/juanfont/headscale/pull/3683)
 - The root `config-example.yaml` is removed. `headscale generate config` prints it, and packagers can run it at build time. [#3680](https://github.com/juanfont/headscale/pull/3680)
 - `HEADSCALE_DEBUG_TAILSQL_ENABLED`, `HEADSCALE_DEBUG_TAILSQL_STATE_DIR` and `TS_AUTHKEY` no longer start TailSQL on an external tailnet. Use `tailsql.enabled` and `tailsql.state_dir`, which join headscale's own tailnet.
+- The flake's `overlays.default` builds Headscale with your nixpkgs and Headscale's pinned Go, and adds only `headscale` and `hi`. It no longer replaces `go_latest`, `gotestsum`, `gotests`, `gofumpt`, `gotools` or `golangci-lint-langserver`.
 
 #### Removed and renamed configuration options
 

@@ -282,10 +282,12 @@ Delete these and import the kit:
 
 ### Cost
 
-- headscale builds from source with its own pinned nixpkgs and Go.
-- Setting `inputs.headscale.inputs.nixpkgs.follows` works only if your nixpkgs
-  has the Go version `go.mod` requires. Compare
-  `nix eval --raw nixpkgs#go_latest.version` against it.
+- headscale builds from source with your nixpkgs and its own pinned Go (the
+  `go` input, go.dev's source), so the first build compiles Go once. Go is not
+  replaced for anything else. To share one Go across flakes, point them at the
+  same source with `inputs.headscale.inputs.go.follows`.
+- Your nixpkgs needs `go_1_NN` for the pinned major, or a `go_latest` of that
+  major, to supply the build recipe.
 - The input also brings headscale's development inputs into your lock file. If
   you already depend on them, `follows` them.
 
