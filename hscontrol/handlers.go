@@ -358,9 +358,10 @@ func (a *AuthProviderWeb) externalAuthURL(authID types.AuthID) string {
 }
 
 func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {
-	if u := a.externalAuthURL(authID); u != "" {
-		return u
-	}
+	// Always the internal /register/<auth-id> URL: the client echoes this
+	// back as its followup token, and waitForFollowup parses the auth ID
+	// out of the path. The browser redirect to an external page happens
+	// in RegisterHandler instead.
 	return authPathURL(a.serverURL, "register", authID)
 }
 
@@ -420,6 +421,15 @@ func (a *AuthProviderWeb) RegisterHandler(
 	authId, err := authIDFromRequest(req)
 	if err != nil {
 		httpError(writer, err)
+		return
+	}
+
+	// When an external registration page is configured, browsers landing
+	// on /register/<auth-id> are sent there (with the hskey) instead of
+	// the built-in waiting page; the client's followup polls are
+	// unaffected because they never render the response.
+	if a.authPageURL != "" {
+		http.Redirect(writer, req, a.externalAuthURL(authId), http.StatusFound)
 		return
 	}
 
