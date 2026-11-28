@@ -58,6 +58,19 @@
         "type": "github"
       }
     },
+    "go": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1793651780,
+        "narHash": "sha256-rGaEuA8GCcDEtIGoRWPxc0LlwpP9OXWFx2NvOEo0jik=",
+        "type": "tarball",
+        "url": "https://go.dev/dl/go1.27.4.src.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://go.dev/dl/go1.27.4.src.tar.gz"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1794158174,
@@ -74,28 +87,12 @@
         "type": "github"
       }
     },
-    "nixpkgs-stable": {
-      "locked": {
-        "lastModified": 1794872590,
-        "narHash": "sha256-E+XLAfnC7+bdr4qlEgRv6cdGmiqTU5oeFNKCha7epqQ=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "f68407657ad294471eb4b2e65d193df26edf729f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-26.05",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "flake-checks": "flake-checks",
         "flake-utils": "flake-utils_2",
-        "nixpkgs": "nixpkgs",
-        "nixpkgs-stable": "nixpkgs-stable"
+        "go": "go",
+        "nixpkgs": "nixpkgs"
       }
     },
     "systems": {
