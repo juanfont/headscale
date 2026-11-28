@@ -251,6 +251,9 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	var authProvider AuthProvider
 
 	authProvider = NewAuthProviderWeb(cfg.ServerURL, cfg.Registration.AuthPageURL)
+	if cfg.OIDC.Issuer != "" && cfg.Registration.AuthPageURL != "" {
+		log.Warn().Msg("registration.auth_page_url is ignored when oidc.issuer is set")
+	}
 	if cfg.OIDC.Issuer != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

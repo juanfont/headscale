@@ -54,7 +54,7 @@ func TestAPIAuthPendingInspect(t *testing.T) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test containers use self-signed certs
 		},
 	}
 	endpoint := headscale.GetEndpoint()

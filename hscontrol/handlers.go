@@ -341,6 +341,11 @@ func NewAuthProviderWeb(serverURL, authPageURL string) *AuthProviderWeb {
 			u.IsAbs() && u.Host != "" &&
 			(u.Scheme == "http" || u.Scheme == "https") {
 			parsed = u
+		} else {
+			// config.Validate rejects these at startup; warn anyway so a
+			// misconfiguration never degrades to the built-in page silently.
+			log.Warn().Str("auth_page_url", trimmed).
+				Msg("registration.auth_page_url is not an absolute http(s) URL; ignoring")
 		}
 	}
 

@@ -42,7 +42,7 @@ type authPendingOutput struct {
 	Body struct {
 		AuthID   string `json:"authId" doc:"The pending request ID"`
 		Hostname string `json:"hostname" doc:"Advertised hostname of the waiting device (empty when no registration data yet)"`
-		OS       string `json:"os" doc:"Advertised OS of the waiting device"`
+		OS       string `json:"os" doc:"Advertised OS of the waiting device (empty when no registration data yet)"`
 		// IsRegistration distinguishes a new-node registration from a
 		// login/re-auth session; the endpoint answers 200 for both so
 		// the caller can tell them apart.
