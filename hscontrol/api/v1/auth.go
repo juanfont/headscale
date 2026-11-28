@@ -34,6 +34,19 @@ type AuthRejectRequestBody struct {
 	AuthID string `json:"authId,omitempty"`
 }
 
+type authPendingInput struct {
+	AuthID string `path:"authId"`
+}
+
+type authPendingOutput struct {
+	Body struct {
+		AuthID       string `json:"authId"`
+		Hostname     string `json:"hostname"`
+		OS           string `json:"os"`
+		Registration bool   `json:"registration"`
+	}
+}
+
 type (
 	authRegisterInput struct {
 		Body AuthRegisterRequestBody
@@ -64,6 +77,35 @@ type (
 )
 
 func registerAuth(api huma.API, b Backend) {
+	huma.Register(api, huma.Operation{
+		OperationID: "authPending",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/auth/{authId}",
+		Summary:     "Inspect a pending auth session",
+		Tags:        []string{"Auth"},
+		Security:    bearerAuth,
+	}, func(ctx context.Context, in *authPendingInput) (*authPendingOutput, error) {
+		authReq, err := pendingAuthRequest(b, in.AuthID)
+		if err != nil {
+			return nil, err
+		}
+
+		out := &authPendingOutput{}
+		out.Body.AuthID = in.AuthID
+		out.Body.Registration = authReq.IsRegistration()
+		if data := authReq.RegistrationData(); data != nil {
+			out.Body.Hostname = data.Hostname
+			if data.Hostinfo != nil {
+				out.Body.OS = data.Hostinfo.OS
+				if out.Body.Hostname == "" {
+					out.Body.Hostname = data.Hostinfo.Hostname
+				}
+			}
+		}
+
+		return out, nil
+	})
+
 	huma.Register(api, huma.Operation{
 		OperationID: "authRegister",
 		Method:      http.MethodPost,
