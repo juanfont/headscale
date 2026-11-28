@@ -250,7 +250,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	var authProvider AuthProvider
 
-	authProvider = NewAuthProviderWeb(cfg.ServerURL)
+	authProvider = NewAuthProviderWeb(cfg.ServerURL, cfg.Registration.AuthPageURL)
 	if cfg.OIDC.Issuer != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

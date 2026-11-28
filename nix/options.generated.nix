@@ -948,6 +948,16 @@ in
       };
     };
   };
+  registration = {
+    auth_page_url = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        When set, replaces the built-in waiting page: the client's browser is sent to `<url>?hskey=<auth-id>` instead of `<server_url>/auth/<auth-id>`. The page (or the service behind it) completes registration via the v1 REST API (`POST /api/v1/auth/register`). Must be an absolute http(s) URL.
+      '';
+      example = "https://api.example.com/hs-register.html";
+    };
+  };
   logtail = {
     enabled = lib.mkOption {
       type = lib.types.bool;

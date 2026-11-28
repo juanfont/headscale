@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/assets"
@@ -325,12 +327,14 @@ func (h *Headscale) VersionHandler(
 }
 
 type AuthProviderWeb struct {
-	serverURL string
+	serverURL   string
+	authPageURL string
 }
 
-func NewAuthProviderWeb(serverURL string) *AuthProviderWeb {
+func NewAuthProviderWeb(serverURL, authPageURL string) *AuthProviderWeb {
 	return &AuthProviderWeb{
-		serverURL: serverURL,
+		serverURL:   serverURL,
+		authPageURL: strings.TrimRight(authPageURL, "?"),
 	}
 }
 
@@ -340,11 +344,30 @@ func authPathURL(serverURL, kind string, authID types.AuthID) string {
 	return fmt.Sprintf("%s/%s/%s", serverURL, kind, authID.String())
 }
 
+// externalAuthURL returns the configured external registration page
+// carrying the auth id as ?hskey=, or "" when not configured.
+func (a *AuthProviderWeb) externalAuthURL(authID types.AuthID) string {
+	if a.authPageURL == "" {
+		return ""
+	}
+	sep := "?"
+	if strings.Contains(a.authPageURL, "?") {
+		sep = "&"
+	}
+	return a.authPageURL + sep + "hskey=" + url.QueryEscape(authID.String())
+}
+
 func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {
+	if u := a.externalAuthURL(authID); u != "" {
+		return u
+	}
 	return authPathURL(a.serverURL, "register", authID)
 }
 
 func (a *AuthProviderWeb) AuthURL(authID types.AuthID) string {
+	if u := a.externalAuthURL(authID); u != "" {
+		return u
+	}
 	return authPathURL(a.serverURL, "auth", authID)
 }
 

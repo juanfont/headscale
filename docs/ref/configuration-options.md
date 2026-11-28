@@ -3003,6 +3003,44 @@ How the code challenge is derived from the verifier. The verifier is sent as is 
     services.headscale.settings.oidc.pkce.method = "plain";
     ```
 
+## `registration` { #registration data-toc-label="registration" }
+
+Controls the interactive (browser) registration flow for nodes that cannot use preauth keys.
+
+??? example "All `registration` keys and defaults"
+
+    ```yaml
+    registration:
+      auth_page_url: ""
+    ```
+
+### `registration.auth_page_url` { #registration.auth_page_url data-toc-label="auth_page_url" }
+
+- **Type:** [string](#type-string)
+- **Default:** `""`
+- **Env:** `HEADSCALE_REGISTRATION_AUTH_PAGE_URL`
+
+When set, replaces the built-in waiting page: the client's browser is sent to `<url>?hskey=<auth-id>` instead of `<server_url>/auth/<auth-id>`. The page (or the service behind it) completes registration via the v1 REST API (`POST /api/v1/auth/register`). Must be an absolute http(s) URL.
+
+=== "YAML"
+
+    ```yaml
+    registration:
+      auth_page_url: https://api.example.com/hs-register.html
+    ```
+
+=== "Environment"
+
+    ```shell
+    export HEADSCALE_REGISTRATION_AUTH_PAGE_URL=https://api.example.com/hs-register.html
+    ```
+
+=== "NixOS"
+
+    ```nix
+    services.headscale.settings.registration.auth_page_url = "https://api.example.com/hs-register.html";
+    ```
+
 ## `logtail` { #logtail data-toc-label="logtail" }
 
 Whether nodes send their logs to Tailscale.

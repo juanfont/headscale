@@ -240,6 +240,10 @@ type Config struct { //nolint:recvcheck // MarshalJSON reads a value, so a Confi
 	// [OpenID Connect](https://headscale.net/stable/ref/oidc/).
 	OIDC OIDCConfig `koanf:"oidc"`
 
+	// Registration controls the interactive (browser) registration flow
+	// for nodes that cannot use preauth keys.
+	Registration RegistrationConfig `koanf:"registration"`
+
 	// LogTail is whether nodes send their logs to Tailscale.
 	LogTail LogTailConfig `koanf:"logtail"`
 
@@ -706,6 +710,17 @@ type PKCEConfig struct {
 }
 
 // OIDCConfig configures login through an OpenID Connect provider.
+// RegistrationConfig controls the interactive (browser) registration
+// flow for nodes that cannot use preauth keys.
+type RegistrationConfig struct {
+	// When set, replaces the built-in waiting page: the client's
+	// browser is sent to `<url>?hskey=<auth-id>` instead of
+	// `<server_url>/auth/<auth-id>`. The page (or the service behind
+	// it) completes registration via the v1 REST API
+	// (`POST /api/v1/auth/register`). Must be an absolute http(s) URL.
+	AuthPageURL string `example:"\"https://api.example.com/hs-register.html\"" koanf:"auth_page_url"`
+}
+
 type OIDCConfig struct {
 	// OnlyStartIfOIDCIsAvailable stops startup when the provider cannot be
 	// reached. False starts without OIDC, with CLI-based registration.
@@ -1009,7 +1024,7 @@ func (c *Config) AbsPath(p string) string {
 // values.
 var URLKeys = []string{
 	"server_url", "cli.address", "dns.nameservers.global", "dns.nameservers.split",
-	"tls.acme.url", "oidc.issuer", "derp.urls",
+	"tls.acme.url", "oidc.issuer", "derp.urls", "registration.auth_page_url",
 }
 
 // RedactedURLs returns c with the userinfo of the URLs that URLKeys hold

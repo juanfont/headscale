@@ -402,6 +402,15 @@ oidc:
     # One of: `plain`, `S256`.
     method: S256
 
+# Controls the interactive (browser) registration flow for nodes that cannot use
+# preauth keys.
+registration:
+  # When set, replaces the built-in waiting page: the client's browser is sent
+  # to `<url>?hskey=<auth-id>` instead of `<server_url>/auth/<auth-id>`. The
+  # page (or the service behind it) completes registration via the v1 REST API
+  # (`POST /api/v1/auth/register`). Must be an absolute http(s) URL.
+  auth_page_url: ""
+
 # Whether nodes send their logs to Tailscale.
 logtail:
   # Lets nodes send their logs to Tailscale Inc.; headscale cannot point them at
