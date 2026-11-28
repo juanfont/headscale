@@ -59,11 +59,13 @@ func TestAPIAuthPendingInspect(t *testing.T) {
 	}
 	endpoint := headscale.GetEndpoint()
 
-	get := func(ctx context.Context, id string) (*http.Response, map[string]any) {
+	get := func(ctx context.Context, id string, auth bool) (*http.Response, map[string]any) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 			endpoint+"/api/v1/auth/"+id, nil)
 		require.NoError(t, err)
-		req.Header.Set("Authorization", "Bearer "+apiKey)
+		if auth {
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+		}
 		resp, err := client.Do(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
@@ -74,13 +76,18 @@ func TestAPIAuthPendingInspect(t *testing.T) {
 
 	ctx := context.Background()
 
+	t.Run("no bearer token is 401", func(t *testing.T) {
+		resp, _ := get(ctx, "hskey-authreq-0123456789abcdef01234567", false)
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+
 	t.Run("malformed id is 400", func(t *testing.T) {
-		resp, _ := get(ctx, "not-an-auth-id")
+		resp, _ := get(ctx, "not-an-auth-id", true)
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 
 	t.Run("unknown id is 404", func(t *testing.T) {
-		resp, _ := get(ctx, "hskey-authreq-0123456789abcdef01234567")
+		resp, _ := get(ctx, "hskey-authreq-0123456789abcdef01234567", true)
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
@@ -99,13 +106,31 @@ func TestAPIAuthPendingInspect(t *testing.T) {
 		require.NotEmpty(t, authID)
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			resp, body := get(ctx, authID)
+			resp, body := get(ctx, authID, true)
 			if !assert.Equal(c, http.StatusOK, resp.StatusCode) {
 				return
 			}
 			assert.Equal(c, authID, body["authId"])
 			assert.Equal(c, clients[0].Hostname(), body["hostname"])
-			assert.Equal(c, true, body["registration"])
+			assert.Equal(c, true, body["isRegistration"])
+		}, integrationutil.ScaledTimeout(30*time.Second), time.Second)
+
+		// Approving through the API consumes the session; a stale
+		// auth ID must stop being inspectable afterwards.
+		regReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			endpoint+"/api/v1/auth/register",
+			strings.NewReader("{\"user\": \"user1\", \"authId\": \""+authID+"\"}"))
+		require.NoError(t, err)
+		regReq.Header.Set("Authorization", "Bearer "+apiKey)
+		regReq.Header.Set("Content-Type", "application/json")
+		regResp, err := client.Do(regReq)
+		require.NoError(t, err)
+		regResp.Body.Close()
+		require.Equal(t, http.StatusOK, regResp.StatusCode)
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			resp, _ := get(ctx, authID, true)
+			assert.Equal(c, http.StatusNotFound, resp.StatusCode)
 		}, integrationutil.ScaledTimeout(30*time.Second), time.Second)
 	})
 }

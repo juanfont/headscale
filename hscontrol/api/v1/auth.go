@@ -35,15 +35,18 @@ type AuthRejectRequestBody struct {
 }
 
 type authPendingInput struct {
-	AuthID string `path:"authId"`
+	AuthID string `path:"authId" doc:"Pending authentication request ID (hskey-authreq-...)"`
 }
 
 type authPendingOutput struct {
 	Body struct {
-		AuthID       string `json:"authId"`
-		Hostname     string `json:"hostname"`
-		OS           string `json:"os"`
-		Registration bool   `json:"registration"`
+		AuthID   string `json:"authId" doc:"The pending request ID"`
+		Hostname string `json:"hostname" doc:"Advertised hostname of the waiting device (empty when no registration data yet)"`
+		OS       string `json:"os" doc:"Advertised OS of the waiting device"`
+		// IsRegistration distinguishes a new-node registration from a
+		// login/re-auth session; the endpoint answers 200 for both so
+		// the caller can tell them apart.
+		IsRegistration bool `json:"isRegistration" doc:"true when the session is a new-node registration, false for a login or re-auth"`
 	}
 }
 
@@ -92,7 +95,7 @@ func registerAuth(api huma.API, b Backend) {
 
 		out := &authPendingOutput{}
 		out.Body.AuthID = in.AuthID
-		out.Body.Registration = authReq.IsRegistration()
+		out.Body.IsRegistration = authReq.IsRegistration()
 		if data := authReq.RegistrationData(); data != nil {
 			out.Body.Hostname = data.Hostname
 			if data.Hostinfo != nil {

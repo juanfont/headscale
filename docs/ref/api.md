@@ -65,9 +65,18 @@ Headscale server at `/api/v1/docs` for details.
         https://headscale.example.com/api/v1/auth/<AUTH_ID>
     ```
 
-    Returns `authId`, `hostname`, `os` and `registration` for a waiting
-    session so an external registration page can show which device is
-    asking before approving it. `404` when no session is pending.
+    Returns a waiting session so an external registration page can show
+    which device is asking before approving it; `404` when no session is
+    pending, and `isRegistration` is `false` for login/re-auth sessions:
+
+    ```json
+    {
+      "authId": "hskey-authreq-...",
+      "hostname": "laptop",
+      "os": "linux",
+      "isRegistration": true
+    }
+    ```
 
 ## Join nodes with an OAuth client
 
