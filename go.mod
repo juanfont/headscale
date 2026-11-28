@@ -11,7 +11,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/creachadair/command v0.2.13
 	github.com/creachadair/flax v0.1.0
-	github.com/danielgtaylor/huma/v2 v2.40.0
+	github.com/danielgtaylor/huma/v2 v2.41.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/fsnotify/fsnotify v1.10.1
@@ -38,12 +38,12 @@ require (
 	github.com/libdns/rfc2136 v1.0.1
 	github.com/mholt/acmez/v3 v3.1.7
 	github.com/miekg/dns v1.1.73
-	github.com/oapi-codegen/runtime v1.9.0
+	github.com/oapi-codegen/runtime v1.9.1
 	github.com/oauth2-proxy/mockoidc v0.0.0-20261103160011-e06ed0b7cb7f
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/pkg/profile v1.7.0
 	github.com/prometheus/client_golang v1.25.0
-	github.com/prometheus/common v0.73.1
+	github.com/prometheus/common v0.74.0
 	github.com/pterm/pterm v0.12.84
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/realclientip/realclientip-go v1.0.0
@@ -51,6 +51,7 @@ require (
 	github.com/samber/lo v1.53.0
 	github.com/sasha-s/go-deadlock v0.3.9
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	github.com/tailscale/squibble v0.0.0-20260831233316-9a4c8961e6f5
@@ -60,7 +61,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.6
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
 	golang.org/x/crypto v0.59.0
-	golang.org/x/exp v0.0.0-20261109185158-a52e3aef5920
+	golang.org/x/exp v0.0.0-20261128033645-f63ec7c7eed0
 	golang.org/x/mod v0.43.0
 	golang.org/x/oauth2 v0.38.0
 	golang.org/x/sync v0.25.0
@@ -86,9 +87,9 @@ require (
 	// the appropriate `libc` version, then upgrade them
 	// together, e.g:
 	// go get modernc.org/libc@v1.55.3 modernc.org/sqlite@v1.33.1
-	modernc.org/sqlite v1.62.0
+	modernc.org/sqlite v1.63.0
 	pgregory.net/rapid v1.3.0
-	tailscale.com v1.105.0-pre.0.20261112091541-a2da5fbcaa53
+	tailscale.com v1.107.0-pre.0.20261127225221-091ebe8543c4
 	tailscale.com/client/tailscale/v2 v2.12.0
 	zombiezen.com/go/postgrestest v1.0.1
 )
@@ -147,7 +148,7 @@ require (
 	github.com/felixge/fgprof v0.9.5 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fogleman/gg v1.3.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
+	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
 	github.com/gaissmai/bart v0.29.0 // indirect
 	github.com/glebarez/go-sqlite v1.22.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
@@ -180,8 +181,8 @@ require (
 	github.com/jsimonetti/rtnetlink v1.4.2 // indirect
 	github.com/kamstrup/intmap v0.5.2 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
-	github.com/klauspost/compress v1.20.3 // indirect
-	github.com/klauspost/cpuid/v2 v2.4.1 // indirect
+	github.com/klauspost/compress v1.20.4 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.2 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/kradalby/gigahost-go/client v0.0.0-20261014144355-025b38b667ed // indirect
 	github.com/letsencrypt/challtestsrv v1.4.2 // indirect
@@ -208,7 +209,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runc v1.3.2 // indirect
-	github.com/pandatix/go-abnf v0.5.3 // indirect
+	github.com/pandatix/go-abnf v0.5.5 // indirect
 	github.com/peterbourgon/ff/v3 v3.4.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260330135022-df67b199bc81 // indirect
 	github.com/pires/go-proxyproto v0.15.0 // indirect
@@ -219,13 +220,12 @@ require (
 	github.com/safchain/ethtool v0.7.0 // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tailscale/certstore v0.1.1-0.20260409135935-3638fb84b77d // indirect
 	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55 // indirect
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/setec v0.0.0-20260824224040-f8d7a936837c // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20260917222731-e0ed2d0d0fea // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20261110220948-9e10ef9af415 // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20261121000637-a8c4fbf26d6c // indirect
 	github.com/toqueteos/webbrowser v1.2.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
@@ -240,15 +240,15 @@ require (
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
-	go.yaml.in/yaml/v2 v2.4.4 // indirect
+	go.yaml.in/yaml/v2 v2.4.5 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	golang.org/x/image v0.46.0 // indirect
-	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/net v0.63.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/term v0.48.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
-	golang.org/x/tools v0.52.1-0.20261106145633-d407941a339a // indirect
+	golang.org/x/tools v0.53.1-0.20261126161324-9b1bd87ef490 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v1.0.1 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260610212136-7ab31c22f7ad // indirect
@@ -261,7 +261,7 @@ require (
 	// To find the correct version, check tailscale.com's
 	// go.mod file for the gvisor.dev/gvisor version:
 	// https://github.com/tailscale/tailscale/blob/main/go.mod
-	gvisor.dev/gvisor v0.0.0-20260915211658-a6f909f08a72 // indirect
+	gvisor.dev/gvisor v0.0.0-20261117040555-0303b2605d5e // indirect
 	k8s.io/client-go v0.37.0 // indirect
 
 	// NOTE: keep in lockstep with modernc.org/sqlite; see the
