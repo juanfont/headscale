@@ -308,3 +308,29 @@ func TestValidatePrefixesInsideTailscaleRanges(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateRegistrationAuthPageURL(t *testing.T) {
+	for _, tt := range []struct {
+		name, url, wantErr string
+	}{
+		{name: "unset validates", url: ""},
+		{name: "https", url: "https://portal.example.com/hs-register.html"},
+		{name: "http", url: "http://portal.local/p?mode=hs"},
+		{name: "relative path", url: "/relative/path", wantErr: "registration.auth_page_url must be an absolute http(s) URL"},
+		{name: "javascript scheme", url: "javascript:alert(1)", wantErr: "registration.auth_page_url must be an absolute http(s) URL"},
+		{name: "missing scheme", url: "portal.example.com/x.html", wantErr: "registration.auth_page_url must be an absolute http(s) URL"},
+		{name: "no host", url: "https:///x.html", wantErr: "registration.auth_page_url must be an absolute http(s) URL"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Registration.AuthPageURL = tt.url
+
+			err := Validate(&cfg)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+		})
+	}
+}

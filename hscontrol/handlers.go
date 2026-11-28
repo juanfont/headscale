@@ -327,15 +327,24 @@ func (h *Headscale) VersionHandler(
 }
 
 type AuthProviderWeb struct {
-	serverURL   string
-	authPageURL string
+	serverURL string
+	// authPageURL is the parsed registration.auth_page_url, nil when
+	// unset or not an absolute http(s) URL (config validation rejects
+	// such values at startup; the nil keeps the provider safe anyway).
+	authPageURL *url.URL
 }
 
 func NewAuthProviderWeb(serverURL, authPageURL string) *AuthProviderWeb {
-	return &AuthProviderWeb{
-		serverURL:   serverURL,
-		authPageURL: strings.TrimRight(authPageURL, "?"),
+	var parsed *url.URL
+	if trimmed := strings.TrimSpace(authPageURL); trimmed != "" {
+		if u, err := url.Parse(trimmed); err == nil &&
+			u.IsAbs() && u.Host != "" &&
+			(u.Scheme == "http" || u.Scheme == "https") {
+			parsed = u
+		}
 	}
+
+	return &AuthProviderWeb{serverURL: serverURL, authPageURL: parsed}
 }
 
 // authPathURL builds an auth-flow URL of the form
@@ -347,21 +356,27 @@ func authPathURL(serverURL, kind string, authID types.AuthID) string {
 // externalAuthURL returns the configured external registration page
 // carrying the auth id as ?hskey=, or "" when not configured.
 func (a *AuthProviderWeb) externalAuthURL(authID types.AuthID) string {
-	if a.authPageURL == "" {
+	if a.authPageURL == nil {
 		return ""
 	}
-	sep := "?"
-	if strings.Contains(a.authPageURL, "?") {
-		sep = "&"
-	}
-	return a.authPageURL + sep + "hskey=" + url.QueryEscape(authID.String())
+	// Clone so the stored URL stays pristine; set (replacing any
+	// configured hskey) and re-encode, which keeps the query before
+	// the fragment instead of appending into it.
+	u := *a.authPageURL
+	q := u.Query()
+	q.Set("hskey", authID.String())
+	u.RawQuery = q.Encode()
+
+	return u.String()
 }
 
 func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {
-	// Always the internal /register/<auth-id> URL: the client echoes this
-	// back as its followup token, and waitForFollowup parses the auth ID
-	// out of the path. The browser redirect to an external page happens
-	// in RegisterHandler instead.
+	// Always the internal /register/<auth-id> URL. The client echoes
+	// this back as RegisterRequest.Followup and waitForFollowup
+	// (hscontrol/auth.go) parses the auth ID out of the path — the URL
+	// is a token, never fetched over HTTP, so no client can follow a
+	// redirect from it. Browsers landing here are redirected to the
+	// external page in RegisterHandler instead (GET-only route).
 	return authPathURL(a.serverURL, "register", authID)
 }
 
@@ -428,7 +443,7 @@ func (a *AuthProviderWeb) RegisterHandler(
 	// on /register/<auth-id> are sent there (with the hskey) instead of
 	// the built-in waiting page; the client's followup polls are
 	// unaffected because they never render the response.
-	if a.authPageURL != "" {
+	if a.authPageURL != nil {
 		http.Redirect(writer, req, a.externalAuthURL(authId), http.StatusFound)
 		return
 	}

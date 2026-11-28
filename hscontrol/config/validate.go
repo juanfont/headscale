@@ -152,6 +152,20 @@ func Validate(c *types.Config) error {
 		})
 	}
 
+	// An external registration page lands in a Location header and a
+	// query parameter, so it must be a real absolute http(s) URL.
+	if raw := strings.TrimSpace(c.Registration.AuthPageURL); raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || !u.IsAbs() || u.Host == "" ||
+			(u.Scheme != "http" && u.Scheme != "https") {
+			v.Add(&types.ConfigError{
+				Reason:  "registration.auth_page_url must be an absolute http(s) URL",
+				Current: []types.KV{{Key: "registration.auth_page_url", Value: raw}},
+				Hint:    "e.g. https://portal.example.com/hs-register.html",
+			})
+		}
+	}
+
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
 	// to avoid races
 	minInactivityTimeout := 65 * time.Second

@@ -709,7 +709,6 @@ type PKCEConfig struct {
 	Method PKCEMethod `example:"\"plain\"" koanf:"method"`
 }
 
-// OIDCConfig configures login through an OpenID Connect provider.
 // RegistrationConfig controls the interactive (browser) registration
 // flow for nodes that cannot use preauth keys.
 type RegistrationConfig struct {
@@ -718,9 +717,12 @@ type RegistrationConfig struct {
 	// `<server_url>/auth/<auth-id>`. The page (or the service behind
 	// it) completes registration via the v1 REST API
 	// (`POST /api/v1/auth/register`). Must be an absolute http(s) URL.
+	// Ignored when `oidc.issuer` is set: OIDC then owns the login
+	// flow.
 	AuthPageURL string `example:"\"https://api.example.com/hs-register.html\"" koanf:"auth_page_url"`
 }
 
+// OIDCConfig configures login through an OpenID Connect provider.
 type OIDCConfig struct {
 	// OnlyStartIfOIDCIsAvailable stops startup when the provider cannot be
 	// reached. False starts without OIDC, with CLI-based registration.

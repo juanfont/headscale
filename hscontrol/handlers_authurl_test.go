@@ -32,11 +32,45 @@ func TestAuthProviderWebAuthURL(t *testing.T) {
 	t.Run("existing query string gets ampersand", func(t *testing.T) {
 		a := NewAuthProviderWeb(server, "https://api.example.com/p?mode=hs")
 		got := a.AuthURL(authID)
-		assert.Equal(t, "https://api.example.com/p?mode=hs&hskey="+authID.String(), got)
+		// Encode() sorts params; order is semantically irrelevant.
+		assert.Equal(t, "https://api.example.com/p?hskey="+authID.String()+"&mode=hs", got)
 	})
 
 	t.Run("trailing question mark trimmed", func(t *testing.T) {
 		a := NewAuthProviderWeb(server, "https://api.example.com/p?")
+		got := a.AuthURL(authID)
+		assert.Equal(t, "https://api.example.com/p?hskey="+authID.String(), got)
+	})
+
+	t.Run("fragment stays after the query", func(t *testing.T) {
+		a := NewAuthProviderWeb(server, "https://api.example.com/register#login")
+		got := a.AuthURL(authID)
+		assert.Equal(t, "https://api.example.com/register?hskey="+authID.String()+"#login", got)
+	})
+
+	t.Run("query and fragment together", func(t *testing.T) {
+		a := NewAuthProviderWeb(server, "https://api.example.com/p?mode=hs#login")
+		got := a.AuthURL(authID)
+		assert.Equal(t, "https://api.example.com/p?hskey="+authID.String()+"&mode=hs#login", got)
+	})
+
+	t.Run("configured hskey is replaced", func(t *testing.T) {
+		a := NewAuthProviderWeb(server, "https://api.example.com/p?hskey=old")
+		got := a.AuthURL(authID)
+		assert.Equal(t, "https://api.example.com/p?hskey="+authID.String(), got)
+	})
+
+	t.Run("non-http value behaves as unset", func(t *testing.T) {
+		// config.Validate rejects these at startup; the provider stays
+		// safe even if handed one directly.
+		for _, bad := range []string{"javascript:alert(1)", "/relative/path", "not a url"} {
+			a := NewAuthProviderWeb(server, bad)
+			assert.Equal(t, server+"/auth/"+authID.String(), a.AuthURL(authID))
+		}
+	})
+
+	t.Run("surrounding whitespace trimmed", func(t *testing.T) {
+		a := NewAuthProviderWeb(server, "  https://api.example.com/p  ")
 		got := a.AuthURL(authID)
 		assert.Equal(t, "https://api.example.com/p?hskey="+authID.String(), got)
 	})

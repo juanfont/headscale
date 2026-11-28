@@ -953,7 +953,7 @@ in
       type = lib.types.str;
       default = "";
       description = ''
-        When set, replaces the built-in waiting page: the client's browser is sent to `<url>?hskey=<auth-id>` instead of `<server_url>/auth/<auth-id>`. The page (or the service behind it) completes registration via the v1 REST API (`POST /api/v1/auth/register`). Must be an absolute http(s) URL.
+        When set, replaces the built-in waiting page: the client's browser is sent to `<url>?hskey=<auth-id>` instead of `<server_url>/auth/<auth-id>`. The page (or the service behind it) completes registration via the v1 REST API (`POST /api/v1/auth/register`). Must be an absolute http(s) URL. Ignored when `oidc.issuer` is set: OIDC then owns the login flow.
       '';
       example = "https://api.example.com/hs-register.html";
     };
