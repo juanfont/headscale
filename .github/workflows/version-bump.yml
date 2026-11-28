@@ -109,7 +109,7 @@ jobs:
       # write is for the action pin sweep.
       # shortcut: the gate shares this runner, so code it runs could still
       # tamper with the binary or .git; a separate publish job would isolate it.
-      - uses: actions/create-github-app-token@v3.3.0
+      - uses: actions/create-github-app-token@v3.4.0
         if: steps.bump.outputs.handoff == 'true'
         id: app
         with:
