@@ -33,6 +33,12 @@ node can be approved with:
 - [Headscale API](api.md)
 - Or delegated to an identity provider via [OpenID Connect](oidc.md)
 
+With `registration.auth_page_url` set, the browser is redirected from the built-in waiting page to an external page
+(`<auth_page_url>?hskey=<AUTH_ID>`) instead. A companion service can then authenticate the user, call
+`GET /api/v1/auth/<AUTH_ID>` to show which device is waiting, and complete the registration with
+`POST /api/v1/auth/register` — the node's own followup polling is unaffected. Unset (default) keeps the built-in
+page described below.
+
 Web authentication relies on the presence of a Headscale user. Use the `headscale users` command to create a new
 user[^1]:
 

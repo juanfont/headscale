@@ -4,6 +4,16 @@
 
 **Minimum supported Tailscale client version: v1.84.0**
 
+### Registration can be delegated to an external page
+
+`registration.auth_page_url` redirects browsers from the built-in
+`/register/<auth-id>` waiting page to an external page (with
+`?hskey=<auth-id>`), so a companion service can authenticate the user
+and approve the node through the API. The new
+`GET /api/v1/auth/{authId}` endpoint lets that page show which device
+is waiting before calling `auth/register`. The client's followup
+polling is unchanged.
+
 ### v1 REST API replaced; gRPC and Protobuf removed
 
 The v1 REST API now provides an OpenAPI 3.1 specification at

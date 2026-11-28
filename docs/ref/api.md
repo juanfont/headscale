@@ -58,6 +58,17 @@ Headscale server at `/api/v1/docs` for details.
         https://headscale.example.com/api/v1/auth/register
     ```
 
+=== "Inspect a pending auth session"
+
+    ```console
+    curl -H "Authorization: Bearer <token>" \
+        https://headscale.example.com/api/v1/auth/<AUTH_ID>
+    ```
+
+    Returns `authId`, `hostname`, `os` and `registration` for a waiting
+    session so an external registration page can show which device is
+    asking before approving it. `404` when no session is pending.
+
 ## Join nodes with an OAuth client
 
 Headscale also serves a subset of the Tailscale-compatible API at `/api/v2`, which
